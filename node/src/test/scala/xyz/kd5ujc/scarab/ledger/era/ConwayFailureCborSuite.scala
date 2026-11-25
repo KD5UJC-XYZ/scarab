@@ -11,13 +11,11 @@ import xyz.kd5ujc.scarab.ledger.{
   Block,
   Certificate,
   CborRead,
-  CollectError as FlatCollectError,
   Credential as FlatCredential,
   GovAction as FlatGovAction,
   GovActionId,
   MempoolProblem,
   PoolParams,
-  PredicateFailure,
   PreprodDeepTx,
   Proposal,
   Purpose,
@@ -26,9 +24,6 @@ import xyz.kd5ujc.scarab.ledger.{
   TranslationError,
   TxIn,
   TxOutSource,
-  UtxoFailure as FlatUtxoFailure,
-  UtxosFailure as FlatUtxosFailure,
-  UtxowFailure as FlatUtxowFailure,
   Vote,
   Voter,
   VotingProcedure
@@ -62,23 +57,22 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.ledger.Unsigned
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32}
-import xyz.kd5ujc.scarab.node.ntc.{ConwayFailureCbor, PredicateFailureCbor}
+import xyz.kd5ujc.scarab.node.ntc.{ConwayFailureCbor, FlatRecordings}
 import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage}
 import xyz.kd5ujc.scarab.protocol.StateLayout
 
-/** Conway's era failure encoder ([[ConwayFailureCbor]]) constructor by constructor, against the
-  * flat form's encoder (`PredicateFailureCbor` after `ConwayLedgerPredFailure.toStored`) on the
-  * same failures, and against the reference's recorded bytes where they exist.
+/** Conway's era failure encoder ([[ConwayFailureCbor]]) constructor by constructor: against the
+  * reference's recorded bytes where they exist, against bytes derived by hand from the reference's
+  * instances, and otherwise for its form alone.
   *
-  * The corpora (`ConwayLedgerChecksSuite`, `RedeemerIndexReferenceSuite`,
+  * The corpora (`ReferenceRefusalSuite`, `ConwayLedgerChecksSuite`, `RedeemerIndexReferenceSuite`,
   * `ContextRefusalReasonSuite`, `PastHorizonReferenceSuite` and the upstream LEDGER judgments) bind
-  * the failures the era rules give there to the reference's bytes; this suite holds every
-  * constructor of the LEDGER tree, those the corpora do not reach among them, to the flat form's
-  * bytes, with sets and maps of mixed credentials and networks, lists, sets and maps past the 23
-  * items of a definite length, and the integers the reference writes signed. A failure the flat
-  * form cannot hold without the transaction (an action no proposal reads, a purpose no needed
-  * script names, a context's error) is held to the flat form's bytes of the same values, which the
-  * flat form takes from the transaction.
+  * the failures the era rules give there to the reference's bytes. Every other constructor of the
+  * LEDGER tree, with sets and maps of mixed credentials and networks, lists, sets and maps past the
+  * 23 items of a definite length, and the integers the reference writes signed, is held here to a
+  * well-formed `ApplyTxErr` of Conway under LEDGER's tag of its failure, and to the bytes the flat
+  * rules' encoder wrote for it before it went with the flat MEMPOOL
+  * (`fixtures/conway-flat-refusals`), until the reference's recordings of them (#85, 7079191550).
   */
 class ConwayFailureCborSuite extends FunSuite:
   private def right[E, A](what: String)(e: Either[E, A]): A =
@@ -100,9 +94,12 @@ class ConwayFailureCborSuite extends FunSuite:
   private def account(network: Int, c: FlatCredential): AccountAddress =
     right("account")(Convert.accountAddress(flatAccount(network, c)))
 
-  private val owner = TestLedger.key()
-  private val address = owner.address()
-  private val otherAddress = TestLedger.key().address()
+  // enterprise key addresses of fixed key hashes, so that a failure's value, and its bytes, are
+  // the same on every run (`fixtures/conway-flat-refusals`)
+  private def enterprise(n: Int): xyz.kd5ujc.scarab.ledger.Address =
+    right("address")(xyz.kd5ujc.scarab.ledger.Address.decode(Bytes(0x60.toByte +: h28(n).value)))
+  private val address = enterprise(0x5a)
+  private val otherAddress = enterprise(0x5b)
   private def flatOut(coin: BigInt) = TestLedger.out(address, coin)
   private def out(coin: BigInt): TxOut[Conway] =
     right("output")(ConwayTxOut.fromStored(flatOut(coin)))
@@ -269,13 +266,53 @@ class ConwayFailureCborSuite extends FunSuite:
       .applyTxError(NonEmptyList.fromListUnsafe(fs.toList))
       .fold(e => fail(s"no encoding: $e"), _.hex)
 
-  private def flat(fs: PredicateFailure*): String =
-    PredicateFailureCbor.applyTxError(fs.toVector).fold(e => fail(e.message), _.hex)
+  /** LEDGER's tag of `f` in `EncCBOR (ConwayLedgerPredFailure era)`,
+    * `Conway/Rules/Ledger.hs:231-240` (f649f975).
+    */
+  private def ledgerTag(f: ConwayLedgerPredFailure[Conway]): Int = f match
+    case ConwayLedgerPredFailure.ConwayUtxowFailure(_)               => 1
+    case ConwayLedgerPredFailure.ConwayCertsFailure(_)               => 2
+    case ConwayLedgerPredFailure.ConwayGovFailure(_)                 => 3
+    case ConwayLedgerPredFailure.ConwayWdrlNotDelegatedToDRep(_)     => 4
+    case ConwayLedgerPredFailure.ConwayTreasuryValueMismatch(_)      => 5
+    case ConwayLedgerPredFailure.ConwayTxRefScriptsSizeTooBig(_)     => 6
+    case ConwayLedgerPredFailure.ConwayMempoolFailure(_)             => 7
+    case ConwayLedgerPredFailure.ConwayWithdrawalsMissingAccounts(_) => 8
+    case ConwayLedgerPredFailure.ConwayIncompleteWithdrawals(_)      => 9
 
-  /** `f` written by the era's encoder and by the flat form's, the flat form by `toStored`. */
-  private def same(f: ConwayLedgerPredFailure[Conway]): Unit =
-    val stored = right(s"flat form of $f")(ConwayLedgerPredFailure.toStored(f, flatPurpose, read))
-    assertEquals(direct(f), flat(stored), s"$f")
+  /** The LEDGER tags of the failures of `reason`, Conway's `ApplyTxErr` (`[[6, [failure, …]]]`,
+    * each failure `[tag, …]`), read whole: no byte is left after it.
+    */
+  private def tagsOf(reason: String): List[Int] =
+    val bytes = Bytes.fromHex(reason).fold(e => fail(e.message), identity)
+    def arr(v: CborValue): Vector[CborValue] = v match
+      case CborValue.Arr(xs) => xs.map(_.value)
+      case other             => fail(s"not an array: $other")
+    xyz.kd5ujc.scarab.codec.Cbor.decode(bytes).fold(e => fail(e.message), _.value) match
+      case CborValue.Arr(Vector(wrapper)) =>
+        arr(wrapper.value) match
+          case Vector(CborValue.UInt(era), failures) =>
+            assertEquals(era, BigInt(6), "Conway's index")
+            arr(failures).toList.map(f =>
+              arr(f).headOption match
+                case Some(CborValue.UInt(tag)) => tag.toInt
+                case other                     => fail(s"not a constructor: $other")
+            )
+          case other => fail(s"not an ApplyTxErr: $other")
+      case other => fail(s"not one reason: $other")
+
+  /** The digest of `hex`'s bytes, as the recordings keep it ([[FlatRecordings]]). */
+  private def digestOf(hex: String): String =
+    FlatRecordings.digest(Bytes.fromHex(hex).fold(e => fail(e.message), identity))
+
+  /** `f` has bytes: a well-formed `ApplyTxErr` of Conway with the one failure, under LEDGER's tag
+    * of it, and they are the bytes the flat rules' encoder wrote for it before it was deleted
+    * (`fixtures/conway-flat-refusals`).
+    */
+  private def encodes(f: ConwayLedgerPredFailure[Conway]): Unit =
+    val hex = direct(f)
+    assertEquals(tagsOf(hex), List(ledgerTag(f)), s"$f")
+    assertEquals(digestOf(hex), FlatRecordings.wrote(List(f)), s"$f: the flat encoder's bytes")
 
   private def utxow(f: ConwayUtxowPredFailure[Conway]) =
     ConwayLedgerPredFailure.ConwayUtxowFailure[Conway](f)
@@ -308,14 +345,14 @@ class ConwayFailureCborSuite extends FunSuite:
     account(1, FlatCredential.Script(h28(1)))
   )
 
-  test("LEDGER's own failures: the flat form's bytes") {
+  test("LEDGER's own failures: each has bytes under its LEDGER tag") {
     import ConwayLedgerPredFailure.*
-    same(
+    encodes(
       ConwayWdrlNotDelegatedToDRep(
         NonEmptyList.fromListUnsafe(many.toList.map(b => right("k")(KeyHash.fromBytes[Staking](b))))
       )
     )
-    same(ConwayTreasuryValueMismatch(Mismatch(Coin(1), Coin(BigInt("18446744073709551615")))))
+    encodes(ConwayTreasuryValueMismatch(Mismatch(Coin(1), Coin(BigInt("18446744073709551615")))))
     // a `Coin` is an `Integer`, written by `encodeInteger` (`Coin.hs:93-106`, cardano-ledger
     // f649f975): past 64 bits a bignum, tag 2 over the magnitude, where the flat form's writer
     // has no encoding; [6 era, [[5, expected, supplied]]]
@@ -323,12 +360,12 @@ class ConwayFailureCborSuite extends FunSuite:
       direct(ConwayTreasuryValueMismatch(Mismatch(Coin(1), Coin(BigInt("18446744073709551616"))))),
       "81" + "8206" + "81" + "8305" + "c249010000000000000000" + "01"
     )
-    same(ConwayTxRefScriptsSizeTooBig(Mismatch(204_801L, 204_800L)))
-    same(ConwayTxRefScriptsSizeTooBig(Mismatch(Long.MaxValue, 0L)))
-    same(ConwayMempoolFailure(MempoolProblem.AllInputsSpent))
-    same(ConwayWithdrawalsMissingAccounts(accounts.map(_ -> Coin(3)).toMap))
-    same(ConwayWithdrawalsMissingAccounts(manyAccounts.map(_ -> Coin(3)).toMap))
-    same(
+    encodes(ConwayTxRefScriptsSizeTooBig(Mismatch(204_801L, 204_800L)))
+    encodes(ConwayTxRefScriptsSizeTooBig(Mismatch(Long.MaxValue, 0L)))
+    encodes(ConwayMempoolFailure(MempoolProblem.AllInputsSpent))
+    encodes(ConwayWithdrawalsMissingAccounts(accounts.map(_ -> Coin(3)).toMap))
+    encodes(ConwayWithdrawalsMissingAccounts(manyAccounts.map(_ -> Coin(3)).toMap))
+    encodes(
       ConwayIncompleteWithdrawals(
         NonEmptyMap.fromMapUnsafe(
           SortedMap.from(accounts.map(_ -> Mismatch[RelEQ, Coin](Coin(1), Coin(2))))
@@ -337,25 +374,25 @@ class ConwayFailureCborSuite extends FunSuite:
     )
   }
 
-  test("UTXOW's failures: the flat form's bytes") {
+  test("UTXOW's failures: each has bytes under its LEDGER tag") {
     import ConwayUtxowPredFailure.*
     val hs = NonEmptySet.fromSetUnsafe(SortedSet.from(many))
-    same(utxow(InvalidWitnessesUTXOW(NonEmptyList.fromListUnsafe(many.reverse.toList))))
-    same(utxow(MissingVKeyWitnessesUTXOW(hs)))
-    same(utxow(MissingScriptWitnessesUTXOW(nes(h28(2), h28(1)))))
-    same(utxow(ScriptWitnessNotValidatingUTXOW(nes(h28(2)))))
-    same(utxow(MissingTxBodyMetadataHash(h32(1))))
-    same(utxow(MissingTxMetadata(h32(2))))
-    same(utxow(ConflictingMetadataHash(Mismatch(h32(1), h32(2)))))
-    same(utxow(InvalidMetadata()))
-    same(utxow(ExtraneousScriptWitnessesUTXOW(hs)))
-    same(utxow(MissingRedeemers(NonEmptyList.fromListUnsafe(items.toList.map(_ -> h28(30))))))
-    same(utxow(MissingRequiredDatums(nes(h32(1)), Set(h32(3), h32(2)))))
-    same(utxow(MissingRequiredDatums(nes(h32(1)), Set.empty)))
-    same(utxow(NotAllowedSupplementalDatums(nes(h32(1), h32(4)), Set(h32(2)))))
-    same(utxow(PPViewHashesDontMatch(Mismatch(Some(h32(1)), None))))
-    same(utxow(UnspendableUTxONoDatumHash(nes(txIn(2), txIn(1)))))
-    same(
+    encodes(utxow(InvalidWitnessesUTXOW(NonEmptyList.fromListUnsafe(many.reverse.toList))))
+    encodes(utxow(MissingVKeyWitnessesUTXOW(hs)))
+    encodes(utxow(MissingScriptWitnessesUTXOW(nes(h28(2), h28(1)))))
+    encodes(utxow(ScriptWitnessNotValidatingUTXOW(nes(h28(2)))))
+    encodes(utxow(MissingTxBodyMetadataHash(h32(1))))
+    encodes(utxow(MissingTxMetadata(h32(2))))
+    encodes(utxow(ConflictingMetadataHash(Mismatch(h32(1), h32(2)))))
+    encodes(utxow(InvalidMetadata()))
+    encodes(utxow(ExtraneousScriptWitnessesUTXOW(hs)))
+    encodes(utxow(MissingRedeemers(NonEmptyList.fromListUnsafe(items.toList.map(_ -> h28(30))))))
+    encodes(utxow(MissingRequiredDatums(nes(h32(1)), Set(h32(3), h32(2)))))
+    encodes(utxow(MissingRequiredDatums(nes(h32(1)), Set.empty)))
+    encodes(utxow(NotAllowedSupplementalDatums(nes(h32(1), h32(4)), Set(h32(2)))))
+    encodes(utxow(PPViewHashesDontMatch(Mismatch(Some(h32(1)), None))))
+    encodes(utxow(UnspendableUTxONoDatumHash(nes(txIn(2), txIn(1)))))
+    encodes(
       utxow(
         ExtraRedeemers(
           NonEmptyList.fromListUnsafe(
@@ -368,28 +405,30 @@ class ConwayFailureCborSuite extends FunSuite:
         )
       )
     )
-    same(utxow(MalformedScriptWitnesses(nes(h28(1)))))
-    same(utxow(MalformedReferenceScripts(nes(h28(1)))))
-    same(utxow(ScriptIntegrityHashMismatch(Mismatch(None, Some(h32(1))), Some(bytes(5, 40)))))
+    encodes(utxow(MalformedScriptWitnesses(nes(h28(1)))))
+    encodes(utxow(MalformedReferenceScripts(nes(h28(1)))))
+    encodes(utxow(ScriptIntegrityHashMismatch(Mismatch(None, Some(h32(1))), Some(bytes(5, 40)))))
   }
 
-  test("UTXO's failures: the flat form's bytes") {
+  test("UTXO's failures: each has bytes under its LEDGER tag") {
     import ConwayUtxoPredFailure.*
-    same(utxo(BadInputsUTxO(NonEmptySet.fromSetUnsafe(SortedSet.from((1 to 30).map(txIn))))))
-    same(utxo(OutsideValidityIntervalUTxO(ValidityInterval(Some(3), None), 2)))
-    same(utxo(OutsideValidityIntervalUTxO(ValidityInterval(None, Some(BigInt("4294967296"))), 9)))
-    same(utxo(MaxTxSizeUTxO(Mismatch(16_385, 16_384))))
-    same(utxo(InputSetEmptyUTxO()))
-    same(utxo(FeeTooSmallUTxO(Mismatch(Coin(1), Coin(170_000)))))
-    same(
+    encodes(utxo(BadInputsUTxO(NonEmptySet.fromSetUnsafe(SortedSet.from((1 to 30).map(txIn))))))
+    encodes(utxo(OutsideValidityIntervalUTxO(ValidityInterval(Some(3), None), 2)))
+    encodes(
+      utxo(OutsideValidityIntervalUTxO(ValidityInterval(None, Some(BigInt("4294967296"))), 9))
+    )
+    encodes(utxo(MaxTxSizeUTxO(Mismatch(16_385, 16_384))))
+    encodes(utxo(InputSetEmptyUTxO()))
+    encodes(utxo(FeeTooSmallUTxO(Mismatch(Coin(1), Coin(170_000)))))
+    encodes(
       utxo(
         ValueNotConservedUTxO(
           Mismatch(value, MultiAssetValue.of(xyz.kd5ujc.scarab.ledger.Value.coin(1)))
         )
       )
     )
-    same(utxo(WrongNetwork(Network.Mainnet, nes(otherAddress, address))))
-    same(
+    encodes(utxo(WrongNetwork(Network.Mainnet, nes(otherAddress, address))))
+    encodes(
       utxo(
         WrongNetworkWithdrawal(
           Network.Testnet,
@@ -397,25 +436,25 @@ class ConwayFailureCborSuite extends FunSuite:
         )
       )
     )
-    same(utxo(OutputTooSmallUTxO(nel(out(1), out(2)))))
-    same(utxo(OutputBootAddrAttrsTooBig(nel(out(3)))))
-    same(utxo(OutputTooBigUTxO(nel((5001, 5000, out(4))))))
-    same(utxo(InsufficientCollateral(DeltaCoin(-5), Coin(10))))
-    same(utxo(InsufficientCollateral(DeltaCoin(BigInt("-18446744073709551617")), Coin(10))))
-    same(utxo(ScriptsNotPaidUTxO(NonEmptyMap.of(txIn(2) -> out(1), txIn(1) -> out(2)))))
-    same(utxo(ExUnitsTooBigUTxO(Mismatch(ExUnits(10, 20), ExUnits(5, 30)))))
-    same(utxo(CollateralContainsNonADA(value)))
-    same(utxo(WrongNetworkInTxBody(Mismatch(Network.Mainnet, Network.Testnet))))
-    same(utxo(OutsideForecast(99)))
-    same(utxo(TooManyCollateralInputs(Mismatch(Unsigned.lit[W16](4), Unsigned.lit[W16](3)))))
-    same(utxo(NoCollateralInputs()))
-    same(utxo(IncorrectTotalCollateralField(DeltaCoin(-1), Coin(5))))
-    same(utxo(BabbageOutputTooSmallUTxO(nel(out(1) -> Coin(969_750)))))
-    same(utxo(BabbageNonDisjointRefInputs(nel(txIn(2), txIn(1)))))
+    encodes(utxo(OutputTooSmallUTxO(nel(out(1), out(2)))))
+    encodes(utxo(OutputBootAddrAttrsTooBig(nel(out(3)))))
+    encodes(utxo(OutputTooBigUTxO(nel((5001, 5000, out(4))))))
+    encodes(utxo(InsufficientCollateral(DeltaCoin(-5), Coin(10))))
+    encodes(utxo(InsufficientCollateral(DeltaCoin(BigInt("-18446744073709551617")), Coin(10))))
+    encodes(utxo(ScriptsNotPaidUTxO(NonEmptyMap.of(txIn(2) -> out(1), txIn(1) -> out(2)))))
+    encodes(utxo(ExUnitsTooBigUTxO(Mismatch(ExUnits(10, 20), ExUnits(5, 30)))))
+    encodes(utxo(CollateralContainsNonADA(value)))
+    encodes(utxo(WrongNetworkInTxBody(Mismatch(Network.Mainnet, Network.Testnet))))
+    encodes(utxo(OutsideForecast(99)))
+    encodes(utxo(TooManyCollateralInputs(Mismatch(Unsigned.lit[W16](4), Unsigned.lit[W16](3)))))
+    encodes(utxo(NoCollateralInputs()))
+    encodes(utxo(IncorrectTotalCollateralField(DeltaCoin(-1), Coin(5))))
+    encodes(utxo(BabbageOutputTooSmallUTxO(nel(out(1) -> Coin(969_750)))))
+    encodes(utxo(BabbageNonDisjointRefInputs(nel(txIn(2), txIn(1)))))
   }
 
-  test("UTXOS's failures the flat form holds: the flat form's bytes") {
-    same(
+  test("UTXOS's failures: each has bytes under its LEDGER tag") {
+    encodes(
       utxos(
         ConwayUtxosPredFailure.ValidationTagMismatch(
           IsPhase2Valid.Phase2Invalid,
@@ -423,7 +462,7 @@ class ConwayFailureCborSuite extends FunSuite:
         )
       )
     )
-    same(
+    encodes(
       utxos(
         ConwayUtxosPredFailure.CollectErrors(
           NonEmptyList.fromListUnsafe(
@@ -437,8 +476,10 @@ class ConwayFailureCborSuite extends FunSuite:
     )
   }
 
-  test("CERTS's, CERT's, DELEG's, POOL's and GOVCERT's failures: the flat form's bytes") {
-    same(
+  test(
+    "CERTS's, CERT's, DELEG's, POOL's and GOVCERT's failures: each has bytes under its LEDGER tag"
+  ) {
+    encodes(
       ConwayLedgerPredFailure.ConwayCertsFailure(
         ConwayCertsPredFailure.WithdrawalsNotInRewardsCERTS[Conway](
           accounts.map(_ -> Coin(4)).toMap
@@ -455,7 +496,7 @@ class ConwayFailureCborSuite extends FunSuite:
       DelegateeStakePoolNotRegisteredDELEG(keyHash[StakePool](20)),
       DepositIncorrectDELEG(Mismatch(Coin(1), Coin(2))),
       RefundIncorrectDELEG(Mismatch(Coin(3), Coin(2)))
-    ).foreach(f => same(cert(ConwayCertPredFailure.DelegFailure(f))))
+    ).foreach(f => encodes(cert(ConwayCertPredFailure.DelegFailure(f))))
     import ShelleyPoolPredFailure.*
     val vrf = right("vrf")(VRFVerKeyHash.fromBytes(h32(21)))
     Vector[ShelleyPoolPredFailure[Conway]](
@@ -468,7 +509,7 @@ class ConwayFailureCborSuite extends FunSuite:
       WrongNetworkPOOL(Mismatch(Network.Mainnet, Network.Testnet), keyHash(20)),
       PoolMedataHashTooBig(keyHash(20), 33),
       VRFKeyHashAlreadyRegistered(keyHash(20), vrf)
-    ).foreach(f => same(cert(ConwayCertPredFailure.PoolFailure(f))))
+    ).foreach(f => encodes(cert(ConwayCertPredFailure.PoolFailure(f))))
     import ConwayGovCertPredFailure.*
     Vector[ConwayGovCertPredFailure[Conway]](
       ConwayDRepAlreadyRegistered(key(3)),
@@ -477,10 +518,12 @@ class ConwayFailureCborSuite extends FunSuite:
       ConwayCommitteeHasPreviouslyResigned(script[ColdCommittee](5)),
       ConwayDRepIncorrectRefund(Mismatch(Coin(1), Coin(2))),
       ConwayCommitteeIsUnknown(key[ColdCommittee](5))
-    ).foreach(f => same(cert(ConwayCertPredFailure.GovCertFailure(f))))
+    ).foreach(f => encodes(cert(ConwayCertPredFailure.GovCertFailure(f))))
   }
 
-  test("GOV's failures: the flat form's bytes, every action and proposal among them") {
+  test(
+    "GOV's failures: each has bytes under its LEDGER tag, every action and proposal among them"
+  ) {
     import ConwayGovPredFailure.*
     val votes = nel(
       voterKey -> actionId,
@@ -488,10 +531,10 @@ class ConwayFailureCborSuite extends FunSuite:
       Voter.Pool(h28(20)) -> actionId
     )
     val version = (n: Int) => ProtVer(Version.mkVersion(n).getOrElse(fail("version")), u32(0))
-    actions.foreach(a => same(gov(MalformedProposal(a))))
-    actions.foreach(a => same(gov(ZeroTreasuryWithdrawals(a))))
-    proposals.foreach(p => same(gov(InvalidPrevGovActionId(p))))
-    proposals.foreach(p => same(gov(DisallowedProposalDuringBootstrap(p))))
+    actions.foreach(a => encodes(gov(MalformedProposal(a))))
+    actions.foreach(a => encodes(gov(ZeroTreasuryWithdrawals(a))))
+    proposals.foreach(p => encodes(gov(InvalidPrevGovActionId(p))))
+    proposals.foreach(p => encodes(gov(DisallowedProposalDuringBootstrap(p))))
     Vector[ConwayGovPredFailure[Conway]](
       GovActionsDoNotExist(nel(actionId, GovActionId(h32(1), 0))),
       ProposalProcedureNetworkIdMismatch(accounts(0), Network.Mainnet),
@@ -516,7 +559,7 @@ class ConwayFailureCborSuite extends FunSuite:
       ProposalReturnAccountDoesNotExist(accounts(1)),
       TreasuryWithdrawalReturnAccountsDoNotExist(NonEmptyList.fromListUnsafe(accounts.toList)),
       UnelectedCommitteeVoters(nel(FlatCredential.Script(h28(1)), FlatCredential.Key(h28(2))))
-    ).foreach(f => same(gov(f)))
+    ).foreach(f => encodes(gov(f)))
   }
 
   test("failures across depths, in their order, in one ApplyTxErr") {
@@ -526,17 +569,15 @@ class ConwayFailureCborSuite extends FunSuite:
       ConwayLedgerPredFailure.ConwayTreasuryValueMismatch[Conway](Mismatch(Coin(1), Coin(2))),
       utxow(ConwayUtxowPredFailure.InvalidMetadata())
     )
-    assertEquals(
-      direct(fs*),
-      flat(fs.map(f => right("flat")(ConwayLedgerPredFailure.toStored(f, flatPurpose, read)))*),
-      "the failures in order"
-    )
+    assertEquals(tagsOf(direct(fs*)), fs.toList.map(ledgerTag), "the failures in order")
+    assertEquals(digestOf(direct(fs*)), FlatRecordings.wrote(fs.toList), "the flat encoder's bytes")
   }
 
   test(
-    "the reference node's recorded reasons of PredicateFailureCborSuite, from the era's failures"
+    "the reference node's recorded reasons, from the era's failures"
   ) {
-    // the same payloads as the flat failures there, and the reasons the reference node sent
+    // reasons the reference node 11.1.3 sent for refusals on a devnet (the bytes of the
+    // `MsgRejectTx` reason), each failure built from its payload
     def kh(h: String): Bytes = Bytes.fromHex(h).fold(e => fail(e.message), identity)
     val keyHashBytes = kh("683acdaa374d6ef02de93bea119185477b17c8298d59967b06528a2d")
     def cred[R <: KeyRole](h: String): Credential[R] =
@@ -691,6 +732,54 @@ class ConwayFailureCborSuite extends FunSuite:
     )
   }
 
+  test("bytes derived by hand from the reference's instances") {
+    // [6 ConwayTxRefScriptsSizeTooBig, supplied, expected] (`Conway/Rules/Ledger.hs:237`
+    // (f649f975)), a `Mismatch RelLTEQ Int` (`Conway/Rules/Ledger.hs:123` (f649f975)): a size past a
+    // 32-bit Int, in the shortest head (four bytes for 2^31, eight for 2^32)
+    assertEquals(
+      direct(
+        ConwayLedgerPredFailure.ConwayTxRefScriptsSizeTooBig[Conway](Mismatch(1L << 31, 204800L))
+      ),
+      "8182068183061a800000001a00032000"
+    )
+    assertEquals(
+      direct(
+        ConwayLedgerPredFailure.ConwayTxRefScriptsSizeTooBig[Conway](Mismatch(1L << 32, 204800L))
+      ),
+      "8182068183061b00000001000000001a00032000"
+    )
+    // a script that passed where it was to fail: [6 era, [[1 UTXOW, [0 UTXO, [0 UTXOS, [0
+    // ValidationTagMismatch, False, [0 PassedUnexpectedly]]]]]]] (`Conway/Rules/Utxos.hs:119`,
+    // `Alonzo/Rules/Utxos.hs:300` (f649f975))
+    assertEquals(
+      direct(
+        utxos(
+          ConwayUtxosPredFailure.ValidationTagMismatch(
+            IsPhase2Valid.Phase2Invalid,
+            TagMismatchDescription.PassedUnexpectedly
+          )
+        )
+      ),
+      "818206818201820082008300f48100"
+    )
+    // [18 ScriptIntegrityHashMismatch, [supplied, expected], expected preimage], each `StrictMaybe`
+    // an empty or one-element list (`Conway/Rules/Utxow.hs:245` (f649f975))
+    assertEquals(
+      direct(
+        utxow(
+          ConwayUtxowPredFailure.ScriptIntegrityHashMismatch(
+            Mismatch(None, Some(h32(1))),
+            Some(Bytes(Vector(0xa0.toByte)))
+          )
+        )
+      ),
+      "81" + "8206" + "81" + "8201" + "83" + "12" + "82" + "80" + "81" + "5820" + h32(
+        1
+      ).hex + "81" +
+        "41a0"
+    )
+  }
+
   test(
     "sums past 64 bits: a consumed value's coin and quantities, and a budget's units, are Integers"
   ) {
@@ -789,39 +878,28 @@ class ConwayFailureCborSuite extends FunSuite:
     assert(direct(f).endsWith("8269" + "68747470733a2f2f70" + "5a00100001" + long.hex))
   }
 
-  // ---- what the flat form cannot hold without the transaction
+  // ---- what the flat form cannot hold without the transaction: the era form has bytes for it
 
-  test("an action no proposal reads: the flat form's bytes of the same action") {
-    actions.zip(flatActions).foreach { (a, fa) =>
+  test("an action no proposal reads: GOV's failures of it have bytes") {
+    actions.foreach { a =>
       val f = gov(ConwayGovPredFailure.MalformedProposal(a))
       assert(ConwayLedgerPredFailure.toStored(f, flatPurpose, _ => None) match {
         case Left(LedgerUnprojected.Gov(_)) => true
         case _                              => false
       })
-      assertEquals(
-        direct(f),
-        flat(PredicateFailure.gov(xyz.kd5ujc.scarab.ledger.GovFailure.MalformedProposal(fa)))
-      )
-      val z = gov(ConwayGovPredFailure.ZeroTreasuryWithdrawals(a))
-      assertEquals(
-        direct(z),
-        flat(PredicateFailure.gov(xyz.kd5ujc.scarab.ledger.GovFailure.ZeroTreasuryWithdrawals(fa)))
-      )
+      encodes(f)
+      encodes(gov(ConwayGovPredFailure.ZeroTreasuryWithdrawals(a)))
     }
   }
 
-  test("a purpose no needed script names: the flat form's bytes of the same purpose") {
+  test("a purpose no needed script names: the failures of it have bytes") {
     val missing = NonEmptyList.fromListUnsafe(items.toList.map(_ -> h28(30)))
     val f = utxow(ConwayUtxowPredFailure.MissingRedeemers(missing))
     assert(ConwayLedgerPredFailure.toStored(f, _ => None, read) match {
       case Left(LedgerUnprojected.Utxow(_)) => true
       case _                                => false
     })
-    val resolved = missing.toList.toVector.map((p, h) => flatPurpose(p).getOrElse(fail(s"$p")) -> h)
-    assertEquals(
-      direct(f),
-      flat(PredicateFailure.utxow(FlatUtxowFailure.MissingRedeemers(resolved)))
-    )
+    encodes(f)
     val g = utxos(
       ConwayUtxosPredFailure.CollectErrors(
         missing.map((p, _) => CollectError.NoRedeemer[Conway](p))
@@ -831,26 +909,11 @@ class ConwayFailureCborSuite extends FunSuite:
       case Left(LedgerUnprojected.Utxow(UtxowUnprojected.CollectErrors(_))) => true
       case _                                                                => false
     })
-    assertEquals(
-      direct(g),
-      flat(
-        PredicateFailure.utxo(
-          FlatUtxoFailure.Utxos(
-            FlatUtxosFailure.CollectErrors(
-              NonEmptyVector.fromVectorUnsafe(
-                resolved.map((p, _) => FlatCollectError.NoRedeemer(p))
-              )
-            )
-          )
-        )
-      )
-    )
+    encodes(g)
   }
 
-  /** A context's error with the reference's constructor, and the flat form's error of the same
-    * contents.
-    */
-  private val contexts: Vector[(ConwayContextError[Conway], TranslationError)] =
+  /** A context's error of each of the reference's constructors. */
+  private val contexts: Vector[ConwayContextError[Conway]] =
     val source = TxOutSource.TxOutFromInput(txIn(1))
     def babbage(b: BabbageContextError[Conway]) = ConwayContextError.BabbageContextError(b)
     val votes = ConwayProcedures.votes(
@@ -863,53 +926,33 @@ class ConwayFailureCborSuite extends FunSuite:
       )
     )
     Vector(
-      babbage(BabbageContextError.ByronTxOutInContext(source)) ->
-        TranslationError.ByronTxOutInContext(source),
-      babbage(BabbageContextError.ByronTxOutInContext(TxOutSource.TxOutFromOutput(3))) ->
-        TranslationError.ByronTxOutInContext(TxOutSource.TxOutFromOutput(3)),
+      babbage(BabbageContextError.ByronTxOutInContext(source)),
+      babbage(BabbageContextError.ByronTxOutInContext(TxOutSource.TxOutFromOutput(3))),
       babbage(
         BabbageContextError.AlonzoContextError(
           AlonzoContextError.TranslationLogicMissingInput(txIn(2))
         )
-      ) ->
-        TranslationError.UnresolvedInput(txIn(2)),
+      ),
       babbage(
         BabbageContextError.RedeemerPointerPointsToNothing(
           ConwayPlutusPurpose.ConwayMinting[AsIx](AsIx(u32(7)))
         )
-      ) -> TranslationError.RedeemerPointerPointsToNothing(1, 7),
-      babbage(BabbageContextError.InlineDatumsNotSupported(source)) ->
-        TranslationError.InlineDatumsNotSupported(source),
-      babbage(BabbageContextError.ReferenceScriptsNotSupported(source)) ->
-        TranslationError.ReferenceScriptsNotSupported(source),
-      babbage(BabbageContextError.ReferenceInputsNotSupported(Set(txIn(2), txIn(1)))) ->
-        TranslationError.ReferenceInputsNotSupported(Set(txIn(2), txIn(1))),
-      ConwayContextError.CurrentTreasuryFieldNotSupported[Conway](Coin(5)) ->
-        TranslationError.CurrentTreasuryFieldNotSupported(5),
-      ConwayContextError.VotingProceduresFieldNotSupported[Conway](votes) ->
-        TranslationError.VotingProceduresFieldNotSupported(
-          votes.unVotingProcedures.toVector.map((v, m) => v -> m.toVector)
-        ),
-      ConwayContextError.ProposalProceduresFieldNotSupported[Conway](OSet.decoded(proposals)) ->
-        TranslationError.ProposalProceduresFieldNotSupported(proposals.map(_.read)),
-      ConwayContextError.TreasuryDonationFieldNotSupported[Conway](Coin(6)) ->
-        TranslationError.TreasuryDonationFieldNotSupported(6),
+      ),
+      babbage(BabbageContextError.InlineDatumsNotSupported(source)),
+      babbage(BabbageContextError.ReferenceScriptsNotSupported(source)),
+      babbage(BabbageContextError.ReferenceInputsNotSupported(Set(txIn(2), txIn(1)))),
+      ConwayContextError.CurrentTreasuryFieldNotSupported[Conway](Coin(5)),
+      ConwayContextError.VotingProceduresFieldNotSupported[Conway](votes),
+      ConwayContextError.ProposalProceduresFieldNotSupported[Conway](OSet.decoded(proposals)),
+      ConwayContextError.TreasuryDonationFieldNotSupported[Conway](Coin(6)),
       ConwayContextError.ReferenceInputsNotDisjointFromInputs[Conway](
         NonEmptyVector.of(txIn(2), txIn(1))
-      ) ->
-        TranslationError.ReferenceInputsNotDisjointFromInputs(NonEmptyVector.of(txIn(2), txIn(1)))
-    ) ++ certificates
-      .zip(flatCertificates)
-      .map((c, fc) =>
-        ConwayContextError.CertificateNotSupported[Conway](c) ->
-          TranslationError.CertificateNotSupported(fc)
-      ) ++ items.map(p =>
-      ConwayContextError.PlutusPurposeNotSupported[Conway](p) ->
-        TranslationError.PlutusPurposeNotSupported(flatPurpose(p).getOrElse(fail(s"$p")))
-    )
+      )
+    ) ++ certificates.map(ConwayContextError.CertificateNotSupported[Conway](_)) ++
+      items.map(ConwayContextError.PlutusPurposeNotSupported[Conway](_))
 
-  test("a context's errors: the flat form's bytes of the same errors") {
-    contexts.foreach { (era, translation) =>
+  test("a context's errors: each has bytes under its LEDGER tag") {
+    contexts.foreach { era =>
       val f = utxos(
         ConwayUtxosPredFailure.CollectErrors(NonEmptyList.one(CollectError.BadTranslation(era)))
       )
@@ -917,19 +960,7 @@ class ConwayFailureCborSuite extends FunSuite:
         case Left(LedgerUnprojected.Utxow(UtxowUnprojected.CollectErrors(_))) => true
         case _                                                                => false
       })
-      assertEquals(
-        direct(f),
-        flat(
-          PredicateFailure.utxo(
-            FlatUtxoFailure.Utxos(
-              FlatUtxosFailure.CollectErrors(
-                NonEmptyVector.one(FlatCollectError.BadTranslation(translation))
-              )
-            )
-          )
-        ),
-        s"$era"
-      )
+      encodes(f)
     }
   }
 
@@ -948,15 +979,6 @@ class ConwayFailureCborSuite extends FunSuite:
       )
     )
     assert(direct(f).endsWith("8269" + "68747470733a2f2f70" + "5828" + long.hex), direct(f))
-    // the flat form's encoder has no bytes for it, and sends its text
-    val stored = PredicateFailure.utxo(
-      FlatUtxoFailure.Utxos(
-        FlatUtxosFailure.CollectErrors(
-          NonEmptyVector.one(FlatCollectError.NoRedeemer(Purpose.Certifying(0, registration)))
-        )
-      )
-    )
-    assert(!PredicateFailureCbor.inConway(stored))
   }
 
   test("what the reference has no constructor for has no bytes, its cause kept") {
@@ -990,10 +1012,8 @@ class ConwayFailureCborSuite extends FunSuite:
     val encoded = PreprodDeepTx
       .onSmallStack(ConwayFailureCbor.applyTxError(NonEmptyList.one(f)))
       .fold(e => fail(s"$e"), _.hex)
-    assertEquals(
-      encoded,
-      flat(right("flat")(ConwayLedgerPredFailure.toStored(f, flatPurpose, read)))
-    )
+    assertEquals(tagsOf(encoded), List(1))
+    assertEquals(digestOf(encoded), FlatRecordings.wrote(List(f)), "the flat encoder's bytes")
     assert(encoded.contains("82019f"))
   }
 
@@ -1046,7 +1066,7 @@ class ConwayFailureCborSuite extends FunSuite:
 
   test("the proposals of the reference's collection, an update not in canonical form among them") {
     // a proposal read from bytes the reference would not write (an update's `1801` and `2/4`):
-    // as an item and as GOV's proposal, both encoders write it from its values
+    // as an item and as GOV's proposal, the era's encoder writes it from its values
     val read = recordedTxs.flatMap { (recorded, tx) =>
       EraTxBody.conway
         .proposalProcedures[TxLevel.Top](bodyOf(tx))(using EraTxBody.conway.top)
@@ -1054,28 +1074,12 @@ class ConwayFailureCborSuite extends FunSuite:
         .map(recorded.name -> _)
     }
     assert(read.exists(_._1 == "api-proposal-noncanonical-params"), "no noncanonical proposal")
-    read.foreach { (name, p) =>
-      val readOf = ConwayGovPredFailure.readOf(Vector(p))
+    read.foreach { (_, p) =>
       val f = gov(ConwayGovPredFailure.InvalidPrevGovActionId(p))
       val m = gov(ConwayGovPredFailure.MalformedProposal(p.pProcGovAction))
-      Vector(f, m).foreach { g =>
-        assertEquals(
-          direct(g),
-          flat(right(name)(ConwayLedgerPredFailure.toStored(g, flatPurpose, readOf))),
-          name
-        )
-      }
+      Vector(f, m).foreach(encodes)
       val item = ConwayPlutusPurpose.ConwayProposing[AsItem](AsItem(p))
-      val missing = utxow(ConwayUtxowPredFailure.MissingRedeemers(NonEmptyList.one(item -> h28(1))))
-      assertEquals(
-        direct(missing),
-        flat(
-          PredicateFailure.utxow(
-            FlatUtxowFailure.MissingRedeemers(Vector(Purpose.Proposing(0, p.read) -> h28(1)))
-          )
-        ),
-        name
-      )
+      encodes(utxow(ConwayUtxowPredFailure.MissingRedeemers(NonEmptyList.one(item -> h28(1)))))
       val context = utxos(
         ConwayUtxosPredFailure.CollectErrors(
           NonEmptyList.one(
@@ -1083,22 +1087,6 @@ class ConwayFailureCborSuite extends FunSuite:
           )
         )
       )
-      assertEquals(
-        direct(context),
-        flat(
-          PredicateFailure.utxo(
-            FlatUtxoFailure.Utxos(
-              FlatUtxosFailure.CollectErrors(
-                NonEmptyVector.one(
-                  FlatCollectError.BadTranslation(
-                    TranslationError.PlutusPurposeNotSupported(Purpose.Proposing(0, p.read))
-                  )
-                )
-              )
-            )
-          )
-        ),
-        name
-      )
+      encodes(context)
     }
   }
