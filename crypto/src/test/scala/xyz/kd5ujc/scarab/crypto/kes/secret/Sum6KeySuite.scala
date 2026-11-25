@@ -323,33 +323,6 @@ class Sum6KeySuite extends munit.FunSuite:
     assertNotEquals(at31, after)
   }
 
-  /** A SHA-512 digest over the JDK's that counts its resets. */
-  private final class Recording extends MessageDigest("SHA-512"):
-    private val inner = MessageDigest.getInstance("SHA-512")
-    val resets = new java.util.concurrent.atomic.AtomicInteger(0)
-    override protected def engineUpdate(b: Byte): Unit = inner.update(b)
-    override protected def engineUpdate(in: Array[Byte], off: Int, len: Int): Unit =
-      inner.update(in, off, len)
-    override protected def engineDigest(): Array[Byte] = inner.digest()
-    override protected def engineDigest(buf: Array[Byte], off: Int, len: Int): Int =
-      inner.digest(buf, off, len)
-    override protected def engineReset(): Unit =
-      resets.incrementAndGet()
-      inner.reset()
-
-  // the provider's buffer, state words and schedule are private to java.base; what a suite can see
-  // is that the leaf's digest is reset on every way out
-  test("the digest of a leaf's hash is reset once it returns and once it throws") {
-    val returned = new Recording
-    val out = new Array[Byte](64)
-    Leaf.sha512With(returned)(out)(root)
-    assertEquals(out.toVector, sha512(root).toVector)
-    assertEquals(returned.resets.get(), 1, "resets after a hash that returned")
-    val failed = new Recording
-    intercept[java.security.DigestException](Leaf.sha512With(failed)(new Array[Byte](63))(root))
-    assertEquals(failed.resets.get(), 1, "resets after a hash that threw")
-  }
-
   test("a buffer of the key cannot be the result of a scratch") {
     assertEquals(compileErrors("Scratch.within(s => generated().signedIn(s, Bytes.empty))"), "")
     assertNotEquals(compileErrors("Scratch.within(s => generated().payloadIn(s))"), "")

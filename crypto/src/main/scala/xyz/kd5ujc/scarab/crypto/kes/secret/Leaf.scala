@@ -2,10 +2,7 @@
 package xyz.kd5ujc.scarab.crypto.kes.secret
 
 import com.weavechain.curve25519.{Constants, EdwardsPoint, Scalar}
-import java.security.MessageDigest
-import scala.util.Using
-import scala.util.Using.Releasable
-import xyz.kd5ujc.scarab.crypto.secret.Scratch
+import xyz.kd5ujc.scarab.crypto.secret.{Scratch, Sha512}
 
 /** The Ed25519 keys at the leaves of a Sum6 KES tree (RFC 8032 section 5.1, `PureEdDSA`;
   * cardano-base `Ed25519DSIGN`, whose signing key is the 32-byte seed), computed in a [[Scratch]]:
@@ -87,25 +84,7 @@ private[kes] object Leaf:
   /** The encoding of `p`, which `s` keeps and zeroes: `compress` makes it for this call only. */
   private def encoded(s: Scratch)(p: EdwardsPoint): s.Buffer = s.adopt(p.compress().toByteArray)
 
-  private given Releasable[MessageDigest] = _.reset()
-
-  /** SHA-512 of `pieces` into the 64 bytes of `into`, with a digest that is reset on the way out,
-    * whether the hash returns or throws: `digest(into, …)` leaves the input after the last whole
-    * block in the provider's buffer, the result in its state words and the last block's message
-    * schedule in its `W` array, and only a reset clears them (`engineReset` in the JDK's
-    * `sun.security.provider.DigestBase` and `SHA5`), as the VRF prover's hash is reset
-    * (`xyz.kd5ujc.scarab.crypto.vrf.secret.Draft03Key`). What the reset cannot reach: what the
-    * compression's intrinsic keeps in registers or spills to the stack, and copies a moving
-    * collector made of the provider's arrays before the reset.
+  /** SHA-512 of `pieces` into the 64 bytes of `into`, with a digest reset on the way out, as the
+    * VRF prover's hash is ([[Sha512]]).
     */
-  private def sha512(into: Array[Byte])(pieces: Array[Byte]*): Unit =
-    sha512With(MessageDigest.getInstance("SHA-512"))(into)(pieces*)
-
-  /** [[sha512]] with `digest`, which a suite of this package can watch being reset. */
-  private[secret] def sha512With(digest: MessageDigest)(into: Array[Byte])(
-      pieces: Array[Byte]*
-  ): Unit =
-    Using.resource(digest) { d =>
-      pieces.foreach(d.update)
-      d.digest(into, 0, into.length)
-    }
+  private def sha512(into: Array[Byte])(pieces: Array[Byte]*): Unit = Sha512.into(into, pieces*)
