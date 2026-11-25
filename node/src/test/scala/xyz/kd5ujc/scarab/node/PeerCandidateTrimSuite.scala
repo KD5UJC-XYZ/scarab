@@ -17,10 +17,10 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
 import scala.concurrent.duration.*
 
 /** A session's candidate follows the header gate's history as it is trimmed to our chain's anchor
-  * (issue 810): once more headers than the retained window have passed while our anchor advanced,
-  * the session has taken every header and its candidate starts past the first window, so
-  * publication never starves. Before, the candidate grew to the window and its oldest block, long
-  * ours and never fetched again, held the session's ChainSync still.
+  * (issue 810): while our anchor advances over many windows of headers, the session takes every
+  * header it is asked for and its candidate ends past the first window, so publication never
+  * starves. Before, the candidate grew to the window and its oldest block, long ours and never
+  * fetched again, held the session's ChainSync still.
   *
   * The candidate can still reach the window for a moment: the publisher trims after each of its
   * steps, and a trim dropped because ChainSync replaced the candidate mid-step waits for the next
@@ -142,18 +142,18 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           seen.pulls > retained * 4,
           s"${chain.headers.size} headers are too few to pass the window"
         )
-        // publication never starved: the consumer took every header it pulled for
-        assert(
-          seen.took == seen.pulls,
-          s"publication starved: the session took ${seen.took} of ${seen.pulls} headers, its " +
-            s"candidate ${seen.size} headers from position ${seen.base} (a window of $retained); " +
-            s"the session ended with ${seen.ended.map(_.getMessage)}"
+        val context =
+          s"the session took ${seen.took} of ${seen.pulls} headers, its candidate ${seen.size} " +
+            s"headers from position ${seen.base} (a window of $retained)"
+        // whatever ended the session fails the case, with its cause; fewer headers taken than
+        // pulled for is a starved publication
+        seen.ended.foreach(cause =>
+          if seen.took < seen.pulls then fail(s"publication starved: $context", cause)
+          else fail(s"the session failed after its last pull: $context", cause)
         )
-        // the candidate followed our anchor: it starts past the first window
-        assert(
-          seen.base >= retained,
-          s"the candidate still starts at position ${seen.base}, inside the first window"
-        )
+        assert(seen.took == seen.pulls, s"publication starved: $context")
+        // the candidate followed our anchor: it ends past the first window
+        assert(seen.base >= retained, s"the candidate is still inside the first window: $context")
       }
     }
   }
