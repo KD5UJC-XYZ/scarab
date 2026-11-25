@@ -403,6 +403,103 @@ class GenesisGovernorSuite extends FailsOnUncaught:
     }
   }
 
+  test(
+    "an evaluation with a known window traces TraceGDDDebug before the kills and TraceGDDDisconnected after"
+  ) {
+    TestControl.executeEmbed {
+      for
+        // the traces and the kills, in the order they happen
+        happened <- Ref.of[IO, Vector[Either[GenesisTrace, Int]]](Vector.empty)
+        governor <- GenesisGovernor.create[IO](
+          GenesisGovernor.View(empty, 2, _ => Some(8)),
+          events = Some(event => happened.update(_ :+ Left(event)))
+        )
+        _ <- (
+          governor.session(_ => IO.unit, happened.update(_ :+ Right(20)), Some(PeerOrder(20))),
+          governor.session(_ => IO.unit, happened.update(_ :+ Right(10)), Some(PeerOrder(10))),
+          governor.session(_ => IO.unit, IO.unit, Some(PeerOrder(0)))
+        ).tupled.use { (first, second, honest) =>
+          for
+            _ <- first.publish(
+              Some(Fragment(Point.Origin, Vector(point(5, 1)))),
+              LatestSlot.At(8),
+              false
+            )
+            _ <- second.publish(
+              Some(Fragment(Point.Origin, Vector(point(6, 2)))),
+              LatestSlot.At(8),
+              false
+            )
+            _ <- honest.publish(Some(dense), LatestSlot.At(3), false)
+            _ <- governor.setPhase(Gsm.Phase.Syncing)
+            _ <- governor.run.background.use(_ => IO.sleep(1.millis))
+            sequence <- happened.get
+          yield assertEquals(
+            sequence,
+            Vector(
+              // Governor.hs:269-283 (consensus 82ecba329): the losers in the order densityDisconnect
+              // gives them, the shared prefix's tip (none: the candidates part at Origin) and the
+              // window; then each kill; then the losers again
+              Left(GenesisTrace.GddDebug(Vector(PeerOrder(10), PeerOrder(20)), Point.Origin, 8)),
+              Right(10),
+              Right(20),
+              Left(
+                GenesisTrace.GddDisconnected(
+                  cats.data.NonEmptyVector.of(PeerOrder(10), PeerOrder(20))
+                )
+              )
+            )
+          )
+        }
+      yield ()
+    }
+  }
+
+  test("an evaluation that disconnects nobody traces only TraceGDDDebug, with the LoE head") {
+    TestControl.executeEmbed {
+      for
+        traced <- Ref.of[IO, Vector[GenesisTrace]](Vector.empty)
+        governor <- GenesisGovernor.create[IO](
+          GenesisGovernor.View(empty, 2, _ => Some(8)),
+          events = Some(event => traced.update(_ :+ event))
+        )
+        _ <- (
+          governor.session(_ => IO.unit, IO.unit, Some(PeerOrder(1))),
+          governor.session(_ => IO.unit, IO.unit, Some(PeerOrder(2)))
+        ).tupled.use { (a, b) =>
+          for
+            _ <- a.publish(Some(dense), LatestSlot.At(3), false)
+            _ <- b.publish(
+              Some(Fragment(Point.Origin, Vector(point(1), point(2)))),
+              LatestSlot.At(3),
+              false
+            )
+            _ <- governor.setPhase(Gsm.Phase.Syncing)
+            _ <- governor.run.background.use(_ => IO.sleep(1.millis))
+            all <- traced.get
+          yield assertEquals(all, Vector(GenesisTrace.GddDebug(Vector.empty, point(2), 8)))
+        }
+      yield ()
+    }
+  }
+
+  test("an evaluation whose Genesis window is unknown traces nothing") {
+    TestControl.executeEmbed {
+      for
+        traced <- Ref.of[IO, Vector[GenesisTrace]](Vector.empty)
+        governor <- GenesisGovernor.create[IO](
+          GenesisGovernor.View(empty, 2, _ => None),
+          events = Some(event => traced.update(_ :+ event))
+        )
+        _ <- governor.session(_ => IO.unit, IO.unit, Some(PeerOrder(1))).use { a =>
+          a.publish(Some(dense), LatestSlot.At(3), false) *> governor.setPhase(Gsm.Phase.Syncing) *>
+            governor.run.background.use(_ => IO.sleep(1.millis))
+        }
+        all <- traced.get
+      yield assertEquals(all, Vector.empty)
+    }
+  }
+
   test("GDD uses concrete remote TCP endpoints rather than connection registration order") {
     import com.comcast.ip4s.*
     import xyz.kd5ujc.scarab.network.ConnectionId

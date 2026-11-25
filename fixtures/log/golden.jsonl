@@ -289,3 +289,21 @@
 {"event":"leiosNotVoted","at":"2026-10-16T12:00:00Z","ebHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"reason":"voteRejected: all 2 votes rejected"}
 {"event":"leiosNotVoted","at":"2026-10-16T12:00:00Z","ebHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"reason":"closureUnavailable: LeiosClosureMissing abababababababababababababababababababababababababababababababab"}
 {"event":"leiosNotVoted","at":"2026-10-16T12:00:00Z","ebHash":"abababababababababababababababababababababababababababababababab","ebSlot":4200,"reason":"closureUnavailable: LeiosClosureTxUndecodable abababababababababababababababababababababababababababababababab abababababababababababababababababababababababababababababababab Decode(Empty(auxiliary data))"}
+{"event":"traceGDDEvent","at":"2026-10-16T12:00:00Z","kind":"TraceGDDDebugInfo","losingPeers":[{"connectionId":"[::1]:40123 [2001:db8::7]:6000"}],"loeHead":{"kind":"Anchor","slot":4200,"headerHash":"abababababababababababababababababababababababababababababababab"},"sgen":36000}
+{"event":"traceGDDEvent","at":"2026-10-16T12:00:00Z","kind":"TraceGDDDebugInfo","losingPeers":[],"loeHead":{"kind":"AnchorGenesis"},"sgen":36000}
+{"event":"traceGDDEvent","at":"2026-10-16T12:00:00Z","kind":"TraceGDDDisconnected","peers":[{"connectionId":"[::1]:40123 [2001:db8::7]:6000"},{"connectionId":"10.0.0.2:3001 192.0.2.7:3001"}]}
+{"event":"becomingObjector","at":"2026-10-16T12:00:00Z","peer":{"connectionId":"10.0.0.2:3001 192.0.2.7:3001"},"previousObjector":{"connectionId":"[::1]:40123 [2001:db8::7]:6000"}}
+{"event":"becomingObjector","at":"2026-10-16T12:00:00Z","peer":{"connectionId":"[::1]:40123 [2001:db8::7]:6000"},"previousObjector":null}
+{"event":"blockedOnJump","at":"2026-10-16T12:00:00Z","peer":{"connectionId":"10.0.0.2:3001 192.0.2.7:3001"}}
+{"event":"initializedAsDynamo","at":"2026-10-16T12:00:00Z","peer":{"connectionId":"10.0.0.2:3001 192.0.2.7:3001"}}
+{"event":"initializedAsDynamo","at":"2026-10-16T12:00:00Z","peer":{"connectionId":3}}
+{"event":"noLongerDynamo","at":"2026-10-16T12:00:00Z","peer":{"connectionId":"10.0.0.2:3001 192.0.2.7:3001"},"newDynamo":{"connectionId":"[::1]:40123 [2001:db8::7]:6000"},"reason":"BecauseCsjDisengage"}
+{"event":"noLongerDynamo","at":"2026-10-16T12:00:00Z","peer":{"connectionId":"10.0.0.2:3001 192.0.2.7:3001"},"newDynamo":null,"reason":"BecauseCsjDisconnect"}
+{"event":"noLongerObjector","at":"2026-10-16T12:00:00Z","peer":{"connectionId":"[::1]:40123 [2001:db8::7]:6000"},"newObjector":{"connectionId":"10.0.0.2:3001 192.0.2.7:3001"},"reason":"BecauseCsjDisconnect"}
+{"event":"sentJumpInstruction","at":"2026-10-16T12:00:00Z","peer":{"connectionId":"10.0.0.2:3001 192.0.2.7:3001"},"jumpTarget":{"kind":"BlockPoint","slot":4200,"headerHash":"abababababababababababababababababababababababababababababababab"}}
+{"event":"sentJumpInstruction","at":"2026-10-16T12:00:00Z","peer":{"connectionId":"10.0.0.2:3001 192.0.2.7:3001"},"jumpTarget":{"kind":"GenesisPoint"}}
+{"event":"rotatedDynamo","at":"2026-10-16T12:00:00Z","oldPeer":{"connectionId":"10.0.0.2:3001 192.0.2.7:3001"},"newPeer":{"connectionId":"[::1]:40123 [2001:db8::7]:6000"}}
+{"event":"peerStarvedUs","at":"2026-10-16T12:00:00Z","peer":{"localAddress":{"address":"10.0.0.2","port":"3001"},"remoteAddress":{"address":"192.0.2.7","port":"3001"}}}
+{"event":"peerStarvedUs","at":"2026-10-16T12:00:00Z","peer":{"localAddress":{"address":"::1","port":"40123"},"remoteAddress":{"address":"2001:db8::7","port":"6000"}}}
+{"event":"chainSelStarvationEvent","at":"2026-10-16T12:00:00Z","risingEdge":true}
+{"event":"chainSelStarvationEvent","at":"2026-10-16T12:00:00Z","fallingEdge":{"kind":"Point","slot":4200,"hash":"abababababababababababababababababababababababababababababababab"}}

@@ -72,7 +72,7 @@ final case class LogSettings(
     Scope
       .of(kind)
       .collectFirstSome(scope => severity.get(sink -> scope))
-      .getOrElse(LogSettings.defaultThreshold(sink, kind.area))
+      .getOrElse(LogSettings.defaultThreshold(sink, kind))
 
   /** The sampling that applies to `kind` on `sink`: the scope that sets it (its lines share one
     * count) and `n`; none when every line goes through.
@@ -86,21 +86,39 @@ final case class LogSettings(
 object LogSettings:
   val default: LogSettings = LogSettings()
 
-  /** The least severity `sink` lets through for `area` when no `--log-severity` names a scope of
+  /** The least severity `sink` lets through for `kind` when no `--log-severity` names a scope of
     * it: `Warning` on stderr; `Info` for the libraries' lines, whose `Debug` (a DNS resolver's
     * lookups, a native loader's search) is noise to an operator; `Info` for the forging loop, as
     * the reference's default configuration sets `Forge.Loop` (`DefaultTraceConfig.hs` 39-40), so
-    * its `Debug` traces are not written for every slot; `Debug` for the node's other lines. The
-    * Haskell node's default configuration likewise sets its root at `Notice` and lowers chosen
-    * namespaces only (cardano-node 11.1.3, `Cardano/Node/Tracing/DefaultTraceConfig.hs` 15-56). A
-    * fallback, not a setting: any scope that covers the libraries' lines (`*`, `Library`,
-    * `Library.Slf4j`, on every sink or on one) replaces it.
+    * its `Debug` traces are not written for every slot; `Notice` for the Genesis traces the
+    * reference's mainnet configuration leaves at its root's `Notice` (`Consensus.GDD`,
+    * `Consensus.CSJ`, `Consensus.DevotedBlockFetch`) or at `ChainDB` 's `Info`
+    * (`ChainSelStarvationEvent`, a Debug trace), so none of them is written unless asked for, as
+    * there (cardano-node 11.1.3, `configuration/cardano/mainnet-config.json`, `TraceOptions`);
+    * `Debug` for the node's other lines. The Haskell node's default configuration likewise sets its
+    * root at `Notice` and lowers chosen namespaces only (cardano-node 11.1.3,
+    * `Cardano/Node/Tracing/DefaultTraceConfig.hs` 15-56). A fallback, not a setting: any scope that
+    * covers the kind (`*`, its area or the kind, on every sink or on one) replaces it.
     */
-  def defaultThreshold(sink: Sink, area: Area): Threshold = (sink, area) match
-    case (Sink.Stderr, _)  => Threshold.AtLeast(Severity.Warning)
-    case (_, Area.Library) => Threshold.AtLeast(Severity.Info)
-    case (_, Area.Forge)   => Threshold.AtLeast(Severity.Info)
-    case _                 => Threshold.AtLeast(Severity.Debug)
+  def defaultThreshold(sink: Sink, kind: EventKind): Threshold = (sink, kind.area) match
+    case (Sink.Stderr, _)                    => Threshold.AtLeast(Severity.Warning)
+    case (_, Area.Library)                   => Threshold.AtLeast(Severity.Info)
+    case (_, Area.Forge)                     => Threshold.AtLeast(Severity.Info)
+    case _ if referenceNotice.contains(kind) => Threshold.AtLeast(Severity.Notice)
+    case _                                   => Threshold.AtLeast(Severity.Debug)
+
+  /** The kinds the reference's mainnet configuration does not let through. */
+  private val referenceNotice: Set[EventKind] = Set(
+    EventKind.TraceGDDEvent,
+    EventKind.BecomingObjector,
+    EventKind.BlockedOnJump,
+    EventKind.InitializedAsDynamo,
+    EventKind.NoLongerDynamo,
+    EventKind.NoLongerObjector,
+    EventKind.SentJumpInstruction,
+    EventKind.RotatedDynamo,
+    EventKind.ChainSelStarvationEvent
+  )
 
   val DefaultFileBytes: Long = 100L * 1024 * 1024
   val DefaultFileKeep: Int = 10

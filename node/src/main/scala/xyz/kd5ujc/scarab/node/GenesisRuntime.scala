@@ -27,7 +27,8 @@ final class GenesisRuntime[F[_]: Async] private (
     elapsed: F[BigInt],
     clock: Option[PicosClock[F]],
     readings: Ref[F, Map[Long, (Option[HeaderChain[NodeHeaderState]], Boolean)]],
-    headers: HeaderCheck.Grafting[F]
+    headers: HeaderCheck.Grafting[F],
+    labels: Ref[F, Map[Long, PeerOrder]]
 ):
   private val F = Async[F]
   import ChainSyncJumping.{Instruction, JumpInfo}
@@ -92,6 +93,7 @@ final class GenesisRuntime[F[_]: Async] private (
         cause => fatal(GenesisInternalProblem.PatienceWatcherFailed(cause)),
         clock
       )
+      label = densityOrder.getOrElse(PeerOrder(identity))
       peer <- governor.session(
         phase =>
           patience.configure(
@@ -99,7 +101,11 @@ final class GenesisRuntime[F[_]: Async] private (
             else LeakyBucket.Config.disabled
           ),
         disconnect(PeerError.Genesis(PeerError.GenesisProblem.DensityTooLow)),
-        densityOrder.orElse(Some(PeerOrder(identity)))
+        Some(label)
+      )
+      // the session's name in the CSJ traces, kept until its handle's last trace (`unregisterClient`)
+      _ <- Resource.make(labels.update(_.updated(identity, label)))(_ =>
+        labels.update(_ - identity)
       )
       phase <- Resource.eval(governor.phase)
       jumper <- jumping.session(
@@ -431,12 +437,18 @@ object GenesisRuntime:
       elapsed: F[BigInt],
       changed: F[Unit],
       headers: HeaderCheck.Grafting[F],
-      clock: Option[PicosClock[F]] = None
+      clock: Option[PicosClock[F]] = None,
+      events: Option[GenesisEvents[F]] = None
   ): F[GenesisRuntime[F]] =
+    val traced = events.getOrElse(GenesisEvents.none[F])
     for
-      work <- SelectionWork.create[F](changed, clock)
+      work <- SelectionWork.create[F](changed, clock, Some(traced))
       readings <- Ref.of[F, Map[Long, (Option[HeaderChain[NodeHeaderState]], Boolean)]](Map.empty)
-      jumping <- ChainSyncJumpingRuntime.create[F, Long, GenesisPeer.Checkpoint](settings.jumpSlots)
+      labels <- Ref.of[F, Map[Long, PeerOrder]](Map.empty)
+      jumping <- ChainSyncJumpingRuntime.create[F, Long, GenesisPeer.Checkpoint](
+        settings.jumpSlots,
+        traces = Some(jumpingTraces(labels, traced))
+      )
     yield new GenesisRuntime(
       governor,
       work,
@@ -448,5 +460,17 @@ object GenesisRuntime:
       elapsed,
       clock,
       readings,
-      headers
+      headers,
+      labels
     )
+
+  /** The CSJ and Devoted BlockFetch traces with each session named by its connection. */
+  private def jumpingTraces[F[_]: Async](
+      labels: Ref[F, Map[Long, PeerOrder]],
+      events: GenesisEvents[F]
+  ): ChainSyncJumpingRuntime.Traces[F, Long] = new ChainSyncJumpingRuntime.Traces[F, Long]:
+    private def named = labels.get.map(known => (id: Long) => known.getOrElse(id, PeerOrder(id)))
+    def csj(peer: Long, event: ChainSyncJumping.Event[Long]) =
+      named.flatMap(name => events.emit(GenesisTrace.Csj(name(peer), event.map(name))))
+    def dbf(event: ChainSyncJumping.RotatedDynamo[Long]) =
+      named.flatMap(name => events.emit(GenesisTrace.Dbf(event.map(name))))

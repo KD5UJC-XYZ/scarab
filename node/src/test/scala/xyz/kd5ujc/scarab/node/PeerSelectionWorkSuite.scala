@@ -125,7 +125,8 @@ class PeerSelectionWorkSuite extends FailsOnUncaught:
                 // If publication left a duplicate body-reader token, the actual worker's finalizer
                 // above would remain busy after its queue emptied.
                 _ <- peer.selectionWork.traverse_(
-                  _.processing(header.hash).use(_ => work.snapshot.assertEquals(Starvation.Ongoing))
+                  _.processing(header.blockPoint)
+                    .use(_ => work.snapshot.assertEquals(Starvation.Ongoing))
                 )
               yield ()
             }

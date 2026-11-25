@@ -2443,6 +2443,112 @@
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1439#issuecomment-7161652843",
    "note": "the registration of a fresh controller for the client, which the warm connection holds for the life of the client (NodeToNode.warm)",
    "digest": "55ccc820c14653f1"
+  },
+  "enum network.selection.ChainSyncJumping.Event": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/Jumping.hs",
+     "symbol": "TraceEventCsj",
+     "lines": [
+      1083,
+      1094
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "each case is a constructor of the reference's, with the same fields; the transitions return it with the state they write, and the runtime traces BlockedOnJump where it blocks, as mkJumping does",
+   "digest": "1a3a90f88ac5b8b4"
+  },
+  "enum network.selection.ChainSyncJumping.Reason": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/Jumping.hs",
+     "symbol": "TraceCsjReason",
+     "lines": [
+      1096,
+      1098
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "9344d01e2963e102"
+  },
+  "class network.selection.ChainSyncJumping.RotatedDynamo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/Jumping.hs",
+     "symbol": "TraceEventDbf",
+     "lines": [
+      1078,
+      1080
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the reference's one constructor, as a class",
+   "digest": "b9deea20cf736d48"
+  },
+  "trait network.selection.ChainSyncJumpingRuntime.Traces": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/Tracers.hs",
+     "symbol": "csjTracer",
+     "lines": [
+      100,
+      102
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the two tracers of Tracers' record that CSJ writes to, csjTracer (labelled with the peer) and dbfTracer",
+   "digest": "f702e4e7121c2583"
+  },
+  "def network.selection.ChainSyncJumpingRuntime.Traces#csj": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/Tracers.hs",
+     "symbol": "csjTracer",
+     "lines": [
+      100,
+      101
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "TraceLabelPeer's label is the first parameter",
+   "digest": "3e96ca8c26c81f3e"
+  },
+  "def network.selection.ChainSyncJumpingRuntime.Traces#dbf": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/Tracers.hs",
+     "symbol": "dbfTracer",
+     "lines": [
+      102,
+      102
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "e8c02c2d43427423"
   }
  },
  "glue": [
@@ -2820,6 +2926,21 @@
    "reason": "the companion of PeerSharingController, holding its result type and constructor",
    "definitions": [
     "object network.PeerSharingController"
+   ]
+  },
+  {
+   "reason": "a transition's new state with the trace event it causes, which the reference's STM transitions of Jumping.hs return together; and the renaming of the peers an event names, from the runtime's key of a session to its connection, which the reference's events carry directly",
+   "definitions": [
+    "class network.selection.ChainSyncJumping.Step",
+    "def network.selection.ChainSyncJumping.Event#map",
+    "def network.selection.ChainSyncJumping.RotatedDynamo#map"
+   ]
+  },
+  {
+   "reason": "a runtime with no tracer, the reference's nullTracer",
+   "definitions": [
+    "object network.selection.ChainSyncJumpingRuntime.Traces",
+    "def network.selection.ChainSyncJumpingRuntime.Traces.none"
    ]
   }
  ]

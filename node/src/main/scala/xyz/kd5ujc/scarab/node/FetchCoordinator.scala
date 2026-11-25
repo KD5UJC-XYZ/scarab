@@ -164,7 +164,9 @@ final class FetchCoordinator[F[_]: Async] private (
           val peer = PeerState[F](identity ^ salt, order.getOrElse(PeerOrder(id)))
           (s.copy(next = id + 1, peers = s.peers.updated(id, peer)), id)
         }
-      )(id => change(s => s.copy(peers = s.peers - id)))
+      )(id =>
+        change(s => departed(s.copy(peers = s.peers - id), s.peers.get(id).map(id -> _.order)))
+      )
       .map(id => new Session(this, id))
 
   private def change(f: State[F] => State[F]): F[Unit] =
@@ -227,8 +229,16 @@ final class FetchCoordinator[F[_]: Async] private (
             )
           }
           .flatMap { (previous, demotions, result) =>
+            // Decision/Genesis.hs:288-291 (ouroboros-network c45735a5): `PeerStarvedUs`, then the
+            // demotion of the CSJ dynamo
             previous.traverse_(_.complete(()).void) *>
-              control.traverse_((owner, _) => demotions.traverse_(owner.demoteDynamo)).as(result)
+              control
+                .traverse_((owner, _) =>
+                  demotions.traverse_((id, peer) =>
+                    owner.events.emit(GenesisTrace.PeerStarvedUs(peer)) *> owner.demoteDynamo(id)
+                  )
+                )
+                .as(result)
           }
       }
     }
@@ -503,11 +513,17 @@ final class FetchCoordinator[F[_]: Async] private (
             }
           then r.state
           else weighed.genesisState,
-        demotions = r.demoteDynamo.toVector
+        demotions = r.demoteDynamo.toVector.map(id =>
+          id -> weighed.peers
+            .get(id)
+            .map(_.order)
+            .orElse(weighed.departed.get(id))
+            .getOrElse(PeerOrder(id))
+        )
       )
     )
     // State.hs:298–304: only a request is acted on; a declined peer is left as it is.
-    val (after, requested) = decided.foldLeft((dispatched, Vector.empty[Long])) {
+    val (after, requested) = decided.foldLeft((departed(dispatched, None), Vector.empty[Long])) {
       case ((current, requested), BlockFetchPolicy.Decision.Request(id, fragments))
           if fragments.exists(_.headers.nonEmpty) =>
         current.peers.get(id).fold((current, requested)) { peer =>
@@ -578,7 +594,15 @@ object FetchCoordinator:
       starvation: GenesisBlockFetch.Starvation,
       gracePicos: BigInt = GenesisBlockFetch.DefaultGracePicos
   )
-  final case class GenesisControl[F[_]](context: F[GenesisContext], demoteDynamo: Long => F[Unit])
+
+  /** @param events
+    *   where the decision traces `PeerStarvedUs`
+    */
+  final case class GenesisControl[F[_]](
+      context: F[GenesisContext],
+      demoteDynamo: Long => F[Unit],
+      events: GenesisEvents[F]
+  )
 
   /** `PeerFetchStatus` as the trigger fingerprint compares it (ClientState.hs:145–188). */
   private[node] enum FetchStatus:
@@ -718,8 +742,19 @@ object FetchCoordinator:
       fetched: Fetched = Fetched.none,
       genesisContext: Option[GenesisContext] = None,
       genesisState: GenesisBlockFetch.State[Long] = GenesisBlockFetch.State[Long](),
-      demotions: Vector[Long] = Vector.empty
+      demotions: Vector[(Long, PeerOrder)] = Vector.empty,
+      departed: Map[Long, PeerOrder] = Map.empty
   )
+
+  /** `s` keeping the name of a session that has ended while the Genesis peers order still holds it:
+    * the reference checks the starvation of the current peer before it aligns that order with the
+    * peers it has (Decision/Genesis.hs:194-200, ouroboros-network c45735a5), so it may name a peer
+    * that is gone in `PeerStarvedUs`. Only the names the order holds are kept.
+    */
+  private def departed[F[_]](s: State[F], ended: Option[(Long, PeerOrder)]): State[F] =
+    val held = (id: Long) =>
+      s.genesisState.current.contains(id) || s.genesisState.order.contains(id)
+    s.copy(departed = (s.departed ++ ended).filter((id, _) => held(id)))
 
   /** A request the decisions added for a session: `headers` in `requests` contiguous ranges. */
   private[node] final case class Allocation(

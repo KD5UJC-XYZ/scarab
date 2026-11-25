@@ -13,7 +13,7 @@ kind's name (`extended`); the catalogue below lists every kind. `at` is when the
 lines of a slot the forger leads, which it holds until the slot's outcome is final (#1101): each keeps the time it
 was made, so a block forged ahead of its slot shows a `forged` time before the slot's onset, and a slot's lines can
 follow lines of later times. **Without a `--log-*` flag** every line of the node
-goes, as JSON, to stdout, except that the libraries' lines (`Library`) and the forging loop's (`Forge`, as the reference's default `Forge.Loop` setting) go from `Info` up, and nothing goes to stderr. The scenarios of `devnet.py` and the run watchers parse
+goes, as JSON, to stdout, except that the libraries' lines (`Library`) and the forging loop's (`Forge`, as the reference's default `Forge.Loop` setting) go from `Info` up, the Genesis traces the reference's mainnet configuration leaves out (all but `peerStarvedUs`, see [Genesis traces](#genesis-traces)) go from `Notice` up, so not at all, and nothing goes to stderr. The scenarios of `devnet.py` and the run watchers parse
 these lines; the field names and values are fixed by a golden (`fixtures/log/golden.jsonl`, `LogGoldenSuite`).
 
 | Flag | Default | Meaning |
@@ -24,7 +24,7 @@ these lines; the field names and values are fixed by a golden (`fixtures/log/gol
 | `--log-file-format json\|human` | `json` | with `--log-file` |
 | `--log-file-size N[K\|M\|G]` | `100M` | with `--log-file`: the size at which the file turns over (powers of 1024, at least `1K`); a line is never split |
 | `--log-file-keep N` | `10` | with `--log-file`: rotated files kept |
-| `--log-severity [<sink>:]<namespace>=<Severity\|Silence>` | everything but `Library` and `Forge`, which are `Info` (stderr: `Warning`) | repeatable: the least severity `<sink>` (`stdout`, `stderr` or `file`; every sink without the prefix) lets through for `<namespace>`; `Silence` lets nothing through |
+| `--log-severity [<sink>:]<namespace>=<Severity\|Silence>` | everything but `Library` and `Forge`, which are `Info`, and the Genesis traces the reference leaves out, which are `Notice` (stderr: `Warning`) | repeatable: the least severity `<sink>` (`stdout`, `stderr` or `file`; every sink without the prefix) lets through for `<namespace>`; `Silence` lets nothing through |
 | `--log-every [<sink>:]<namespace>=N` | `1` | repeatable: `<sink>` keeps the first line of every `N` of `<namespace>` (one count for the namespace named) |
 
 A namespace is `*` (everything), an area (`Node`, `Chain`, `Ledger`, `Rules`, `Net`, `Mempool`, `Forge`, `Storage`,
@@ -86,6 +86,20 @@ configuration file (which is still ignored). There is no forwarder (`cardano-tra
 the metrics are the Prometheus endpoint below. The JSON lines keep the node's own format, not the Haskell node's
 `{"at", "ns", "data", "sev", "thread", "host"}`.
 
+### Genesis traces
+
+The reference's traces of the Genesis decisions (#1397) are the events `traceGDDEvent` (the GDD), `becomingObjector`,
+`blockedOnJump`, `initializedAsDynamo`, `noLongerDynamo`, `noLongerObjector` and `sentJumpInstruction` (ChainSync
+jumping), `rotatedDynamo` (Devoted BlockFetch), `peerStarvedUs` (Genesis BlockFetch) and `chainSelStarvationEvent`
+(the starvation of chain selection that `peerStarvedUs` reads), each with the reference's name, severity and fields
+(the catalogue below). Without a flag the node writes the ones the reference's mainnet configuration writes
+(cardano-node 11.1.3 `mainnet-config.json`, whose `TraceOptions` set the root at `Notice`, `BlockFetch.Decision` at
+`Info` and `ChainDB` at `Info`): `peerStarvedUs` only. A `--log-severity` that covers the others turns them on, as a
+`TraceOptions` severity does for the reference, for example
+`--log-severity file:Chain=Debug --log-severity file:Storage.ChainSelStarvationEvent=Debug` for a log file of the
+Genesis decisions alongside the default stdout. `chainSelStarvationEvent` is written in Praos mode too, as the
+reference's ChainDB writes it.
+
 ### Log events
 
 The catalogue (`node/src/main/scala/xyz/kd5ujc/scarab/node/log/EventKind.scala`; `LogDocsSuite` fails when this
@@ -142,6 +156,15 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `leiosNotifyOffer` | `Chain.LeiosNotifyOffer` | Debug | `connection`, `slot`, `ebHash`, `part` (`body` or `closure`), `ebSize` (a body offer only): an offer a peer made over LeiosNotify (Leios build) |
 | `leiosVoteAcquired` | `Chain.LeiosVoteAcquired` | Info | `connection`, `rbHash`, `seat`, `weight`, `tally`, `threshold` (each a rational as `numerator/denominator`): a vote the vote state counted, a peer's or, with `connection` null, one of this node's own (Leios build) |
 | `leiosCertified` | `Chain.LeiosCertified` | Info | `rbHash`: a counted vote completed the certificate of the endorser block that block announced (Leios build) |
+| `traceGDDEvent` | `Chain.TraceGDDEvent` | Debug | `kind` `TraceGDDDebugInfo`, with `losingPeers`, `loeHead` (the tip of the candidates' shared prefix: `kind` `Anchor` with `slot` and `headerHash`, or `AnchorGenesis`; the reference's `blockNo` is missing, a gap of #1397) and `sgen` (the Genesis window, in slots): an evaluation of the GDD whose window is known, before it disconnects the losers; or `kind` `TraceGDDDisconnected`, with `peers`: the peers it disconnected, once told. The reference's `Consensus.GDD.TraceGDDEvent` with its default (`DNormal`) fields; a peer is `{"connectionId": "<local> <remote>"}`, each address as the reference shows a socket address (`a.b.c.d:port`, `[<IPv6>]:port`). In Genesis mode while Syncing, at most one evaluation per `GDDRateLimit` (1 s by default) |
+| `becomingObjector` | `Chain.BecomingObjector` | Debug | `peer`, `previousObjector` (or null): `peer` found where it disagrees with the dynamo and becomes the ChainSync jumping objector. Like the next five, the reference's `Consensus.CSJ` trace of that name, labelled with the peer whose ChainSync client it is about |
+| `blockedOnJump` | `Chain.BlockedOnJump` | Debug | `peer`: a jumper waits for its next instruction, once per wait |
+| `initializedAsDynamo` | `Chain.InitializedAsDynamo` | Debug | `peer`: the first engaged peer becomes the dynamo |
+| `noLongerDynamo` | `Chain.NoLongerDynamo` | Debug | `peer`, `newDynamo` (or null), `reason` (`BecauseCsjDisengage` or `BecauseCsjDisconnect`) |
+| `noLongerObjector` | `Chain.NoLongerObjector` | Debug | `peer`, `newObjector` (or null), `reason`, as above |
+| `sentJumpInstruction` | `Chain.SentJumpInstruction` | Debug | `peer`, `jumpTarget` (`kind` `BlockPoint` with `slot` and `headerHash`, or `GenesisPoint`): the dynamo is a jump size past its last jump and sends its jumpers the next one; once per jump size (`CSJJumpSize`) of chain |
+| `rotatedDynamo` | `Chain.RotatedDynamo` | Info | `oldPeer`, `newPeer`: the dynamo was demoted (after `peerStarvedUs`) and another engaged peer replaces it, the reference's `Consensus.DevotedBlockFetch.RotatedDynamo` |
+| `peerStarvedUs` | `Chain.PeerStarvedUs` | Info | `peer` (`localAddress` and `remoteAddress`, each an `address` and a `port`, as the reference's `toJSON` of the connection writes them): chain selection starved while `peer` was the peer Genesis BlockFetch fetched from, past the grace period, so it goes to the back of the order and is demoted from dynamo; the reference's `BlockFetch.Decision.PeerStarvedUs`. On by default, as in the reference's mainnet configuration (`BlockFetch.Decision` at `Info`). A decision that makes no request leaves the peer current, so a starvation that lasts is reported at each decision |
 | `ledgerEpoch` | `Ledger.LedgerEpoch` | Info | `epoch`, `utxo`, `accounts`, `pools`, `treasury`, `reserves`, `protocolVersion`, `phase2`, `scriptIntegrityHashChecked`, `scheduling` |
 | `connection` | `Net.Connection` | Info (Warning when `what` is `refused` or `acceptHardLimit`) | `remote`, `what`, `provenance`, `from`, `to`, `reason`; the accept loop's `acceptRateLimited` (`delaySeconds`, exact, and `connections`), `acceptHardLimit` (`limit`) and `acceptResumed` (`connections`) are the reference's `AcceptConnectionsPolicyTrace` |
 | `inbound` | `Net.Inbound` | Info (Warning when `state` is `refused` or `cachedBlockRejected`) | `remote`, `state`, `reason` |
@@ -223,6 +246,7 @@ table and the code differ). The severity is the kind's; the rows marked so are r
 | `receivedBlockAlreadyHere` | `Storage.ReceivedBlockAlreadyHere` | Debug | `hash`: a block put in the received-block log that it holds already, not logged again, as the reference's VolatileDB traces `BlockAlreadyHere`, at Debug as it does |
 | `scheduledGC` | `Storage.ScheduledGC` | Debug | `slot`, `dueMillis` (the node's monotonic clock): a collection of the received-block log scheduled after a copy to the immutable store, as the reference's ChainDB traces `ScheduledGC`, at Debug as it does |
 | `performedGC` | `Storage.PerformedGC` | Debug | `slot`: a collection of the received-block log done, as the reference's ChainDB traces `PerformedGC`, at Debug as it does |
+| `chainSelStarvationEvent` | `Storage.ChainSelStarvationEvent` | Debug | `risingEdge` (true) or `fallingEdge` (`kind` `Point`, `slot`, `hash`: the block that ended it): chain selection ran out of blocks to add, or a block ended that, as the reference's ChainDB traces `ChainSelStarvationEvent`, at Debug as it does; the reference's mainnet configuration (`ChainDB` at `Info`) leaves it out. Up to two lines per block added while the blocks arrive slower than they are added |
 | `receivedBlockDiscarded` | `Storage.ReceivedBlockDiscarded` | Warning | `hash`, `reason`: a block the start leaves out. Either a block of the selected chain that the received log lacks and that fails the log's start-up check, which is not added to the log; or a block of the received log whose header (or, for a Dijkstra block, body) does not decode when the block pool is seeded, which is not seeded (the log's open has already cut every record that fails its check, so this is not expected) |
 | `volatileResumed` | `Storage.VolatileResumed` | Info | `resumed`, `dropped`, `millis` |
 | `networkRecorded` | `Storage.NetworkRecorded` | Info | `magic`, `shelleyGenesis`, `byronGenesis`, `alonzoGenesis`, `conwayGenesis`, `dijkstraGenesis` (null without one), `adoptedExisting`, `adoptedDijkstraGenesis` (the identity recorded no Dijkstra genesis and adopted the configured one) |

@@ -29,13 +29,28 @@ class LogRouterSuite extends CatsEffectSuite:
       .parse(many.view.mapValues(_.last).toMap, many)
       .fold(_.problem, s => fail(s"accepted: $s"))
 
+  /** The Genesis traces the reference's mainnet configuration does not let through. */
+  private val referenceQuiet = List(
+    EventKind.TraceGDDEvent,
+    EventKind.BecomingObjector,
+    EventKind.BlockedOnJump,
+    EventKind.InitializedAsDynamo,
+    EventKind.NoLongerDynamo,
+    EventKind.NoLongerObjector,
+    EventKind.SentJumpInstruction,
+    EventKind.RotatedDynamo,
+    EventKind.ChainSelStarvationEvent
+  )
+
   test(
     "no flag: every line of the node, and the libraries' and forging loop's from Info, as JSON"
   ) {
     val s = settings()
     assertEquals(s.sinks, List(Sink.Stdout -> Format.Json))
     val (fromInfo, own) =
-      EventKind.values.toList.partition(k => k.area == Area.Library || k.area == Area.Forge)
+      EventKind.values.toList
+        .filterNot(referenceQuiet.contains)
+        .partition(k => k.area == Area.Library || k.area == Area.Forge)
     assert(fromInfo.contains(EventKind.Slf4j) && fromInfo.contains(EventKind.LedgerView))
     List(Sink.Stdout, Sink.File).foreach { sink =>
       assertEquals(own.map(s.threshold(sink, _)).distinct, List(Threshold.AtLeast(Severity.Debug)))
@@ -53,6 +68,34 @@ class LogRouterSuite extends CatsEffectSuite:
       List(Threshold.AtLeast(Severity.Warning))
     )
     assertEquals(EventKind.values.toList.flatMap(s.sampling(Sink.Stdout, _)), Nil)
+  }
+
+  test(
+    "no flag: the Genesis traces are written as the reference's mainnet configuration writes them"
+  ) {
+    val s = settings()
+    List(Sink.Stdout, Sink.File).foreach { sink =>
+      // root `Notice`, `ChainDB` `Info`: each of these is below what its namespace lets through
+      referenceQuiet.foreach { kind =>
+        assertEquals(s.threshold(sink, kind), Threshold.AtLeast(Severity.Notice), kind)
+        assert(!s.threshold(sink, kind).admits(kind.severity), kind)
+      }
+      // `BlockFetch.Decision` `Info` lets `PeerStarvedUs` (Info) through
+      assert(s.threshold(sink, EventKind.PeerStarvedUs).admits(EventKind.PeerStarvedUs.severity))
+    }
+  }
+
+  test("a namespace that covers a Genesis trace turns it on, as the reference's TraceOptions do") {
+    List("*=Debug", "Chain=Debug", "Chain.TraceGDDEvent=Debug").foreach { flag =>
+      val s = settings("log-severity" -> flag)
+      assert(s.threshold(Sink.Stdout, EventKind.TraceGDDEvent).admits(Severity.Debug), flag)
+    }
+    val file = settings("log-severity" -> "file:Storage.ChainSelStarvationEvent=Debug")
+    assert(file.threshold(Sink.File, EventKind.ChainSelStarvationEvent).admits(Severity.Debug))
+    assertEquals(
+      file.threshold(Sink.Stdout, EventKind.ChainSelStarvationEvent),
+      Threshold.AtLeast(Severity.Notice)
+    )
   }
 
   test("any namespace that covers the libraries' lines replaces their Info default") {

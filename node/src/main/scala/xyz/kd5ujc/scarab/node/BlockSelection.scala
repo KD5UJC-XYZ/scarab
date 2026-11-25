@@ -158,7 +158,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
         val header = admission.delivered.header
         pool.admissions.processing(WorkKind.Add, AdmissionStage.WaitingForApplication)(
           work
-            .processing(header.hash)
+            .processing(header.blockPoint)
             .surround(application.locked {
               pool.admissions.stage(AdmissionStage.Applying) *> application.admits(header).flatMap {
                 case false => F.unit

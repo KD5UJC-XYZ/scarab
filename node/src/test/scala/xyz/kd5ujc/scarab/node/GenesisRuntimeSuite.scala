@@ -63,7 +63,8 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
   private def setup(
       settings: GenesisSettings = GenesisSettings(),
       changed: IO[Unit] = IO.unit,
-      selected: ChainSelection.Local = local
+      selected: ChainSelection.Local = local,
+      events: Option[GenesisEvents[IO]] = None
   ): IO[Rig] =
     for
       governor <- GenesisGovernor.create[IO](GenesisGovernor.View(empty, 2, _ => Some(8)))
@@ -75,7 +76,8 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
         GenesisRuntime.retainedHeaders(geometry, geometry.k),
         IO.pure(BigInt(0)),
         changed,
-        TestChains.grafting(None)
+        TestChains.grafting(None),
+        events = events
       )
     yield Rig(runtime)
 
@@ -136,6 +138,33 @@ class GenesisRuntimeSuite extends FailsOnUncaught:
         }
       yield ()
     }
+  }
+
+  test("the CSJ and Devoted BlockFetch traces name each session by its connection, until it ends") {
+    for
+      traced <- Ref.of[IO, Vector[GenesisTrace]](Vector.empty)
+      runtime <- setup(events = Some(event => traced.update(_ :+ event)))
+      (first, second) = (PeerOrder(101), PeerOrder(102))
+      _ <- (
+        runtime.session(1, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit, Some(first)),
+        runtime.session(2, ChainSync.Point.Origin, _ => IO.unit, _ => IO.unit, Some(second))
+      ).tupled.use(_ => runtime.demoteDynamo(1))
+      all <- traced.get
+    yield assertEquals(
+      all,
+      Vector(
+        GenesisTrace.Csj(first, ChainSyncJumping.Event.InitializedAsDynamo),
+        GenesisTrace.Dbf(ChainSyncJumping.RotatedDynamo(first, second)),
+        GenesisTrace.Csj(
+          second,
+          ChainSyncJumping.Event.NoLongerDynamo(Some(first), ChainSyncJumping.Reason.Disconnect)
+        ),
+        GenesisTrace.Csj(
+          first,
+          ChainSyncJumping.Event.NoLongerDynamo(None, ChainSyncJumping.Reason.Disconnect)
+        )
+      )
+    )
   }
 
   test("CSJ pauses while waiting for an instruction, before any intersection is offered") {

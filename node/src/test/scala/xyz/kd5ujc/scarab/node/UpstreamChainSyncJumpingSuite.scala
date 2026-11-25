@@ -100,6 +100,54 @@ class UpstreamChainSyncJumpingSuite extends FunSuite:
       (0 to 63).map(i => s"generated-$i").toSet
     )
   }
+  private def isDynamo(role: Role[Unit]): Boolean = role match
+    case Role.Dynamo(_, _) => true
+    case _                 => false
+  private def isObjector(role: Role[Unit]): Boolean = role match
+    case Role.Objector(_, _, _) => true
+    case _                      => false
+  private def roleOf(s: State[Int, Unit], id: Int): Option[Role[Unit]] =
+    s.peers.find(_.id == id).map(_.role)
+  private def holder(s: State[Int, Unit], role: Role[Unit] => Boolean): Option[Int] =
+    s.peers.find(p => role(p.role)).map(_.id)
+
+  /** What the reference traces for a step, read from the native roles before and after it alone
+    * (consensus 82ecba329, Jumping.hs:842-1075): the first dynamo of a registration; a dynamo or an
+    * objector that loses its role names whoever holds it after, for the reason of the step; a
+    * dynamo that moves its last jump sends that jump; a jumper that becomes the objector names the
+    * objector it replaced; a rotation that changes the dynamo names both.
+    */
+  private def expected(
+      step: String,
+      id: Int,
+      before: State[Int, Unit],
+      after: State[Int, Unit]
+  ): (Option[Event[Int]], Option[RotatedDynamo[Int]]) =
+    val was = roleOf(before, id)
+    val now = roleOf(after, id)
+    val reason = if step == "Remove" then Reason.Disconnect else Reason.Disengage
+    // a rotation is traced on the Devoted BlockFetch tracer only (consensus 82ecba329, Jumping.hs:908-947)
+    val event: Option[Event[Int]] =
+      if step == "Rotate" then None
+      else
+        (was, now) match
+          case (None, Some(role)) if isDynamo(role) => Some(Event.InitializedAsDynamo)
+          case (Some(role), next) if isDynamo(role) && !next.exists(isDynamo) =>
+            Some(Event.NoLongerDynamo(holder(after, isDynamo), reason))
+          case (Some(role), next) if isObjector(role) && !next.exists(isObjector) =>
+            Some(Event.NoLongerObjector(holder(after, isObjector), reason))
+          case (Some(Role.Dynamo(_, last)), Some(Role.Dynamo(_, moved)))
+              if step == "Forward" && (moved != last || before.peers != after.peers) =>
+            before.peers.find(_.id == id).flatMap(_.info).map(i => Event.SentJumpInstruction(i.tip))
+          case (Some(role), Some(next)) if !isObjector(role) && isObjector(next) =>
+            Some(Event.BecomingObjector(holder(before, isObjector).filter(_ != id)))
+          case _ => None
+    val rotated =
+      Option
+        .when(step == "Rotate")((holder(before, isDynamo), holder(after, isDynamo)))
+        .collect { case (Some(old), Some(fresh)) if old != fresh => RotatedDynamo(old, fresh) }
+    (event, rotated)
+
   rows.foreach { row =>
     test(s"native CSJ ${field[String](row, "label")}") {
       field[Vector[Json]](row, "steps").foldLeft(
@@ -107,21 +155,25 @@ class UpstreamChainSyncJumpingSuite extends FunSuite:
       ) { case ((s, pending), step) =>
         val event = field[String](step, "event").split(" ").toVector
         val id = event.lift(1).fold(fail("missing native peer id"))(_.toInt)
-        val (after, saved) = event.headOption match
-          case Some("Register") => (register(s, id, Point.Origin, event.last == "True"), pending)
-          case Some("Update")   => (update(s, id, makeInfo(event.last.toInt)), pending)
-          case Some("Forward") => (onRollForward(s, id, makeInfo(event.last.toInt).tip, 4), pending)
-          case Some("Backward") => (onRollback(s, id, makeInfo(event.last.toInt).tip), pending)
-          case Some("Await")    => (onAwaitReply(s, id), pending)
-          case Some("Remove")   => (remove(s, id), pending)
-          case Some("Rotate")   => (rotate(s, id), pending)
+        def traced(step: Step[Int, Unit, Event[Int]]) =
+          (step.state, pending, step.event, Option.empty[RotatedDynamo[Int]])
+        val (after, saved, csj, dbf) = event.headOption match
+          case Some("Register") => traced(register(s, id, Point.Origin, event.last == "True"))
+          case Some("Update")   => (update(s, id, makeInfo(event.last.toInt)), pending, None, None)
+          case Some("Forward")  => traced(onRollForward(s, id, makeInfo(event.last.toInt).tip, 4))
+          case Some("Backward") => traced(onRollback(s, id, makeInfo(event.last.toInt).tip))
+          case Some("Await")    => traced(onAwaitReply(s, id))
+          case Some("Remove")   => traced(remove(s, id))
+          case Some("Rotate") =>
+            val rotated = rotate(s, id)
+            (rotated.state, pending, None, rotated.event)
           case Some("Next") =>
             val result = next(s, id)
             assertEquals(result.instruction, instruction(field[Json](step, "outcome")), clue(event))
             val saved = result.instruction match
               case Instruction.Jump(info, good) => pending.updated(id, info -> good)
               case _                            => pending
-            (result.state, saved)
+            (result.state, saved, None, None)
           case Some("Answer") =>
             pending.get(id) match
               case Some((info, good)) =>
@@ -132,8 +184,8 @@ class UpstreamChainSyncJumpingSuite extends FunSuite:
                 )
                 assertEquals(field[Boolean](outcome, "accepted"), event.last == "True")
                 val result = processJump(s, id, info, good, event.last == "True")
-                (result.state, pending - id)
-              case None => (s, pending)
+                (result.state, pending - id, result.event, None)
+              case None => (s, pending, None, None)
           case other => fail(s"unknown native event $other")
         val expected = field[Vector[Json]](step, "peers").map(j =>
           Peer(
@@ -145,6 +197,12 @@ class UpstreamChainSyncJumpingSuite extends FunSuite:
         )
         assertEquals(after.peers, expected, clue(event))
         assertEquals(after.error, None)
+        // the step's trace is the one its native roles imply
+        assertEquals(
+          (csj, dbf),
+          this.expected(event.head, id, s, after),
+          clue(event)
+        )
         (after, saved)
       }
     }

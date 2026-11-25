@@ -92,7 +92,7 @@ class FollowerDelegatedSuite extends FailsOnUncaught:
       preference <- follower.versus(candidate)
       starvation <- owner.snapshot
       _ <- work
-        .processing(headers.head.hash)
+        .processing(headers.head.blockPoint)
         .use(_ =>
           owner.snapshot.assertEquals(
             xyz.kd5ujc.scarab.network.selection.GenesisBlockFetch.Starvation.EndedAt(0)

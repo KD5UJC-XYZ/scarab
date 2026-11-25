@@ -61,23 +61,36 @@ class GenesisSyncLoadSuite extends FunSuite:
   }
   test("new caught-up peers disengage without changing existing CSJ roles") {
     val first = register(State[Int, Unit](), 1, Point.Origin, false)
-    val second = register(first, 2, Point.Origin, true)
-    assertEquals(second.peers.head.role, Role.Dynamo[Unit](None, BigInt(-1)))
-    assertEquals(second.peers.last.role, Role.Disengaged[Unit](false))
+    val second = register(first.state, 2, Point.Origin, true)
+    assertEquals(second.state.peers.head.role, Role.Dynamo[Unit](None, BigInt(-1)))
+    assertEquals(second.state.peers.last.role, Role.Disengaged[Unit](false))
+    // engageClient reports the first dynamo, a caught-up peer nothing (consensus 82ecba329, Jumping.hs:842-884)
+    assertEquals(first.event, Some(Event.InitializedAsDynamo))
+    assertEquals(second.event, None)
   }
   test("CSJ jump boundary is strict and excludes the not-yet-validated header") {
     val s = update(
-      register(register(State[Int, Unit](), 1, Point.Origin, false), 2, Point.Origin, false),
+      register(
+        register(State[Int, Unit](), 1, Point.Origin, false).state,
+        2,
+        Point.Origin,
+        false
+      ).state,
       1,
       info(3)
     )
-    assertEquals(next(onRollForward(s, 1, point(3), 4), 2).instruction, Instruction.Wait)
+    val held = onRollForward(s, 1, point(3), 4)
+    assertEquals(next(held.state, 2).instruction, Instruction.Wait)
+    assertEquals(held.event, None)
     val sent = onRollForward(s, 1, point(4), 4)
-    assertEquals(next(sent, 2).instruction, Instruction.Jump(info(3), false))
+    assertEquals(next(sent.state, 2).instruction, Instruction.Jump(info(3), false))
+    // the dynamo reports the jump it sends, with the tip of its jump info as the target
+    assertEquals(sent.event, Some(Event.SentJumpInstruction(info(3).tip)))
   }
   test("rejected jump bisects then promotes earliest dissenting objector") {
-    val original = update(register(State[Int, Unit](), 1, Point.Origin, false), 1, info(8))
-    val started = next(register(original, 2, Point.Origin, false), 2)
+    val original =
+      update(register(State[Int, Unit](), 1, Point.Origin, false).state, 1, info(8))
+    val started = next(register(original, 2, Point.Origin, false).state, 2)
     val rejected = processJump(started.state, 2, info(8), false, false)
     assertEquals(next(rejected.state, 2).instruction, Instruction.Jump(info(4), false))
     val r4 = processJump(next(rejected.state, 2).state, 2, info(4), false, false)
@@ -85,6 +98,10 @@ class GenesisSyncLoadSuite extends FunSuite:
     val r1 = processJump(next(r2.state, 2).state, 2, info(1), false, false)
     assertEquals(r1.state.peers.last.role, Role.Objector(true, info(8).prefix(0), point(1)))
     assertEquals(next(r1.state, 2).instruction, Instruction.Jump(info(8).prefix(0), true))
+    // bisecting reports nothing; the jumper that finds the intersection, with no objector before
+    // it, reports that it becomes one (maybeElectNewObjector, consensus 82ecba329 Jumping.hs:712-735)
+    assertEquals(Vector(rejected, r4, r2).map(_.event), Vector(None, None, None))
+    assertEquals(r1.event, Some(Event.BecomingObjector(None)))
   }
   test("started objector is preferred during dynamo removal without restarting its chain") {
     val s = State(
@@ -96,8 +113,10 @@ class GenesisSyncLoadSuite extends FunSuite:
     )
     val removed = remove(s, 1)
     assertEquals(
-      removed.peers.find(_.id == 3).map(_.role),
+      removed.state.peers.find(_.id == 3).map(_.role),
       Some(Role.Dynamo[Unit](None, BigInt(1)))
     )
-    assertEquals(next(removed, 3).instruction, Instruction.RunNormally)
+    assertEquals(next(removed.state, 3).instruction, Instruction.RunNormally)
+    // the disconnected dynamo reports its successor (unregisterClient, consensus 82ecba329 Jumping.hs:886-900)
+    assertEquals(removed.event, Some(Event.NoLongerDynamo(Some(3), Reason.Disconnect)))
   }

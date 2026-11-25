@@ -62,6 +62,10 @@ object Log:
     case MempoolEvent.Synced(_, _, 0) => Applicative[F].unit
     case e                            => log.emit(e)
 
+  /** The Genesis traces. */
+  def genesis[F[_]](using log: Log[F]): xyz.kd5ujc.scarab.node.GenesisEvents[F] =
+    event => log.emit(event)
+
   /** The inbound governor's events, each with the connection's remote address. */
   def inbound[F[_]](using log: Log[F]): InboundEvents[F] =
     (remote, event) => log.emit[NodeEvent](NodeEvent.Inbound(remote, event))
