@@ -4,9 +4,8 @@ package xyz.kd5ujc.scarab.ledger.era.dijkstra
 import scala.annotation.unused
 import scala.collection.immutable.SortedSet
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.{
-  CborRead,
   Credential as FlatCredential,
   DecodeField,
   LedgerDecodeError,
@@ -18,10 +17,8 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraCert,
   DijkstraLevel,
   DijkstraProposal,
-  DijkstraTx as FlatDijkstraTx,
-  DijkstraTxBody as FlatDijkstraTxBody,
+  DijkstraBodyReaders,
   DijkstraTxIn as FlatTxIn,
-  DijkstraTxOut as FlatDijkstraTxOut,
   DijkstraVoting as FlatVoting,
   MultiAsset,
   Sparse,
@@ -79,8 +76,8 @@ enum AccountBalanceInterval:
 object AccountBalanceInterval:
   given CanEqual[AccountBalanceInterval, AccountBalanceInterval] = CanEqual.derived
 
-  /** The interval the flat decoder read, which refused both bounds null (`Scripts.hs:684-696`,
-    * cardano-ledger 9df9f98c).
+  /** The interval the body's reader read (`balanceInterval`), which refused both bounds null
+    * (`Scripts.hs:684-696`, cardano-ledger 9df9f98c).
     */
   private[dijkstra] def of(i: DijkstraBalanceInterval): AccountBalanceInterval = i match
     case DijkstraBalanceInterval.Lower(l) => AccountBalanceLowerBound(Inclusive(Coin(l)))
@@ -204,94 +201,6 @@ object DijkstraTxBody:
   def topBody(body: DijkstraTxBody[TxLevel.Top]): TopTxBody = body match
     case t: TopTxBody => t
 
-  /** The certificates of a body as its bytes hold them (key 4, `decodeOSet` of a set that may be
-    * tagged 258), in the order the flat decoder read them: a pool registration's relays and
-    * metadata are read from them ([[DijkstraProcedures.cert]]).
-    */
-  private def certItems(raw: Bytes): Either[EraTxError, Vector[Node]] =
-    (for
-      body <- CborRead.decode(raw, V12.nestedLimits)
-      entries <- V12.entries(body, DecodeField.TransactionBody)
-      certs = entries.collectFirst {
-        case (k, v) if (k.value match
-              case Value.UInt(t) => t == 4
-              case _             => false
-            ) =>
-          v
-      }
-      items <- certs.fold(Right(Vector.empty[Node]))(V12.setItems(_, DecodeField.Certificates))
-    yield items).leftMap(EraTxError.Decode(_))
-
-  /** The fields of both levels of a body the flat decoder read, at the era's types. */
-  private def fieldsOf(b: FlatDijkstraTxBody): Either[EraTxError, DijkstraBodyFields] =
-    // read again only when a certificate needs its bytes, a pool registration
-    lazy val items = certItems(b.raw)
-    def item(i: Int): Either[EraTxError, Node] =
-      items.flatMap(
-        _.lift(i).toRight(
-          EraTxError.Decode(
-            LedgerDecodeError.ArrayLength(DecodeField.Certificates, i + 1, b.certificates.size)
-          )
-        )
-      )
-    for
-      outputs <- b.outputs.traverse(sized)
-      certs <- b.certificates.zipWithIndex.traverse((c, i) => DijkstraProcedures.cert(c, item(i)))
-      // the reference's `Withdrawals` (`dtbrWithdrawals` and `dstbrWithdrawals`, `TxBody.hs:181,
-      // 205`, cardano-ledger 9df9f98c), each account the `AccountAddress` the decoder read
-      withdrawals <- Convert
-        .withdrawals(b.withdrawals.map((a, c) => a -> Coin(c)))
-        .leftMap(EraTxError.Vocab(_))
-      proposals <- b.proposals.traverse(DijkstraProcedures.proposal)
-      network <- b.networkId.traverse(v =>
-        Network
-          .of(BigInt(v))
-          .toRight(
-            EraTxError.Decode(
-              LedgerDecodeError.NumberOutOfRange(DecodeField.NetworkId, BigInt(v), 0, 1)
-            )
-          )
-      )
-      // each datum the flat decoder read as data, which it refused otherwise with this error
-      guards <- b.guards.traverse(guard)
-      required <- b.requiredTopLevelGuards.traverse((c, d) =>
-        (
-          guard(c),
-          d.traverse(bytes =>
-            Data
-              .decode(bytes)
-              .leftMap(e =>
-                EraTxError
-                  .Decode(LedgerDecodeError.PlutusData(DecodeField.RequiredTopLevelGuards, e))
-              )
-          )
-        ).tupled
-      )
-    // the decoder refused a repeated certificate, proposal or guard (`decodeOSet`), a repeated
-    // voter or action (`decodeMapByKey`) and a repeated key of each map, so the ordered sets and the
-    // maps below hold what it read
-    yield DijkstraBodyFields(
-      b.raw,
-      inputs(b.inputs),
-      inputs(b.referenceInputs),
-      outputs,
-      OSet.decoded(certs),
-      withdrawals,
-      ValidityInterval(b.validityStart, b.ttl),
-      OSet.decoded(guards),
-      b.mint,
-      b.scriptIntegrityHash,
-      b.auxDataHash,
-      network,
-      DijkstraProcedures.votes(b.votingProcedures),
-      OSet.decoded(proposals),
-      b.currentTreasuryValue.map(Coin(_)),
-      Coin(b.donation),
-      required.toMap,
-      b.directDeposits.map((a, c) => a -> Coin(c)).toMap,
-      intervals(b.accountBalanceIntervals)
-    )
-
   private def inputs(
       xs: Vector[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxIn]
   ): SortedSet[TxIn] =
@@ -302,16 +211,8 @@ object DijkstraTxBody:
   ): Map[RewardAccount, AccountBalanceInterval] =
     xs.map((a, i) => a -> AccountBalanceInterval.of(i)).toMap
 
-  // An output read again from the bytes the flat decoder read it from, through Dijkstra's checked
-  // read, with the size of that encoding (`Sized`).
-  private def sized(out: FlatDijkstraTxOut): Either[EraTxError, Sized[DijkstraTxOut]] =
-    CborRead
-      .decode(out.raw, V12.nestedLimits)
-      .flatMap(DijkstraTxOut.read)
-      .bimap(EraTxError.Decode(_), Sized(_, out.raw.size.toLong))
-
   // The keys of a body of each level and those it requires (`decoderByKey`, `requiredFields`,
-  // `TxBody.hs:347-479`, cardano-ledger 9df9f98c), as the flat decoder takes them, made once.
+  // `TxBody.hs:347-479`, cardano-ledger 9df9f98c), made once.
   private val topKeys: Set[Int] = Set(0, 1, 2, 3, 4, 5, 7, 8, 9, 11, 13, 14, 15, 16, 17, 18) ++
     (19 to 27)
   private val topRequired: Set[Int] = Set(0, 1, 2)
@@ -335,12 +236,10 @@ object DijkstraTxBody:
 
   /** `DecCBOR (Annotator (DijkstraTxBodyRaw l era))` (`decodeSparseKeyed`, `TxBody.hs:340-479`,
     * cardano-ledger 9df9f98c), read from the item straight into Dijkstra's types: the keys of the
-    * level, each field and each refusal, and their order, the Leios build's block decoder's
-    * ([[xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx.body]]), which this reads as that decoder
-    * followed by [[topOf]] and [[subOf]] did. Each output is read once, by Dijkstra's reader
-    * ([[DijkstraTxOut.decode]]), not from its bytes again, a certificate from its own item, and
-    * each required guard's datum decoded once ([[Data.read]]). `subTx` reads a sub-transaction,
-    * which only a top-level body has (key 23).
+    * level, each field and each refusal, and their order, the Leios build's block decoder's. Each
+    * output is read once, by Dijkstra's reader ([[DijkstraTxOut.decode]]), a certificate from its
+    * own item, and each required guard's datum decoded once ([[Data.read]]). `subTx` reads a
+    * sub-transaction, which only a top-level body has (key 23).
     */
   private def read(
       n: Node,
@@ -366,7 +265,7 @@ object DijkstraTxBody:
       withdrawals <- d(
         f.get(5)
           .traverse(
-            FlatDijkstraTx.accountMap(_, DecodeField.Withdrawals)(
+            DijkstraBodyReaders.accountMap(_, DecodeField.Withdrawals)(
               coin(DecodeField.WithdrawalAmount)
             )
           )
@@ -381,10 +280,10 @@ object DijkstraTxBody:
       mint <- d(f.get(9).traverse(MultiAsset.decode(_, DecodeField.Mint)(MultiAsset.minted)))
       integrity <- d(f.get(11).traverse(hash32(DecodeField.ScriptDataHash)))
       collateral <- d(f.get(13).traverse(FlatTxIn.nonEmptySet(_, DecodeField.Collateral)))
-      guardSet <- d(f.get(14).traverse(FlatDijkstraTx.guards)).flatMap(gs =>
+      guardSet <- d(f.get(14).traverse(DijkstraBodyReaders.guards)).flatMap(gs =>
         gs.orEmpty.traverse(guard)
       )
-      network <- d(f.get(15).traverse(FlatDijkstraTx.networkId)).flatMap(
+      network <- d(f.get(15).traverse(DijkstraBodyReaders.networkId)).flatMap(
         _.traverse(v =>
           // a `Word8` of 0 or 1, as read above
           Network
@@ -408,13 +307,13 @@ object DijkstraTxBody:
           .traverse(p => nonEmpty(DecodeField.ProposalProcedures)(DijkstraProposal.set(p)))
       ).flatMap(ps => ps.orEmpty.traverse(DijkstraProcedures.proposal))
       treasury <- d(f.get(21).traverse(coin(DecodeField.CurrentTreasuryValue)))
-      donation <- d(f.get(22).traverse(FlatDijkstraTx.positive))
+      donation <- d(f.get(22).traverse(DijkstraBodyReaders.positive))
       subs <- f.get(23).traverse(subTransactions(_, subTx))
       requiredGuards <- f.get(24).traverse(requiredTopLevelGuards)
       deposits <- d(
         f.get(25)
           .traverse(
-            FlatDijkstraTx.accountMap(_, DecodeField.DirectDeposits)(
+            DijkstraBodyReaders.accountMap(_, DecodeField.DirectDeposits)(
               coin(DecodeField.DirectDeposits)
             )
           )
@@ -422,16 +321,16 @@ object DijkstraTxBody:
       balances <- d(
         f.get(26)
           .traverse(
-            FlatDijkstraTx.accountMap(_, DecodeField.AccountBalanceIntervals)(
-              FlatDijkstraTx.balanceInterval
+            DijkstraBodyReaders.accountMap(_, DecodeField.AccountBalanceIntervals)(
+              DijkstraBodyReaders.balanceInterval
             )
           )
       )
       starting <- d(
         f.get(27)
           .traverse(
-            FlatDijkstraTx.accountMap(_, DecodeField.AccountBalanceIntervals)(
-              FlatDijkstraTx.balanceInterval
+            DijkstraBodyReaders.accountMap(_, DecodeField.AccountBalanceIntervals)(
+              DijkstraBodyReaders.balanceInterval
             )
           )
       )
@@ -477,8 +376,8 @@ object DijkstraTxBody:
     V12.list(n, DecodeField.Outputs).leftMap(EraTxError.Decode(_)).flatMap(_.traverse(output))
 
   /** Key 4: `OSet (TxCert era)` (`decodeOSet`, the tag 258 allowed, no certificate twice by value),
-    * not empty (`failOnNull`), as the flat decoder reads it; each certificate is then made in the
-    * era's types from what it read and from its own item ([[DijkstraProcedures.cert]]).
+    * not empty (`failOnNull`), as the build's decoder reads it; each certificate is then made in
+    * the era's types from what it read and from its own item ([[DijkstraProcedures.cert]]).
     */
   private def certSet(n: Node): Either[EraTxError, Vector[DijkstraTxCert]] =
     (for
@@ -492,7 +391,8 @@ object DijkstraTxBody:
 
   /** Key 23: `decodeSubTransactions` (`TxBody.hs:452-456`,
     * `decodeNonEmptySetLikeEnforceNoDuplicatesAnn`, cardano-ledger 9df9f98c): the tag 258 allowed,
-    * a non-empty list of sub-transactions, no transaction id twice, as the flat decoder reads it.
+    * a non-empty list of sub-transactions, no transaction id twice, as the build's decoder reads
+    * it.
     */
   private def subTransactions(
       n: Node,
@@ -508,8 +408,8 @@ object DijkstraTxBody:
     yield subs
 
   /** Key 24: `decodeRequiredTopLevelGuards` (`TxBody.hs:458-461`, cardano-ledger 9df9f98c), a
-    * non-empty map of credentials, none twice, to Plutus `Data` or null, as the flat decoder reads
-    * it, each datum decoded once ([[Data.read]]).
+    * non-empty map of credentials, none twice, to Plutus `Data` or null, as the build's decoder
+    * reads it, each datum decoded once ([[Data.read]]).
     */
   private def requiredTopLevelGuards(
       n: Node
@@ -563,43 +463,6 @@ object DijkstraTxBody:
     // a sub-transaction's body has no key 23, so it reads no sub-transaction
     read(n, DijkstraLevel.Sub, _ => Left(EraTxError.OtherLevel)).map(r => SubTxBody(r.fields))
 
-  /** A top-level body the flat decoder read, with its sub-transactions in Dijkstra's types. */
-  private[dijkstra] def topOf(
-      b: FlatDijkstraTxBody,
-      subTransactions: OMap[Bytes, DijkstraTx[TxLevel.Sub]]
-  )(using @unused proof: DijkstraTx.FromBytes): Either[EraTxError, DijkstraTxBody[TxLevel.Top]] =
-    for
-      _ <- level(b, DijkstraLevel.Top)
-      fields <- fieldsOf(b)
-      collateralReturn <- b.collateralReturn.traverse(sized)
-      // the flat decoder requires a fee at the top level (`requiredFields`, `TxBody.hs:476-479`, cardano-ledger 9df9f98c)
-      fee <- b.fee.toRight(
-        EraTxError.Decode(
-          LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Fee)
-        )
-      )
-    yield TopTxBody(
-      fields,
-      inputs(b.collateral),
-      collateralReturn,
-      b.totalCollateral.map(Coin(_)),
-      Coin(fee),
-      subTransactions,
-      intervals(b.startingAccountBalanceIntervals)
-    )
-
-  /** A sub-transaction's body the flat decoder read, whose decoder took none of the top level's
-    * keys.
-    */
-  private[dijkstra] def subOf(
-      b: FlatDijkstraTxBody
-  )(using @unused proof: DijkstraTx.FromBytes): Either[EraTxError, DijkstraTxBody[TxLevel.Sub]] =
-    level(b, DijkstraLevel.Sub) *> fieldsOf(b).map(SubTxBody(_))
-
-  // A body read at the level asked for: the flat decoder took only that level's keys.
-  private def level(b: FlatDijkstraTxBody, asked: DijkstraLevel): Either[EraTxError, Unit] =
-    Either.cond(b.level == asked, (), EraTxError.OtherLevel)
-
   /** `dijkstraRedeemerPointerInverse` (`TxBody.hs:1297-1316`, cardano-ledger 9df9f98c): the item at
     * the pointer's index among the policies minted (in their order), the inputs, the withdrawals'
     * accounts (in theirs), the certificates, the voters (in theirs), the proposals, or the guards,
@@ -644,8 +507,8 @@ object DijkstraTxBody:
     case Credential.ScriptHashObj(h) => Some(h)
     case Credential.KeyHashObj(_)    => None
 
-  // A guard the flat decoder read, as a guard's credential (`Credential Guard`): its hash read as 28
-  // bytes, which the decoder bounded.
+  // A guard read as the node's credential, as a guard's credential (`Credential Guard`): its hash
+  // read as 28 bytes, which the decoder bounded.
   private def guard(c: FlatCredential): Either[EraTxError, Credential[Guard]] =
     Convert.credential[Guard](c).leftMap(EraTxError.Vocab(_))
 

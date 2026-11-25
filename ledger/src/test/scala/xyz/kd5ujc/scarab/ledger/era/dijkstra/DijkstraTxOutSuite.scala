@@ -17,7 +17,6 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraDatum,
   DijkstraScript as FlatDijkstraScript,
-  DijkstraTx,
   DijkstraTxOut as FlatDijkstraTxOut,
   V12
 }
@@ -72,11 +71,16 @@ class DijkstraTxOutSuite extends FunSuite:
     string(r, "kind") == "tx" && field(r, "accepted").flatMap(_.asBoolean).contains(true)
   ).flatMap { r =>
     val tx = node(hex(string(r, "bytes")))
-      .flatMap(DijkstraTx.inBlock)
+      .fold(e => fail(s"${string(r, "name")}: not CBOR: $e"), DijkstraTx.inBlock)
       .fold(e => fail(s"${string(r, "name")}: the build accepted it: $e"), identity)
-    val all = tx.body.outputs ++ tx.body.collateralReturn ++
-      tx.body.subTransactions.flatMap(s => s.body.outputs ++ s.body.collateralReturn)
-    all.map(string(r, "name") -> _)
+    // each output read again by the output decoder from the bytes the body holds
+    DijkstraCorpus
+      .outputItems(tx)
+      .map(o =>
+        string(r, "name") -> node(o)
+          .flatMap(FlatDijkstraTxOut.decode)
+          .fold(e => fail(s"${string(r, "name")}: $e"), identity)
+      )
   }
 
   // the block decoder's datum as the era's: an inline datum the build read is data

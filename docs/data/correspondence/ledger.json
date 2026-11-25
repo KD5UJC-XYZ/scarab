@@ -231,46 +231,6 @@
    ],
    "digest": "3899eaf44f37ca7d"
   },
-  "def ledger.dijkstra.DijkstraTx#forBlockInclusion": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
-     "symbol": "toCBORForBlockInclusion",
-     "lines": [
-      527,
-      533
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "digest": "8251fb7cc8eb9943"
-  },
-  "def ledger.dijkstra.DijkstraTx#size": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
-     "symbol": "sizeDijkstraTxF",
-     "lines": [
-      297,
-      320
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraSelectionSuite"
-   ],
-   "digest": "4d321466838ee53f"
-  },
   "class ledger.LeiosBlockBody": {
    "upstream": [
     {
@@ -647,27 +607,6 @@
     "CompactCoinRulesSuite"
    ],
    "digest": "a464216b351e9c26"
-  },
-  "def ledger.dijkstra.DijkstraTx.balanceInterval": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
-     "symbol": "DecCBOR (AccountBalanceInterval era)",
-     "lines": [
-      684,
-      696
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraCodecsSuite",
-    "CborDatasetSuite"
-   ],
-   "digest": "b43979b3ae22c3a1"
   },
   "def ledger.CborRead.language": {
    "upstream": [
@@ -23757,48 +23696,6 @@
    ],
    "digest": "6f970b3db7c50779"
   },
-  "def ledger.era.dijkstra.DijkstraTxBody.topOf": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
-     "symbol": "DecCBOR (Annotator (DijkstraTxBodyRaw l era))",
-     "lines": [
-      339,
-      479
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "read from what the flat decoder read, which decides what is refused: its outputs read again through Dijkstra's checked read, its certificates, proposals and votes at the era's types (a pool registration's relays and metadata read again from the body's bytes). A body read at the other level is refused (`EraTxError.OtherLevel`), which the decoders, reading each body at its level, never give. It takes the proof that its input was read from bytes (`DijkstraTx.FromBytes`), which only `DijkstraTx`'s decoders hold.",
-   "digest": "21ff2585ce5a0ef2"
-  },
-  "def ledger.era.dijkstra.DijkstraTxBody.subOf": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
-     "symbol": "DecCBOR (Annotator (DijkstraTxBodyRaw l era))",
-     "lines": [
-      339,
-      479
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "read from what the flat decoder read, which decides what is refused: its outputs read again through Dijkstra's checked read, its certificates, proposals and votes at the era's types (a pool registration's relays and metadata read again from the body's bytes). A body read at the other level is refused (`EraTxError.OtherLevel`), which the decoders, reading each body at its level, never give. It takes the proof that its input was read from bytes (`DijkstraTx.FromBytes`), which only `DijkstraTx`'s decoders hold.",
-   "digest": "85dd37edf4703e59"
-  },
   "val ledger.era.dijkstra.DijkstraTxBody.instance": {
    "upstream": [
     {
@@ -24271,7 +24168,7 @@
     "DijkstraOnePassSuite",
     "DijkstraTxSuite"
    ],
-   "note": "read from the item straight into the era's types in one pass (DijkstraTxBody.readTop, DijkstraTxWits.read, DijkstraTxAuxData.read), with the flat block decoder's refusals in its order, not the flat decoder's reading projected; its sub-transactions at the sub-transaction level in the order read and by id; the decoder refuses an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again; the same value or refusal as the two passes (inBlockByFlat, fromSubmissionByFlat) on every recorded transaction, on mutants of them, and on written cases: competing refusals across the parts and within one (the first reported), every form of Plutus data in datums and redeemers, and a fault at each key of a body, a sub-transaction's body, a witness set and auxiliary data; caveat: the node is trusted to be the CBOR parser's, its value the reading of its bytes, as every decoder of a node assumes, since a node built by hand can hold a value its bytes are not (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999001864)",
+   "note": "read from the item straight into the era's types in one pass (DijkstraTxBody.readTop, DijkstraTxWits.read, DijkstraTxAuxData.read), with the Leios build's block decoder's refusals in its order; its sub-transactions at the sub-transaction level in the order read and by id; the decoder refuses an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again; its verdicts on every recorded transaction, on fixed mutants of them, and on written cases (competing refusals across the parts and within one, the first reported; every form of Plutus data in datums and redeemers; a fault at each key of a body, a sub-transaction's body, a witness set and auxiliary data) are those of the two passes it replaced (the flat block decoder and its projection), recorded before they were deleted (DijkstraOnePassExpected); every refusal is the decoder's (EraTxError.Decode); caveat: the node is trusted to be the CBOR parser's, its value the reading of its bytes, as every decoder of a node assumes, since a node built by hand can hold a value its bytes are not (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999001864)",
    "digest": "afcf692463a5a6e4"
   },
   "def ledger.era.dijkstra.DijkstraTx.forBlockInclusion": {
@@ -24316,7 +24213,7 @@
     "DijkstraOnePassSuite",
     "DijkstraTxSuite"
    ],
-   "note": "read from the item straight into the era's types in one pass (DijkstraTxBody.readTop, DijkstraTxWits.read, DijkstraTxAuxData.read), with the flat block decoder's refusals in its order, not the flat decoder's reading projected; its sub-transactions at the sub-transaction level in the order read and by id; the decoder refuses an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again; the same value or refusal as the two passes (inBlockByFlat, fromSubmissionByFlat) on every recorded transaction, on mutants of them, and on written cases: competing refusals across the parts and within one (the first reported), every form of Plutus data in datums and redeemers, and a fault at each key of a body, a sub-transaction's body, a witness set and auxiliary data; the one read the mempool takes (DijkstraRead.submitted)",
+   "note": "read from the item straight into the era's types in one pass (DijkstraTxBody.readTop, DijkstraTxWits.read, DijkstraTxAuxData.read), with the Leios build's block decoder's refusals in its order; its sub-transactions at the sub-transaction level in the order read and by id; the decoder refuses an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again; its verdicts on every recorded transaction, on fixed mutants of them, and on written cases (competing refusals across the parts and within one, the first reported; every form of Plutus data in datums and redeemers; a fault at each key of a body, a sub-transaction's body, a witness set and auxiliary data) are those of the two passes it replaced (the flat block decoder and its projection), recorded before they were deleted (DijkstraOnePassExpected); every refusal is the decoder's (EraTxError.Decode); the one read the mempool takes (DijkstraRead.submitted)",
    "digest": "bd9e7dafedb145d8"
   },
   "def ledger.era.dijkstra.DijkstraTx.withIsValid": {
@@ -24358,8 +24255,8 @@
    "evidence": [
     "DijkstraTxTranslationSuite"
    ],
-   "note": "each part's memoised bytes read whole at Dijkstra's version (translateEraThroughCBOR), in the reference's order, the flag kept; the body is read by the block decoder's body decoder and projected, as DijkstraTx's decoders read one. Unwired: Scarab's 11.1 build, whose injection uses it (hardForkInjectTxs, ouroboros-consensus 82ecba329), never enters Dijkstra",
-   "digest": "f830e75436dc1764"
+   "note": "each part's memoised bytes read whole at Dijkstra's version (translateEraThroughCBOR), in the reference's order, the flag kept; the body is read by the top-level body's reader in one pass (DijkstraTxBody.readTop), as DijkstraTx's decoders read one. Unwired: Scarab's 11.1 build, whose injection uses it (hardForkInjectTxs, ouroboros-consensus 82ecba329), never enters Dijkstra",
+   "digest": "300d6ebd290958dc"
   },
   "enum ledger.era.dijkstra.DijkstraTxPart": {
    "upstream": [
@@ -24452,27 +24349,6 @@
    "note": "MEMPOOL on the fused interpreter, every failure accumulated, the events discarded (EPDiscard), the validation policy the UTXO context's (All for applyTx, NonStatic for reapplyTx); the proposals are their own state beside the ledger's, as DijkstraBlockRun keeps them",
    "digest": "9aaaa00bef9c644c"
   },
-  "def ledger.era.dijkstra.DijkstraTxWits.fromFlat": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
-     "symbol": "DecCBOR (Annotator (AlonzoTxWitsRaw era))",
-     "lines": [
-      620,
-      721
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "the flat decoder's witness set, which decides what is refused, in the era's types: its scripts made in Dijkstra's types from the flat decoder's, each with the bytes it arrived as, which must have its hashes, and its datums and redeemers (keys 4 and 5), whose bytes the flat decoder does not keep, read again with their bytes and checked against the flat read (`EraTxError.WitnessDataReadAgain`)",
-   "digest": "2a6c25dd5e1f5b00"
-  },
   "def ledger.era.dijkstra.DijkstraTxWits.decode": {
    "upstream": [
     {
@@ -24491,7 +24367,7 @@
    "evidence": [
     "DijkstraTxSuite"
    ],
-   "note": "the flat decoder's witness set, which decides what is refused, in the era's types: its scripts made in Dijkstra's types from the flat decoder's, each with the bytes it arrived as, which must have its hashes, and its datums and redeemers (keys 4 and 5), whose bytes the flat decoder does not keep, read again with their bytes and checked against the flat read (`EraTxError.WitnessDataReadAgain`)",
+   "note": "the witness set read from its item in one pass into the era's types (read), as the Leios build's block decoder reads it",
    "digest": "42beda89d4f3c206"
   },
   "val ledger.era.dijkstra.DijkstraTxWits.instance": {
@@ -24514,27 +24390,6 @@
    ],
    "digest": "a9707d0ef1f66891"
   },
-  "def ledger.era.dijkstra.DijkstraTxAuxData.fromFlat": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
-     "symbol": "decodeTxAuxDataByTokenType",
-     "lines": [
-      302,
-      313
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "the flat decoder's auxiliary data, which decides its form and what is refused, made in the era's types from its values: each metadatum read from the bytes the decoder kept of it, each native script from its bytes, and the Plutus scripts by language, in the order the decoder lists them, which is the order of the reference's `Map Language`",
-   "digest": "f611f9eb0c6b1b27"
-  },
   "def ledger.era.dijkstra.DijkstraTxAuxData.decode": {
    "upstream": [
     {
@@ -24553,7 +24408,7 @@
    "evidence": [
     "DijkstraTxSuite"
    ],
-   "note": "the flat decoder's auxiliary data, which decides its form and what is refused, made in the era's types from its values: each metadatum read from the bytes the decoder kept of it, each native script from its bytes, and the Plutus scripts by language, in the order the decoder lists them, which is the order of the reference's `Map Language`",
+   "note": "auxiliary data read from its item in one pass into the era's types (read), as the Leios build's block decoder reads it",
    "digest": "c2bd55cfe004390e"
   },
   "val ledger.era.dijkstra.DijkstraTxAuxData.instance": {
@@ -27146,7 +27001,7 @@
    "evidence": [
     "DijkstraUTxOSuite"
    ],
-   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal to the flat decoder's (`DijkstraPurposes.scriptsNeeded`) in order, purpose, index, item and script hash on every body of every Dijkstra transaction the repository holds, at both levels, a certificate's item by its key and script; the UTxO set is the recorded one where the corpus has it and stand-in outputs elsewhere",
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; on every body of every Dijkstra transaction the repository holds, at both levels, the purposes the flat rules needed (recorded by purpose when the flat decoder went, #85; until then equal to them in order, purpose, index, item and script hash); the UTxO set is the recorded one where the corpus has it and stand-in outputs elsewhere",
    "digest": "be9d228c98e07984"
   },
   "def ledger.era.dijkstra.DijkstraUTxO.getDijkstraSupplementalDataHashes": {
@@ -27188,7 +27043,7 @@
    "evidence": [
     "DijkstraUTxOSuite"
    ],
-   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal to the flat measure's (`DijkstraTxMeasures.batchRefScriptsSize`, a test helper since the flat rules went) on every Dijkstra transaction the repository holds",
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; the reference scripts of the outputs each level spends or reads on every Dijkstra transaction the repository holds (DijkstraUTxOSuite), as the flat measure gave until the flat decoder went (#85)",
    "digest": "e6fc40d40b696b29"
   },
   "val ledger.era.dijkstra.DijkstraUTxO.instance": {
@@ -27261,7 +27116,7 @@
     "DijkstraUTxOSuite",
     "DijkstraNativeScriptEvalSuite"
    ],
-   "note": "every member the class has here: `mkBasicTx` is no member of it for any era, `validateNativeScript` is `validateDijkstraNativeScript` (Tx.hs:427-438), and `allInputsTxBodyF` is `EraTxBody.allInputs`; `getTotalExUnits` adds each sub-transaction's units to the top level's, equal to the flat measure's (`DijkstraTxMeasures.totalExUnits`, a test helper since the flat rules went) on every Dijkstra transaction the repository holds, and each sub-transaction's to its redeemers' units as the flat decoder read them. `DijkstraEraTx`'s `hashTx` (`Tx.hs:445-472`) is not here (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184); the annotated transaction's members read from their deferred values (`Eval`)",
+   "note": "every member the class has here: `mkBasicTx` is no member of it for any era, `validateNativeScript` is `validateDijkstraNativeScript` (Tx.hs:427-438), and `allInputsTxBodyF` is `EraTxBody.allInputs`; `getTotalExUnits` adds each sub-transaction's units to the top level's, its redeemers' units and each sub-transaction's on every Dijkstra transaction the repository holds (DijkstraUTxOSuite), as the flat measure gave until the flat decoder went (#85). `DijkstraEraTx`'s `hashTx` (`Tx.hs:445-472`) is not here (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184); the annotated transaction's members read from their deferred values (`Eval`)",
    "digest": "55ee9de189d44b22"
   },
   "val ledger.era.dijkstra.DijkstraState.accounts": {
@@ -41865,28 +41720,6 @@
    "note": "blockBodySize the length of the memoized bytes, which encCBOR writes again at every version",
    "digest": "d73cd65771a7b46f"
   },
-  "def ledger.era.dijkstra.DijkstraTx.ofBlock": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
-     "symbol": "decodeDijkstraTopTxInBlock",
-     "lines": [
-      175,
-      182
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraBbodySuite",
-    "DijkstraRulesOracleSuite"
-   ],
-   "note": "on a transaction the block decoder read with it, given evidence only DijkstraBlock.decode makes (DijkstraBlock.Decoded)",
-   "digest": "b92eeed156c96f7b"
-  },
   "def ledger.state.KeyHash.coerceKeyRole": {
    "upstream": [
     {
@@ -42952,8 +42785,8 @@
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "the body in Dijkstra's types from the body the flat block decoder read from a block's bytes, each transaction by DijkstraTx.ofBlock, its size and hash those bytes': it takes evidence only DijkstraBlock.decode makes (DijkstraBlock.Decoded), so no body has a commitment its contents do not have, as MemoBytes ties them",
-   "digest": "ee2045c0551c512f"
+   "note": "the body in Dijkstra's types from the body the block decoder read from a block's bytes, its transactions those it read in one pass (DijkstraTx.inBlock), the first it kept apart (LeiosBlock.firstUnheld: a value the decoder's own bounds rule out, the node's defect, or a field Dijkstra does not have, the bytes' fault) its failure, its size and hash those bytes': it takes evidence only DijkstraBlock.decode makes (DijkstraBlock.Decoded), so no body has a commitment its contents do not have, as MemoBytes ties them",
+   "digest": "b51aa8e8908b7e12"
   },
   "def ledger.era.dijkstra.DijkstraBlock.decode": {
    "upstream": [
@@ -42984,8 +42817,8 @@
     "DijkstraBbodySuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "a block's bytes as the flat block decoder reads them, its header and body in the era's types, the body made from the same bytes as its size and hash",
-   "digest": "fc4c752247db37f9"
+   "note": "a block's bytes as the block decoder reads them, its transactions read in one pass into the era's types (LeiosBlock.decode, DijkstraTx.inBlock), its header and body in the era's types, the body made from the same bytes as its size and hash; a transaction whose reading met a value the decoder's own bounds rule out is accepted by the block decoder and is the node's defect here (LeiosBlock.unread, DijkstraBlockError.Projection), the block withheld and no peer charged, as when the flat decoder read it and its projection failed",
+   "digest": "2b67a21b00b194a9"
   },
   "val ledger.era.dijkstra.DijkstraBlockHeader.instance": {
    "upstream": [
@@ -48533,7 +48366,7 @@
     "DijkstraOnePassSuite",
     "DijkstraTxSuite"
    ],
-   "note": "a top-level body read from its item straight into the era's types in one pass: the flat decoder's keys, fields, refusals and their order (Sparse.read, then each key in turn), each output by Dijkstra's reader, each certificate from its own item and each required guard's datum decoded once (Data.read); its sub-transactions by the reader DijkstraTx gives, in the order read and by id. The same value or refusal as the two passes it replaced (topOf over the flat decoder) on every recorded transaction, on mutants of them, and on written cases: competing refusals across the parts and within one (the first reported), every form of Plutus data in datums and redeemers, and a fault at each key of a body, a sub-transaction's body, a witness set and auxiliary data",
+   "note": "a top-level body read from its item straight into the era's types in one pass: the Leios build's keys, fields, refusals and their order (Sparse.read, then each key in turn), each output by Dijkstra's reader, each certificate from its own item and each required guard's datum decoded once (Data.read); its sub-transactions by the reader DijkstraTx gives, in the order read and by id. Through DijkstraTx's decoders, its verdicts on every recorded transaction, on fixed mutants of them, and on written cases (competing refusals across the parts and within one, the first reported; every form of Plutus data in datums and redeemers; a fault at each key of a body, a sub-transaction's body, a witness set and auxiliary data) are those of the two passes it replaced (the flat block decoder and its projection), recorded before they were deleted (DijkstraOnePassExpected); every refusal is the decoder's (EraTxError.Decode)",
    "digest": "c99c7eb1e6a031af"
   },
   "def ledger.era.dijkstra.DijkstraTxBody.readSub": {
@@ -48555,7 +48388,7 @@
     "DijkstraOnePassSuite",
     "DijkstraTxSuite"
    ],
-   "note": "a sub-transaction's body read from its item in one pass, as readTop reads a top-level one with the sub-transaction level's keys, which leave out the fee, the collateral, the sub-transactions and the starting balance intervals; the same value or refusal as subOf over the flat decoder; checked on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
+   "note": "a sub-transaction's body read from its item in one pass, as readTop reads a top-level one with the sub-transaction level's keys, which leave out the fee, the collateral, the sub-transactions and the starting balance intervals; its verdicts through DijkstraTx's decoders those the two passes it replaced gave, recorded (DijkstraOnePassExpected): on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
    "digest": "8fbcc9f15a46a22b"
   },
   "def ledger.era.dijkstra.DijkstraTxWits.read": {
@@ -48577,8 +48410,8 @@
     "DijkstraOnePassSuite",
     "DijkstraTxSuite"
    ],
-   "note": "the witness set read from its item straight into the era's types in one pass: the flat decoder's keys, fields and refusals in its order, each script once by Dijkstra's readers (whose hashes the set's uniqueness and the map are by, the first of one hash kept), each datum and redeemer's data decoded once from its item (Data.read), the bytes of keys 4 and 5 kept; a purpose given twice the last read (Map.fromList). The same value or refusal as fromFlat over the flat decoder; checked on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
-   "digest": "14647b6938046ef1"
+   "note": "the witness set read from its item straight into the era's types in one pass: the Leios build's keys, fields and refusals in its order, each script once by Dijkstra's readers (whose hashes the set's uniqueness and the map are by, the first of one hash kept), each datum and redeemer's data decoded once from its item (Data.read), the bytes of keys 4 and 5 kept; a purpose given twice the last read (Map.fromList). Its verdicts those the two passes it replaced gave, recorded (DijkstraOnePassExpected): on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
+   "digest": "8cdf50c8b77b01cf"
   },
   "def ledger.era.dijkstra.DijkstraTxAuxData.read": {
    "upstream": [
@@ -48599,7 +48432,7 @@
     "DijkstraOnePassSuite",
     "DijkstraTxSuite"
    ],
-   "note": "auxiliary data read from its item straight into the era's types in one pass, chosen by the first token as the flat decoder chooses (a map, a list of two, the tag 259 over a sparse map of keys 0 to 5), each metadatum once by Metadatum.read and each native script by Dijkstra's reader, which refuse what the flat decoder's refuse with the same errors. The same value or refusal as fromFlat over the flat decoder; checked on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
+   "note": "auxiliary data read from its item straight into the era's types in one pass, chosen by the first token as the Leios build's decoder chooses (a map, a list of two, the tag 259 over a sparse map of keys 0 to 5), each metadatum once by Metadatum.read and each native script by Dijkstra's reader. Its verdicts those the two passes it replaced gave, recorded (DijkstraOnePassExpected): on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
    "digest": "ac586484d05e9571"
   },
   "def ledger.era.Data.read": {
@@ -48622,132 +48455,6 @@
    ],
    "note": "the data of an item its decoder has already read, with the item's bytes (Mem: the bytes the annotator saw, the value Cborg.decode read): what Data.decode reads from those bytes, without decoding them again; every form of data (constructor tags 102, 121 to 127 and 1280 to 1400, big numbers at and past 64 bits, byte strings chunked at 64 bytes, nested lists and maps) and the refused ones read the same as through the bytes",
    "digest": "a99b39ccbcf96bbe"
-  },
-  "def ledger.dijkstra.DijkstraTx.guards": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
-     "symbol": "decodeGuards",
-     "lines": [
-      1662,
-      1678
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "the first element decides the form of all: a list makes every element a credential, anything else every element a key hash; no guard twice (decodeOSet)",
-   "digest": "f6a29c633d3db178"
-  },
-  "def ledger.dijkstra.DijkstraTx.positive": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
-     "symbol": "decodePositiveCoin",
-     "lines": [
-      226,
-      231
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "a Word64 other than zero",
-   "digest": "29df2e537a93d1fd"
-  },
-  "def ledger.dijkstra.DijkstraTx.networkId": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
-     "symbol": "FromCBOR Network",
-     "lines": [
-      899,
-      914
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "a Word8 that is 0 or 1 (word8ToNetwork)",
-   "digest": "011731243d5e98cc"
-  },
-  "def ledger.dijkstra.DijkstraTx.accountMap": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
-     "symbol": "decodeMap",
-     "lines": [
-      792,
-      800
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "a map of account addresses, none twice, not empty (decodeMap, then failOnNull at the body's key)",
-   "digest": "dc62291b5bbbc5cd"
-  },
-  "def ledger.dijkstra.DijkstraWitnesses.vkeyWitnesses": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/WitVKey.hs",
-     "symbol": "DecCBOR (WitVKey kr)",
-     "lines": [
-      106,
-      110
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "key 0 of the witness set: a non-empty set, the tag 258 allowed, of decodeRecordNamed of a 32-byte key and a 64-byte signature, no witness twice",
-   "digest": "1f847cf732537417"
-  },
-  "def ledger.dijkstra.DijkstraWitnesses.bootstrapWitnesses": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs",
-     "symbol": "DecCBOR BootstrapWitness",
-     "lines": [
-      109,
-      113
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "DijkstraTxSuite"
-   ],
-   "note": "key 2 of the witness set: a non-empty set, the tag 258 allowed, of decodeRecordNamed of the key, the signature, a 32-byte chain code and the attributes, no witness twice under its Ord",
-   "digest": "875396eb173ff25b"
   },
   "class ledger.era.AlonzoTxWitsRep": {
    "upstream": [
@@ -49404,6 +49111,175 @@
    ],
    "digest": "939f5634090b2b8e",
    "note": "a getter only: the reference's lens also sets the field and rebuilds the data's memoized bytes (`lensMemoRawType`); the node builds auxiliary data only by its era's decoder and never sets a field"
+  },
+  "def ledger.era.dijkstra.DijkstraTx.submitted": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "symbol": "decodeDijkstraTopTx",
+     "lines": [
+      152,
+      169
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraOnePassSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the mempool form read from an item the caller already read as CBOR within its own bounds (the node-to-node transaction submission's, RelayedTransactions), as fromSubmission reads it: three items, or four with a boolean third that must be true, each part in one pass",
+   "digest": "b098d3c092337d79"
+  },
+  "def ledger.dijkstra.DijkstraBodyReaders.balanceInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "symbol": "DecCBOR (AccountBalanceInterval era)",
+     "lines": [
+      684,
+      696
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraCodecsSuite",
+    "CborDatasetSuite"
+   ],
+   "digest": "b43979b3ae22c3a1"
+  },
+  "def ledger.dijkstra.DijkstraBodyReaders.networkId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "FromCBOR Network",
+     "lines": [
+      899,
+      914
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "a Word8 that is 0 or 1 (word8ToNetwork)",
+   "digest": "011731243d5e98cc"
+  },
+  "def ledger.dijkstra.DijkstraBodyReaders.positive": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+     "symbol": "decodePositiveCoin",
+     "lines": [
+      226,
+      231
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "a Word64 other than zero",
+   "digest": "29df2e537a93d1fd"
+  },
+  "def ledger.dijkstra.DijkstraWitnessReaders.bootstrapWitnesses": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs",
+     "symbol": "DecCBOR BootstrapWitness",
+     "lines": [
+      109,
+      113
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "key 2 of the witness set: a non-empty set, the tag 258 allowed, of decodeRecordNamed of the key, the signature, a 32-byte chain code and the attributes, no witness twice under its Ord",
+   "digest": "875396eb173ff25b"
+  },
+  "def ledger.dijkstra.DijkstraWitnessReaders.vkeyWitnesses": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/WitVKey.hs",
+     "symbol": "DecCBOR (WitVKey kr)",
+     "lines": [
+      106,
+      110
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "key 0 of the witness set: a non-empty set, the tag 258 allowed, of decodeRecordNamed of a 32-byte key and a 64-byte signature, no witness twice",
+   "digest": "1f847cf732537417"
+  },
+  "def ledger.dijkstra.DijkstraBodyReaders.accountMap": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeMap",
+     "lines": [
+      792,
+      800
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "a map of account addresses, none twice, not empty (decodeMap, then failOnNull at the body's key)",
+   "digest": "dc62291b5bbbc5cd"
+  },
+  "def ledger.dijkstra.DijkstraBodyReaders.guards": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "symbol": "decodeGuards",
+     "lines": [
+      1662,
+      1678
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the first element decides the form of all: a list makes every element a credential, anything else every element a key hash; no guard twice (decodeOSet)",
+   "digest": "f6a29c633d3db178"
   }
  },
  "glue": [
@@ -50037,7 +49913,7 @@
    ]
   },
   {
-   "reason": "Dijkstra's transactions on the era types (#85): the companions holding their decoders, instances and CanEqual, Scala's equality, hash and rendering of each, which the reference derives, the fields both levels of a body share, held once, with the narrowing of a top-level body to its constructor, which the reference's GADT match does, and an account balance interval from the flat decoder's; the Plutus and witness scripts made in Dijkstra's types from the block decoder's values; and the bounds' companions; the proof that a flat value was read from bytes by the decoders (`DijkstraTx.FromBytes`), which only `DijkstraTx` makes and keeps, and the witness set's and auxiliary data's readers from bytes through it",
+   "reason": "Dijkstra's transactions on the era types (#85): the companions holding their decoders, instances and CanEqual, Scala's equality, hash and rendering of each, which the reference derives, the fields both levels of a body share, held once, with the narrowing of a top-level body to its constructor, which the reference's GADT match does, and an account balance interval from the body reader's; the Plutus scripts made in Dijkstra's types from the language and bytes read; and the bounds' companions; the proof that a value was read from bytes by the decoders (`DijkstraTx.FromBytes`), which only `DijkstraTx` makes and keeps, and the witness set's and auxiliary data's readers from bytes through it",
    "definitions": [
     "class ledger.era.dijkstra.DijkstraBodyFields",
     "class ledger.era.dijkstra.DijkstraTx.FromBytes",
@@ -50059,7 +49935,6 @@
     "def ledger.era.dijkstra.DijkstraTxBody.TopTxBody#hashCode",
     "def ledger.era.dijkstra.DijkstraTxBody.TopTxBody#toString",
     "def ledger.era.dijkstra.DijkstraTxBody.topBody",
-    "def ledger.era.dijkstra.DijkstraTxWits.script",
     "given ledger.era.Exclusive.given_CanEqual_Exclusive_A_Exclusive_A",
     "given ledger.era.Inclusive.given_CanEqual_Inclusive_A_Inclusive_A",
     "given ledger.era.dijkstra.AccountBalanceInterval.given_CanEqual_AccountBalanceInterval_AccountBalanceInterval",
@@ -50517,56 +50392,6 @@
    ]
   },
   {
-   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader, a plain class so that no derived Mirror builds one whose fields are not its header's, and its rendering), the evidence that a flat block or transaction is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types, by whose the failure is (DijkstraBlockError and its total classification DijkstraBlockError.of: the block decoder's refusal, the era types' refusal of what it read, or the node's own readings that disagree), a body's rendering, and the BBODY state's lens",
-   "definitions": [
-    "class ledger.era.dijkstra.DijkstraBlock.Decoded",
-    "class ledger.era.dijkstra.DijkstraBlockHeader",
-    "def ledger.era.dijkstra.DijkstraBlockBody#toString",
-    "def ledger.era.dijkstra.DijkstraBlockError.of",
-    "def ledger.era.dijkstra.DijkstraBlockHeader#toString",
-    "def ledger.era.dijkstra.DijkstraBlockHeader.fromHeader",
-    "def ledger.era.rules.ShelleyBbodyState.ls",
-    "enum ledger.era.dijkstra.DijkstraBlockError",
-    "given ledger.era.BlockHeaderVersionInfo.given_CanEqual_BlockHeaderVersionInfo_BlockHeaderVersionInfo",
-    "given ledger.era.PerasCert.given_CanEqual_PerasCert_PerasCert",
-    "given ledger.era.rules.AlonzoBbodyEvent.given_CanEqual_AlonzoBbodyEvent_E_AlonzoBbodyEvent_E",
-    "given ledger.era.rules.AlonzoBbodyPredFailure.given_CanEqual_AlonzoBbodyPredFailure_E_AlonzoBbodyPredFailure_E",
-    "given ledger.era.rules.ConwayBbodyPredFailure.given_CanEqual_ConwayBbodyPredFailure_E_ConwayBbodyPredFailure_E",
-    "given ledger.era.rules.DijkstraBbodyPredFailure.given_CanEqual_DijkstraBbodyPredFailure_E_DijkstraBbodyPredFailure_E",
-    "given ledger.era.rules.ShelleyBbodyEvent.given_CanEqual_ShelleyBbodyEvent_E_ShelleyBbodyEvent_E",
-    "given ledger.era.rules.ShelleyBbodyPredFailure.given_CanEqual_ShelleyBbodyPredFailure_E_ShelleyBbodyPredFailure_E",
-    "object ledger.era.BlockHeaderVersionInfo",
-    "object ledger.era.DijkstraEraBlockBody",
-    "object ledger.era.EraBlockBody",
-    "object ledger.era.EraBlockHeader",
-    "object ledger.era.LeiosEraBlockHeader",
-    "object ledger.era.PerasCert",
-    "object ledger.era.dijkstra.DijkstraBlock",
-    "object ledger.era.dijkstra.DijkstraBlockBody",
-    "object ledger.era.dijkstra.DijkstraBlockError",
-    "object ledger.era.dijkstra.DijkstraBlockHeader",
-    "object ledger.era.rules.AlonzoBbody",
-    "object ledger.era.rules.AlonzoBbodyEvent",
-    "object ledger.era.rules.AlonzoBbodyPredFailure",
-    "object ledger.era.rules.ConwayBbody",
-    "object ledger.era.rules.ConwayBbodyPredFailure",
-    "object ledger.era.rules.DijkstraBbody",
-    "object ledger.era.rules.DijkstraBbodyPredFailure",
-    "object ledger.era.rules.EmbedLedgersInBbody",
-    "object ledger.era.rules.InjectBbodyFailure",
-    "object ledger.era.rules.ShelleyBbody",
-    "object ledger.era.rules.ShelleyBbodyEvent",
-    "object ledger.era.rules.ShelleyBbodyPredFailure",
-    "object ledger.era.rules.ShelleyBbodyState",
-    "val ledger.era.dijkstra.DijkstraBlockHeader#bodyHash",
-    "val ledger.era.dijkstra.DijkstraBlockHeader#bodySize",
-    "val ledger.era.dijkstra.DijkstraBlockHeader#header",
-    "val ledger.era.dijkstra.DijkstraBlockHeader#issuer",
-    "val ledger.era.dijkstra.DijkstraBlockHeader#slot",
-    "val ledger.era.dijkstra.DijkstraBlockHeader#versionInfo"
-   ]
-  },
-  {
    "reason": "the node's stop for a Dijkstra block it cannot judge, typed where the reference meets a missing or undecodable closure with error (Forker.hs:1048-1052, 1084-1087, ouroboros-consensus 2416493b) or cannot hold the state; the Leios certification's defects, moved from consensus so that a refusal and a stop hold them typed; the renderings of both for the log (#54, #73)",
    "definitions": [
     "def ledger.DijkstraBlockDefect#message",
@@ -50861,15 +50686,6 @@
    ]
   },
   {
-   "reason": "the era decoder's two passes, the flat block decoder followed by the projection of what it read, kept callable for the differential that compares them with the one pass and for its benchmark (#85); the reference reads each type once and has no counterpart",
-   "definitions": [
-    "def ledger.era.dijkstra.DijkstraTx.inBlockByFlat",
-    "def ledger.era.dijkstra.DijkstraTx.fromSubmissionByFlat",
-    "def ledger.era.dijkstra.DijkstraTx.witsByFlat",
-    "def ledger.era.dijkstra.DijkstraTx.auxDataByFlat"
-   ]
-  },
-  {
    "reason": "the shared representations of the era types (#85): their companions; Scala's equality and rendering of each, where the reference derives `Eq` and `Show`; the hash code over the same fields, Scala's own (the reference's `SafeToHash` hashes the serialized bytes, which `raw` keeps and the era's hash functions read); and the read-only forwarders of an era's opaque type to its representation's fields, which only the era's own file can give the evidence for, where the reference reads the fields through its lenses and `getMemoRawType`",
    "definitions": [
     "class ledger.era.AlonzoTxAuxDataRep.Fields",
@@ -50896,6 +50712,77 @@
     "def ledger.era.AlonzoTxWitsRep.Fields#vkeys",
     "object ledger.era.AlonzoTxAuxDataRep",
     "object ledger.era.AlonzoTxWitsRep"
+   ]
+  },
+  {
+   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader, a plain class so that no derived Mirror builds one whose fields are not its header's, and its rendering), the evidence that a block is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types, by whose the failure is (DijkstraBlockError and its total classification DijkstraBlockError.of: the block decoder's refusal, the era types' refusal of what it read, or a value the decoder's own bounds rule out), a body's rendering, and the BBODY state's lens",
+   "definitions": [
+    "class ledger.era.dijkstra.DijkstraBlock.Decoded",
+    "class ledger.era.dijkstra.DijkstraBlockHeader",
+    "def ledger.era.dijkstra.DijkstraBlockBody#toString",
+    "def ledger.era.dijkstra.DijkstraBlockError.of",
+    "def ledger.era.dijkstra.DijkstraBlockHeader#toString",
+    "def ledger.era.dijkstra.DijkstraBlockHeader.fromHeader",
+    "def ledger.era.rules.ShelleyBbodyState.ls",
+    "enum ledger.era.dijkstra.DijkstraBlockError",
+    "given ledger.era.BlockHeaderVersionInfo.given_CanEqual_BlockHeaderVersionInfo_BlockHeaderVersionInfo",
+    "given ledger.era.PerasCert.given_CanEqual_PerasCert_PerasCert",
+    "given ledger.era.rules.AlonzoBbodyEvent.given_CanEqual_AlonzoBbodyEvent_E_AlonzoBbodyEvent_E",
+    "given ledger.era.rules.AlonzoBbodyPredFailure.given_CanEqual_AlonzoBbodyPredFailure_E_AlonzoBbodyPredFailure_E",
+    "given ledger.era.rules.ConwayBbodyPredFailure.given_CanEqual_ConwayBbodyPredFailure_E_ConwayBbodyPredFailure_E",
+    "given ledger.era.rules.DijkstraBbodyPredFailure.given_CanEqual_DijkstraBbodyPredFailure_E_DijkstraBbodyPredFailure_E",
+    "given ledger.era.rules.ShelleyBbodyEvent.given_CanEqual_ShelleyBbodyEvent_E_ShelleyBbodyEvent_E",
+    "given ledger.era.rules.ShelleyBbodyPredFailure.given_CanEqual_ShelleyBbodyPredFailure_E_ShelleyBbodyPredFailure_E",
+    "object ledger.era.BlockHeaderVersionInfo",
+    "object ledger.era.DijkstraEraBlockBody",
+    "object ledger.era.EraBlockBody",
+    "object ledger.era.EraBlockHeader",
+    "object ledger.era.LeiosEraBlockHeader",
+    "object ledger.era.PerasCert",
+    "object ledger.era.dijkstra.DijkstraBlock",
+    "object ledger.era.dijkstra.DijkstraBlockBody",
+    "object ledger.era.dijkstra.DijkstraBlockError",
+    "object ledger.era.dijkstra.DijkstraBlockHeader",
+    "object ledger.era.rules.AlonzoBbody",
+    "object ledger.era.rules.AlonzoBbodyEvent",
+    "object ledger.era.rules.AlonzoBbodyPredFailure",
+    "object ledger.era.rules.ConwayBbody",
+    "object ledger.era.rules.ConwayBbodyPredFailure",
+    "object ledger.era.rules.DijkstraBbody",
+    "object ledger.era.rules.DijkstraBbodyPredFailure",
+    "object ledger.era.rules.EmbedLedgersInBbody",
+    "object ledger.era.rules.InjectBbodyFailure",
+    "object ledger.era.rules.ShelleyBbody",
+    "object ledger.era.rules.ShelleyBbodyEvent",
+    "object ledger.era.rules.ShelleyBbodyPredFailure",
+    "object ledger.era.rules.ShelleyBbodyState",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#bodyHash",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#bodySize",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#header",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#issuer",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#slot",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#versionInfo"
+   ]
+  },
+  {
+   "reason": "the objects that hold the readers of a Dijkstra body's fields and of a witness set's key witnesses, which Dijkstra's era decoder and the stored state's codecs share, kept when the flat Dijkstra decoder that held them went (#85); the reference's readers are the instances of the types they read, mapped by each reader's own entry",
+   "definitions": [
+    "object ledger.dijkstra.DijkstraBodyReaders",
+    "object ledger.dijkstra.DijkstraWitnessReaders"
+   ]
+  },
+  {
+   "reason": "the ranking block's transactions whose one-pass reading met a value the decoder's own bounds rule out, kept apart by whose the failure is: the node's defect, typed as one of the era errors that are defects only (LeiosBlock.Unread, LeiosBlock.Defect), or a field Dijkstra does not have, the bytes' fault (LeiosBlock.OutsideEra), the first of them the failure of the block's application (LeiosBlock#firstUnheld, LeiosBlock#transactionCount), so that the block decodes, passes the fetch checks (BlockTransport.matches, the checks of a decoded block split from its decoding) and is withheld by its application, as the flat decoder and its projection routed it; and the decoders taking the transaction reader (LeiosBlock.decodeWith, DijkstraBlock.decodeWith), so that a test forces that path, which the decoder's bounds make unreachable (#85); the reference's decoder has no such value and no counterpart",
+   "definitions": [
+    "class ledger.LeiosBlock.Unread",
+    "def ledger.BlockTransport.matches",
+    "def ledger.LeiosBlock#transactionCount",
+    "def ledger.LeiosBlock.decodeWith",
+    "def ledger.era.dijkstra.DijkstraBlock.decodeWith",
+    "class ledger.LeiosBlock.OutsideEra",
+    "def ledger.LeiosBlock#firstUnheld",
+    "def ledger.LeiosBlock.Defect#error",
+    "enum ledger.LeiosBlock.Defect"
    ]
   }
  ]

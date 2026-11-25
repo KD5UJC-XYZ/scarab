@@ -508,10 +508,9 @@ class DijkstraUtxowSuite extends FunSuite:
   // ---- a needed native script in Dijkstra's form, with a guard (#1126)
 
   /** The devnet's transaction of block 37 (`fixtures/dijkstra-devnet`, provenance in its README),
-    * which the reference accepted, in the flat and the era types.
+    * which the reference accepted, in the era's types.
     */
-  private lazy val devnetTx
-      : (xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx, DijkstraTx[TxLevel.Top]) =
+  private lazy val devnetTx: DijkstraTx[TxLevel.Top] =
     val raw = java.nio.file.Files
       .readAllLines(java.nio.file.Path.of("fixtures", "dijkstra-devnet", "blocks.tsv"))
       .toArray(Array.empty[String])
@@ -522,11 +521,10 @@ class DijkstraUtxowSuite extends FunSuite:
       .map(p => hex(p(4)))
       .headOption
       .getOrElse(fail("no block 37"))
-    val flatTx = xyz.kd5ujc.scarab.ledger.Block.decodeShelley(raw) match
+    xyz.kd5ujc.scarab.ledger.Block.decodeShelley(raw) match
       case Right(xyz.kd5ujc.scarab.ledger.Block.Dijkstra(b)) =>
         b.transactions.headOption.getOrElse(fail("no transaction"))
       case other => fail(s"not a Dijkstra block: $other")
-    flatTx -> DijkstraTx.inBlock(node(flatTx.raw)).fold(e => fail(e.toString), identity)
 
   /** The devnet transaction's input: the initial funds of the genesis address `607be6…`, whose
     * input is the Blake2b-256 of the address, index 0.
@@ -559,7 +557,7 @@ class DijkstraUtxowSuite extends FunSuite:
 
   /** UTXOW of Dijkstra on the era types on the devnet transaction from `utxo`, at slot 225. */
   private def devnetUtxow(utxo: Utxo) =
-    val (_, tx) = devnetTx
+    val tx = devnetTx
     val ls = xyz.kd5ujc.scarab.ledger.state.Build
       .dijkstra(EpochNo.fromBigInt(1).fold(e => fail(e.toString), identity), devnetStored)
       .es
@@ -597,7 +595,7 @@ class DijkstraUtxowSuite extends FunSuite:
     "8200581c" + "7be6f4db9b5c16681157f9c2e15e57e341e21ecf94e553896f897a44"
 
   test("UTXOW applies the devnet transaction: its input spent, its outputs created, its fee kept") {
-    val (flatTx, tx) = devnetTx
+    val tx = devnetTx
     val address = xyz.kd5ujc.scarab.ledger.Address.decode(genesisAddress).getOrElse(fail("address"))
     val funds = xyz.kd5ujc.scarab.ledger.TxOut(
       address,
@@ -607,9 +605,9 @@ class DijkstraUtxowSuite extends FunSuite:
       case Right(Right((after, _))) =>
         assertEquals(
           after.utxo.utxo.keys.toSet,
-          flatTx.body.outputs.indices.map(i => TxIn(bodies.id(tx.body), i)).toSet
+          bodies.outputs[TxLevel.Top](tx.body).indices.map(i => TxIn(bodies.id(tx.body), i)).toSet
         )
-        assertEquals(Some(after.fees.value), flatTx.body.fee)
+        assertEquals(after.fees, bodies.fee(tx.body))
       case other => fail(s"not admitted: $other")
   }
 
@@ -637,6 +635,6 @@ class DijkstraUtxowSuite extends FunSuite:
     val (_, utxo) = lockedBy("8202" + "82" + guard + genesisSigner)
     devnetUtxow(utxo) match
       case Right(Right((after, _))) =>
-        assertEquals(after.utxo.utxo.keys.size, devnetTx._1.body.outputs.size)
+        assertEquals(after.utxo.utxo.keys.size, bodies.outputs[TxLevel.Top](devnetTx.body).size)
       case other => fail(s"not admitted: $other")
   }

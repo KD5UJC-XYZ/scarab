@@ -16,7 +16,8 @@ import xyz.kd5ujc.scarab.ledger.{
   TxOut
 }
 import xyz.kd5ujc.scarab.ledger.testByteStrings
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTx, V12}
+import xyz.kd5ujc.scarab.ledger.dijkstra.V12
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraCorpus, DijkstraTx}
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraScript, DijkstraTxOut}
 import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway, Dijkstra}
@@ -126,9 +127,7 @@ class DijkstraTxOutMemPackSuite extends FunSuite:
     string(r, "kind") == "tx" && field(r, "accepted").flatMap(_.asBoolean).contains(true)
   ).flatMap { r =>
     val tx = right(DijkstraTx.inBlock(node(hex(string(r, "bytes")))))
-    val all = tx.body.outputs ++ tx.body.collateralReturn ++
-      tx.body.subTransactions.flatMap(s => s.body.outputs ++ s.body.collateralReturn)
-    all.map(o => string(r, "name") -> stored(o.raw))
+    DijkstraCorpus.outputItems(tx).map(o => string(r, "name") -> stored(o))
   }
 
   test("every output the build accepted packs with its script and unpacks to the era's output") {

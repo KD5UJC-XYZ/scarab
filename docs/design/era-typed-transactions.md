@@ -1911,13 +1911,12 @@ Conway's rules on the classes follow as the rest of stage 2.
     Dijkstra's the reference's `validateDijkstraNativeScript`.
   - `DijkstraUTxOSuite` reads every Dijkstra transaction the repository holds (`DijkstraCorpus`, which
     `DijkstraTxSuite` reads too), at both levels, with the recorded UTxO set where the corpus has one and stand-in
-    outputs elsewhere. Against the flat rules: the scripts needed equal `DijkstraPurposes.scriptsNeeded` in order,
-    purpose, index, item (a certificate by its key and script) and script hash, guards among them; the execution units
-    of the batch and of each sub-transaction, and the batch's reference scripts' size, equal `DijkstraTxMeasures`' and
-    the redeemers the flat decoder read; the top level's Plutus scripts provided, by hash and language, equal
-    `plutusScriptsProvided`; and the supplemental datums at each level equal the datum hashes the flat decoder read in
-    the outputs and the reference inputs' outputs, also where a sub-transaction's reference input names one (crafted)
-    and with the sub-transactions taken out of the body, as UTXOW reads it in the legacy mode.
+    outputs elsewhere. The scripts needed, by purpose, are those the flat rules needed when the two were compared, recorded when the flat decoder went (#85), guards among them; the execution
+    units of the batch and of each sub-transaction are their redeemers' sums; the batch's reference scripts' size is
+    the reference scripts of the outputs each level spends or reads; and the supplemental datums at each level are the
+    datum hashes of its outputs and its reference inputs' outputs, each output read again by the output decoder, also
+    where a sub-transaction's reference input names one (crafted) and with the sub-transactions taken out of the
+    body, as UTXOW reads it in the legacy mode.
   - The flat path had a minimum fee (the flat Dijkstra UTXO's, deleted with the flat rules), the keys needed (`TxChecks.neededWitnesses`) and the
     supplemental datums (`TxChecks.supplementalDatumHashes`) for a transaction without Dijkstra's own fields, and the
     value consumed and produced only inline: no complete Dijkstra batch comparison. What the reference records stands in
@@ -2900,9 +2899,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     and `LeiosEraBlockHeader` (the previous nonce, the class's default, and the version info, `Block.hs:120-147`). The
     members no rule reads yet (`mkBasicBlockBody`, `blockHeaderSizeBlockHeaderG`, the announcement's lens) come with
     their readers. A Dijkstra block in the era's types is made only from its bytes (`DijkstraBlock.decode`): its body
-    from the body the flat block decoder read from them, each transaction in Dijkstra's types from the one that decoder
-    read (`DijkstraTx.ofBlock`), its size and hash those of the same bytes, so no body has a commitment its contents do
-    not have, as the reference's `MemoBytes` ties them (`Dijkstra/BlockBody/Internal.hs:115-121`); the header's instance
+    from the body the block decoder read from them, each transaction read in one pass into Dijkstra's types
+    (`DijkstraTx.inBlock`, through `LeiosBlock.decode`), its size and hash those of the same bytes, so no body has a
+    commitment its contents do not have, as the reference's `MemoBytes` ties them (`Dijkstra/BlockBody/Internal.hs:115-121`); the header's instance
     is that of the build's Praos2 header (`EraBlockHeader (Header c) era` and `LeiosEraBlockHeader (Header c) era`,
     `libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs:363-379`), over the decoded header with the classes'
     fields read once in their types (`DijkstraBlockHeader`, a plain class, so no derived `Mirror` builds one whose fields

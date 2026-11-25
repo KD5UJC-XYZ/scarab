@@ -7,7 +7,11 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTx, DijkstraWitnesses, V12}
+import xyz.kd5ujc.scarab.ledger.dijkstra.V12
+import xyz.kd5ujc.scarab.ledger.era.EraTxBody
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxWits
+import xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx as EraDijkstraTx
 
 /** The Leios reference is the build the public Leios testnet runs (cardano-node b004fe0c, release
   * rc-2026w44: cardano-ledger 9df9f98c, ouroboros-consensus 2416493b; decided 2026-11-03 on #711).
@@ -79,48 +83,58 @@ class LeiosTestnetBlockReferenceSuite extends FunSuite:
   /** The fields of a transaction or sub-transaction as the harness writes them: the id and the
     * sorted keys of the script and datum maps (`Map.keys`, in the order of the hashes' bytes).
     */
-  private def txFields(id: Bytes, w: DijkstraWitnesses): Vector[(String, Json)] =
+  private def txFields(id: Bytes, w: DijkstraTxWits): Vector[(String, Json)] =
     def keys(hs: Vector[Bytes]) = Json.arr(hs.map(_.hex).distinct.sorted.map(Json.fromString)*)
     Vector(
       "id" -> Json.fromString(id.hex),
-      "scripts" -> keys(w.scriptHashes),
-      "datums" -> keys(w.datumHashes),
-      "redeemers" -> Json.arr(w.redeemers.map { r =>
+      "scripts" -> keys(w.scripts.keys.toVector),
+      "datums" -> keys(w.datums.datums.keys.toVector),
+      "redeemers" -> Json.arr(w.redeemers.entries.toVector.map { (p, r) =>
         val key = Cbor
           .encode(
             Value.Arr(
               Vector(
-                Node(Value.UInt(BigInt(r.tag)), Bytes.empty),
-                Node(Value.UInt(BigInt(r.index)), Bytes.empty)
+                Node(Value.UInt(BigInt(p.tag)), Bytes.empty),
+                Node(Value.UInt(p.ix.value), Bytes.empty)
               )
             )
           )
           .fold(e => fail(e.toString), identity)
         Json.obj(
           "key" -> Json.fromString(key.hex),
-          "data" -> Json.fromString(r.data.hex),
-          "memory" -> Json.fromBigInt(r.memory),
-          "steps" -> Json.fromBigInt(r.steps)
+          "data" -> Json.fromString(r._1.originalBytes.hex),
+          "memory" -> Json.fromBigInt(r._2.mem),
+          "steps" -> Json.fromBigInt(r._2.steps)
         )
       }*)
     )
 
   private def transaction(row: Row): Unit =
-    CborRead.decode(row.raw, V12.nestedLimits).flatMap(DijkstraTx.inBlock) match
-      case Right(t) =>
+    CborRead.decode(row.raw, V12.nestedLimits).toOption.map(EraDijkstraTx.inBlock) match
+      case Some(Right(t)) =>
         assert(row.accepted, s"the reference refuses this encoding: ${row.failure}")
-        val fields = txFields(t.id, t.witnesses).toMap
+        val fields = txFields(t.id, t.wits).toMap
         same(row, "txid", fields("id"))
         same(row, "scripts", fields("scripts"))
         same(row, "datums", fields("datums"))
         same(row, "redeemers", fields("redeemers"))
-        same(row, "valid", Json.fromBoolean(t.isValid))
+        same(
+          row,
+          "valid",
+          Json.fromBoolean(EraDijkstraTx.isValid(t) == IsPhase2Valid.Phase2Valid)
+        )
         same(
           row,
           "subtxs",
-          Json.arr(t.body.subTransactions.map(s => Json.fromFields(txFields(s.id, s.witnesses)))*)
+          Json.arr(
+            EraTxBody.dijkstra
+              .subTransactions(t.body)
+              .toVector
+              .map(s => Json.fromFields(txFields(s.id, s.wits)))*
+          )
         )
-      case Left(e) => assert(!row.accepted, s"the reference accepts this encoding: $e")
+      case Some(Left(e)) => assert(!row.accepted, s"the reference accepts this encoding: $e")
+      case None          => assert(!row.accepted, "the reference accepts bytes that are not CBOR")
 
   for row <- rows do
     test(row.name) {
@@ -147,7 +161,9 @@ class LeiosTestnetBlockReferenceSuite extends FunSuite:
                   b.transactions.map(t =>
                     Json.obj(
                       "id" -> Json.fromString(t.id.hex),
-                      "valid" -> Json.fromBoolean(t.isValid)
+                      "valid" -> Json.fromBoolean(
+                        EraDijkstraTx.isValid(t) == IsPhase2Valid.Phase2Valid
+                      )
                     )
                   )*
                 )

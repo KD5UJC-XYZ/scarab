@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{ChainError, LeiosBlock, LeiosHeader}
 import xyz.kd5ujc.scarab.ledger.era.{
@@ -38,10 +38,11 @@ final class DijkstraBlockBody private (
     s"DijkstraBlockBody(${txs.size} transactions, $leiosCert, $perasCert, $size, $hash)"
 
 object DijkstraBlockBody:
-  /** The body of a block the flat block decoder read from its bytes (`LeiosBlock.decode`, the
-    * build's `DecCBOR (Annotator (DijkstraBlockBody era))`), each transaction in Dijkstra's types
-    * ([[DijkstraTx.ofBlock]]): the hash is the Blake2b-256 digest of the body's bytes
-    * (`hashBlockBody = extractHash . getMemoBytesHash`, `Internal.hs:120`, cardano-ledger
+  /** The body of a block the block decoder read from its bytes (`LeiosBlock.decode`, the build's
+    * `DecCBOR (Annotator (DijkstraBlockBody era))`), each transaction read in Dijkstra's types
+    * ([[DijkstraTx.inBlock]]), the first that Dijkstra's types do not hold
+    * ([[LeiosBlock.firstUnheld]]) its failure: the hash is the Blake2b-256 digest of the body's
+    * bytes (`hashBlockBody = extractHash . getMemoBytesHash`, `Internal.hs:120`, cardano-ledger
     * 9df9f98c), which the decoder computed, and the size their length. Only
     * [[DijkstraBlock.decode]] holds the evidence ([[DijkstraBlock.Decoded]]), on the block it
     * decoded, so no copied block, whose contents differ from its size and hash, reaches it.
@@ -49,16 +50,18 @@ object DijkstraBlockBody:
   private[dijkstra] def ofDecoded(block: LeiosBlock)(using
       DijkstraBlock.Decoded
   ): Either[EraTxError, DijkstraBlockBody] =
-    for
-      txs <- block.transactions.traverse(DijkstraTx.ofBlock)
-      hash <- Hash32.fromBytes(block.bodyHash).leftMap(EraTxError.Vocab(_))
-    yield new DijkstraBlockBody(
-      txs,
-      block.leiosCertificate,
-      block.perasCertificate.map(PerasCert(_)),
-      block.bodySize,
-      hash
-    )
+    block.firstUnheld
+      .toLeft(())
+      .flatMap(_ => Hash32.fromBytes(block.bodyHash).leftMap(EraTxError.Vocab(_)))
+      .map(hash =>
+        new DijkstraBlockBody(
+          block.transactions,
+          block.leiosCertificate,
+          block.perasCertificate.map(PerasCert(_)),
+          block.bodySize,
+          hash
+        )
+      )
 
   /** `instance EraBlockBody DijkstraEra` and `instance DijkstraEraBlockBody DijkstraEra`
     * (`Internal.hs:114-140`, cardano-ledger 9df9f98c). `blockBodySize` encodes the memoized body
@@ -145,9 +148,10 @@ object DijkstraBlockHeader:
 
 /** Why a Dijkstra block's bytes are not a block in the era's types, by whose the failure is: the
   * block decoder refused them ([[Decode]]); the era's types refuse what it read, a field the era
-  * does not have or bytes they do not decode ([[Era]]); or the node's own two readings of the same
-  * bytes disagree, or a value the decoder's own bounds rule out came of them ([[Projection]]),
-  * which is no fault of the bytes.
+  * does not have or bytes they do not decode ([[Era]]); or a value the decoder's own bounds rule
+  * out came of them, in a transaction ([[LeiosBlock.unread]]) or in the header ([[Projection]]),
+  * which is no fault of the bytes. A transaction's field Dijkstra does not have
+  * ([[LeiosBlock.outsideEra]]) is [[Era]].
   */
 enum DijkstraBlockError:
   case Decode(cause: ChainError)
@@ -168,8 +172,8 @@ object DijkstraBlockError:
 
 /** A Dijkstra block in the era's types. */
 object DijkstraBlock:
-  /** The evidence that a flat block or transaction is one [[decode]] read from bytes: only this
-    * object makes one, so the era's body and transactions are made from no other.
+  /** The evidence that a block is one [[decode]] read from bytes: only this object makes one, so
+    * the era's body is made from no other.
     */
   final class Decoded private[DijkstraBlock] ()
 
@@ -180,8 +184,15 @@ object DijkstraBlock:
     * the same bytes as its size and hash ([[DijkstraBlockBody.ofDecoded]]).
     */
   def decode(raw: Bytes): Either[DijkstraBlockError, Block[DijkstraBlockHeader, Dijkstra]] =
+    decodeWith(raw, DijkstraTx.inBlock)
+
+  /** [[decode]] with the transactions read by `reader`: the era's decoder, or a test's. */
+  private[ledger] def decodeWith(
+      raw: Bytes,
+      reader: Node => Either[EraTxError, DijkstraTx[TxLevel.Top]]
+  ): Either[DijkstraBlockError, Block[DijkstraBlockHeader, Dijkstra]] =
     LeiosBlock
-      .decode(raw)
+      .decodeWith(raw, reader)
       .leftMap(DijkstraBlockError.Decode(_))
       .flatMap(block =>
         (DijkstraBlockHeader.fromHeader(block.header), DijkstraBlockBody.ofDecoded(block))

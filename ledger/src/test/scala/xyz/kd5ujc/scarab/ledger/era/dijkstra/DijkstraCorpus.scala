@@ -10,8 +10,6 @@ import xyz.kd5ujc.scarab.ledger.{CborRead, Credential as FlatCredential, RewardA
 import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraCert,
   DijkstraProposal,
-  DijkstraPurpose,
-  DijkstraPurposes,
   DijkstraTxIn,
   DijkstraVoter,
   V12
@@ -109,6 +107,35 @@ object DijkstraCorpus extends Assertions:
       .map(hex)
 
   /** Bytes read as one item of CBOR, none for bytes that are not one. */
+  /** The items of a Dijkstra block's transactions, each the bytes the block holds it as, read from
+    * the block's tree (`[8, [header, [transactions, ...]]]`); none when the block is not one.
+    */
+  def blockItems(raw: Bytes): Vector[Bytes] =
+    def items(n: Node): Vector[Node] = n.value match
+      case xyz.kd5ujc.scarab.codec.Value.Arr(xs) => xs
+      case _                                     => Vector.empty
+    CborRead
+      .decode(raw, xyz.kd5ujc.scarab.codec.Cbor.Limits.Unbounded)
+      .toOption
+      .toVector
+      .flatMap(root =>
+        items(root).lift(1).toVector.flatMap(items(_).lift(1)).flatMap(items(_).headOption)
+      )
+      .flatMap(items(_).map(_.original))
+
+  /** The bytes of a transaction's outputs as its bodies hold them: the top level's outputs and
+    * collateral return, then each sub-transaction's outputs, in order.
+    */
+  def outputItems(
+      tx: xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx[xyz.kd5ujc.scarab.ledger.era.TxLevel.Top]
+  ): Vector[Bytes] =
+    import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTxBody, TxLevel}
+    val b = EraTxBody.dijkstra
+    b.allSizedOutputs[TxLevel.Top](tx.body)(using BothLevels.Top).map(_.value.rep.raw) ++
+      b.subTransactions(tx.body)
+        .toVector
+        .flatMap(s => b.outputs[TxLevel.Sub](s.body)(using BothLevels.Sub).map(_.rep.raw))
+
   def cbor(raw: Bytes): Option[Node] = CborRead.decode(raw, V12.nestedLimits).toOption
 
   /** A transaction input as the block decoder reads one: its id and index. */
@@ -332,19 +359,6 @@ object DijkstraCorpus extends Assertions:
     case ByVoter(voter: Voter)
     case Proposal(proposal: DijkstraProposal)
     case Guard(script: Bytes)
-
-  /** The item a redeemer key names, by the flat decoder's own resolution
-    * ([[DijkstraPurposes.inverse]]): its tag, index and item.
-    */
-  def flatItem(p: DijkstraPurpose): (Int, BigInt, Item) = p match
-    case DijkstraPurpose.Spending(ix, in) => (0, BigInt(ix), Item.Input(txIn(in)))
-    case DijkstraPurpose.Minting(ix, pol) => (1, BigInt(ix), Item.Policy(pol))
-    case DijkstraPurpose.Certifying(ix, c) =>
-      (2, BigInt(ix), Item.Cert(certKey(c), DijkstraPurposes.certificateScript(c)))
-    case DijkstraPurpose.Withdrawing(ix, a)   => (3, BigInt(ix), Item.Account(a))
-    case DijkstraPurpose.Voting(ix, v)        => (4, BigInt(ix), Item.ByVoter(voter(v)))
-    case DijkstraPurpose.Proposing(ix, p)     => (5, BigInt(ix), Item.Proposal(p))
-    case DijkstraPurpose.Guarding(ix, script) => (6, BigInt(ix), Item.Guard(script))
 
   def eraItem(p: DijkstraPlutusPurpose[AsIxItem]): (Int, BigInt, Item) =
     import DijkstraPlutusPurpose.*

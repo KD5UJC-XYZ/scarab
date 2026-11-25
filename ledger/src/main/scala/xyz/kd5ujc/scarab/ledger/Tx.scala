@@ -1021,17 +1021,19 @@ object Tx:
     * `decodeRecordNamed "AlonzoTx"` (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:532-553`),
     * definite or indefinite: the third item is the validity flag when it is a boolean, the list
     * then holding four items, and otherwise the auxiliary data or null of a valid transaction of
-    * three (#699). In Dijkstra it is `decodeDijkstraTopTx` ([[dijkstra.DijkstraTx.submitted]]).
+    * three (#699). In Dijkstra it is `decodeDijkstraTopTx`, read whole by Dijkstra's era decoder
+    * ([[era.dijkstra.DijkstraTx.submitted]]), whose refusal is the decoder's error; a value its own
+    * bounds rule out is no refusal of the bytes, and the parts are its items'.
     */
   def envelopeParts(node: Node, era: Era): Either[LedgerDecodeError, Block.Transaction] =
     era match
       // the mempool form of Dijkstra, decoded whole: the flag, if given, must be `true`
       case Era.Dijkstra =>
-        dijkstra.DijkstraTx
-          .submitted(node)
-          .map(t =>
-            Block.Transaction(t.body.raw, t.witnesses.raw, t.auxiliary.map(_.raw), t.isValid)
-          )
+        xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx.submitted(node) match
+          case Right(t) =>
+            Right(Block.Transaction(t.body.raw, t.wits.raw, t.auxData.map(_.raw), true))
+          case Left(xyz.kd5ujc.scarab.ledger.era.EraTxError.Decode(e)) => Left(e)
+          case Left(_)                                                 => parts(node, era)
       case _ => parts(node, era)
 
   private def parts(node: Node, era: Era): Either[LedgerDecodeError, Block.Transaction] =

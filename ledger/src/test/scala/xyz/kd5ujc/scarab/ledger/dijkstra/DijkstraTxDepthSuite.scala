@@ -27,7 +27,10 @@ class DijkstraTxDepthSuite extends FunSuite:
 
   private def decodes(raw: Bytes): Boolean =
     PreprodDeepTx.onSmallStack(
-      CborRead.decode(raw, V12.nestedLimits).flatMap(DijkstraTx.inBlock).isRight
+      CborRead
+        .decode(raw, V12.nestedLimits)
+        .toOption
+        .exists(xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx.inBlock(_).isRight)
     )
 
   test("a native script nested deeper than the stack in the witness set") {

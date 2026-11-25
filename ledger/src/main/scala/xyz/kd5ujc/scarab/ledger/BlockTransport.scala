@@ -41,11 +41,17 @@ enum BlockTransportError extends DomainError:
   */
 object BlockTransport:
   def check(announced: Header, raw: Bytes): Either[BlockTransportError, Block] =
+    (announced match
+      case byron: Header.Byron => Block.decode(raw, byron.epochSlots)
+      case _                   => Block.decodeShelley(raw)
+    ).leftMap(BlockTransportError.Decode(_)).flatMap(matches(announced, _))
+
+  /** The checks of a decoded block against the header announced. A Dijkstra block's transactions
+    * unread for a defect of the node's ([[LeiosBlock.unread]]) are none of them: such a block
+    * passes here, and its application withholds it.
+    */
+  private[ledger] def matches(announced: Header, block: Block): Either[BlockTransportError, Block] =
     for
-      block <- (announced match
-        case byron: Header.Byron => Block.decode(raw, byron.epochSlots)
-        case _                   => Block.decodeShelley(raw)
-      ).leftMap(BlockTransportError.Decode(_))
       _ <- Either.cond(
         block.era == announced.era,
         (),

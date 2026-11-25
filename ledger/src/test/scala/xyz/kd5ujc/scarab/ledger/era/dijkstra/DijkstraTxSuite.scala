@@ -1,86 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.dijkstra
 
-import cats.syntax.all.*
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
-import xyz.kd5ujc.scarab.ledger.{
-  Anchor,
-  Block,
-  CborRead,
-  DecodeField,
-  GovActionId,
-  LedgerDecodeError,
-  Metadatum,
-  PreprodDeepTx,
-  TxIn,
-  VotingProcedure
-}
-import xyz.kd5ujc.scarab.ledger.dijkstra.{
-  DijkstraAnchor,
-  DijkstraAuxData,
-  DijkstraBalanceInterval,
-  DijkstraBlsKey,
-  DijkstraCert,
-  DijkstraDatum,
-  DijkstraDelegatee,
-  DijkstraGovAction,
-  DijkstraGovActionId,
-  DijkstraLanguage,
-  DijkstraPoolMetadata,
-  DijkstraPoolParams,
-  DijkstraPurposes,
-  DijkstraRelay,
-  DijkstraScript as FlatScript,
-  DijkstraTx as FlatTx,
-  DijkstraTxBody as FlatBody,
-  DijkstraTxOut as FlatTxOut,
-  DijkstraWitnesses,
-  V12
-}
+import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.ledger.{Block, CborRead, DecodeField, LedgerDecodeError, PreprodDeepTx}
+import xyz.kd5ujc.scarab.ledger.dijkstra.V12
 import xyz.kd5ujc.scarab.ledger.era.{
   AsIxItem,
   BothLevels,
-  ConwayGovCert,
-  Datum,
-  Delegatee,
   EraScript,
   EraTx,
   EraTxBody,
   EraTxError,
-  EraTxWits,
-  EraTxAuxData,
-  GovAction,
-  GovActionPurpose,
-  GovPurposeId,
   IsPhase2Valid,
-  PParamsUpdate,
-  PoolCert,
-  ToPlutusData,
-  TxLevel,
-  ValidityInterval
+  TxLevel
 }
-import xyz.kd5ujc.scarab.ledger.rules.Convert
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxMeasures
-import xyz.kd5ujc.scarab.ledger.state.{
-  Coin,
-  Credential,
-  Dijkstra,
-  FlatView,
-  KeyRole,
-  PoolParamsBlsKey,
-  StakePoolParams
-}
+import xyz.kd5ujc.scarab.ledger.state.{Credential, PoolParamsBlsKey}
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 
 /** Dijkstra's transactions on the era types ([[DijkstraTx]], [[DijkstraTxBody]],
   * [[DijkstraTxWits]], [[DijkstraTxAuxData]], cardano-ledger 9df9f98c
   * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/{Tx,TxBody,TxWits,TxAuxData}.hs`). Every
-  * Dijkstra transaction the repository holds is read by the flat decoder, which decides what is
-  * refused, and by the era decoder: the era decoder refuses exactly what the flat one refuses, with
-  * its error, and reads what it accepts with every field equal to the flat decoder's, its
-  * sub-transactions at the sub-transaction level in the order and with the ids read, a pool
-  * registration's parameters with their voting key.
+  * Dijkstra transaction the repository holds is read by the era decoder, which accepts and refuses
+  * what the flat block decoder it replaced did (the tallies here were the flat decoder's, #85);
+  * each transaction read is held to what its own parts give: its id, its size for the fee and its
+  * block form with either flag, its sub-transactions at the sub-transaction level in the order and
+  * with the ids read, its inputs, and the items every redeemer key names; a pool registration's
+  * parameters with their voting key.
   *
   * The transactions are those of `fixtures/reference/leios-testnet-blocks` (the corpus of the Leios
   * build's verdicts, its blocks and its transactions alone, recorded and synthetic), the public
@@ -90,36 +36,9 @@ import xyz.kd5ujc.scarab.plutus.PlutusLanguage
   * `leios-testnet-chain-contexts`, the latter recorded on the testnet's chain).
   */
 class DijkstraTxSuite extends FunSuite:
-  import DijkstraCorpus.{certKey, eraItem, flatItem, hex, keyOf, node, str, txIn, voter}
+  import DijkstraCorpus.{hex, node, str}
 
   private val bodies = EraTxBody.dijkstra
-  private val wits = EraTxWits.dijkstra
-  private val auxes = EraTxAuxData.dijkstra
-
-  // ---- the flat decoder's fields, read independently of the projection
-
-  private def anchor(a: DijkstraAnchor): Anchor = Anchor(a.url, a.hash)
-
-  private def interval(i: AccountBalanceInterval): DijkstraBalanceInterval = i match
-    case AccountBalanceInterval.AccountBalanceLowerBound(l) =>
-      DijkstraBalanceInterval.Lower(l.unInclusive.value)
-    case AccountBalanceInterval.AccountBalanceUpperBound(u) =>
-      DijkstraBalanceInterval.Upper(u.unExclusive.value)
-    case AccountBalanceInterval.AccountBalanceBothBounds(l, u) =>
-      DijkstraBalanceInterval.Both(l.unInclusive.value, u.unExclusive.value)
-    case AccountBalanceInterval.AccountBalanceExact(c) => DijkstraBalanceInterval.Exact(c.value)
-
-  private def language(l: DijkstraLanguage): PlutusLanguage = l match
-    case DijkstraLanguage.PlutusV1 => PlutusLanguage.V1
-    case DijkstraLanguage.PlutusV2 => PlutusLanguage.V2
-    case DijkstraLanguage.PlutusV3 => PlutusLanguage.V3
-    case DijkstraLanguage.PlutusV4 => PlutusLanguage.V4
-
-  private def scriptBytes(s: FlatScript): Bytes = s match
-    case FlatScript.Native(raw)     => raw
-    case FlatScript.Plutus(_, code) => code
-
-  // ---- what an era value must equal
 
   /** The size of `[body, witnesses, auxiliary data / null]` with a one-byte list head, the parts
     * written as they arrived: the bytes of `toCBORForSizeComputation` (`Tx.hs:297-308`,
@@ -128,304 +47,6 @@ class DijkstraTxSuite extends FunSuite:
   private def partsSize(body: Bytes, wits: Bytes, aux: Option[Bytes]): Long =
     (Bytes.fromArray(Array(0x83.toByte)) ++ body ++ wits ++
       aux.getOrElse(Bytes.fromArray(Array(0xf6.toByte)))).size.toLong
-
-  /** An output against the block decoder's, field by field. */
-  private def sameOutput(era: DijkstraTxOut, flat: FlatTxOut, what: String): Unit =
-    val r = era.rep
-    assertEquals(r.raw, flat.raw, what)
-    assertEquals(r.address, flat.address, what)
-    // the value's own size: the length of its encoding in the output (key 1 of the map form, the
-    // second item of the list form), which the minimum-coin rule reads
-    val valueBytes = node(flat.raw).value match
-      case CborValue.Map(kvs) =>
-        kvs.collectFirst { case (k, v) if k.value == CborValue.UInt(BigInt(1)) => v.original }
-      case CborValue.Arr(xs) => xs.lift(1).map(_.original)
-      case other             => fail(s"$what: an output of $other")
-    assertEquals(r.valueSize.toLong, valueBytes.fold(fail(s"$what: no value"))(_.size.toLong), what)
-    assertEquals(
-      r.value.stored,
-      xyz.kd5ujc.scarab.ledger.Value(flat.value.coin, flat.value.assets),
-      what
-    )
-    (r.datum, flat.datum) match
-      case (Datum.NoDatum, DijkstraDatum.NoDatum)      => ()
-      case (Datum.DatumHash(h), DijkstraDatum.Hash(f)) => assertEquals(h, f, what)
-      case (Datum.Datum(d), DijkstraDatum.Inline(f))   => assertEquals(d.bytes, f, what)
-      case other                                       => fail(s"$what: $other")
-    val s = DijkstraScript.instance
-    assertEquals(
-      r.scriptRef.map(x => (s.hashScript(x), s.originalBytes(x))),
-      flat.referenceScript.map(f => (f.hash, scriptBytes(f))),
-      what
-    )
-
-  /** A metadatum against the bytes the block decoder kept of it, as their CBOR reads, walked on the
-    * heap (the corpus nests metadata deeper than the stack).
-    */
-  private def sameMetadatum(m: Metadatum, raw: Bytes): Boolean =
-    @annotation.tailrec
-    def go(todo: List[(Metadatum, Node)]): Boolean = todo match
-      case Nil => true
-      case (m, n) :: rest =>
-        (m, n.value) match
-          case (Metadatum.Num(v), CborValue.UInt(u))       => if v == u then go(rest) else false
-          case (Metadatum.Num(v), CborValue.NInt(u))       => if v == u then go(rest) else false
-          case (Metadatum.Bin(b), CborValue.ByteString(c)) => if b == c then go(rest) else false
-          case (Metadatum.Str(a), CborValue.Text(t))       => if a == t then go(rest) else false
-          case (Metadatum.Items(xs), CborValue.Arr(ys)) =>
-            if xs.size == ys.size then go(xs.zip(ys).toList ++ rest) else false
-          case (Metadatum.Entries(ps), CborValue.Map(qs)) =>
-            if ps.size == qs.size then
-              go(
-                ps.zip(qs).toList.flatMap { case ((a, b), (c, d)) => List(a -> c, b -> d) } ++ rest
-              )
-            else false
-          case _ => false
-    go(List(m -> node(raw)))
-
-  /** The bytes of each key of a witness set, read from its bytes. */
-  private def keyedFields(raw: Bytes): Map[BigInt, Bytes] =
-    CborRead
-      .map(node(raw), DecodeField.WitnessSet)
-      .fold(e => fail(e.toString), identity)
-      .map((k, v) =>
-        CborRead.uint(k, DecodeField.WitnessSet).fold(e => fail(e.toString), identity) -> v.original
-      )
-      .toMap
-
-  /** The block decoder's certificate of an era certificate, every field read back. */
-  private def asFlat(cert: DijkstraTxCert): DijkstraCert =
-    import DijkstraTxCert.*
-    import DijkstraDelegCert.*
-    import ConwayGovCert.*
-    def to(d: Delegatee): DijkstraDelegatee = d match
-      case Delegatee.DelegStake(p) => DijkstraDelegatee.Stake(p.bytes)
-      case Delegatee.DelegVote(v)  => DijkstraDelegatee.Vote(FlatView.drepBack(v))
-      case Delegatee.DelegStakeVote(p, v) =>
-        DijkstraDelegatee.StakeVote(p.bytes, FlatView.drepBack(v))
-    def a(x: Option[Anchor]): Option[DijkstraAnchor] = x.map(y => DijkstraAnchor(y.url, y.hash))
-    def back[R <: KeyRole](cr: Credential[R]) = FlatView.credBack(cr)
-    cert match
-      case DijkstraTxCertDeleg(DijkstraRegCert(cr, d)) => DijkstraCert.Register(back(cr), d.value)
-      case DijkstraTxCertDeleg(DijkstraUnRegCert(cr, r)) =>
-        DijkstraCert.Unregister(back(cr), r.value)
-      case DijkstraTxCertDeleg(DijkstraDelegCert(cr, d)) => DijkstraCert.Delegate(back(cr), to(d))
-      case DijkstraTxCertDeleg(DijkstraRegDelegCert(cr, d, dep)) =>
-        DijkstraCert.RegisterDelegate(back(cr), to(d), dep.value)
-      case DijkstraTxCertPool(PoolCert.RetirePool(p, e)) =>
-        DijkstraCert.RetirePool(p.bytes, e.toBigInt)
-      case DijkstraTxCertPool(PoolCert.RegPool(params)) => DijkstraCert.RegisterPool(pool(params))
-      case DijkstraTxCertGov(ConwayAuthCommitteeHotKey(cold, hot)) =>
-        DijkstraCert.AuthorizeCommitteeHotKey(back(cold), back(hot))
-      case DijkstraTxCertGov(ConwayResignCommitteeColdKey(cold, x)) =>
-        DijkstraCert.ResignCommitteeColdKey(back(cold), a(x))
-      case DijkstraTxCertGov(ConwayRegDRep(cr, d, x)) =>
-        DijkstraCert.RegisterDRep(back(cr), d.value, a(x))
-      case DijkstraTxCertGov(ConwayUnRegDRep(cr, r)) =>
-        DijkstraCert.UnregisterDRep(back(cr), r.value)
-      case DijkstraTxCertGov(ConwayUpdateDRep(cr, x)) => DijkstraCert.UpdateDRep(back(cr), a(x))
-
-  /** The block decoder's parameters of the era's, every field read back: the relays and the
-    * metadata from the bytes the era's parameters keep, the voting key from the Leios layout's
-    * place, which a Dijkstra registration always has.
-    */
-  private def pool(p: StakePoolParams): DijkstraPoolParams =
-    val key = p.blsKey match
-      case PoolParamsBlsKey.Leios(k) => k.map(b => DijkstraBlsKey(b.key, b.proofOfPossession))
-      case PoolParamsBlsKey.Node11_1 => fail(s"a Dijkstra registration of the 11.1 layout: $p")
-    val relays =
-      if p.relays.isEmpty then Vector.empty
-      else
-        CborRead
-          .decode(p.relays, V12.nestedLimits)
-          .flatMap(V12.list(_, DecodeField.PoolRelay))
-          .flatMap(_.traverse(DijkstraRelay.decode))
-          .fold(e => fail(e.toString), identity)
-    val metadata = p.metadata.map { m =>
-      val read = CborRead
-        .decode(m.bytes, V12.nestedLimits)
-        .flatMap(V12.record(_, 2, DecodeField.PoolMetadata))
-        .flatMap(xs =>
-          (
-            V12.textMax(xs(0), DecodeField.PoolMetadataURL, 128),
-            V12.bytes(xs(1), DecodeField.PoolMetadataHash)
-          ).mapN(DijkstraPoolMetadata(_, _))
-        )
-        .fold(e => fail(e.toString), identity)
-      // the hash the era's metadata read with it is the decoder's
-      assertEquals(m.hash, read.hash)
-      read
-    }
-    DijkstraPoolParams(
-      p.id.bytes,
-      p.vrf.bytes,
-      key,
-      p.pledge.value,
-      p.cost.value,
-      p.margin.rational,
-      Convert.rewardAccountBack(p.accountAddress),
-      p.owners.toSet.map(_.bytes),
-      relays,
-      metadata
-    )
-
-  private def actionIds[P <: GovActionPurpose](
-      era: Option[GovPurposeId[P]],
-      flat: Option[DijkstraGovActionId],
-      what: String
-  ): Unit =
-    assertEquals(
-      era.map(_.unGovPurposeId),
-      flat.map(i => GovActionId(i.txId, BigInt(i.index))),
-      what
-    )
-
-  /** An era action against the block decoder's, field by field. */
-  private def sameAction(era: GovAction[Dijkstra], flat: DijkstraGovAction, what: String): Unit =
-    (era, flat) match
-      case (GovAction.ParameterChange(p, u, g), DijkstraGovAction.ParameterChange(fp, fu, fg)) =>
-        actionIds(p, fp, what)
-        assertEquals(g.map(_.bytes), fg, what)
-        // the update as Plutus data, against the flat path's reading of the decoder's update
-        assertEquals(
-          ToPlutusData[PParamsUpdate[Dijkstra]].toPlutusData(u),
-          xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraChangedParameters.of(fu),
-          what
-        )
-      case (
-            GovAction.HardForkInitiation(p, v),
-            DijkstraGovAction.HardForkInitiation(fp, major, minor)
-          ) =>
-        actionIds(p, fp, what)
-        assertEquals(
-          (BigInt(v.pvMajor.value), v.pvMinor.value),
-          (BigInt(major), BigInt(minor)),
-          what
-        )
-      case (GovAction.TreasuryWithdrawals(ws, g), DijkstraGovAction.TreasuryWithdrawals(fws, fg)) =>
-        assertEquals(ws.map((a, c) => a -> c.value), fws, what)
-        assertEquals(g.map(_.bytes), fg, what)
-      case (GovAction.NoConfidence(p), DijkstraGovAction.NoConfidence(fp)) => actionIds(p, fp, what)
-      case (
-            GovAction.UpdateCommittee(p, r, a, q),
-            DijkstraGovAction.UpdateCommittee(fp, fr, fa, fq)
-          ) =>
-        actionIds(p, fp, what)
-        assertEquals(r.map(FlatView.credBack), fr, what)
-        assertEquals(a.map((c, e) => FlatView.credBack(c) -> e.toBigInt), fa, what)
-        assertEquals(q.rational, fq, what)
-      case (GovAction.NewConstitution(p, c), DijkstraGovAction.NewConstitution(fp, fa, fpol)) =>
-        actionIds(p, fp, what)
-        assertEquals((c.anchor, c.script), (anchor(fa), fpol), what)
-      case (GovAction.InfoAction(), DijkstraGovAction.InfoAction) => ()
-      case other                                                  => fail(s"$what: $other")
-
-  /** Every field of a body of either level equal to the flat decoder's. */
-  private def sameBody[L <: TxLevel](era: DijkstraTxBody[L], flat: FlatBody, what: String)(using
-      l: BothLevels[L]
-  ): Unit =
-    val b = bodies
-    assertEquals(b.id(era), flat.id, what)
-    assertEquals(era.raw, flat.raw, what)
-    assertEquals(
-      b.inputs(era).toVector,
-      flat.inputs.sorted(using DijkstraPurposes.inputOrder).map(txIn),
-      what
-    )
-    assertEquals(
-      b.referenceInputs(era).toVector,
-      flat.referenceInputs.sorted(using DijkstraPurposes.inputOrder).map(txIn),
-      what
-    )
-    assertEquals(b.sizedOutputs(era).map(_.size), flat.outputs.map(_.raw.size.toLong), what)
-    b.sizedOutputs(era).zip(flat.outputs).foreach((o, f) => sameOutput(o.value, f, what))
-    assertEquals(b.sizedOutputs(era).size, flat.outputs.size, what)
-    val certs = b.certs(era)
-    assertEquals(certs.size, flat.certificates.size, what)
-    assertEquals(certs.map(asFlat), flat.certificates, what)
-    certs.zip(flat.certificates).foreach { (c, f) =>
-      assertEquals(b.certsOf.getVKeyWitnessTxCert(c), certKey(f), what)
-      assertEquals(b.certsOf.getScriptWitnessTxCert(c), DijkstraPurposes.certificateScript(f), what)
-    }
-    assertEquals(
-      b.withdrawals(era).unWithdrawals.toVector.map((a, c) => Convert.rewardAccountBack(a) -> c),
-      flat.withdrawals.map((a, c) => a -> Coin(c)).sortBy(_._1),
-      what
-    )
-    assertEquals(b.vldt(era), ValidityInterval(flat.validityStart, flat.ttl), what)
-    assertEquals(b.guards(era).toVector.map(FlatView.credBack), flat.guards, what)
-    assertEquals(b.reqSignerHashes(era).toVector, flat.guards.flatMap(keyOf).distinct.sorted, what)
-    assertEquals(b.mint(era), flat.mint, what)
-    assertEquals(b.scriptIntegrityHash(era), flat.scriptIntegrityHash, what)
-    assertEquals(b.auxDataHash(era), flat.auxDataHash, what)
-    assertEquals(b.networkId(era).map(_.ordinal), flat.networkId, what)
-    val votes = b.votingProcedures(era).unVotingProcedures
-    assertEquals(
-      votes.toVector.map((v, vs) => v -> vs.toVector),
-      flat.votingProcedures
-        .sortBy(_._1)(using DijkstraPurposes.voterOrder)
-        .map((v, vs) =>
-          voter(v) -> vs
-            .sortBy(_._1)(using DijkstraPurposes.govActionOrder)
-            .map((id, p) =>
-              GovActionId(id.txId, BigInt(id.index)) -> VotingProcedure(
-                p.vote,
-                p.anchor.map(anchor)
-              )
-            )
-        ),
-      what
-    )
-    val proposals = b.proposalProcedures(era).toVector
-    assertEquals(proposals.map(_.read), flat.proposals, what)
-    proposals.zip(flat.proposals).foreach((p, f) => sameAction(p.pProcGovAction, f.action, what))
-    assertEquals(
-      proposals.map(p => (p.pProcDeposit, p.pProcReturnAddr, p.pProcAnchor)),
-      flat.proposals.map(p => (Coin(p.deposit), p.returnAccount, anchor(p.anchor))),
-      what
-    )
-    assertEquals(b.currentTreasuryValue(era), flat.currentTreasuryValue.map(Coin(_)), what)
-    assertEquals(b.treasuryDonation(era), Coin(flat.donation), what)
-    assertEquals(
-      b.requiredTopLevelGuards(era).map((c, d) => FlatView.credBack(c) -> d.map(_.originalBytes)),
-      flat.requiredTopLevelGuards.toMap,
-      what
-    )
-    assertEquals(b.directDeposits(era), flat.directDeposits.map((a, c) => a -> Coin(c)).toMap, what)
-    assertEquals(
-      b.accountBalanceIntervals(era).map((a, i) => a -> interval(i)),
-      flat.accountBalanceIntervals.toMap,
-      what
-    )
-    // every redeemer key of each purpose, to one past the last item, names what the flat
-    // resolution names
-    val counts = Vector(
-      flat.inputs.size,
-      flat.mint.size,
-      flat.certificates.size,
-      flat.withdrawals.size,
-      flat.votingProcedures.size,
-      flat.proposals.size,
-      flat.guards.size
-    )
-    for
-      (count, tag) <- counts.zipWithIndex
-      ix <- 0 to count
-    do
-      val ptr = DijkstraPlutusPurpose
-        .asIx(
-          tag,
-          xyz.kd5ujc.scarab.ledger.Unsigned
-            .from[xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32](BigInt(ix))
-            .getOrElse(fail("index"))
-        )
-        .getOrElse(fail(s"tag $tag"))
-      assertEquals(
-        b.redeemerPointerInverse(era, ptr).map(eraItem),
-        DijkstraPurposes.inverse(flat, tag, ix.toLong).map(flatItem),
-        s"$what: purpose $tag at $ix"
-      )
-      b.redeemerPointerInverse(era, ptr).foreach(roundTrips(_, s"$what: purpose $tag at $ix"))
 
   /** A purpose read by each of the script class's readers and built again by that reader's builder
     * (`ConwayEraScript`, `DijkstraEraScript`, and Alonzo's builders, `Scripts.hs:508-581`,
@@ -446,202 +67,126 @@ class DijkstraTxSuite extends FunSuite:
     assertEquals(rebuilt.flatten, Vector(p), what)
     assertEquals(rebuilt.indexWhere(_.isDefined), p.tag, what)
 
-  private def sameWits(era: DijkstraTxWits, flat: DijkstraWitnesses, what: String): Unit =
-    assertEquals(era.raw, flat.raw, what)
-    assertEquals(wits.addrTxWits(era).map(w => (w.vkey, w.signature)).toSet, flat.vkeys.toSet, what)
-    // every bootstrap witness in full, one per address root, the last read of a root kept, in
-    // the roots' order
-    val boots = flat.bootstraps.map(b =>
-      xyz.kd5ujc.scarab.ledger.BootstrapWitness(b.key, b.signature, b.chainCode, b.attributes)
+  /** Every redeemer key of each purpose of a body, to one past its last item
+    * (`dijkstraRedeemerPointerInverse`, `TxBody.hs:1297-1316`, cardano-ledger 9df9f98c): an index
+    * within the items names one, which its purpose's readers and builders give back, but a guard
+    * that is a key's; one past the last names none.
+    */
+  private def pointers[L <: TxLevel](era: DijkstraTxBody[L], what: String)(using
+      BothLevels[L]
+  ): Unit =
+    val b = bodies
+    val guards = b.guards[L](era).toVector
+    val counts = Vector(
+      b.inputs[L](era).size,
+      b.mint[L](era).size,
+      b.certs[L](era).size,
+      b.withdrawals[L](era).unWithdrawals.size,
+      b.votingProcedures[L](era).unVotingProcedures.size,
+      b.proposalProcedures[L](era).toVector.size,
+      guards.size
     )
-    val kept = wits.bootAddrTxWits(era)
-    assertEquals(
-      kept.map(b => (b.vkey, b.signature, b.chainCode, b.attributes)).toSet,
-      boots.reverse
-        .distinctBy(_.addressRoot)
-        .map(b => (b.vkey, b.signature, b.chainCode, b.attributes))
-        .toSet,
-      what
-    )
-    assertEquals(kept.map(_.addressRoot), kept.map(_.addressRoot).sorted, what)
-    assertEquals(wits.scriptTxWitsArrival(era), flat.scriptHashes, what)
-    val byHash = flat.scripts.map(s => s.hash -> scriptBytes(s)).toMap
-    assertEquals(
-      wits.scriptTxWits(era).map((h, s) => h -> wits.scriptsOf.originalBytes(s)),
-      flat.scriptHashes.map(h => h -> byHash(h)).toMap,
-      what
-    )
-    val datums = wits.datsTxWits(era)
-    assertEquals(
-      datums.datums.map((h, d) => h -> d.originalBytes),
-      flat.datumHashes.zip(flat.datums).toMap,
-      what
-    )
-    assertEquals(datums.raw.isDefined, flat.datums.nonEmpty, what)
-    val redeemers = wits.rdmrsTxWits(era)
-    assertEquals(
-      redeemers.entries.toVector.map((p, r) =>
-        (p.tag, p.ix.value, r._1.originalBytes, r._2.mem, r._2.steps)
-      ),
-      flat.redeemers.map(r => (r.tag, BigInt(r.index), r.data, r.memory, r.steps)),
-      what
-    )
-    assertEquals(redeemers.raw.isDefined, flat.redeemers.nonEmpty, what)
-    // keys 4 and 5 keep the bytes the datums and redeemers arrived as
-    val keys = keyedFields(flat.raw)
-    assertEquals(datums.raw, keys.get(BigInt(4)), what)
-    assertEquals(redeemers.raw, keys.get(BigInt(5)), what)
+    for
+      (count, tag) <- counts.zipWithIndex
+      ix <- 0 to count
+    do
+      val ptr = DijkstraPlutusPurpose
+        .asIx(
+          tag,
+          xyz.kd5ujc.scarab.ledger.Unsigned
+            .from[xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32](BigInt(ix))
+            .getOrElse(fail("index"))
+        )
+        .getOrElse(fail(s"tag $tag"))
+      val named = b.redeemerPointerInverse(era, ptr)
+      val expected = ix < count && (tag != 6 || (guards(ix) match
+        case Credential.ScriptHashObj(_) => true
+        case Credential.KeyHashObj(_)    => false))
+      assertEquals(named.isDefined, expected, s"$what: purpose $tag at $ix")
+      named.foreach(roundTrips(_, s"$what: purpose $tag at $ix"))
 
-  private def sameAux(era: DijkstraTxAuxData, flat: DijkstraAuxData, what: String): Unit =
-    assertEquals(auxes.originalBytes(era), flat.raw, what)
-    assertEquals(auxes.metadata(era).keySet.map(_.value), flat.metadata.map(_._1).toSet, what)
-    val metadata = auxes.metadata(era).map((k, m) => k.value -> m)
-    flat.metadata.foreach((label, raw) =>
-      assert(metadata.get(label).exists(sameMetadatum(_, raw)), s"$what: metadatum $label")
-    )
-    assertEquals(
-      auxes.nativeScripts(era).map(_.raw),
-      flat.scripts.collect { case FlatScript.Native(raw) => raw },
-      what
-    )
-    val plutus = flat.scripts.collect { case FlatScript.Plutus(l, code) => language(l) -> code }
-    assertEquals(auxes.plutusScriptsArrival(era), plutus, what)
-    assertEquals(
-      auxes.plutusScripts(era).toVector.flatMap((l, cs) => cs.toVector.map(l -> _)),
-      plutus,
-      what
-    )
-
-  /** A top-level transaction equal to the flat decoder's, its sub-transactions in order. */
-  private def sameTx(era: DijkstraTx[TxLevel.Top], flat: FlatTx, what: String): Int =
+  /** A transaction the era decoder read from its item `n`, held to what its own parts give: its id
+    * is its body's hash; its size for the fee and its block form (`toCBORForBlockInclusion`, with
+    * either flag, read again to itself) are its parts' as they arrived; its sub-transactions are in
+    * the order read, by their ids, each at the sub-transaction level with its own size; every input
+    * it names is among `allInputsTxBodyF` 's; and every redeemer key resolves within its items. The
+    * number of its sub-transactions.
+    */
+  private def checked(era: DijkstraTx[TxLevel.Top], what: String): Int =
     given BothLevels[TxLevel.Top] = BothLevels.Top
-    sameBody(era.body, flat.body, what)
-    sameWits(era.wits, flat.witnesses, what)
-    assertEquals(era.auxData.isDefined, flat.auxiliary.isDefined, what)
-    era.auxData.zip(flat.auxiliary).foreach((a, f) => sameAux(a, f, what))
-    assertEquals(DijkstraTx.isValid(era), IsPhase2Valid.of(flat.isValid), what)
-    val top = DijkstraTxBody.topBody(era.body)
-    assertEquals(bodies.fee(era.body), Coin(flat.body.fee.getOrElse(fail(s"$what: no fee"))), what)
-    assertEquals(
-      bodies.collateralInputs(era.body).toVector,
-      flat.body.collateral.sorted(using DijkstraPurposes.inputOrder).map(txIn),
-      what
-    )
-    assertEquals(
-      bodies.sizedCollateralReturn(era.body).map(_.size),
-      flat.body.collateralReturn.map(_.raw.size.toLong),
-      what
-    )
-    bodies
-      .sizedCollateralReturn(era.body)
-      .zip(flat.body.collateralReturn)
-      .foreach((o, f) => sameOutput(o.value, f, what))
-    assertEquals(bodies.totalCollateral(era.body), flat.body.totalCollateral.map(Coin(_)), what)
-    assertEquals(
-      bodies.startingAccountBalanceIntervals(era.body).map((a, i) => a -> interval(i)),
-      flat.body.startingAccountBalanceIntervals.toMap,
-      what
-    )
-    // the sub-transactions in the order read, by their ids, each at the sub-transaction level
-    val subs = bodies.subTransactions(era.body)
-    assertEquals(subs.keys, flat.body.subTransactions.map(_.id), what)
-    assertEquals(subs.toVector.map(_.id), flat.body.subTransactions.map(_.id), what)
-    // each id looks its sub-transaction up, and an id of none looks up nothing
-    subs.keys.foreach(k => assertEquals(subs.get(k).map(_.id), Some(k), what))
-    assertEquals(subs.get(flat.body.id), None, what)
-    subs.toVector.zip(flat.body.subTransactions).foreach { (s, f) =>
-      given BothLevels[TxLevel.Sub] = BothLevels.Sub
-      sameBody(s.body, f.body, s"$what, sub-transaction ${f.id.hex}")
-      sameWits(s.wits, f.witnesses, s"$what, sub-transaction ${f.id.hex}")
-      s.auxData.zip(f.auxiliary).foreach((a, x) => sameAux(a, x, what))
-      assertEquals(s.sizeTxF, partsSize(f.body.raw, f.witnesses.raw, f.auxiliary.map(_.raw)), what)
-      assertEquals(s.auxData.isDefined, f.auxiliary.isDefined, what)
-      assertEquals(
-        bodies.spendableInputs(s.body)(using BothLevels.Sub),
-        bodies.inputs(s.body)(using BothLevels.Sub)
-      )
-    }
-    // `dijkstraAllInputsTxBodyF`: the top level's spent, collateral and reference inputs and
-    // each sub-transaction's spent and reference inputs
-    assertEquals(
-      bodies.allInputs(era.body),
-      (flat.body.inputs ++ flat.body.collateral ++ flat.body.referenceInputs ++
-        flat.body.subTransactions.flatMap(s => s.body.inputs ++ s.body.referenceInputs))
-        .map(txIn)
-        .to(scala.collection.immutable.SortedSet),
-      what
-    )
-    assertEquals(top.subTransactions.size, flat.body.subTransactions.size, what)
-    // `sizeDijkstraTxF`: the list of three of the parts as they arrived
+    assertEquals(era.id, xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(era.body.raw), what)
     assertEquals(
       era.sizeTxF,
-      partsSize(flat.body.raw, flat.witnesses.raw, flat.auxiliary.map(_.raw)),
+      partsSize(era.body.raw, era.wits.raw, era.auxData.map(_.raw)),
       what
     )
-    sameMeasures(era, flat, what)
-    flat.body.subTransactions.size
-
-  /** What a block, an endorser block and the pool's measure take of a transaction, the era's and
-    * the flat transaction's: the id, the block form (`toCBORForBlockInclusion`) with either flag,
-    * the size (`sizeTxF`) and the execution units with the sub-transactions' (`getTotalExUnits`).
-    */
-  private def sameMeasures(era: DijkstraTx[TxLevel.Top], flat: FlatTx, what: String): Unit =
-    assertEquals(era.id, flat.id, what)
-    assertEquals(DijkstraTx.forBlockInclusion(era), flat.forBlockInclusion, what)
-    IsPhase2Valid.values.foreach(v =>
+    IsPhase2Valid.values.foreach { v =>
+      val flagged = DijkstraTx.withIsValid(era, v)
       assertEquals(
-        DijkstraTx.forBlockInclusion(DijkstraTx.withIsValid(era, v)),
-        flat.copy(isValid = v == IsPhase2Valid.Phase2Valid).forBlockInclusion,
+        DijkstraTx.inBlock(node(DijkstraTx.forBlockInclusion(flagged))),
+        Right(flagged),
         s"$what, $v"
       )
-    )
-    assertEquals(era.sizeTxF, flat.size, what)
+    }
+    pointers(era.body, what)
+    val subs = bodies.subTransactions(era.body)
+    assertEquals(subs.keys, subs.toVector.map(_.id), what)
+    subs.keys.foreach(k => assertEquals(subs.get(k).map(_.id), Some(k), what))
+    assertEquals(subs.get(era.id), None, what)
+    subs.toVector.foreach { s =>
+      given BothLevels[TxLevel.Sub] = BothLevels.Sub
+      val sw = s"$what, sub-transaction ${s.id.hex}"
+      assertEquals(s.sizeTxF, partsSize(s.body.raw, s.wits.raw, s.auxData.map(_.raw)), sw)
+      assertEquals(bodies.spendableInputs(s.body), bodies.inputs(s.body), sw)
+      pointers(s.body, sw)
+    }
+    // `dijkstraAllInputsTxBodyF`: the top level's spent, collateral and reference inputs and each
+    // sub-transaction's spent and reference inputs
     assertEquals(
-      EraTx.dijkstra.getTotalExUnits[TxLevel.Top](era)(using BothLevels.Top),
-      DijkstraTxMeasures.totalExUnits(flat),
+      bodies.allInputs(era.body),
+      bodies.inputs(era.body) ++ bodies.collateralInputs(era.body) ++
+        bodies.referenceInputs(era.body) ++ subs.toVector.flatMap(s =>
+          bodies.inputs(s.body)(using BothLevels.Sub) ++
+            bodies.referenceInputs(s.body)(using BothLevels.Sub)
+        ),
       what
     )
+    subs.size
 
-  private def registersPool(flat: FlatTx): Boolean =
-    def in(b: FlatBody) = b.certificates.exists {
-      case DijkstraCert.RegisterPool(_) => true
-      case _                            => false
-    }
-    in(flat.body) || flat.body.subTransactions.exists(s => in(s.body))
+  private def registersPool(era: DijkstraTx[TxLevel.Top]): Boolean =
+    def in[L <: TxLevel](b: DijkstraTxBody[L])(using BothLevels[L]) =
+      bodies.certs[L](b).exists(bodies.certsOf.getRegPoolTxCert(_).isDefined)
+    in(era.body)(using BothLevels.Top) ||
+    bodies.subTransactions(era.body).toVector.exists(s => in(s.body)(using BothLevels.Sub))
 
-  /** The era decoder against the flat one on `n`: the flat refusal, or the same transaction. The
-    * result counts sub-transactions and the transactions that register a pool.
+  /** The era decoder's reading of a transaction: the transactions read, their sub-transactions and
+    * those that register a pool, and the refusals, each the decoder's.
     */
   private final case class Tally(txs: Int, subs: Int, pools: Int, refused: Int):
     def +(o: Tally): Tally = Tally(txs + o.txs, subs + o.subs, pools + o.pools, refused + o.refused)
 
   private val none = Tally(0, 0, 0, 0)
 
-  private def compare(
-      flat: Either[LedgerDecodeError, FlatTx],
-      era: Either[EraTxError, DijkstraTx[TxLevel.Top]],
-      what: String
-  ): Tally =
-    (flat, era) match
-      case (Left(e), Left(EraTxError.Decode(f))) =>
-        assertEquals(f, e, what)
-        Tally(0, 0, 0, 1)
-      case (Right(f), Right(t)) =>
-        Tally(1, sameTx(t, f, what), if registersPool(f) then 1 else 0, 0)
-      case other => fail(s"$what: $other")
+  private def tallied(era: Either[EraTxError, DijkstraTx[TxLevel.Top]], what: String): Tally =
+    era match
+      case Left(EraTxError.Decode(_)) => Tally(0, 0, 0, 1)
+      case Left(other)                => fail(s"$what: not the decoder's refusal: $other")
+      case Right(t) => Tally(1, checked(t, what), if registersPool(t) then 1 else 0, 0)
 
   // the bytes read as CBOR first, by the one reader both decoders are given, as a block body reads
   // each transaction; bytes that are not one item of CBOR are refused before either decoder
   private def inBlock(raw: Bytes, what: String): Tally =
     CborRead.decode(raw, V12.nestedLimits) match
-      case Right(n) => compare(FlatTx.inBlock(n), DijkstraTx.inBlock(n), what)
+      case Right(n) => tallied(DijkstraTx.inBlock(n), what)
       case Left(_)  => Tally(0, 0, 0, 1)
 
   private def ofBlock(raw: Bytes, what: String): Tally =
     Block.decodeShelley(raw) match
-      case Right(b: Block.Dijkstra) =>
-        b.block.transactions.zipWithIndex
-          .map((t, i) => compare(Right(t), DijkstraTx.inBlock(node(t.raw)), s"$what tx $i"))
+      case Right(_: Block.Dijkstra) =>
+        DijkstraCorpus
+          .blockItems(raw)
+          .zipWithIndex
+          .map((t, i) => inBlock(t, s"$what tx $i"))
           .foldLeft(none)(_ + _)
       case other => fail(s"$what: $other")
 
@@ -679,7 +224,7 @@ class DijkstraTxSuite extends FunSuite:
   }
 
   test(
-    "every transaction of the corpus's accepted Leios blocks reads as the flat decoder reads it"
+    "every transaction of the corpus's accepted Leios blocks is read as recorded"
   ) {
     val blocks = corpus.filter(j => str(j, "kind") == "block")
     val tally = blocks
@@ -691,14 +236,16 @@ class DijkstraTxSuite extends FunSuite:
 
   private def LeiosBlockRead(raw: Bytes, what: String): Tally =
     xyz.kd5ujc.scarab.ledger.LeiosBlock.decode(raw) match
-      case Right(b) =>
-        b.transactions.zipWithIndex
-          .map((t, i) => compare(Right(t), DijkstraTx.inBlock(node(t.raw)), s"$what tx $i"))
+      case Right(_) =>
+        DijkstraCorpus
+          .blockItems(raw)
+          .zipWithIndex
+          .map((t, i) => inBlock(t, s"$what tx $i"))
           .foldLeft(none)(_ + _)
       case Left(_) => none
 
   test(
-    "every transaction of the public Leios testnet's blocks reads as the flat decoder reads it"
+    "every transaction of the public Leios testnet's blocks is read as recorded"
   ) {
     val rows = DijkstraCorpus.testnetBlocks
     assert(rows.nonEmpty)
@@ -708,20 +255,16 @@ class DijkstraTxSuite extends FunSuite:
   }
 
   test(
-    "the devnet chain's Dijkstra transactions and its submitted one read as the flat decoder reads them"
+    "the devnet chain's Dijkstra transactions and its submitted one are read as recorded"
   ) {
     val tally =
       DijkstraCorpus.devnetBlocks.map((name, raw) => ofBlock(raw, name)).foldLeft(none)(_ + _)
     val submitted = DijkstraCorpus.devnetSubmitted
-    val mempool = compare(
-      FlatTx.fromSubmission(submitted),
-      DijkstraTx.fromSubmission(submitted),
-      "the submitted transaction"
-    )
+    val mempool = tallied(DijkstraTx.fromSubmission(submitted), "the submitted transaction")
     assertEquals((tally, mempool), (Tally(1, 0, 0, 0), Tally(1, 0, 0, 0)))
   }
 
-  test("the transactions of the script-context fixtures read as the flat decoder reads them") {
+  test("the transactions of the script-context fixtures are read as recorded") {
     val contexts = DijkstraCorpus.contextCases
       .map(c => inBlock(hex(str(c, "bytes")), str(c, "name")))
       .foldLeft(none)(_ + _)
@@ -746,7 +289,7 @@ class DijkstraTxSuite extends FunSuite:
     // redeemers (whose units `getTotalExUnits` adds at the top level)
     val blocks = DijkstraCorpus.testnetBlocks.flatMap((_, raw) =>
       Block.decodeShelley(raw) match
-        case Right(b: Block.Dijkstra) => b.block.transactions.map(_.raw)
+        case Right(_: Block.Dijkstra) => DijkstraCorpus.blockItems(raw)
         case _                        => Vector.empty
     )
     val read = ((DijkstraCorpus.contextCases ++ DijkstraCorpus.chainContextCases)
@@ -767,7 +310,7 @@ class DijkstraTxSuite extends FunSuite:
   }
 
   test(
-    "the distinct transactions of the reference's UTXOW cases read as the flat decoder reads them"
+    "the distinct transactions of the reference's UTXOW cases are read as recorded"
   ) {
     // `fixtures/reference/dijkstra-rules`: the devnet's transaction and its variants, each a
     // transaction of a block body; 11 of the earlier cases, and the collateral return to a pointer
@@ -777,7 +320,7 @@ class DijkstraTxSuite extends FunSuite:
     assertEquals(tally, Tally(11 + 1, 0, 0, 0))
   }
 
-  test("the transactions of the reference's ENTITIES cases read as the flat decoder reads them") {
+  test("the transactions of the reference's ENTITIES cases are read as recorded") {
     // `fixtures/reference/dijkstra-rules`, the cases of 2026-11-24: 13 transactions of a block body
     // whose bodies withdraw, deposit directly, bound balances or deregister, all accepted by the
     // reference's decoder, which the oracle reads them with
@@ -791,7 +334,7 @@ class DijkstraTxSuite extends FunSuite:
     assertEquals(tally, Tally(13, 0, 0, 0))
   }
 
-  test("the Dijkstra mempool forms of the crossing corpus read as the flat decoder reads them") {
+  test("the Dijkstra mempool forms of the crossing corpus are read as recorded") {
     // `fixtures/reference/dijkstra-crossing`: each Conway transaction the reference carried into
     // Dijkstra, in Dijkstra's mempool form (`toCBORForMempoolSubmission`), as a client or the
     // hard-fork mempool submits it; that form is also the size the reference computes for the fee
@@ -800,31 +343,25 @@ class DijkstraTxSuite extends FunSuite:
       .map { (raw, i) =>
         val era = DijkstraTx.fromSubmission(raw)
         era.foreach(t => assertEquals(t.sizeTxF, raw.size.toLong, s"crossing $i: size"))
-        compare(FlatTx.fromSubmission(raw), era, s"crossing $i")
+        tallied(era, s"crossing $i")
       }
       .foldLeft(none)(_ + _)
-    // all 149 the flat decoder accepts, 9 of them registering a pool
+    // all 149 accepted, 9 of them registering a pool
     assertEquals(forms.size, 149)
     assertEquals(tally, Tally(149, 0, 9, 0))
   }
 
   test("a body and a transaction are made only by the decoders, from what they read from bytes") {
-    // the body projections and the flat witness set's take a proof only the decoders hold
+    // the readers of a body, a witness set and auxiliary data take a proof only the decoders hold
     val proof =
       "No given instance of type xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx.FromBytes was found"
     Vector(
+      compileErrors("def f(n: xyz.kd5ujc.scarab.codec.Node) = DijkstraTxBody.readSub(n)"),
       compileErrors(
-        "def f(b: xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxBody) = DijkstraTxBody.subOf(b)"
+        "def f(n: xyz.kd5ujc.scarab.codec.Node, s: xyz.kd5ujc.scarab.codec.Node => Either[xyz.kd5ujc.scarab.ledger.era.EraTxError, DijkstraTx[TxLevel.Sub]]) = DijkstraTxBody.readTop(n, s)"
       ),
-      compileErrors(
-        "def f(b: xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxBody, s: xyz.kd5ujc.scarab.ledger.era.OMap[Bytes, DijkstraTx[TxLevel.Sub]]) = DijkstraTxBody.topOf(b, s)"
-      ),
-      compileErrors(
-        "def f(w: xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraWitnesses) = DijkstraTxWits.fromFlat(w)"
-      ),
-      compileErrors(
-        "def f(a: xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraAuxData) = DijkstraTxAuxData.fromFlat(a)"
-      )
+      compileErrors("def f(n: xyz.kd5ujc.scarab.codec.Node) = DijkstraTxWits.read(n)"),
+      compileErrors("def f(n: xyz.kd5ujc.scarab.codec.Node) = DijkstraTxAuxData.read(n)")
     ).foreach(e => assert(e.contains(proof), e))
     // nor can the proof, a body or a transaction be made outside the objects that make them
     Vector(
@@ -844,7 +381,7 @@ class DijkstraTxSuite extends FunSuite:
     ).foreach((owner, e) => assert(e.contains(s"can only be accessed from object $owner"), e))
   }
 
-  test("a sub-transaction id given twice is refused with the flat decoder's error") {
+  test("a sub-transaction id given twice is refused with the decoder's error") {
     val cases = corpus.filter(j =>
       Set(
         "tx sub-transactions with one twice",
@@ -855,10 +392,6 @@ class DijkstraTxSuite extends FunSuite:
     assertEquals(cases.size, 2)
     cases.foreach { j =>
       val n = node(hex(str(j, "bytes")))
-      assertEquals(
-        FlatTx.inBlock(n),
-        Left(LedgerDecodeError.DuplicateElement(DecodeField.SubTransactions))
-      )
       assertEquals(
         DijkstraTx.inBlock(n),
         Left(EraTxError.Decode(LedgerDecodeError.DuplicateElement(DecodeField.SubTransactions)))
@@ -934,22 +467,23 @@ class DijkstraTxSuite extends FunSuite:
   }
 
   test(
-    "the cardano-cbor-dataset's Dijkstra witness and auxiliary samples read as the flat decoder reads them"
+    "the cardano-cbor-dataset's Dijkstra witness and auxiliary samples read, their bytes kept"
   ) {
     // `CborDatasetSuite`'s redeemers, indefinite, as key 5 of a witness set: their bytes are kept
     val redeemers = "bf820000829f01ff821903e81b0000000100000000ff"
     val set = hex("a105" + redeemers)
-    val flat = DijkstraWitnesses.decode(node(set)).fold(e => fail(e.toString), identity)
     val era = DijkstraTxWits.decode(node(set)).fold(e => fail(e.toString), identity)
-    sameWits(era, flat, "redeemers")
+    assertEquals(era.raw, set)
+    // one redeemer, of the spending purpose at index 0, with its data and units
+    assertEquals(era.redeemers.entries.size, 1)
     assertEquals(era.redeemers.raw, Some(hex(redeemers)))
     assertEquals(era.datums.raw, None)
     // its auxiliary data with a native script that requires a guard
     val guard = "82068200581c" + "00" * 28
     val aux = hex("82a081" + guard)
-    val flatAux = DijkstraAuxData.decode(node(aux)).fold(e => fail(e.toString), identity)
     val eraAux = DijkstraTxAuxData.decode(node(aux)).fold(e => fail(e.toString), identity)
-    sameAux(eraAux, flatAux, "guard")
+    assertEquals(eraAux.raw, aux)
+    assertEquals(eraAux.metadata.size, 0)
     assertEquals(eraAux.nativeScripts.map(_.raw), Vector(hex(guard)))
   }
 
@@ -957,9 +491,9 @@ class DijkstraTxSuite extends FunSuite:
     val datums = "d9010281d87980"
     val redeemers = "bf82000082d87980820101ff"
     val set = hex(s"a204${datums}05$redeemers")
-    val flat = DijkstraWitnesses.decode(node(set)).fold(e => fail(e.toString), identity)
     val era = DijkstraTxWits.decode(node(set)).fold(e => fail(e.toString), identity)
-    sameWits(era, flat, "tagged and indefinite")
+    assertEquals(era.raw, set)
+    assertEquals(era.redeemers.entries.size, 1)
     assertEquals((era.datums.raw, era.redeemers.raw), (Some(hex(datums)), Some(hex(redeemers))))
     assertEquals(era.datums.datums.values.map(_.originalBytes).toVector, Vector(hex("d87980")))
   }
@@ -969,9 +503,8 @@ class DijkstraTxSuite extends FunSuite:
   ) {
     // the tagged map with Plutus V4 (key 5) before Plutus V1 (key 2)
     val aux = hex("d90103a2058141aa028141bb")
-    val flat = DijkstraAuxData.decode(node(aux)).fold(e => fail(e.toString), identity)
     val era = DijkstraTxAuxData.decode(node(aux)).fold(e => fail(e.toString), identity)
-    sameAux(era, flat, "tagged")
+    assertEquals(era.raw, aux)
     assertEquals(
       era.plutusArrival,
       Vector(PlutusLanguage.V1 -> hex("bb"), PlutusLanguage.V4 -> hex("aa"))

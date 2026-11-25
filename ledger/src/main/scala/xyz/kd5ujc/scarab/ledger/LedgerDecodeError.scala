@@ -153,9 +153,9 @@ object LedgerDecodeError:
   given Show[LedgerDecodeError] = Show.show(repr)
 
   /** The transaction types of Shelley to Conway ([[TxBody]], [[Witnesses]], [[Tx]]) are what the
-    * ledger rules consume, and no rule of Dijkstra exists yet: a Dijkstra transaction is decoded by
-    * [[dijkstra.DijkstraTx]], and read into those types it is refused ([[NotYet]] of the rules).
-    * One of any other era is read on.
+    * ledger rules consume, and no rule of Dijkstra reads them: a Dijkstra transaction is decoded by
+    * Dijkstra's era decoder ([[era.dijkstra.DijkstraTx]]), and read into those types it is refused
+    * ([[NotYet]] of the rules). One of any other era is read on.
     */
   def implemented(era: xyz.kd5ujc.scarab.protocol.Era): Either[LedgerDecodeError, Unit] =
     Either.cond(

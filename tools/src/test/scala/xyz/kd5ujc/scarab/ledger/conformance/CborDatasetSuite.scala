@@ -179,6 +179,23 @@ class CborDatasetSuite extends FunSuite:
       assert(!proposals(empty), s"proposals $empty")
   }
 
+  test("a value the era decoder's bounds rule out is a defect, never a detected invalid sample") {
+    // CNF-2: an invalid sample the decoder refuses only by the node's own defect is not met
+    val era = Refusal.Era(
+      xyz.kd5ujc.scarab.ledger.era.EraTxError.Vocab(
+        xyz.kd5ujc.scarab.ledger.state.VocabError
+          .OutOfRange(xyz.kd5ujc.scarab.ledger.state.VocabError.Kind.Word32, BigInt(-1))
+      )
+    )
+    val rule = DatasetRule("a defective reader", Reach.Direct, Writing.Leaf("Codec.bytes"))(_ =>
+      Left[Refusal, Bytes](era)
+    )(b => Right(b))
+    assertEquals(
+      DatasetCheck.check("defect", Some(rule), Kind.Invalid, hex("00"), None),
+      Outcome.Failed(Category.Decode, s"refused by a defect: ${era.message}")
+    )
+  }
+
   test("a standalone Dijkstra block body is exercised by the selected production block decoder") {
     val body = decoded(DijkstraRules.rules, "block_body")
     assert(body("8380f6f6"), "the selected Leios build reads a three-field empty body")

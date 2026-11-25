@@ -11,24 +11,26 @@ import munit.ScalaCheckSuite
 import org.scalacheck.{Gen, Prop}
 import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{CborRead, LeiosBlock}
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraTx as FlatTx, V12}
-import xyz.kd5ujc.scarab.ledger.era.{EraTxError, TxLevel}
+import xyz.kd5ujc.scarab.ledger.dijkstra.V12
+import xyz.kd5ujc.scarab.ledger.era.{EraTxError, IsPhase2Valid, TxLevel}
 
 import DijkstraCorpus.{hex, str}
 
 /** The era decoder that reads a Dijkstra transaction from its item in one pass
   * ([[DijkstraTx.inBlock]], [[DijkstraTx.fromSubmission]], [[DijkstraTxWits.decode]],
-  * [[DijkstraTxAuxData.decode]]) against the two passes it replaced, the flat block decoder and the
-  * projection of what it read ([[DijkstraTx.inBlockByFlat]] and the others, #85): on every input
-  * the same value, the bytes, ids and sizes it keeps included, or the same refusal. The inputs are
-  * every Dijkstra transaction the repository holds (the recorded chains, the endorser block's
-  * closure, the Leios build's verdicts, the script-context fixtures and the reference's rule and
-  * crossing cases), each also in its mempool form, and mutants of them: bytes cut, flipped or
-  * spliced, and items of the tree duplicated, dropped, emptied, retagged, widened, given an unknown
-  * key or written with an indefinite length. Written cases fix what random mutants reach by chance:
-  * of competing refusals across the parts and within one, the one reported, which both ways must
-  * name; every form of Plutus data a datum or a redeemer can hold, and those refused; and a fault
-  * at each key of a body, a sub-transaction's body, a witness set and auxiliary data.
+  * [[DijkstraTxAuxData.decode]]), against the verdicts the two passes it replaced (the flat block
+  * decoder and the projection of what it read) gave, recorded as exact expected values before they
+  * were deleted ([[DijkstraOnePassExpected]], #85). The inputs are every Dijkstra transaction the
+  * repository holds (the recorded chains, the endorser block's closure, the Leios build's verdicts,
+  * the script-context fixtures and the reference's rule and crossing cases), each also in its
+  * mempool form, and mutants of them: bytes cut, flipped or spliced, and items of the tree
+  * duplicated, dropped, emptied, retagged, widened, given an unknown key or written with an
+  * indefinite length. Every refusal is the decoder's (`EraTxError.Decode`); a transaction read
+  * keeps its item's bytes, reads again from its block form to itself, and reads to the same
+  * transaction in its mempool form. Written cases fix what random mutants reach by chance: of
+  * competing refusals across the parts and within one, the one reported; every form of Plutus data
+  * a datum or a redeemer can hold, and those refused; and a fault at each key of a body, a
+  * sub-transaction's body, a witness set and auxiliary data.
   */
 class DijkstraOnePassSuite extends ScalaCheckSuite:
   override def scalaCheckTestParameters =
@@ -43,8 +45,9 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
       StandardCharsets.UTF_8
     ).linesIterator.map(_.split('\t').toVector).toVector
 
+  // the items of the transactions of a block the block decoder reads
   private def blockTxs(raw: Bytes): Vector[Bytes] =
-    LeiosBlock.decode(raw).toOption.toVector.flatMap(_.transactions.map(_.raw))
+    if LeiosBlock.decode(raw).isRight then DijkstraCorpus.blockItems(raw) else Vector.empty
 
   /** The transactions in their block form, by source. */
   private lazy val sources: Vector[(String, Vector[Bytes])] =
@@ -96,90 +99,89 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
         Some(Bytes.wrap(Array(0x83.toByte)) ++ xs(0).original ++ xs(1).original ++ xs(2).original)
       case _ => None)
 
-  /** What the two ways gave, for the tallies. */
+  /** What the decoder gave, for the tallies. */
   private enum Outcome derives CanEqual:
-    case Accepted, Refused, ProjectionRefused, NotCbor
+    case Accepted, Refused, NotCbor
 
-  // the projection refused what the flat decoder accepted: the one case where the order of the
-  // two passes' refusals could matter
-  private def projectionRefused(n: Node, old: Either[EraTxError, ?]): Boolean =
-    FlatTx.inBlock(n).isRight && old.isLeft
-
-  /** The two ways on a transaction's item in its block form, and on its witness set and auxiliary
-    * data when it has them; the outcome of the transaction.
-    */
-  private def sameInBlock(n: Node, what: String): Outcome =
-    val one = DijkstraTx.inBlock(n)
-    val two = DijkstraTx.inBlockByFlat(n)
-    assertEquals(one, two, what)
-    one.foreach(t => sameKept(t, two, what))
-    n.value match
-      case Value.Arr(xs) if xs.sizeIs >= 3 =>
-        assertEquals(
-          DijkstraTxWits.decode(xs(1)),
-          DijkstraTx.witsByFlat(xs(1)),
-          s"$what: witnesses"
-        )
-        if xs(2).value != Value.Null then
-          assertEquals(
-            DijkstraTxAuxData.decode(xs(2)),
-            DijkstraTx.auxDataByFlat(xs(2)),
-            s"$what: auxiliary data"
-          )
-      case _ => ()
-    if one.isRight then Outcome.Accepted
-    else if projectionRefused(n, two) then Outcome.ProjectionRefused
-    else Outcome.Refused
-
-  /** What equality leaves to the parts' own: the bytes of the block form, the size for the fee, the
-    * id of the body and of each sub-transaction, and the trees of the native scripts, whose
-    * equality is by their bytes' hash.
-    */
-  private def sameKept(
-      t: DijkstraTx[TxLevel.Top],
-      other: Either[EraTxError, DijkstraTx[TxLevel.Top]],
-      what: String
-  ): Unit =
-    other.foreach { o =>
-      assertEquals(DijkstraTx.forBlockInclusion(t), DijkstraTx.forBlockInclusion(o), what)
-      assertEquals(t.sizeTxF, o.sizeTxF, what)
-      assertEquals(t.id, o.id, what)
-      val subs = DijkstraTxBody.topBody(t.body).subTransactions.toVector
-      val otherSubs = DijkstraTxBody.topBody(o.body).subTransactions.toVector
-      assertEquals(subs.map(_.id), otherSubs.map(_.id), what)
-      def trees(x: DijkstraTx[?]) =
-        (x.wits.scripts.values.toVector.flatMap(DijkstraScript.instance.getNativeScript) ++
-          x.auxData.toVector.flatMap(_.nativeScripts)).map(s => (s.raw, s.timelock))
-      assertEquals(trees(t), trees(o), what)
-      assertEquals(subs.map(trees), otherSubs.map(trees), what)
+  // a refusal is the decoder's: no other case of the era's errors comes of bytes
+  private def refusal(r: Either[EraTxError, ?], what: String): Unit =
+    r.left.foreach {
+      case EraTxError.Decode(_) => ()
+      case other                => fail(s"$what: not the decoder's refusal: $other")
     }
 
-  /** The two ways on the bytes of a transaction in its mempool form. */
-  private def sameSubmitted(raw: Bytes, what: String): Outcome =
-    val one = DijkstraTx.fromSubmission(raw)
-    val two = DijkstraTx.fromSubmissionByFlat(raw)
-    assertEquals(one, two, what)
-    one.foreach(t => sameKept(t, two, what))
-    if one.isRight then Outcome.Accepted
-    else if FlatTx.fromSubmission(raw).isRight then Outcome.ProjectionRefused
-    else Outcome.Refused
+  /** A transaction's item in its block form, and its witness set and auxiliary data when it has
+    * them; the outcome of the transaction.
+    */
+  private def readInBlock(n: Node, what: String): Outcome =
+    val read = DijkstraTx.inBlock(n)
+    refusal(read, what)
+    read.foreach { t =>
+      kept(t, n, what)
+      n.value match
+        case Value.Arr(xs) =>
+          assertEquals(DijkstraTxWits.decode(xs(1)), Right(t.wits), s"$what: witnesses")
+          assertEquals(
+            DijkstraTxAuxData.decode(xs(2)).toOption,
+            t.auxData,
+            s"$what: auxiliary data"
+          )
+        case _ => fail(s"$what: read from no list")
+    }
+    if read.isRight then Outcome.Accepted else Outcome.Refused
+
+  /** The bytes of a transaction in its mempool form. */
+  private def readSubmitted(raw: Bytes, what: String): Outcome =
+    val read = DijkstraTx.fromSubmission(raw)
+    refusal(read, what)
+    read.foreach(t => assertEquals(DijkstraTx.isValid(t), IsPhase2Valid.Phase2Valid, what))
+    if read.isRight then Outcome.Accepted else Outcome.Refused
+
+  /** What a transaction read from its item keeps of it: the id is the hash of the body's item; its
+    * block inclusion reads again to the same transaction; and a block form written as a definite
+    * list of four is its block inclusion, its size for the fee the bytes but the flag's. Its
+    * mempool form reads to it, but for the flag.
+    */
+  private def kept(t: DijkstraTx[TxLevel.Top], n: Node, what: String): Unit =
+    n.value match
+      case Value.Arr(xs) if xs.nonEmpty =>
+        assertEquals(t.id, xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(xs(0).original), what)
+        val inclusion = DijkstraTx.forBlockInclusion(t)
+        assertEquals(node(inclusion).map(DijkstraTx.inBlock), Some(Right(t)), s"$what: again")
+        if n.original.byteOr(0)(0)(_ & 0xff) == 0x84 then
+          assertEquals(inclusion, n.original, what)
+          assertEquals(t.sizeTxF, n.original.size - 1L, what)
+        mempoolForm(n.original).foreach(m =>
+          assertEquals(
+            DijkstraTx.fromSubmission(m).map(DijkstraTx.withIsValid(_, DijkstraTx.isValid(t))),
+            Right(t),
+            s"$what: mempool form"
+          )
+        )
+      case _ => fail(s"$what: read from no list")
+
+  // an outcome as the recorded outcomes write it
+  private def letter(o: Outcome): Char = o match
+    case Outcome.Accepted => 'A'
+    case Outcome.Refused  => 'R'
+    case Outcome.NotCbor  => 'N'
 
   private def tally(outcomes: Vector[Outcome]): Map[Outcome, Int] =
     outcomes.groupBy(identity).view.mapValues(_.size).toMap
 
-  test("every recorded Dijkstra transaction reads the same in one pass as in two") {
+  test("every recorded Dijkstra transaction is read, or refused by the decoder") {
     val counts = sources.map { (name, txs) =>
       val outcomes = txs.zipWithIndex.map((raw, i) =>
-        node(raw).fold(Outcome.NotCbor)(n => sameInBlock(n, s"$name $i"))
+        node(raw).fold(Outcome.NotCbor)(n => readInBlock(n, s"$name $i"))
       )
       val mempool = txs.zipWithIndex.flatMap((raw, i) =>
-        mempoolForm(raw).map(sameSubmitted(_, s"$name $i, mempool form"))
+        mempoolForm(raw).map(readSubmitted(_, s"$name $i, mempool form"))
       )
       name -> (tally(outcomes), tally(mempool))
     }.toMap
     val forms = submitted
       .map((name, txs) =>
-        name -> tally(txs.zipWithIndex.map((raw, i) => sameSubmitted(raw, s"$name $i")))
+        name -> tally(txs.zipWithIndex.map((raw, i) => readSubmitted(raw, s"$name $i")))
       )
       .toMap
     import Outcome.*
@@ -206,13 +208,42 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
       forms,
       Map("crossing corpus" -> Map(Accepted -> 149), "devnet submission" -> Map(Accepted -> 1))
     )
-    // no refusal of the projection alone among them
-    assert(
-      !counts.values.exists((a, b) =>
-        a.contains(ProjectionRefused) || b.contains(ProjectionRefused)
-      ),
-      counts.toString
+  }
+
+  test("every recorded Dijkstra transaction reads as recorded") {
+    import DijkstraOnePassExpected.{corpus, corpusMempool, corpusNoMempoolForm, corpusNotCbor}
+    // every transaction but the Leios build's refused ones is accepted in both forms, and keeps
+    // its item's bytes; the refused ones are refused as recorded, each form
+    sources.foreach { (name, txs) =>
+      val recorded = name == "Leios corpus transactions"
+      txs.zipWithIndex.foreach { (raw, i) =>
+        val what = s"$name $i"
+        node(raw) match
+          case None => assert(recorded && corpusNotCbor(i), s"$what: not CBOR")
+          case Some(n) =>
+            assert(!(recorded && corpusNotCbor(i)), what)
+            val read = DijkstraTx.inBlock(n)
+            assertEquals(read.left.toOption, Option.when(recorded)(corpus.get(i)).flatten, what)
+            read.foreach(kept(_, n, what))
+        mempoolForm(raw) match
+          case None => assert(!recorded || corpusNoMempoolForm(i), s"$what: no mempool form")
+          case Some(m) =>
+            assert(!(recorded && corpusNoMempoolForm(i)), what)
+            assertEquals(
+              DijkstraTx.fromSubmission(m).left.toOption,
+              Option.when(recorded)(corpusMempool.get(i).orElse(corpus.get(i))).flatten,
+              s"$what, mempool form"
+            )
+      }
+    }
+    submitted.foreach((name, txs) =>
+      txs.zipWithIndex.foreach((raw, i) =>
+        assert(DijkstraTx.fromSubmission(raw).isRight, s"$name $i")
+      )
     )
+    // the 258 refusals of the corpus, its five items that are not CBOR, and its seven without a
+    // mempool form: the five, a block form of three items and a list of four that is indefinite
+    assertEquals((corpus.size, corpusNotCbor.size, corpusNoMempoolForm.size), (258, 5, 7))
   }
 
   // ---- mutants
@@ -387,14 +418,14 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
       seed <- Gen.long
     yield mutant(seeds(i % seeds.size), seed)
 
-  property("a mutated transaction reads the same in one pass as in two, or is refused the same") {
-    // and the projection never refuses what the flat decoder accepts, on which the order of the
-    // one pass's refusals rests: the two passes found every refusal of the flat decoder first
+  property("a mutated transaction is read and keeps its bytes, or is refused by the decoder") {
+    // read in its block form, as submitted, and in the mempool form of its block form: each refusal
+    // the decoder's, each transaction read what its item holds and the same in both forms
     Prop.forAll(mutants) { (raw, what) =>
-      val outcomes = node(raw).map(sameInBlock(_, what)).toVector ++
-        Vector(sameSubmitted(raw, s"$what, submitted")) ++
-        mempoolForm(raw).map(sameSubmitted(_, s"$what, mempool form")).toVector
-      Prop(!outcomes.contains(Outcome.ProjectionRefused)) :| s"$what: the projection refused"
+      val outcomes = node(raw).map(readInBlock(_, what)).toVector ++
+        Vector(readSubmitted(raw, s"$what, submitted")) ++
+        mempoolForm(raw).map(readSubmitted(_, s"$what, mempool form")).toVector
+      Prop(outcomes.nonEmpty)
     }
   }
 
@@ -402,13 +433,35 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     // a fixed set of mutants, tallied: which parts and keys they changed, and what they gave
     val read = (0 until 6000).map { i =>
       val (raw, part) = mutant(seeds(i % seeds.size), i.toLong * 7919L)
-      (part, node(raw).fold(Outcome.NotCbor)(n => sameInBlock(n, s"mutant $i ($part)")))
+      (part, node(raw).fold(Outcome.NotCbor)(n => readInBlock(n, s"mutant $i ($part)")))
     }
     val outcomes = tally(read.map(_._2).toVector)
     val parts = read.map(_._1).toSet
+    // as recorded: each mutant's outcome and refusal, their tally, and the distinct refusals
+    val recorded = DijkstraOnePassExpected.fixedMutants
+    assertEquals(recorded.length, read.size)
+    read.zipWithIndex.foreach { case ((part, o), i) =>
+      val (raw, _) = mutant(seeds(i % seeds.size), i.toLong * 7919L)
+      val got = DijkstraOnePassExpected.code(node(raw).map(DijkstraTx.inBlock))
+      assertEquals(got.take(1) == "A", o == Outcome.Accepted, s"mutant $i ($part)")
+      assertEquals(got, recorded(i), s"mutant $i ($part)")
+    }
+    assertEquals(
+      outcomes,
+      Map(Outcome.Accepted -> 1589, Outcome.Refused -> 3185, Outcome.NotCbor -> 1226)
+    )
+    assertEquals(
+      read.indices
+        .flatMap(i =>
+          node(mutant(seeds(i % seeds.size), i.toLong * 7919L)._1)
+            .flatMap(DijkstraTx.inBlock(_).left.toOption)
+        )
+        .distinct
+        .size,
+      597
+    )
     assert(outcomes.getOrElse(Outcome.Accepted, 0) > 100, outcomes.toString)
     assert(outcomes.getOrElse(Outcome.Refused, 0) > 1000, outcomes.toString)
-    assert(!outcomes.contains(Outcome.ProjectionRefused), outcomes.toString)
     Vector("part0", "part1", "part2", "part3").foreach(p =>
       assert(parts.exists(_.startsWith(p)), s"no mutant of $p: $parts")
     )
@@ -419,11 +472,11 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
   }
 
   test(
-    "every text written in chunks and every redeemer purpose given twice reads the same both ways"
+    "every text written in chunks and every redeemer purpose given twice reads as recorded"
   ) {
-    // the two kinds of mutant the projection's own readers could refuse otherwise: a text read
-    // again by another reader (a pool's metadata URL, `PoolMetadata.read`), and redeemers of one
-    // purpose with other data and units, of which the last read is kept
+    // the two kinds of mutant a second reading of the item refused otherwise before one pass: a
+    // text read again by another reader (a pool's metadata URL, `PoolMetadata.read`), and
+    // redeemers of one purpose with other data and units, of which the last read is kept
     def chunked(t: String): Bytes =
       val utf8 = Bytes.wrap(t.getBytes(StandardCharsets.UTF_8))
       val cut = utf8.size / 2
@@ -447,12 +500,27 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
       )
     )
     val read = mutants.zipWithIndex.map { case ((kind, raw), i) =>
-      kind -> node(raw).fold(Outcome.NotCbor)(n => sameInBlock(n, s"$kind mutant $i"))
+      kind -> node(raw).fold(Outcome.NotCbor)(n => readInBlock(n, s"$kind mutant $i"))
     }
     val byKind = read.groupBy(_._1).view.mapValues(rs => tally(rs.map(_._2))).toMap
+    // as recorded: each mutant's outcome, in order, its refusal, and their tally
+    assertEquals(read.map((_, o) => letter(o)).mkString, DijkstraOnePassExpected.textMutants)
+    val codes =
+      mutants.map((_, raw) => DijkstraOnePassExpected.code(node(raw).map(DijkstraTx.inBlock)))
+    assertEquals(codes.size, DijkstraOnePassExpected.textMutantCodes.size)
+    codes.zip(DijkstraOnePassExpected.textMutantCodes).zipWithIndex.foreach {
+      case ((got, want), i) =>
+        assertEquals(got, want, s"${mutants(i)._1} mutant $i")
+    }
+    assertEquals(
+      byKind,
+      Map(
+        "redeemers" -> Map(Outcome.Accepted -> 233, Outcome.Refused -> 20),
+        "text" -> Map(Outcome.Accepted -> 66, Outcome.Refused -> 176)
+      )
+    )
     assert(byKind.get("text").exists(_.getOrElse(Outcome.Accepted, 0) > 0), byKind.toString)
     assert(byKind.get("redeemers").exists(_.values.sum > 0), byKind.toString)
-    assert(!read.exists(_._2 == Outcome.ProjectionRefused), byKind.toString)
   }
 
   // ---- deterministic cases, written by hand
@@ -475,8 +543,8 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     val fields = (Map(0 -> arr(), 1 -> arr()) ++ extra).toVector.sortBy(_._1)
     arr(mp(fields.map((k, v) => u(k.toLong) -> v)*), mp(), nul)
 
-  /** Both forms of a transaction, the block's and the mempool's, read both ways: the same result
-    * each way in each form, the two forms' the same; that result.
+  /** Both forms of a transaction, the block's and the mempool's, read: the two forms' the same;
+    * that result.
     */
   private def bothForms(
       b: Bytes,
@@ -486,14 +554,14 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
   ): Either[EraTxError, DijkstraTx[TxLevel.Top]] =
     val block = arr(b, w, aux, yes)
     val n = node(block).getOrElse(fail(s"$what: not CBOR"))
-    sameInBlock(n, what)
-    sameSubmitted(arr(b, w, aux), s"$what, mempool form")
+    readInBlock(n, what)
+    readSubmitted(arr(b, w, aux), s"$what, mempool form")
     val read = DijkstraTx.inBlock(n)
     assertEquals(DijkstraTx.fromSubmission(arr(b, w, aux)).map(_.id), read.map(_.id), what)
     read
 
   test(
-    "of competing refusals in a transaction, the first is reported, as the two passes report it"
+    "of competing refusals in a transaction, the first is reported, as the two passes reported it"
   ) {
     import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError}
     import LedgerDecodeError.{Expected, Shape, UnknownKey}
@@ -564,7 +632,7 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     )
   }
 
-  test("Plutus data of every form, in datums and redeemers, reads the same both ways") {
+  test("Plutus data of every form, in datums and redeemers, reads in both forms") {
     import xyz.kd5ujc.scarab.plutus.PlutusData
     import PlutusData.{B, Constr, I, List as L, Map as M}
     val two64 = BigInt(1) << 64
@@ -652,6 +720,13 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     val values =
       Vector("60", "00", "80", "a0", "f6", "1bffffffffffffffff", "d9010280", "4100", "8100", "8140")
         .map(hex)
+    // the verdicts recorded of each case
+    val expected = Map(
+      "body" -> DijkstraOnePassExpected.body,
+      "sub-transaction's body" -> DijkstraOnePassExpected.subBody,
+      "witness set" -> DijkstraOnePassExpected.wits,
+      "auxiliary data" -> DijkstraOnePassExpected.aux
+    )
     def table(
         what: String,
         keys: Range,
@@ -662,7 +737,9 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
         v <- values
       yield
         val (b, w, aux) = make(k, v)
-        (k, v, bothForms(b, w, aux, s"$what key $k = ${v.hex}"))
+        val read = bothForms(b, w, aux, s"$what key $k = ${v.hex}")
+        assertEquals(read.left.toOption, expected(what)((k, v.hex)), s"$what key $k = ${v.hex}")
+        (k, v, read)
     val tables = Vector(
       "body" -> table("body", 0 to 28, (k, v) => (body(k -> v), mp(), nul)),
       "sub-transaction's body" ->
@@ -692,6 +769,16 @@ class DijkstraOnePassSuite extends ScalaCheckSuite:
     val counts = tables.map((what, rows) =>
       what -> tally(rows.map(r => if r._3.isRight then Outcome.Accepted else Outcome.Refused))
     )
-    // both outcomes in every part
+    // both outcomes in every part, and every case recorded
     counts.foreach((what, c) => assert(c.size == 2, s"$what: $c"))
+    assertEquals(
+      counts.toMap,
+      Map(
+        "body" -> Map(Outcome.Accepted -> 17, Outcome.Refused -> 273),
+        "sub-transaction's body" -> Map(Outcome.Accepted -> 13, Outcome.Refused -> 277),
+        "witness set" -> Map(Outcome.Accepted -> 6, Outcome.Refused -> 94),
+        "auxiliary data" -> Map(Outcome.Accepted -> 10, Outcome.Refused -> 60)
+      )
+    )
+    assertEquals(expected.values.map(_.size).sum, 750)
   }

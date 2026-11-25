@@ -338,8 +338,10 @@ decoders and does not predict the node's.
 copy of each byte string), and a quarter the outputs, which Dijkstra's output reader reads with the flat output decoder
 and then walks again for the value's size and the reference script; both are shared with other readers. Replacing cats'
 `traverse` of a `Vector` (through `Chain` and `Eval`) with a loop cut the allocation by a tenth and the time by nothing
-measurable, so it was not kept. The ranking block's transactions (`DijkstraTx.ofBlock`) are still projected from the
-flat ones `LeiosBlock` holds.
+measurable, so it was not kept. The ranking block's transactions (`DijkstraTx.ofBlock`) were then still projected
+from the flat ones `LeiosBlock` held; since 2026-11-25 (#85) `LeiosBlock` reads them in one pass too, and the two
+passes and the flat decoder's transaction are gone.
 
 **Repeat.** `tools/runMain xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraDecodeBench 30 20 4` from the checkout's
-root, on a build of each commit; in one build it also times the two passes (`inBlockByFlat`).
+root, on a build of each commit; the two passes (`inBlockByFlat`) were timed in the build measured, and are gone since
+(#85).

@@ -12,7 +12,6 @@ import xyz.kd5ujc.scarab.ledger.dijkstra.{
   DijkstraDelegatee,
   DijkstraGenesis,
   DijkstraPoolMetadata,
-  DijkstraPurposes,
   Params,
   V12
 }
@@ -149,7 +148,6 @@ class DijkstraTxCertSuite extends FunSuite:
         case DijkstraTxCert.DijkstraTxCertDeleg(_) | DijkstraTxCert.DijkstraTxCertGov(_) =>
           Some(hex(s))
       assertEquals(c.getScriptWitnessTxCert(cert), expected, h)
-      assertEquals(DijkstraPurposes.certificateScript(flat), expected, h)
     }
   }
 

@@ -228,7 +228,7 @@
     "DijkstraCodecsSuite",
     "CborDatasetSuite"
    ],
-   "digest": "4122d44cfd7d3c7b"
+   "digest": "2a4536d20e4fc565"
   },
   "val storage.haskell.state.DijkstraCodecs.proposal": {
    "upstream": [

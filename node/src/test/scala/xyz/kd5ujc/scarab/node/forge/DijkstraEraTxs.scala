@@ -3,7 +3,6 @@ package xyz.kd5ujc.scarab.node.forge
 
 import munit.Assertions.fail
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx as FlatDijkstraTx
 import xyz.kd5ujc.scarab.ledger.era.{Tx, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraBlock, DijkstraTx}
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
@@ -29,8 +28,3 @@ object DijkstraEraTxs:
         e => fail(s"not CBOR: $e"),
         n => DijkstraTx.inBlock(n).fold(e => fail(s"the era's decoder refuses it: $e"), identity)
       )
-
-  /** The transaction the flat block decoder read from a block body, read again by the era's decoder
-    * from the same bytes.
-    */
-  def of(flat: FlatDijkstraTx)(using munit.Location): Tx[TxLevel.Top, Dijkstra] = inBlock(flat.raw)

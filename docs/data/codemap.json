@@ -640,9 +640,9 @@
     {
       "module": "ledger",
       "path": "ledger/dijkstra",
-      "responsibility": "Decoding of Dijkstra transactions at decoder version 12, in the block and the mempool form, as the Leios testnet's build reads them",
+      "responsibility": "The readers at decoder version 12 that Dijkstra's era decoder and the stored state's codecs share (a body's fields, a witness set's key witnesses, outputs, certificates, governance), and Dijkstra's genesis and parameters",
       "entryPoints": [
-        "DijkstraTx",
+        "DijkstraBodyReaders",
         "V12"
       ],
       "suites": [
@@ -1521,7 +1521,7 @@
     {
       "module": "tools",
       "path": "ledger/era/dijkstra",
-      "responsibility": "Hand-run benchmarks for the `ledger.era.dijkstra` package (its package, for its package-private access): an endorser block's closure read into Dijkstra's types in one pass against two",
+      "responsibility": "Hand-run benchmarks for the `ledger.era.dijkstra` package (its package, for its package-private access): an endorser block's closure and the recorded ranking blocks read into Dijkstra's types in one pass",
       "entryPoints": [
         "DijkstraDecodeBench"
       ],

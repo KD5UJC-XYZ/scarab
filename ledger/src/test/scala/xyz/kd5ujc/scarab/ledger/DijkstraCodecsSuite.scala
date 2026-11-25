@@ -5,7 +5,12 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraLevel, DijkstraTx, DijkstraVoting}
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraVoting
+import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTxBody, EraTxError, IsPhase2Valid, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.{
+  DijkstraTx as EraDijkstraTx,
+  DijkstraTxBody as DijkstraTxBodyOf
+}
 import xyz.kd5ujc.scarab.protocol.{DijkstraNotYet, Era}
 
 /** The block, header and transaction readers of the node on the Conway to Dijkstra chain of the
@@ -151,9 +156,9 @@ class DijkstraCodecsSuite extends munit.FunSuite:
   }
 
   test("the submitted transaction is the block's: same id, body and witnesses, valid") {
-    val tx = DijkstraTx.fromSubmission(submitted).fold(e => fail(e.message), identity)
+    val tx = EraDijkstraTx.fromSubmission(submitted).fold(e => fail(e.toString), identity)
     assertEquals(tx.id.hex, txId)
-    assertEquals(tx.isValid, true)
+    assertEquals(EraDijkstraTx.isValid(tx), IsPhase2Valid.Phase2Valid)
     val inBlock = blocks
       .filter(_.tag == 8)
       .flatMap(dijkstra(_).block.transactions)
@@ -161,13 +166,13 @@ class DijkstraCodecsSuite extends munit.FunSuite:
     assertEquals(inBlock.size, 1)
     val t = inBlock(0)
     assertEquals(t.body.raw, tx.body.raw)
-    assertEquals(t.witnesses.raw, tx.witnesses.raw)
-    assertEquals(t.auxiliary, tx.auxiliary)
-    assertEquals(t.isValid, true)
+    assertEquals(t.wits.raw, tx.wits.raw)
+    assertEquals(t.auxData, tx.auxData)
+    assertEquals(EraDijkstraTx.isValid(t), IsPhase2Valid.Phase2Valid)
     // the mempool form's parts, as the generic envelope reader splits them
     assertEquals(
       Tx.envelopeParts(node(submitted), Era.Dijkstra),
-      Right(Block.Transaction(t.body.raw, t.witnesses.raw, None, true))
+      Right(Block.Transaction(t.body.raw, t.wits.raw, None, true))
     )
   }
 
@@ -178,35 +183,43 @@ class DijkstraCodecsSuite extends munit.FunSuite:
 
   private def array(xs: Node*): Bytes = encode(Value.Arr(xs.toVector))
 
+  // the era decoder's reading, its refusal the decoder's error
+  private def decoded[A](r: Either[EraTxError, A]): Either[LedgerDecodeError, A] = r.left.map {
+    case EraTxError.Decode(e) => e
+    case other                => fail(s"not the decoder's refusal: $other")
+  }
+  private def fromSubmission(b: Bytes) = decoded(EraDijkstraTx.fromSubmission(b))
+  private def inBlockOf(n: Node) = decoded(EraDijkstraTx.inBlock(n))
+
   test("the mempool form takes a flag only as a boolean third item, and only `true`") {
     val Vector(body, witnesses, aux) = parts: @unchecked
     val t = item(Value.Bool(true))
     val f = item(Value.Bool(false))
     assertEquals(
-      DijkstraTx.fromSubmission(array(body, witnesses, t, aux)).map(_.id.hex),
+      fromSubmission(array(body, witnesses, t, aux)).map(_.id.hex),
       Right(txId)
     )
     assertEquals(
-      DijkstraTx.fromSubmission(array(body, witnesses, f, aux)),
+      fromSubmission(array(body, witnesses, f, aux)),
       Left(LedgerDecodeError.InvalidFlagSubmitted)
     )
     // the block form, flag last, is not the mempool form
     assertEquals(
-      DijkstraTx.fromSubmission(array(body, witnesses, aux, t)),
+      fromSubmission(array(body, witnesses, aux, t)),
       Left(LedgerDecodeError.ArrayLength(DecodeField.Transaction, 3, 4))
     )
     assertEquals(
-      DijkstraTx.fromSubmission(array(body, witnesses, t)),
+      fromSubmission(array(body, witnesses, t)),
       Left(LedgerDecodeError.ArrayLength(DecodeField.Transaction, 4, 3))
     )
     assertEquals(
-      DijkstraTx.fromSubmission(array(body, witnesses)),
+      fromSubmission(array(body, witnesses)),
       Left(LedgerDecodeError.ArrayLength(DecodeField.Transaction, 3, 2))
     )
     // the block form requires the flag last, and may say `false`
     val inBlock = node(array(body, witnesses, aux, f))
-    assertEquals(DijkstraTx.inBlock(inBlock).map(_.isValid), Right(false))
-    assert(DijkstraTx.inBlock(node(submitted)) match {
+    assertEquals(inBlockOf(inBlock).map(EraDijkstraTx.isValid), Right(IsPhase2Valid.Phase2Invalid))
+    assert(inBlockOf(node(submitted)) match {
       case Left(LedgerDecodeError.ArrayLength(DecodeField.Transaction, _, _)) => true
       case _                                                                  => false
     })
@@ -227,8 +240,15 @@ class DijkstraCodecsSuite extends munit.FunSuite:
     }
     node(encode(Value.Map(changed.map((k, v) => item(Value.UInt(k)) -> v))))
 
-  private def top(n: Node) = DijkstraTx.body(n, DijkstraLevel.Top)
-  private def sub(n: Node) = DijkstraTx.body(n, DijkstraLevel.Sub)
+  // a body read by the era decoder at each level: at the top, as a transaction's with an empty
+  // witness set; at the sub-transaction level, as the one sub-transaction of a minimal top-level
+  // body (keys 0, 1, 2 and 23), whose fields before it refuse nothing
+  private def top(n: Node): Either[LedgerDecodeError, DijkstraTxBodyOf[TxLevel.Top]] =
+    inBlockOf(node(hex("84") ++ n.original ++ hex("a0f6f5"))).map(_.body)
+  private def sub(n: Node): Either[LedgerDecodeError, DijkstraTxBodyOf[TxLevel.Sub]] =
+    inBlockOf(node(hex("84a4008001800200178183") ++ n.original ++ hex("a0f6a0f6f5"))).map(t =>
+      EraTxBody.dijkstra.subTransactions(t.body).toVector.head.body
+    )
   private val empty = Value.Arr(Vector.empty)
 
   test("a body refuses a missing required field, a key of the other level and an unknown key") {
@@ -294,7 +314,11 @@ class DijkstraCodecsSuite extends munit.FunSuite:
       top(body(22 -> Some(Value.UInt(0)))),
       Left(LedgerDecodeError.Zero(DecodeField.Donation))
     )
-    assertEquals(top(body(22 -> Some(Value.UInt(1)))).map(_.donation), Right(BigInt(1)))
+    assertEquals(
+      top(body(22 -> Some(Value.UInt(1))))
+        .map(EraTxBody.dijkstra.treasuryDonation[TxLevel.Top](_)(using BothLevels.Top).value),
+      Right(BigInt(1))
+    )
   }
 
   test("a body refuses an input twice in its set") {

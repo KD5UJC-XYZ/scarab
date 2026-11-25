@@ -8,7 +8,6 @@ import xyz.kd5ujc.scarab.crypto.bls.Certificate
 import xyz.kd5ujc.scarab.ledger.{LeiosBlock, LeiosHeader, TestLedger}
 import xyz.kd5ujc.scarab.ledger.era.{BothLevels, EraTx, Tx, TxLevel}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxMeasures
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.Capacity
@@ -30,9 +29,6 @@ class DijkstraSelectionSuite extends munit.FunSuite:
       .map(_.split('\t'))
       .collectFirst { case r if r(0) == name => hex(r(5)) }
       .getOrElse(fail(s"no block $name"))
-
-  private lazy val block: LeiosBlock =
-    LeiosBlock.decode(recorded("announcing-with-txs")).fold(e => fail(e.message), identity)
 
   /** The block's transactions, read by the era's block decoder. */
   private lazy val txs: Vector[Tx[TxLevel.Top, Dijkstra]] =
@@ -107,7 +103,11 @@ class DijkstraSelectionSuite extends munit.FunSuite:
   }
 
   test("the measure: sizeTxF and the overhead, every redeemer's units, the given script bytes") {
-    txs.zip(block.transactions).foreach { (tx, flat) =>
+    // the block's transactions as it holds them: the size is the item's, less the flag's byte
+    val items = xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus
+      .blockItems(recorded("announcing-with-txs"))
+    assertEquals(items.size, txs.size)
+    txs.zip(items).foreach { (tx, item) =>
       val m = Capacity.dijkstraMeasure(tx, 7L)
       assertEquals(m.bytes, DijkstraTx.forBlockInclusion(tx).size.toLong - 1 + 4, tx.id.hex)
       assertEquals(
@@ -115,9 +115,7 @@ class DijkstraSelectionSuite extends munit.FunSuite:
         EraTx.dijkstra.getTotalExUnits[TxLevel.Top](tx)(using BothLevels.Top)
       )
       assertEquals(m.refScriptsBytes, 7L)
-      // the flat transaction's measure the forger took until #85: its size and its units
-      assertEquals(m.bytes, flat.size + 4, tx.id.hex)
-      assertEquals(ExUnits(m.exUnitsMemory, m.exUnitsSteps), DijkstraTxMeasures.totalExUnits(flat))
+      assertEquals(m.bytes, item.size.toLong - 1 + 4, tx.id.hex)
     }
   }
 

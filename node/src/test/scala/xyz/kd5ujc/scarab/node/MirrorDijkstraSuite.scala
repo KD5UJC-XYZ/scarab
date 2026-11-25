@@ -842,10 +842,10 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
       // 400, the first of epoch 2, while the parent is in epoch 1
       val parent = states(37)
       val (_, raw37) = devnetChain(37)
-      val flatTx = LeiosBlock.decode(raw37).fold(e => fail(e.message), _.transactions) match
+      // the transaction's item, as the block holds it
+      val tx = xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.blockItems(raw37) match
         case Vector(t) => t
         case other     => fail(s"not one transaction: ${other.size}")
-      val tx = flatTx.raw
       val txHash = LeiosTxHash.fromBytes(Blake2b.hash256.hash(tx))
       val block = certifying(BigInt(400), signedOver(devnetChain(36)._1.hash), parent = 36)
       val pre = preOf(parent, true)
@@ -854,7 +854,7 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
       val spent = MirrorDijkstra.inputs(Vector(eraTx))
       def utxo(nes: EraNes) = nes match
         case i: EraNes.InEra[e] => i.nes.es.ls.utxo.utxo.utxo
-      val created = TxIn(flatTx.id, 0)
+      val created = TxIn(eraTx.id, 0)
       val applied = MirrorDijkstra.certified(
         MirrorDijkstra.envOf(
           parent,
@@ -891,10 +891,11 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
       // the parent is block 36's state, in epoch 1; the certifying block is at slot 400, the first of
       // epoch 2, so its tick crosses Dijkstra's epoch boundary
       val parent = states(37)
-      val flatTx =
-        LeiosBlock.decode(devnetChain(37)._2).fold(e => fail(e.message), _.transactions) match
+      val item =
+        xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.blockItems(devnetChain(37)._2) match
           case Vector(t) => t
           case other     => fail(s"not one transaction: ${other.size}")
+      val eraTx = DijkstraClosure.deserializeTxForLeios(item).fold(e => fail(e.toString), identity)
       val cert = signedOver(devnetChain(36)._1.hash)
       val block = certifying(BigInt(400), cert, parent = 36)
       val pre = preOf(parent, true)
@@ -903,7 +904,7 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
         cert -> certification(
           pre,
           block,
-          h => Option.when(h == eb)(Vector(LeiosTxHash.fromBytes(flatTx.id) -> flatTx.raw))
+          h => Option.when(h == eb)(Vector(LeiosTxHash.fromBytes(eraTx.id) -> item))
         )
       )
       val env = MirrorDijkstra.envOf(
@@ -934,7 +935,7 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
       // the closure's fee is in the fees the boundary's SNAP took when the closure came first, and
       // not when it came after the tick; the UTxO state's fees hold it either way, as the boundary
       // leaves them to the reward update
-      val fee = flatTx.body.fee.getOrElse(fail("no fee"))
+      val fee = xyz.kd5ujc.scarab.ledger.era.EraTxBody.dijkstra.fee(eraTx.body).value
       assert(fee > 0, "a fee")
       assertEquals(mirrored.es.snapshots.fee.value - mutant.nes.es.snapshots.fee.value, fee)
       assertEquals(mutant.nes.es.ls.utxo.fees, mirrored.es.ls.utxo.fees)
@@ -953,13 +954,17 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
             case other => fail(s"not the Leios layout: $other")
         case other => fail(s"not a Shelley-based state: $other")
       val sizes = (34 to 41).map { i =>
-        LeiosBlock.decode(devnetChain(i - 1)._2).fold(e => fail(e.message), _.transactions)
+        val raw = devnetChain(i - 1)._2
+        LeiosBlock
+          .decode(raw)
+          .fold(
+            e => fail(e.message),
+            _ => xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.blockItems(raw)
+          )
       }
       (34 to 41).zip(sizes).foreach { (i, txs) =>
         val gained = txs
-          .map(t =>
-            DijkstraClosure.deserializeTxForLeios(t.raw).fold(e => fail(e.toString), identity)
-          )
+          .map(t => DijkstraClosure.deserializeTxForLeios(t).fold(e => fail(e.toString), identity))
         assertEquals(
           bytes(states(i)) - bytes(states(i - 1)),
           BigInt(DijkstraClosure.closureTxBytes(gained).bits),
@@ -979,7 +984,7 @@ class MirrorDijkstraSuite extends CatsEffectSuite:
       val closureBytes = DijkstraClosure.closureTxBytes(
         Vector(
           DijkstraClosure
-            .deserializeTxForLeios(sizes(4).headOption.getOrElse(fail("no transaction")).raw)
+            .deserializeTxForLeios(sizes(4).headOption.getOrElse(fail("no transaction")))
             .fold(e => fail(e.toString), identity)
         )
       )

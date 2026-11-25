@@ -2,9 +2,10 @@
 package xyz.kd5ujc.scarab.node.mempool
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{DetachedRecords, Tx}
-import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTx as FlatDijkstraTx
+import xyz.kd5ujc.scarab.ledger.era.EraTxError
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTx as EraDijkstraTx
 import xyz.kd5ujc.scarab.protocol.{Era, ProtocolError, ReferenceBuild, TxSubmission2}
 
 /** The transactions of each Shelley-based era as the node-to-node transaction submission reads
@@ -68,11 +69,12 @@ object RelayedTransactions extends TxSubmission2.TransactionReader:
 
   /** The reader of the selected build (REF-3): the Leios build's reads a Dijkstra transaction with
     * the decoder of its mempool form (`decodeDijkstraTopTx`, cardano-ledger 9df9f98c
-    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:146-169`, as the flat decoder that
-    * decides what the era refuses reads it, [[FlatDijkstraTx.fromSubmission]]), its id the hash of
-    * the body read; the release builds', whose node never enters Dijkstra, are this one. The
-    * transaction's projection into the era's types is the mempool's ([[MempoolState.read]]), where
-    * a failure of the node's own readings is no verdict and charges no peer.
+    * `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs:146-169`, as the era's decoder reads it
+    * in one pass, [[EraDijkstraTx.submitted]]), its id the hash of the body read; the release
+    * builds', whose node never enters Dijkstra, are this one. The decoder's refusal is the codec's;
+    * a value its own bounds rule out is the node's failure, no verdict of the codec, and the
+    * mempool, which reads the transaction again ([[MempoolState.read]]), meets it with no verdict
+    * and charges no peer.
     */
   def of(build: ReferenceBuild): TxSubmission2.TransactionReader = build match
     case ReferenceBuild.Release11_1 | ReferenceBuild.Release11_2 => this
@@ -96,10 +98,25 @@ object RelayedTransactions extends TxSubmission2.TransactionReader:
           .decode(original, limits)
           .leftMap(ProtocolError.Codec(_))
           .flatMap(n =>
-            FlatDijkstraTx
-              .submitted(n)
-              .bimap(ProtocolError.UndecodableTransaction(_), _.body.raw)
+            EraDijkstraTx.submitted(n) match
+              case Right(tx) => Right(tx.body.raw)
+              case Left(EraTxError.Decode(cause)) =>
+                Left(ProtocolError.UndecodableTransaction(cause))
+              case Left(
+                    EraTxError.NotInEra(_) | EraTxError.NoDelegatee | EraTxError.Vocab(_) |
+                    EraTxError.PParams(_) | EraTxError.ScriptsReadAgain | EraTxError.OtherLevel |
+                    EraTxError.WitnessDataReadAgain | EraTxError.StoredOutputDiffers |
+                    EraTxError.TranslationReadBack(_)
+                  ) =>
+                bodyOf(n)
           )
       case Era.Byron | Era.Shelley | Era.Allegra | Era.Mary | Era.Alonzo | Era.Babbage |
           Era.Conway =>
         RelayedTransactions.read(original, era)
+
+    // The body's item of a transaction the decoder read past its shape: the first of its list,
+    // which the decoder read as a body before the value its bounds rule out.
+    private def bodyOf(n: Node): Either[ProtocolError, Bytes] = n.value match
+      case Value.Arr(xs) =>
+        xs.headOption.map(_.original).toRight(ProtocolError.ExpectedConwayTransactionMembers)
+      case _ => Left(ProtocolError.ExpectedConwayTransactionMembers)

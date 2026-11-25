@@ -5,7 +5,8 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
-import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraBlock
+import xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraBlock, DijkstraTx}
 import xyz.kd5ujc.scarab.protocol.HfcHeader
 
 /** The encoders of a Dijkstra block ([[LeiosHeaderBody.encode]], [[LeiosHeader.signed]],
@@ -157,13 +158,18 @@ class LeiosEncodingSuite extends munit.FunSuite:
     def counts(label: String) =
       blocks
         .collectFirst { case (`label`, raw) => decodedBlock(label, raw).transactions }
-        .map(ts => (ts.size, ts.count(_.auxiliary.isDefined)))
+        .map(ts => (ts.size, ts.count(_.auxData.isDefined)))
     // 40 transactions: a list longer than 23, written indefinite; 18 of them with auxiliary data
     assertEquals(counts("rc-2026w44 announcing-with-txs"), Some((40, 18)))
     // the devnet's one transaction
     assertEquals(counts("devnet 37"), Some((1, 0)))
     // the block bodies hold no transaction marked invalid: that flag's byte is not covered here
-    assert(blocks.forall((label, raw) => decodedBlock(label, raw).transactions.forall(_.isValid)))
+    assert(
+      blocks.forall((label, raw) =>
+        decodedBlock(label, raw).transactions
+          .forall(t => DijkstraTx.isValid(t) == IsPhase2Valid.Phase2Valid)
+      )
+    )
   }
 
   test("the minimal body: no transactions and no certificates, the 4 bytes of the first block") {

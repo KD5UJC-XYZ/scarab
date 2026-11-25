@@ -9,17 +9,18 @@ import java.util.zip.GZIPInputStream
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
 import xyz.kd5ujc.scarab.ledger.CborRead
 
-/** Development tool: what reading an endorser block's closure into Dijkstra's types costs
-  * (`deserializeTxForLeios`, [[xyz.kd5ujc.scarab.ledger.era.rules.DijkstraClosure]]), the era
-  * decoder in one pass ([[DijkstraTx.inBlock]]) against the two it replaced, the flat block
-  * decoder's transaction and its projection ([[DijkstraTx.inBlockByFlat]]), #85. The closure is the
+/** Development tool: what reading Dijkstra transactions into the era's types costs, in one pass
+  * ([[DijkstraTx.inBlock]], #85): an endorser block's closure (`deserializeTxForLeios`,
+  * [[xyz.kd5ujc.scarab.ledger.era.rules.DijkstraClosure]]), and the ranking blocks that hold
+  * transactions ([[DijkstraBlock.decode]], whose block decoder reads them). The closure is the
   * recorded one of the public Leios testnet's endorser block at slot 1,455,869
   * (`fixtures/leios/testnet/eb-1455869.tsv.gz`, 323 transactions), repeated to `copies` times its
-  * size (1,292 transactions at the default 4), and each transaction is read whole from its bytes,
-  * the CBOR decode included, as the closure reads it. After `warm-up` rounds that are not kept,
-  * each round times one closure with each decoder, the two alternated in their order round by
-  * round, with the thread's allocation counted; the medians and ranges are printed. Every
-  * transaction is first checked to read to the same value both ways.
+  * size (1,292 transactions at the default 4), each transaction read whole from its bytes, the CBOR
+  * decode included, as the closure reads it; the blocks are the recorded Dijkstra blocks of the
+  * testnet and the devnet chain (`fixtures/leios/testnet/blocks-rc-2026w44.tsv`,
+  * `fixtures/dijkstra-devnet/blocks.tsv`), repeated likewise. After `warm-up` rounds that are not
+  * kept, each round times each workload once, the two alternated in their order round by round,
+  * with the thread's allocation counted; the medians and ranges are printed.
   *
   * `tools/runMain xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraDecodeBench [rounds] [warm-up]
   * [copies]` from the checkout's root (40 rounds, 20 warm-up rounds and 4 copies when not given).
@@ -53,7 +54,24 @@ object DijkstraDecodeBench:
       case Left(e)  => e
 
   private val onePass: Bytes => AnyRef = read(DijkstraTx.inBlock)
-  private val twoPass: Bytes => AnyRef = read(DijkstraTx.inBlockByFlat)
+  private val block: Bytes => AnyRef = DijkstraBlock.decode(_)
+
+  /** The recorded Dijkstra blocks of the testnet and the devnet chain: a TSV's hex column of the
+    * rows `keep` takes, after the header.
+    */
+  private def blocks: Vector[Bytes] =
+    def column(path: String, keep: Array[String] => Boolean, at: Int): Vector[Bytes] =
+      Files
+        .readAllLines(Path.of(path))
+        .toArray(Array.empty[String])
+        .toVector
+        .drop(1)
+        .filterNot(l => l.isEmpty || l.startsWith("#"))
+        .map(_.split('\t'))
+        .filter(keep)
+        .flatMap(p => Bytes.fromHex(p(at)).toOption)
+    column("fixtures/leios/testnet/blocks-rc-2026w44.tsv", _ => true, 5) ++
+      column("fixtures/dijkstra-devnet/blocks.tsv", _(0) == "8", 4)
 
   private def run(inputs: Vector[Bytes])(f: Bytes => AnyRef): Sample =
     val before = bean.getCurrentThreadAllocatedBytes
@@ -81,31 +99,36 @@ object DijkstraDecodeBench:
     val copies = args.lift(2).flatMap(_.toIntOption).getOrElse(4)
     val one = closure
     val inputs = Vector.fill(copies)(one).flatten
-    val differ = one.count(raw => onePass(raw) != twoPass(raw))
+    val recorded = blocks
+    val blockInputs = Vector.fill(copies)(recorded).flatten
     val refused = one.count(raw =>
-      twoPass(raw) match
+      onePass(raw) match
+        case Right(_) => false
+        case _        => true
+    )
+    val unread = recorded.count(raw =>
+      block(raw) match
         case Right(_) => false
         case _        => true
     )
     println(
-      s"closure: ${one.size} transactions, ${one.map(_.size.toLong).sum} bytes, timed ${inputs.size} a round; $refused refused, $differ read differently"
+      s"closure: ${one.size} transactions, ${one.map(_.size.toLong).sum} bytes, timed ${inputs.size} a round; $refused refused"
+    )
+    println(
+      s"blocks: ${recorded.size} blocks, ${recorded.map(_.size.toLong).sum} bytes, timed ${blockInputs.size} a round; $unread refused"
     )
     println(
       s"jvm ${System.getProperty("java.vm.version")}, processors ${Runtime.getRuntime.availableProcessors}, rounds $rounds, warm-up $warmUp"
     )
-    (0 until warmUp).foreach(_ => (run(inputs)(onePass), run(inputs)(twoPass)))
+    (0 until warmUp).foreach(_ => (run(inputs)(onePass), run(blockInputs)(block)))
     val samples = (0 until rounds).map { r =>
       if r % 2 == 0 then
         val a = run(inputs)(onePass)
-        (a, run(inputs)(twoPass))
+        (a, run(blockInputs)(block))
       else
-        val b = run(inputs)(twoPass)
+        val b = run(blockInputs)(block)
         (run(inputs)(onePass), b)
     }
-    report("one pass", samples.map(_._1))
-    report("two passes", samples.map(_._2))
-    val ratios = samples.map((a, b) => b.ns.toDouble / a.ns.toDouble).sorted
-    println(
-      f"RESULT two passes / one pass: median ${ratios(ratios.size / 2)}%.2f, range ${ratios.head}%.2f to ${ratios.last}%.2f"
-    )
+    report("closure", samples.map(_._1))
+    report("blocks", samples.map(_._2))
     if sink == null then println("no result")

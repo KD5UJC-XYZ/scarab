@@ -49,9 +49,9 @@ object Block:
       )
 
   /** A Dijkstra block, tag 8: the Leios header and the body `[transactions, leios_cert / nil,
-    * peras_cert / nil]` of the build the Leios testnet runs ([[LeiosBlock]]), each transaction
-    * decoded whole ([[dijkstra.DijkstraTx]]). The header is its [[LeiosHeader.dijkstraView]]. No
-    * ledger rule of Dijkstra consumes it yet (#54).
+    * peras_cert / nil]` of the build the Leios testnet runs ([[LeiosBlock]]), each transaction read
+    * whole in one pass into Dijkstra's types ([[era.dijkstra.DijkstraTx.inBlock]]). The header is
+    * its [[LeiosHeader.dijkstraView]]. No ledger rule of Dijkstra consumes it yet (#54).
     */
   final case class Dijkstra(block: LeiosBlock) extends Block:
     def era: Era = Era.Dijkstra

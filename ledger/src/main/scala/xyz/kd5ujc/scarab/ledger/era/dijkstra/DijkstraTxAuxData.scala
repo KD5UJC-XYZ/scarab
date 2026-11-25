@@ -5,14 +5,9 @@ import scala.annotation.unused
 import scala.collection.immutable.SortedMap
 import cats.data.NonEmptyVector
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value}
-import xyz.kd5ujc.scarab.ledger.{CborRead, DecodeField, LedgerDecodeError, Metadatum, Unsigned}
-import xyz.kd5ujc.scarab.ledger.dijkstra.{
-  DijkstraAuxData,
-  DijkstraLanguage as FlatLanguage,
-  Sparse,
-  V12
-}
+import xyz.kd5ujc.scarab.codec.{Node, Value}
+import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError, Metadatum, Unsigned}
+import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraLanguage as FlatLanguage, Sparse, V12}
 import xyz.kd5ujc.scarab.ledger.era.{AlonzoEraTxAuxData, AlonzoTxAuxDataRep, EraTxError}
 import xyz.kd5ujc.scarab.ledger.state.Dijkstra
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
@@ -34,35 +29,10 @@ object DijkstraTxAuxData extends AlonzoTxAuxDataRep.Fields[DijkstraTxAuxData, Di
 
   private given Ordering[Unsigned[Unsigned.Width.W64]] = Ordering.by(_.value)
 
-  /** Dijkstra's auxiliary data read as the Leios build's block decoder reads it
-    * ([[DijkstraAuxData.decode]], which decides what is refused), projected to Dijkstra's types.
+  /** Dijkstra's auxiliary data read from its item into Dijkstra's types, as the Leios build's block
+    * decoder reads it ([[read]]).
     */
   def decode(n: Node): Either[EraTxError, DijkstraTxAuxData] = DijkstraTx.auxDataOf(n)
-
-  /** The auxiliary data the flat decoder read, which decided its form and what is refused, in
-    * Dijkstra's types: each metadatum read from the bytes the decoder kept of it, each native
-    * script from its bytes, each level with its own, and the Plutus scripts per language. The
-    * scripts arrive in the order the decoder lists them, the native ones first and then the Plutus
-    * ones by language (`decodeTxAuxDataByTokenType`, `Alonzo/TxAuxData.hs:302-313`, cardano-ledger
-    * 9df9f98c), which is the order of the reference's `Map Language`.
-    */
-  private[dijkstra] def fromFlat(flat: DijkstraAuxData)(using
-      @unused proof: DijkstraTx.FromBytes
-  ): Either[EraTxError, DijkstraTxAuxData] =
-    (
-      flat.metadata.traverse(metadatum),
-      flat.scripts.traverse(DijkstraTxWits.script)
-    ).mapN { (metadata, scripts) =>
-      val s = DijkstraScript.instance
-      val natives = scripts.flatMap(s.getNativeScript)
-      val plutus = scripts.flatMap(s.toPlutusScript).map(p => p.language -> p.binary)
-      val byLanguage = SortedMap.from(
-        plutus
-          .groupBy(_._1)
-          .flatMap((language, ps) => NonEmptyVector.fromVector(ps.map(_._2)).map(language -> _))
-      )
-      AlonzoTxAuxDataRep(flat.raw, SortedMap.from(metadata), natives, byLanguage, plutus)
-    }.leftMap(EraTxError.Decode(_))
 
   // The keys of the tagged form (`decodeAlonzo`, `Alonzo/TxAuxData.hs:258-300`, cardano-ledger
   // 9df9f98c), made once.
@@ -71,11 +41,10 @@ object DijkstraTxAuxData extends AlonzoTxAuxDataRep.Fields[DijkstraTxAuxData, Di
   /** `DecCBOR (Annotator (AlonzoTxAuxDataRaw era))` at version 12
     * (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs:214-313`, cardano-ledger 9df9f98c),
     * read from the item straight into Dijkstra's types: chosen by the first token as the Leios
-    * build's block decoder chooses ([[DijkstraAuxData.decode]]), with its refusals, a map of
-    * metadata alone, a list of metadata and native scripts, or the tag 259 over a sparse map of
-    * metadata (0), native scripts (1) and Plutus V1 to V4 scripts (2 to 5). Each metadatum is read
-    * once, from the item, by [[Metadatum.read]], which refuses what the flat decoder's metadatum
-    * refuses with the same errors, and each native script by Dijkstra's reader, likewise.
+    * build's block decoder chooses, with its refusals, a map of metadata alone, a list of metadata
+    * and native scripts, or the tag 259 over a sparse map of metadata (0), native scripts (1) and
+    * Plutus V1 to V4 scripts (2 to 5). Each metadatum is read once, from the item, by
+    * [[Metadatum.read]], and each native script by Dijkstra's reader.
     */
   private[dijkstra] def read(n: Node)(using
       @unused proof: DijkstraTx.FromBytes
@@ -156,20 +125,6 @@ object DijkstraTxAuxData extends AlonzoTxAuxDataRep.Fields[DijkstraTxAuxData, Di
             .tupleRight(m)
         )
       )
-
-  // A metadatum the flat decoder read, its label a `Word64` and its value read from its bytes.
-  private def metadatum(
-      entry: (BigInt, Bytes)
-  ): Either[LedgerDecodeError, (Unsigned[Unsigned.Width.W64], Metadatum)] =
-    val (label, bytes) = entry
-    (
-      Unsigned
-        .from[Unsigned.Width.W64](label)
-        .toRight(
-          LedgerDecodeError.NumberOutOfRange(DecodeField.MetadataLabel, label, 0, V12.Word64Max)
-        ),
-      CborRead.decode(bytes, V12.nestedLimits).flatMap(Metadatum.read(_, true))
-    ).tupled
 
   /** `EraTxAuxData`, `AllegraEraTxAuxData` and `AlonzoEraTxAuxData DijkstraEra`
     * (`TxAuxData.hs:20-42`, cardano-ledger 9df9f98c): Alonzo's lenses and validation.
