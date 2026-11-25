@@ -55,8 +55,12 @@ object LocalSubmission:
   /** A refusal by the flat rules that this build cannot write: one of `failures` has no encoding in
     * the ledger's era `era` ([[PreConwayFailureCbor]]), or the pool's ledger is not of an era whose
     * rules refuse with the flat failures (Conway's and Dijkstra's refuse in their era's types,
-    * [[Rejection.ConwayRefused]] and [[Rejection.DijkstraRefused]]), or there is none. There is no
-    * free-text failure before Conway to send instead, so there is no reply.
+    * [[Rejection.ConwayRefused]] and [[Rejection.DijkstraRefused]], and no encoder of the flat
+    * failures in Conway remains since the flat MEMPOOL went, #85), or there is none. There is no
+    * free-text failure before Conway to send instead, so there is no reply. Only a ledger from
+    * Shelley to Babbage refuses with the flat failures, so the second case arises on no node path;
+    * the flat refusal does not carry its era in its type, which would rule it out (#85, item
+    * 7124654870).
     */
   final case class NoEncoding(era: Option[Era], failures: Vector[PredicateFailure])
       extends DomainError:
@@ -223,8 +227,8 @@ object LocalSubmission:
     * `Conway.hs:50-53`, cardano-ledger f649f975). A failure the reference has no constructor for
     * ([[ConwayFailureCbor.NoReferenceEncoding]]: a context error of the node's own, a pool
     * registration that does not read as the reference's) is sent in its place as Conway's free-text
-    * `ConwayMempoolFailure` of it ([[MempoolProblem.ConwayRule]]), as the flat encoder sent such a
-    * failure (#85).
+    * `ConwayMempoolFailure` of it ([[MempoolProblem.ConwayRule]]), as the flat rules' encoder, gone
+    * since, sent such a failure (#85).
     */
   private def conwayRefusal(
       failures: NonEmptyList[ConwayLedgerPredFailure[Conway]]

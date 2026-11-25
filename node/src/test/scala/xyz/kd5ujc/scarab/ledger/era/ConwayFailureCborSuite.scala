@@ -354,8 +354,8 @@ class ConwayFailureCborSuite extends FunSuite:
     )
     encodes(ConwayTreasuryValueMismatch(Mismatch(Coin(1), Coin(BigInt("18446744073709551615")))))
     // a `Coin` is an `Integer`, written by `encodeInteger` (`Coin.hs:93-106`, cardano-ledger
-    // f649f975): past 64 bits a bignum, tag 2 over the magnitude, where the flat form's writer
-    // has no encoding; [6 era, [[5, expected, supplied]]]
+    // f649f975): past 64 bits a bignum, tag 2 over the magnitude; [6 era, [[5, expected,
+    // supplied]]]
     assertEquals(
       direct(ConwayTreasuryValueMismatch(Mismatch(Coin(1), Coin(BigInt("18446744073709551616"))))),
       "81" + "8206" + "81" + "8305" + "c249010000000000000000" + "01"
@@ -785,7 +785,7 @@ class ConwayFailureCborSuite extends FunSuite:
   ) {
     // `EncCBOR MaryValue` (`Mary/Value.hs:342-350`) and `EncCBOR ExUnits` (`Plutus/ExUnits.hs:192-193`,
     // cardano-ledger f649f975) write `Integer`s and `Natural`s by `encodeInteger`: 2^64 is the bignum
-    // `c2 49 01 00..00`, where the flat form's writers keep its low 64 bits
+    // `c2 49 01 00..00`
     val big = BigInt(1) << 64
     val bignum = "c249010000000000000000"
     val consumed = MultiAssetValue.of(

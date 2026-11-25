@@ -73,7 +73,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, NodeOrders, 
   *
   * A failure has no bytes ([[Unencodable]]) where the reference has no constructor for what the
   * node holds ([[NoReferenceEncoding]]), or where a script's failure cannot be described
-  * ([[RefusalPresentationError]]), as the flat encoder's.
+  * ([[RefusalPresentationError]]).
   */
 object ConwayFailureCbor:
   import FailureCbor.{
@@ -105,8 +105,8 @@ object ConwayFailureCbor:
 
   /** What the reference has no constructor for: a context error of the node's own, or of a build
     * whose Conway never raises it, and a pool registration's relays or metadata that do not read as
-    * the reference's types. The flat encoder sends such a failure as `ConwayMempoolFailure` 's text
-    * of the flat failure, which the era's failure has no form for.
+    * the reference's types. Local submission sends such a failure as `ConwayMempoolFailure` 's text
+    * of it ([[MempoolProblem.ConwayRule]]).
     */
   enum NoReferenceEncoding extends DomainError:
     /** `Undecodable` (the node's own), a time past the horizon whose cause is not the clock's
