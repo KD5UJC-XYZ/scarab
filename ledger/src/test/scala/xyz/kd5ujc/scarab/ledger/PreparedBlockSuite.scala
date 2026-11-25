@@ -6,6 +6,10 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.rules.EraBlock
 import xyz.kd5ujc.scarab.plutus.*
 
+/** The flat body's preparation (`EraBlock.Body`, the eras before Conway) on Babbage blocks of
+  * [[PreparedBlockFixture]]: the prepared plan lands the serial run's state, counters and
+  * observations. Conway's era run is prepared in `ConwayBbodySuite` and `ConwayBbodyImpSuite`.
+  */
 class PreparedBlockSuite extends FunSuite:
   private val passing = TestLedger.scripted(true)
   private val failure: ScriptEvaluator[Id] = _ =>
@@ -139,12 +143,4 @@ class PreparedBlockSuite extends FunSuite:
       case _                                                                     => false
     })
     check(failure, PreparedBlockFixture.collectionFailure)
-  }
-
-  test("the pre-Conway BBODY path also retains full state and counters") {
-    val body = PreparedBlockFixture.babbage(passing)
-    val plan = body.prepare
-    assertEquals(plan.jobs.size, 3)
-    assertEquals(plan.resolve(plan.jobs.reverse.map(plan.execute)), Right(body.serial))
-    assert(body.serial.isInstanceOf[EraBlock.Outcome.Applied])
   }

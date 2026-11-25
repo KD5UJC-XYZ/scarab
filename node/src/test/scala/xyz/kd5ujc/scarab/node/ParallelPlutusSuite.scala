@@ -278,51 +278,49 @@ class ParallelPlutusSuite extends FailsOnUncaught:
     import xyz.kd5ujc.scarab.plutus.ExUnits
     // the three transactions declare 10,000 memory units each: the block may hold one's
     val limit = ExUnits(10000, 10000000)
-    val bodies: Vector[(String, (ScriptEvaluator[Id], ExUnits) => EraBlock.Body)] = Vector(
-      "conway" -> ((e, units) => PreparedBlockFixture.body(e, maxBlockExUnits = units)),
-      "babbage" -> ((e, units) => PreparedBlockFixture.babbage(e, units))
-    )
+    // the flat body is Babbage's (the eras before Conway); Conway's era run past the units is
+    // `ConwayBbodySuite`'s
+    def bodyOf(e: ScriptEvaluator[Id], units: ExUnits): EraBlock.Body =
+      PreparedBlockFixture.body(e, maxBlockExUnits = units)
     // the scripts passing, as flagged, BBODY refuses the block after LEDGERS for its units; the
     // scripts failing though flagged valid, LEDGERS stops at the first and no later script is run
     val cases = Vector((true, 3), (false, 1))
-    bodies.traverse_ { (era, bodyOf) =>
-      cases.traverse_ { (passing, evaluated) =>
-        val what = s"$era, scripts passing $passing"
-        val evaluator = TestLedger.scripted(passing)
-        // within the units, the body is prepared, every script a job
-        val within = bodyOf(evaluator, PreparedBlockFixture.params.maxBlockExUnits)
-        assert(within.preparable, what)
-        assertEquals(within.prepare.jobs.size, 3, what)
-        val over = bodyOf(evaluator, limit)
-        assert(!over.preparable && !over.worthwhile, what)
-        assertEquals(over.prepare.jobs, Vector.empty, what)
-        val serialRuns = CountingEvaluator(evaluator)
-        val serial = bodyOf(serialRuns, limit).serial
-        assertEquals(serialRuns.count, evaluated, what)
-        // its plan, prepared directly, has the serial run's outcome
-        assertEquals(bodyOf(evaluator, limit).prepare.resolve(Vector.empty), Right(serial), what)
-        if passing then
-          assertEquals(
-            serial,
-            EraBlock.Outcome.Refused(
-              xyz.kd5ujc.scarab.ledger.BlockFailure.BlockExUnitsTooBig(
-                ExUnits(30000, 30000000),
-                limit
-              )
-            ),
-            what
-          )
-        Vector(1, 2, 4, 8).traverse_ { n =>
-          val runs = CountingEvaluator(evaluator)
-          // not prepared even where every preparable body is
-          ParallelPlutus
-            .create[IO](workers(n))
-            .flatMap(_(AlwaysPrepared(bodyOf(runs, limit))))
-            .map { result =>
-              assertEquals(result, serial, s"$what at $n workers")
-              assertEquals(runs.count, serialRuns.count, s"$what at $n workers")
-            }
-        }
+    cases.traverse_ { (passing, evaluated) =>
+      val what = s"scripts passing $passing"
+      val evaluator = TestLedger.scripted(passing)
+      // within the units, the body is prepared, every script a job
+      val within = bodyOf(evaluator, PreparedBlockFixture.params.maxBlockExUnits)
+      assert(within.preparable, what)
+      assertEquals(within.prepare.jobs.size, 3, what)
+      val over = bodyOf(evaluator, limit)
+      assert(!over.preparable && !over.worthwhile, what)
+      assertEquals(over.prepare.jobs, Vector.empty, what)
+      val serialRuns = CountingEvaluator(evaluator)
+      val serial = bodyOf(serialRuns, limit).serial
+      assertEquals(serialRuns.count, evaluated, what)
+      // its plan, prepared directly, has the serial run's outcome
+      assertEquals(bodyOf(evaluator, limit).prepare.resolve(Vector.empty), Right(serial), what)
+      if passing then
+        assertEquals(
+          serial,
+          EraBlock.Outcome.Refused(
+            xyz.kd5ujc.scarab.ledger.BlockFailure.BlockExUnitsTooBig(
+              ExUnits(30000, 30000000),
+              limit
+            )
+          ),
+          what
+        )
+      Vector(1, 2, 4, 8).traverse_ { n =>
+        val runs = CountingEvaluator(evaluator)
+        // not prepared even where every preparable body is
+        ParallelPlutus
+          .create[IO](workers(n))
+          .flatMap(_(AlwaysPrepared(bodyOf(runs, limit))))
+          .map { result =>
+            assertEquals(result, serial, s"$what at $n workers")
+            assertEquals(runs.count, serialRuns.count, s"$what at $n workers")
+          }
       }
     }
   }

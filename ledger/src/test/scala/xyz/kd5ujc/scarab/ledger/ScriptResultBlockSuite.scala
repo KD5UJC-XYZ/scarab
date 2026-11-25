@@ -13,6 +13,10 @@ import xyz.kd5ujc.scarab.protocol.Era
 
 /** Synthetic BBODY controls use newly signed independent funded inputs. They do not turn the
   * API-derived oracle transactions into signed reference-admission evidence.
+  *
+  * The blocks are Babbage's, on the flat body (`EraBlock.Body`, the eras before Conway), so the
+  * cases are the Plutus V1 and V2 ones; Conway's blocks, where Plutus V3 runs, are the era run's,
+  * whose prepared landing `ConwayBbodySuite` and `ConwayBbodyImpSuite` check.
   */
 class ScriptResultBlockSuite extends FunSuite:
   import ContextReferenceCases.{field, Recorded}
@@ -22,7 +26,7 @@ class ScriptResultBlockSuite extends FunSuite:
       .asArray
       .getOrElse(fail("not an array"))
       .map(Recorded(_))
-      .filter(_.name.startsWith("api-"))
+      .filter(r => r.name.startsWith("api-v1-") || r.name.startsWith("api-v2-"))
   private val owner = TestLedger.key()
 
   private def body(
@@ -32,6 +36,7 @@ class ScriptResultBlockSuite extends FunSuite:
       seen: Phase2.Observation => Unit
   ): EraBlock.Body =
     val pp = recorded.params.copy(
+      protocolMajor = 8,
       minFeeA = 0,
       minFeeB = 0,
       coinsPerUTxOByte = 0,
@@ -50,27 +55,26 @@ class ScriptResultBlockSuite extends FunSuite:
       val witnesses = recorded.tx.witnesses.copy(vkeys = Vector.empty, raw = None)
       val unsigned = TestLedger.tx(b, Vector.empty, witnesses, valid)
       val integrity =
-        ScriptIntegrity.hash(unsigned, pp, recorded.tx.witnesses.scripts.map(_.kind).toSet)(using
-          TestLedger.usualEra((pp).protocolMajor.toInt)
-        )
+        ScriptIntegrity.hash[Babbage](unsigned, pp, recorded.tx.witnesses.scripts.map(_.kind).toSet)
       TestLedger.tx(b.copy(scriptDataHash = integrity), Vector(owner), witnesses, valid)
     }
     val utxo = Utxo.empty ++ transactions.flatMap(t =>
       (t.body.inputs ++ t.body.collateral).map(_ -> TestLedger.out(owner.address(), 10000000))
     )
     val initial =
-      NewEpochState.empty[Conway](EpochNo.fromBigInt(5).fold(e => fail(e.toString), identity), pp)
+      NewEpochState.empty[Babbage](EpochNo.fromBigInt(5).fold(e => fail(e.toString), identity), pp)
     val state: EraNes = EraNes.InEra(
-      ShelleyBasedEra.SConway,
-      initial.copy(es =
-        initial.es.copy(ls =
-          initial.es.ls.copy(utxo = initial.es.ls.utxo.copy(utxo = UtxoTables(utxo)))
+      ShelleyBasedEra.SBabbage,
+      initial.copy[Babbage](es =
+        initial.es.copy[Babbage](ls =
+          initial.es.ls
+            .copy[Babbage](utxo = initial.es.ls.utxo.copy[Babbage](utxo = UtxoTables(utxo)))
         )
       )
     )
-    val header = PreparedBlockFixture.header
+    val header = PreparedBlockFixture.babbageHeader
     val block = Block.Shelley(
-      Era.Conway,
+      Era.Babbage,
       header,
       transactions.map(t => Block.Transaction(t.body.raw, Bytes.empty, None, t.isValid)),
       100,

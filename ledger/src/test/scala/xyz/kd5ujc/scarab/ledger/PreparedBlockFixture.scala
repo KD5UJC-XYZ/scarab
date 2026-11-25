@@ -10,7 +10,9 @@ import xyz.kd5ujc.scarab.plutus.*
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Full BBODY fixture with independent, funded script spends and real script admission/context
-  * collection. The injected evaluator controls only phase 2, not the ordinary ledger checks.
+  * collection, on the flat body of Babbage (`EraBlock.Body`, the eras before Conway; Conway's
+  * blocks are the era run's, `ConwayBlockRun`). The injected evaluator controls only phase 2, not
+  * the ordinary ledger checks.
   */
 object PreparedBlockFixture:
   private val recorded = PlutusCase.load(Path.of("fixtures/preprod/plutus/tx-2edd684f.json"))
@@ -26,7 +28,7 @@ object PreparedBlockFixture:
     .out(address, 10000000)
     .copy(datum = Datum.Inline(Bytes(Vector(0))))
   val params = recorded.params.copy(
-    protocolMajor = 10,
+    protocolMajor = 8,
     minFeeA = 0,
     minFeeB = 0,
     coinsPerUTxOByte = 0,
@@ -46,13 +48,11 @@ object PreparedBlockFixture:
       collateral = Vector(TestLedger.txIn(i * 2 + 1))
     )
     val unsigned = TestLedger.tx(b, Vector.empty, witnesses)
-    val integrity = ScriptIntegrity.hash[Conway](unsigned, params, Set(script.kind))
+    val integrity = ScriptIntegrity.hash[Babbage](unsigned, params, Set(script.kind))
     TestLedger.tx(b.copy(scriptDataHash = integrity), Vector(owner), witnesses)
   }
-  private def resign[E <: EraTag](tx: Tx, pp: ProtocolParams = params)(using
-      ShelleyBasedEra[E]
-  ): Tx =
-    val integrity = ScriptIntegrity.hash[E](tx, pp, Set(script.kind))
+  private def resign(tx: Tx): Tx =
+    val integrity = ScriptIntegrity.hash[Babbage](tx, params, Set(script.kind))
     TestLedger.tx(
       tx.body.copy(scriptDataHash = integrity),
       Vector(owner),
@@ -61,12 +61,12 @@ object PreparedBlockFixture:
     )
 
   val dependent: Vector[Tx] =
-    val first = resign[Conway](
+    val first = resign(
       txs(0).copy(body =
         txs(0).body.copy(outputs = Vector(scriptOutput.copy(value = Value.coin(9000000))))
       )
     )
-    val second = resign[Conway](
+    val second = resign(
       txs(1).copy(body =
         txs(1).body.copy(
           inputs = Vector(TxIn(first.body.id, 0)),
@@ -81,18 +81,16 @@ object PreparedBlockFixture:
       tx.body.collateral.map(_ -> TestLedger.out(owner.address(), 10000000))
   )
 
-  /** The fixture's Conway state, its parameters `pp`. */
-  private def conwayState(pp: ProtocolParams): EraNes =
-    val initial = NewEpochState.empty[Conway](EpochNo.fromBigInt(5).toOption.get, pp)
-    EraNes.InEra(
-      ShelleyBasedEra.SConway,
-      initial.copy(es =
-        initial.es.copy(ls =
-          initial.es.ls.copy(utxo = initial.es.ls.utxo.copy(utxo = UtxoTables(utxo)))
-        )
+  /** The fixture's Babbage state, its parameters `pp`. */
+  private def babbageState(pp: ProtocolParams): NewEpochState[Babbage] =
+    val initial = NewEpochState.empty[Babbage](EpochNo.fromBigInt(5).toOption.get, pp)
+    initial.copy[Babbage](es =
+      initial.es.copy[Babbage](ls =
+        initial.es.ls
+          .copy[Babbage](utxo = initial.es.ls.utxo.copy[Babbage](utxo = UtxoTables(utxo)))
       )
     )
-  val state: EraNes = conwayState(params)
+  val state: EraNes = EraNes.InEra(ShelleyBasedEra.SBabbage, babbageState(params))
   private val empty = Bytes.empty
   val header = Header.Shelley(
     Era.Conway,
@@ -111,6 +109,10 @@ object PreparedBlockFixture:
     (10, 0),
     empty
   )
+
+  /** A Babbage block's header, of the fixture's version. */
+  val babbageHeader: Header.Shelley = header.copy(era = Era.Babbage, protocolVersion = (8, 0))
+
   def body(
       evaluator: ScriptEvaluator[Id],
       transactions: Vector[Tx] = txs,
@@ -121,8 +123,8 @@ object PreparedBlockFixture:
       maxBlockExUnits: ExUnits = params.maxBlockExUnits
   ): EraBlock.Body =
     val block = Block.Shelley(
-      Era.Conway,
-      header,
+      Era.Babbage,
+      babbageHeader,
       transactions.map(tx => Block.Transaction(tx.body.raw, Bytes.empty, None, tx.isValid)),
       100,
       empty
@@ -137,8 +139,11 @@ object PreparedBlockFixture:
       verdicts = verdicts
     )
     EraBlock.program(ctx)(
-      conwayState(params.copy(maxBlockExUnits = maxBlockExUnits)),
-      header,
+      EraNes.InEra(
+        ShelleyBasedEra.SBabbage,
+        babbageState(params.copy(maxBlockExUnits = maxBlockExUnits))
+      ),
+      babbageHeader,
       block,
       transactions.map(Right(_)),
       PlutusStats.zero
@@ -146,49 +151,10 @@ object PreparedBlockFixture:
 
   val collectionFailure: Vector[Tx] = txs.updated(
     1,
-    resign[Conway](
+    resign(
       txs(1).copy(witnesses =
         txs(1).witnesses
           .copy(redeemers = txs(1).witnesses.redeemers.map(_.copy(data = Bytes.empty)))
       )
     )
   )
-
-  def babbage(
-      evaluator: ScriptEvaluator[Id],
-      maxBlockExUnits: ExUnits = params.maxBlockExUnits
-  ): EraBlock.Body =
-    val pp = params.copy(protocolMajor = 8)
-    val transactions = txs.map(resign[Babbage](_, pp))
-    val emptyState = NewEpochState.empty[Babbage](
-      EpochNo.fromBigInt(5).toOption.get,
-      pp.copy(maxBlockExUnits = maxBlockExUnits)
-    )
-    val from = emptyState.copy[Babbage](es =
-      emptyState.es.copy[Babbage](ls =
-        emptyState.es.ls
-          .copy[Babbage](utxo = emptyState.es.ls.utxo.copy[Babbage](utxo = UtxoTables(utxo)))
-      )
-    )
-    val h = header.copy(era = Era.Babbage, protocolVersion = (8, 0))
-    val block = Block.Shelley(
-      Era.Babbage,
-      h,
-      transactions.map(tx => Block.Transaction(tx.body.raw, Bytes.empty, None, tx.isValid)),
-      100,
-      empty
-    )
-    val ctx = EraBlock.Context(
-      TestLedger.globals,
-      _ => None,
-      0L,
-      evaluator = evaluator,
-      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
-    )
-    EraBlock.program(ctx)(
-      EraNes.InEra(ShelleyBasedEra.SBabbage, from),
-      h,
-      block,
-      transactions.map(Right(_)),
-      PlutusStats.zero
-    )
