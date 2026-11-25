@@ -9,7 +9,6 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{PosixClock, StorageError}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.{
-  Capacity,
   ConwayAdmitted,
   ConwayPoolEnv,
   ConwayPoolLedger,
@@ -101,6 +100,6 @@ object ConwaySnapshots:
         )
         (kept, withheld) = judged
       yield ConwaySnapshot(
-        kept.map((entry, admitted) => ConwayHeld(admitted, Capacity.measure(entry))),
+        kept.map((entry, admitted) => ConwayHeld(admitted, entry.measure)),
         withheld.map((entry, reason) => entry.id -> reason).toMap
       )

@@ -233,6 +233,13 @@ final case class Entry(
       Some(LeiosEb.hashTx(bytes) -> bytes)
     case Held.Flat(_, _, _) | Held.InConway(_) => None
 
+  /** What it counts for against the pool's capacity ([[Capacity.measure]]), computed once, as the
+    * reference keeps a transaction's measure in its ticket (`txTicketSize`, ouroboros-consensus
+    * 2416493b
+    * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Mempool/TxSeq.hs:62-69`).
+    */
+  lazy val measure: TxMeasure = Capacity.measure(this)
+
 object Entry:
   /** A held transaction of an era from Shelley to Babbage. */
   def apply(
@@ -324,10 +331,19 @@ object DijkstraRevalidation:
   * synchronised with, in the era of that slot ([[PoolLedger]]). `tipSlot` is -1 at Origin, making
   * its successor slot zero. Every operation is a pure function; [[Mempool]] serialises them.
   *
-  * The entries, their bytes and their Leios index change together, in one step of
-  * [[MempoolState.appended]], [[MempoolState.cleared]] or [[MempoolState.retaining]]; the
-  * constructor and `copy` are private, so no state has an index that is not its entries' keys.
+  * The entries, their bytes, their measures' sum, their ids and their Leios index change together,
+  * in one step of [[MempoolState.appended]], [[MempoolState.cleared]] or
+  * [[MempoolState.retaining]]; the constructor and `copy` are private, so no state has a sum or an
+  * index that is not its entries'.
   *
+  * @param used
+  *   What the held transactions count for, the sum of their measures ([[Entry.measure]]), kept as
+  *   they are added and removed, as the reference's sequence caches its measure (`toSize` of
+  *   `isTxs`, ouroboros-consensus 2416493b `Mempool/TxSeq.hs:115-124,287-288`), so that admission
+  *   does not measure every held transaction again.
+  * @param ids
+  *   The held transactions' ids (`isTxIds`, `Mempool/Impl/Common.hs:131-137` at 2416493b), kept in
+  *   step with the entries.
   * @param leiosTxIndex
   *   The held transactions by the hash an endorser block lists them by, with their bytes as it
   *   lists them (`isLeiosTxIndex`, ouroboros-consensus 2416493b `Mempool/Impl/Common.hs:138-144`,
@@ -349,6 +365,8 @@ final case class MempoolState private (
     current: Either[ConwayView.Unavailable, PoolLedger],
     entries: Vector[Entry],
     bytes: Long,
+    used: TxMeasure,
+    ids: Set[Bytes],
     leiosTxIndex: Map[LeiosTxHash, Bytes],
     nextTicket: Long,
     capacityOverride: Option[Word32],
@@ -374,9 +392,6 @@ final case class MempoolState private (
   def capacity: TxMeasure =
     base.fold(_ => TxMeasure.zero, l => Capacity.of(l, capacityOverride))
 
-  /** What the held transactions count for, the sum of their measures. */
-  def used: TxMeasure = entries.foldLeft(TxMeasure.zero)(_ + Capacity.measure(_))
-
   /** The capacity left, in each component. */
   def free: TxMeasure =
     import Capacity.-
@@ -389,7 +404,7 @@ final case class MempoolState private (
     import Capacity.fits
     Either.cond(needed.fits(free), (), Rejection.Full(needed, free))
 
-  def contains(id: Bytes): Boolean = entries.exists(_.id == id)
+  def contains(id: Bytes): Boolean = ids.contains(id)
 
   /** The pool's own revalidated Dijkstra transactions as the snapshot of `slot` on the chain whose
     * tip's hash is `tip`, when they are that snapshot already (`getSnapshotFor` 's cache,
@@ -424,20 +439,28 @@ final case class MempoolState private (
         Option.when(slot == judgedAt || cheapTick)(held)
     }
 
-  /** `entry` held after the others: the entries, their bytes and the Leios index in one step
-    * (`validateNewTransaction`'s `isTxs` and `isLeiosTxIndex`, `Mempool/Impl/Common.hs:490-501` at
-    * ouroboros-consensus 2416493b).
+  /** `entry` held after the others: the entries, their bytes, their measures' sum, their ids and
+    * the Leios index in one step (`validateNewTransaction`'s `isTxs`, `isTxIds` and
+    * `isLeiosTxIndex`, `Mempool/Impl/Common.hs:490-501` at ouroboros-consensus 2416493b).
     */
   private def appended(entry: Entry): MempoolState =
     copy(
       entries = entries :+ entry,
       bytes = bytes + entry.size,
+      used = used + entry.measure,
+      ids = ids + entry.id,
       leiosTxIndex = entry.leiosTx.fold(leiosTxIndex)(leiosTxIndex + _)
     )
 
-  /** Nothing held: no entry, no bytes and an empty index. */
+  /** Nothing held: no entry, no bytes, nothing used, no id and an empty index. */
   private def cleared: MempoolState =
-    copy(entries = Vector.empty, bytes = 0, leiosTxIndex = Map.empty)
+    copy(
+      entries = Vector.empty,
+      bytes = 0,
+      used = TxMeasure.zero,
+      ids = Set.empty,
+      leiosTxIndex = Map.empty
+    )
 
   /** The entries `keep` holds, in order, with their bytes and their keys alone. */
   private def retaining(keep: Entry => Boolean): MempoolState =
@@ -723,6 +746,8 @@ object MempoolState:
       ledger,
       Vector.empty,
       0L,
+      TxMeasure.zero,
+      Set.empty,
       Map.empty,
       1L,
       capacityOverride,
