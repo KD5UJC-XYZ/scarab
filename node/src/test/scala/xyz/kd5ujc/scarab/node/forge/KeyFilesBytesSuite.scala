@@ -122,11 +122,11 @@ class KeyFilesBytesSuite extends munit.ScalaCheckSuite:
         List("type" -> typeValue, "description" -> description, "cborHex" -> cborValue)
       )
       order <- Gen.oneOf(true, false)
+      // the fourth and fifth alternatives are duplicates that conflict: another type, another key's bytes
       extra <- Gen.frequency(
         6 -> Gen.const(Nil),
         1 -> Gen.const(List("type" -> quoted(typ, escape = false))),
         1 -> Gen.const(List("cborHex" -> cborValue)),
-        // duplicates that conflict: another type, another key's bytes
         1 -> Gen
           .oneOf(KeyFiles.OpCertType, KeyFiles.VrfSigningKeyType, KeyFiles.KesSigningKeyType)
           .map(other => List("type" -> quoted(other, escape = false))),
