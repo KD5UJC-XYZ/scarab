@@ -287,14 +287,10 @@ class V1ContextSuite extends FunSuite:
       BbodySignal(Vector(c.tx), issuer, commitment, commitment)
     )
 
-  private def conwayBlock(c: PlutusCase): Either[BlockFailure, ?] =
+  /** A block of the transaction on Conway's era run, as the node applies Conway blocks. */
+  private def conwayBlock(c: PlutusCase): Either[?, ?] =
     val nes = Build.funded(Build.nes[Conway](5, c.params), utxoOf(c))
-    Sts(Bbody)(
-      globals,
-      BbodyEnv(TestLedger.env, c.params, Coin.zero),
-      BbodyState(Build.counted(nes), BlocksMade.empty),
-      BbodySignal(Vector(c.tx), issuer, commitment, commitment)
-    )
+    era.conway.ConwayTestKit.eraBbody(nes, c.tx, TestLedger.env)
 
   recorded.foreach { r =>
     val c = r.plutus

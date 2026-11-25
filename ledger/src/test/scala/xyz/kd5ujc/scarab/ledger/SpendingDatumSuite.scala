@@ -6,7 +6,6 @@ import io.circe.parser.parse
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.rules.*
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.plutus.{PlutusData, PlutusLanguage, ScarabEvaluator}
 
@@ -79,31 +78,8 @@ class SpendingDatumSuite extends FunSuite:
     )
   }
 
-  private val issuer = KeyHash
-    .fromBytes[StakePool](Bytes.fromArray(Array.fill(28)(7.toByte)))
-    .fold(error => fail(error.toString), identity)
-  private val commitment = BodyCommitment(100, Bytes.fromArray(Array.fill(32)(1.toByte)))
-
-  private def refusal(r: Recorded, actual: LedgerFailure): Unit = r.phase1 match
-    case Some(expected) =>
-      assertEquals(actual, LedgerFailure.Rejected(r.c.tx.body.id, PredicateFailure.utxow(expected)))
-    case None =>
-      actual match
-        case LedgerFailure.Rejected.Single(
-              _,
-              PredicateFailure.Utxow(
-                UtxowFailure.Utxo(
-                  UtxoFailure.Utxos(
-                    UtxosFailure.ValidationTagMismatch(false, None)
-                  )
-                )
-              )
-            ) =>
-          ()
-        case other => fail(s"not the reference validity-tag refusal: $other")
-
-  /** The refusal [[refusal]] reads, as Conway's era LEDGER gives it: its failures in the
-    * reference's order.
+  /** The refusal of a case, as Conway's era LEDGER gives it (alone, or in a block's LEDGERS): its
+    * failures in the reference's order, the recorded phase-1 failure or else the validation tag's.
     */
   private def eraRefusal(r: Recorded, failures: Vector[era.rules.LedgerPredFailure[Conway]]): Unit =
     import era.rules.{
@@ -247,14 +223,10 @@ class SpendingDatumSuite extends FunSuite:
       ) match
         case Right(after)   => assert(r.accepted); disposition(r, after.utxo.utxo.utxo)
         case Left(failures) => assert(!r.accepted); eraRefusal(r, failures)
-      Sts(Bbody)(
-        TestLedger.globals,
-        BbodyEnv(TestLedger.env, c.params, Coin.zero),
-        BbodyState(Build.counted(nes), BlocksMade.empty),
-        BbodySignal(Vector(c.tx), issuer, commitment, commitment)
-      ) match
-        case Right(after) => assert(r.accepted); disposition(r, after.ledger.state.utxo.utxo.utxo)
-        case Left(BlockFailure.Tx(error)) => assert(!r.accepted); refusal(r, error)
-        case Left(other)                  => fail(s"unexpected block refusal: $other")
+      // a block of the transaction on Conway's era run, as the node applies Conway blocks
+      era.conway.ConwayTestKit.eraBbody(nes, c.tx, TestLedger.env) match
+        case Right(after) => assert(r.accepted); disposition(r, after.utxo.utxo.utxo)
+        case Left(failures) =>
+          assert(!r.accepted); eraRefusal(r, era.conway.ConwayTestKit.ledgersFailures(failures))
     }
   }

@@ -7,7 +7,6 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.rules.*
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScarabEvaluator}
 
@@ -82,22 +81,9 @@ class BoundaryTransactionsSuite extends FunSuite:
     )
   )
 
-  private def refusal(r: Recorded, failure: LedgerFailure): Unit =
-    r.stage match
-      case Stage.Decode => assertEquals(failure, malformed(r.c))
-      case _ =>
-        failure match
-          case LedgerFailure.Rejected.Single(
-                _,
-                PredicateFailure.Utxow(
-                  UtxowFailure.Utxo(UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(flag, _)))
-                )
-              ) =>
-            assertEquals(flag, r.c.tx.isValid)
-          case other => fail(s"not a validation-tag refusal: $other")
-
-  /** The refusal [[refusal]] reads, as Conway's era LEDGER gives it: its failures in the
-    * reference's order.
+  /** The refusal of a case, as Conway's era LEDGER gives it (alone, or in a block's LEDGERS): its
+    * failures in the reference's order, the malformed scripts' at decoding and otherwise the
+    * validation tag's.
     */
   private def eraRefusal(r: Recorded, failures: Vector[era.rules.LedgerPredFailure[Conway]]): Unit =
     import era.rules.{
@@ -130,11 +116,6 @@ class BoundaryTransactionsSuite extends FunSuite:
     r.c.collateral.keys.foreach { in =>
       assertEquals(!after.contains(in), field[Boolean](spent, "collateral"))
     }
-
-  private val issuer = KeyHash
-    .fromBytes[StakePool](Bytes.fromArray(Array.fill(28)(7.toByte)))
-    .fold(error => fail(error.toString), identity)
-  private val commitment = BodyCommitment(100, Bytes.fromArray(Array.fill(32)(1.toByte)))
 
   recorded.foreach { r =>
     val c = r.c
@@ -220,19 +201,13 @@ class BoundaryTransactionsSuite extends FunSuite:
 
     test(s"${c.name}: BBODY admission and both input roles match the reference") {
       val nes = Build.funded(Build.nes[Conway](5, c.params), r.allInputs)
-      val result = Sts(Bbody)(
-        TestLedger.globals,
-        BbodyEnv(TestLedger.env, c.params, Coin.zero),
-        BbodyState(Build.counted(nes), BlocksMade.empty),
-        BbodySignal(Vector(c.tx), issuer, commitment, commitment)
-      )
-      result match
+      // a block of the transaction on Conway's era run, as the node applies Conway blocks
+      era.conway.ConwayTestKit.eraBbody(nes, c.tx, TestLedger.env) match
         case Right(after) =>
           assert(r.accepted, "accepted a block transaction the reference refused")
-          disposition(r, after.ledger.state.utxo.utxo.utxo)
-        case Left(BlockFailure.Tx(failure)) =>
-          assert(!r.accepted, s"refused a reference-accepted block transaction: $failure")
-          refusal(r, failure)
-        case Left(other) => fail(s"unexpected block refusal: $other")
+          disposition(r, after.utxo.utxo.utxo)
+        case Left(failures) =>
+          assert(!r.accepted, s"refused a reference-accepted block transaction: $failures")
+          eraRefusal(r, era.conway.ConwayTestKit.ledgersFailures(failures))
     }
   }
