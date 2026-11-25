@@ -9,9 +9,8 @@ import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
-import xyz.kd5ujc.scarab.ledger.{Certificate, EpochGeometry, LedgerGlobals}
-import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.rules.{ConwayCert, Deleg, Globals, JudgedSts}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals}
+import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, Params, Wire}
@@ -104,74 +103,22 @@ class UpstreamDelegConformanceSuite extends FunSuite:
     }
   }
 
-  test("Scarab DELEG adapter consumes the actual environment and matches complete Haskell states") {
+  test("the era-typed DELEG gives the full Haskell certificate state on every upstream judgment") {
+    // the fixture's inputs, judged by the era DELEG and compared with the reference's post-states
     given ProtVer = protVer
     seeds.foreach { seed =>
       val dir = base.resolve(s"cases/$seed")
-      val traceContext = bytes(dir.resolve("context.cbor"))
-      val contextNode =
-        Cbor.decode(traceContext).fold(e => fail(s"seed $seed context: $e"), identity)
+      val contextNode = Cbor
+        .decode(bytes(dir.resolve("context.cbor")))
+        .fold(e => fail(s"seed $seed context: $e"), identity)
       // ExecSpecRule/Conway/Deleg.hs defines this as the complete set of transaction DRep delegatees.
       // Keep it as original TRC evidence; the implementation's typed rule consumes env/state/signal.
       contextNode.value match
         case Value.Tag(258, inner) if inner.value.isInstanceOf[Value.Arr] => ()
         case other => fail(s"seed $seed context is not the upstream tagged Set: $other")
-
       val envBytes = bytes(dir.resolve("environment.cbor"))
       val envItems = arrayItems(
         Cbor.decode(envBytes).fold(e => fail(s"seed $seed environment: $e"), identity),
-        2
-      )
-      val pp = Params.conwayCodec.decode(envItems(0)).fold(e => fail(e.render), identity)
-      val poolCodec = Wire.mapOf(
-        summon[Codec[KeyHash[StakePool]]],
-        summon[Codec[StakePoolState]]
-      )
-      val envPools = poolCodec.decode(envItems(1)).fold(e => fail(e.render), identity)
-      val before = state(dir.resolve("state.cbor"))
-      val expected = state(dir.resolve("implementation-state.cbor"))
-      assertEquals(envPools, before.pState.stakePools, s"seed $seed complete env pool map")
-      val certificate = Certificate
-        .decode(
-          Cbor
-            .decode(bytes(dir.resolve("signal.cbor")))
-            .fold(e => fail(s"seed $seed signal: $e"), identity),
-          Era.Conway
-        )
-        .fold(e => fail(s"seed $seed certificate: $e"), identity)
-      val typed = ConwayCert.of(Bytes.empty, certificate).fold(e => fail(e.toString), identity)
-      typed match
-        case ConwayCert.OfDeleg(cert) =>
-          val actual = JudgedSts
-            .apply(Deleg.Adapter)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _))(
-              globals,
-              Deleg.RuleEnv(
-                Bytes.fromArray(
-                  s"cardano-ledger-DELEG-$seed".getBytes(java.nio.charset.StandardCharsets.UTF_8)
-                ),
-                pp,
-                envPools
-              ),
-              before,
-              cert
-            )
-            .fold(e => fail(s"seed $seed Scarab refused upstream-accepted DELEG: $e"), identity)
-          assertEquals(actual, expected, s"seed $seed full ConwayCertState")
-        case other => fail(s"seed $seed is not an upstream DELEG signal: $other")
-      assertEquals(Cbor.decode(envBytes).toOption.get.original, envBytes)
-    }
-  }
-
-  test("the era-typed DELEG gives the full Haskell certificate state on every upstream judgment") {
-    // the same fixture inputs, judged by the era DELEG and compared with the reference's
-    // post-states, not with the flat rule
-    given ProtVer = protVer
-    seeds.foreach { seed =>
-      val dir = base.resolve(s"cases/$seed")
-      val envItems = arrayItems(
-        Cbor
-          .decode(bytes(dir.resolve("environment.cbor")))
-          .fold(e => fail(s"seed $seed environment: $e"), identity),
         2
       )
       val flatPp = Params.conwayCodec.decode(envItems(0)).fold(e => fail(e.render), identity)
@@ -208,5 +155,6 @@ class UpstreamDelegConformanceSuite extends FunSuite:
         .fold(e => fail(s"seed $seed defect: $e"), identity)
         .fold(fs => fail(s"seed $seed refused upstream-accepted DELEG: $fs"), _._1)
       assertEquals(actual, state(dir.resolve("implementation-state.cbor")), s"seed $seed")
+      assertEquals(Cbor.decode(envBytes).toOption.get.original, envBytes)
     }
   }

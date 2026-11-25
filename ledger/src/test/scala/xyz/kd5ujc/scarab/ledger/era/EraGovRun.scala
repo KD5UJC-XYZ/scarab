@@ -46,9 +46,9 @@ import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag, Network}
 
 /** Conway's GOV on the era types (`ConwayGov.conwayGovTransition`) run in one judgment, and the
   * forms its failures and state are compared in with the flat GOV's, for the suites that compare
-  * the two (`ConwayGovChecksSuite` and `UpstreamGovernanceFunctionalSuite` in the node); and
-  * Dijkstra's, the same transition (`DijkstraGovSuite`, and `DijkstraRulesOracleSuite` in the
-  * node).
+  * the two (`ConwayGovChecksSuite` in the node), and for those that hold it to the reference's
+  * judgments (`UpstreamGovernanceFunctionalSuite` in the node); and Dijkstra's, the same transition
+  * (`DijkstraGovSuite`, and `DijkstraRulesOracleSuite` in the node).
   */
 object EraGovRun:
   type Rec = GovPredFailure[Conway]

@@ -13,7 +13,7 @@ The test decodes the full pre- and post-`ConwayCertState` with Scarab's Haskell-
 protocol version 9. For all 21 generated DRep and committee signals, the consumer decodes the actual certificate and
 the complete actual GOVCERT environment using Scarab's Conway codecs. DRep rules consume PParams
 and epoch; committee rules consume the current committee and the actual purpose-id / proposal map.
-The typed rule adapters share their state transitions with the production GOVCERT rule. Each
+Conway's era-typed GOVCERT (`EraCertsRun.govCert`) judges each signal. Each
 resulting full `ConwayCertState` is compared with the exported Haskell implementation state, and
 untouched state components are checked separately. The complete raw context and environment remain
 in each case. No missing input or committee proposal is replaced with a default.

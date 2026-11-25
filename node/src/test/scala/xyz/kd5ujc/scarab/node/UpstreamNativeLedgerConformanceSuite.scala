@@ -10,26 +10,12 @@ import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
-import xyz.kd5ujc.scarab.ledger.{Block, EpochGeometry, LedgerGlobals, PlutusStats, Tx, TxEnv}
-import xyz.kd5ujc.scarab.ledger.rules.{
-  Counted,
-  Globals,
-  JudgedSts,
-  Ledger,
-  LedgerEnv,
-  Ledgers,
-  LedgersEnv,
-  NewEpoch,
-  StAnnTx,
-  Sts,
-  Utxo,
-  UtxoEnv,
-  Utxow
-}
+import xyz.kd5ujc.scarab.ledger.{EpochGeometry, LedgerGlobals}
+import xyz.kd5ujc.scarab.ledger.era.{EraTx, EraTxBody, TxLevel}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, NewEpoch, Sts}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
 import xyz.kd5ujc.scarab.models.runtime.{Codec, Node}
-import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{Params, UtxoCodecs, Wire}
 
 /** Native integration-hook traces retain coherent context and original transaction bytes. */
@@ -99,38 +85,6 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
       None
     )
 
-  private def transaction(n: Node): Tx =
-    val parts = n.value match
-      case Value.Arr(xs) if xs.size == 4 => xs
-      case other => fail(s"expected complete original transaction, got $other")
-    val valid = parts(2).value match
-      case Value.Bool(v) => v
-      case other         => fail(s"expected transaction validity flag, got $other")
-    val auxiliary = parts(3).value match
-      case Value.Null => None
-      case _          => Some(parts(3).original)
-    Tx.fromBlock(
-      Block.Transaction(parts(0).original, parts(1).original, auxiliary, valid),
-      Era.Conway
-    ).fold(e => fail(e.message), identity)
-
-  private def txEnv(slot: BigInt, epoch: BigInt, index: Int = 0): TxEnv =
-    TxEnv(
-      slot,
-      epoch,
-      0,
-      geometry.firstSlot(epoch + 1),
-      geometry.stabilityWindow.toBigInt,
-      txIndex = index,
-      clock = Some(
-        xyz.kd5ujc.scarab.ledger.PosixClock.Total(s =>
-          BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
-        )
-      ),
-      evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
-      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
-    )
-
   private def paymentContext: Vector[Node] = node("LEDGER-2", "context").value match
     case Value.Arr(xs) if xs.size == 3 => xs
     case other                         => fail(s"expected original payment context, got $other")
@@ -139,7 +93,10 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
     case Value.Arr(Vector(_, utxo)) => utxo
     case other                      => fail(s"expected original payment ledger state, got $other")
 
-  Vector("UTXO-3" -> Utxo, "UTXOW-4" -> Utxow).foreach { (id, rule) =>
+  // the era-typed UTXO and UTXOW, each the root of its judgment as the hook ran it, the
+  // transaction read by Conway's decoder from its original parts; the expectation is the
+  // reference's post-state
+  Vector("UTXO-3", "UTXOW-4").foreach { id =>
     test(s"genuine supplemental $id matches the complete native UTxO state") {
       assertEquals(node(id, "context").original, paymentContext(2).original)
       assertEquals(node(id, "state").original, paymentUtxoState("state").original)
@@ -155,58 +112,32 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
       val slot = summon[Codec[SlotNo]].decode(env(0)).fold(e => fail(e.render), identity)
       val params = Params.conwayCodec.decode(env(1)).fold(e => fail(e.render), identity)
       val cert = summon[Codec[ConwayCertState]].decode(env(2)).fold(e => fail(e.render), identity)
-      val tx = transaction(node(id, "signal"))
-      assert(tx.body.certificates.isEmpty && tx.body.proposals.isEmpty)
-      assertEquals(node(id, "signal").original, node("LEDGER-2", "signal").original)
-      val actual = JudgedSts
-        .apply(rule)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(tx.body.id, _))(
-          globals,
-          UtxoEnv(txEnv(slot.toBigInt, geometry.epochOf(slot.toBigInt)), params, cert),
-          Counted(before, PlutusStats.zero),
-          StAnnTx(tx, before.utxo.utxo)
-        )
-        .fold(e => fail(e.message), identity)
-      assertUtxo(actual.state, expected)
-    }
-  }
-
-  test("native LEDGERS matches while its upstream formal process failure remains explicit") {
-    val id = "LEDGERS-5"
-    assertEquals(node(id, "context").original, paymentContext(1).original)
-    assertEquals(node(id, "state").original, node("LEDGER-2", "state").original)
-    assertEquals(
-      node(id, "implementation-state").original,
-      node("LEDGER-2", "implementation-state").original
-    )
-    assertEquals(
-      Files.readString(base.resolve(s"$id/result.txt")),
-      "implementation-accepted\nagda-not-yet-observed\n"
-    )
-    val before = decode(id, "state", FullStates.nativeLedgerState)
-    val expected = decode(id, "implementation-state", FullStates.nativeLedgerState)
-    val env = node(id, "environment").value match
-      case Value.Arr(xs) if xs.size == 4 => xs
-      case other => fail(s"expected full native LEDGERS environment, got $other")
-    val slot = summon[Codec[SlotNo]].decode(env(0)).fold(e => fail(e.render), identity)
-    val epoch = summon[Codec[EpochNo]].decode(env(1)).fold(e => fail(e.render), identity)
-    val params = Params.conwayCodec.decode(env(2)).fold(e => fail(e.render), identity)
-    assertEquals(params, before.utxo.gov.curPParams)
-    val account =
-      summon[Codec[ChainAccountState]].decode(env(3)).fold(e => fail(e.render), identity)
-    val txs = node(id, "signal").value match
-      case Value.Arr(Vector(tx)) =>
-        assertEquals(tx.original, node("LEDGER-2", "signal").original)
-        Vector(transaction(tx))
-      case other => fail(s"expected original singleton payment batch, got $other")
-    val actual = Sts
-      .apply(Ledgers)(
-        globals,
-        LedgersEnv(txEnv(slot.toBigInt, epoch.toBigInt), account.treasury),
-        Counted(before, PlutusStats.zero),
-        txs
+      val tx = UpstreamEraLedger
+        .transaction(node(id, "signal"))
+        .fold(e => fail(s"$id transaction: $e"), identity)
+      val t = EraTx.conway
+      val b = EraTxBody.conway
+      val body = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
+      assert(
+        b.certs[TxLevel.Top](body)(using b.top).isEmpty &&
+          b.proposalProcedures[TxLevel.Top](body)(using b.top).toVector.isEmpty
       )
-      .fold(e => fail(e.message), identity)
-    assertLedger(actual.state, expected)
+      assertEquals(node(id, "signal").original, node("LEDGER-2", "signal").original)
+      val actual = id match
+        case "UTXO-3" =>
+          UpstreamEraLedger
+            .utxo(globals, slot.toBigInt, params, cert, before, tx)
+            .fold(e => fail(s"$id era inputs: $e"), identity)
+            .fold(e => fail(s"$id defect: $e"), identity)
+            .fold(fs => fail(s"$id refused: $fs"), identity)
+        case _ =>
+          UpstreamEraLedger
+            .utxow(globals, slot.toBigInt, params, cert, before, tx)
+            .fold(e => fail(s"$id era inputs: $e"), identity)
+            .fold(e => fail(s"$id defect: $e"), identity)
+            .fold(fs => fail(s"$id refused: $fs"), identity)
+      assertUtxo(actual, expected)
+    }
   }
 
   test("every original native hook file and formal verdict is retained") {
@@ -376,8 +307,9 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
       val epoch = decode(id, "signal", summon[Codec[EpochNo]])
       assert(before.epoch.next.contains(epoch))
       val lastSlot = geometry.firstSlot(epoch.toBigInt) - 1
-      val actual = mempool.MempoolLedger
-        .tick(
+      // the pool's Conway ledger, ticked to the slot after the tip as the node ticks it
+      val actual = mempool.ConwayPools
+        .ticked(
           before,
           Some(lastSlot),
           mempool.MempoolEnv(
@@ -388,16 +320,26 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
           )
         )
         .fold(error => fail(s"native-accepted $id refused: $error"), identity)
-      assertEquals(actual, mempool.MempoolLedger.of(expected))
+      assertEquals(actual, mempool.ConwayPools.of(expected))
     }
   }
 
+  // the era-typed LEDGER and LEDGERS on the same fixture inputs, the transaction read by Conway's
+  // decoder from its original parts, each the root of its judgment as the hook ran it; the
+  // expectation is the reference's post-state, not the flat rule's
+  private def eraAdmitted(
+      id: String,
+      judged: Either[UpstreamEraLedger.Unread, UpstreamEraLedger.Outcome]
+  ) =
+    judged.fold(e => fail(s"$id era inputs: $e"), identity) match
+      case UpstreamEraLedger.Outcome.Admitted(state, _) => state
+      case UpstreamEraLedger.Outcome.Refused(fs)        => fail(s"$id refused: $fs")
+
   (1 to 3).foreach { ordinal =>
-    test(s"actual LEDGER-$ordinal transaction matches complete native state") {
+    test(s"the era-typed LEDGER gives LEDGER-$ordinal's complete native state") {
       val id = s"LEDGER-$ordinal"
       val codec = FullStates.nativeLedgerState
       val before = decode(id, "state", codec)
-      val expected = decode(id, "implementation-state", codec)
       val fields = node(id, "environment").value match
         case Value.Arr(xs) if xs.size == 5 => xs
         case other => fail(s"expected all five native LEDGER environment fields, got $other")
@@ -406,29 +348,17 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
         .strictMaybe(summon[Codec[EpochNo]])
         .decode(fields(1))
         .fold(e => fail(e.render), identity)
-        .map(_.toBigInt)
-        .getOrElse(geometry.epochOf(slot.toBigInt))
       val index = Wire.word16.decode(fields(2)).fold(e => fail(e.render), identity)
       val params = Params.conwayCodec.decode(fields(3)).fold(e => fail(e.render), identity)
       assertEquals(params, before.utxo.gov.curPParams)
       val account = summon[Codec[ChainAccountState]]
         .decode(fields(4))
         .fold(e => fail(e.render), identity)
-      val parts = node(id, "signal").value match
-        case Value.Arr(xs) if xs.size == 4 => xs
-        case other => fail(s"expected full original transaction signal, got $other")
-      val valid = parts(2).value match
-        case Value.Bool(v) => v
-        case other         => fail(s"expected transaction validity flag, got $other")
-      val auxiliary = parts(3).value match
-        case Value.Null => None
-        case _          => Some(parts(3).original)
-      val tx = Tx
-        .fromBlock(
-          Block.Transaction(parts(0).original, parts(1).original, auxiliary, valid),
-          Era.Conway
-        )
-        .fold(e => fail(e.message), identity)
+      val tx = UpstreamEraLedger
+        .transaction(node(id, "signal"))
+        .fold(e => fail(s"$id transaction: $e"), identity)
+      // the hook's execution context: the constitution's policy, the enactment state and the
+      // UTxO context, each what the state and the environment hold
       val context = node(id, "context").value match
         case Value.Arr(Vector(policy, enact, utxo)) => (policy, enact, utxo)
         case other => fail(s"expected full native LEDGER execution context, got $other")
@@ -476,65 +406,6 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
           .fold(e => fail(e.render), identity),
         before.cert
       )
-      val ctx = TxEnv(
-        slot.toBigInt,
-        epoch,
-        0,
-        geometry.firstSlot(epoch + 1),
-        geometry.stabilityWindow.toBigInt,
-        txIndex = index.toInt,
-        clock = Some(
-          xyz.kd5ujc.scarab.ledger.PosixClock.Total(s =>
-            BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
-          )
-        ),
-        evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
-        decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
-      )
-      val actual = JudgedSts
-        .apply(Ledger)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(tx.body.id, _))(
-          globals,
-          LedgerEnv(ctx, account.treasury),
-          Counted(before, PlutusStats.zero),
-          tx
-        )
-        .fold(e => fail(e.message), identity)
-      assertLedger(actual.state, expected)
-    }
-  }
-
-  // the era-typed LEDGER and LEDGERS on the same fixture inputs, the transaction read by Conway's
-  // decoder from its original parts, each the root of its judgment as the hook ran it; the
-  // expectation is the reference's post-state, not the flat rule's
-  private def eraAdmitted(
-      id: String,
-      judged: Either[UpstreamEraLedger.Unread, UpstreamEraLedger.Outcome]
-  ) =
-    judged.fold(e => fail(s"$id era inputs: $e"), identity) match
-      case UpstreamEraLedger.Outcome.Admitted(state, _) => state
-      case UpstreamEraLedger.Outcome.Refused(fs)        => fail(s"$id refused: $fs")
-
-  (1 to 3).foreach { ordinal =>
-    test(s"the era-typed LEDGER gives LEDGER-$ordinal's complete native state") {
-      val id = s"LEDGER-$ordinal"
-      val codec = FullStates.nativeLedgerState
-      val before = decode(id, "state", codec)
-      val fields = node(id, "environment").value match
-        case Value.Arr(xs) if xs.size == 5 => xs
-        case other => fail(s"expected all five native LEDGER environment fields, got $other")
-      val slot = summon[Codec[SlotNo]].decode(fields(0)).fold(e => fail(e.render), identity)
-      val epoch = Wire
-        .strictMaybe(summon[Codec[EpochNo]])
-        .decode(fields(1))
-        .fold(e => fail(e.render), identity)
-      val index = Wire.word16.decode(fields(2)).fold(e => fail(e.render), identity)
-      val params = Params.conwayCodec.decode(fields(3)).fold(e => fail(e.render), identity)
-      val account = summon[Codec[ChainAccountState]]
-        .decode(fields(4))
-        .fold(e => fail(e.render), identity)
-      val tx = UpstreamEraLedger
-        .transaction(node(id, "signal"))
-        .fold(e => fail(s"$id transaction: $e"), identity)
       val judged = UpstreamEraLedger
         .ledger(globals, slot.toBigInt, epoch, index.toInt, params, account, before, tx)
         .map(j => UpstreamEraLedger.ofLedger(j).fold(e => fail(s"$id defect: $e"), identity))
@@ -544,6 +415,17 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
 
   test("the era-typed LEDGERS gives LEDGERS-5's complete native state") {
     val id = "LEDGERS-5"
+    assertEquals(node(id, "context").original, paymentContext(1).original)
+    assertEquals(node(id, "state").original, node("LEDGER-2", "state").original)
+    assertEquals(
+      node(id, "implementation-state").original,
+      node("LEDGER-2", "implementation-state").original
+    )
+    // the upstream formal process failure remains explicit
+    assertEquals(
+      Files.readString(base.resolve(s"$id/result.txt")),
+      "implementation-accepted\nagda-not-yet-observed\n"
+    )
     val before = decode(id, "state", FullStates.nativeLedgerState)
     val env = node(id, "environment").value match
       case Value.Arr(xs) if xs.size == 4 => xs
@@ -551,13 +433,14 @@ class UpstreamNativeLedgerConformanceSuite extends FunSuite:
     val slot = summon[Codec[SlotNo]].decode(env(0)).fold(e => fail(e.render), identity)
     val epoch = summon[Codec[EpochNo]].decode(env(1)).fold(e => fail(e.render), identity)
     val params = Params.conwayCodec.decode(env(2)).fold(e => fail(e.render), identity)
+    assertEquals(params, before.utxo.gov.curPParams)
     val account =
       summon[Codec[ChainAccountState]].decode(env(3)).fold(e => fail(e.render), identity)
     val txs = node(id, "signal").value match
-      case Value.Arr(xs) =>
-        xs.map(UpstreamEraLedger.transaction(_).fold(e => fail(s"$id transaction: $e"), identity))
-      case other => fail(s"expected the batch of transactions, got $other")
-    assertEquals(txs.size, 1)
+      case Value.Arr(Vector(tx)) =>
+        assertEquals(tx.original, node("LEDGER-2", "signal").original)
+        Vector(UpstreamEraLedger.transaction(tx).fold(e => fail(s"$id transaction: $e"), identity))
+      case other => fail(s"expected original singleton payment batch, got $other")
     val judged = UpstreamEraLedger
       .ledgers(globals, slot.toBigInt, epoch, params, account, before, txs)
       .map(j => UpstreamEraLedger.ofLedgers(j).fold(e => fail(s"$id defect: $e"), identity))

@@ -24,8 +24,10 @@ import scala.jdk.CollectionConverters.*
   * Each expected failure list is built from the recorded transaction (the certificate, the inputs,
   * the script integrity hash it carries) and from the `cardano-cli` rendering for what only the
   * ledger computes (the hash it expected, the minimum of a small output, the key that did not
-  * sign); never from the recorded reason bytes. [[PreConwayFailureCbor]] and
-  * [[PredicateFailureCbor]] must write exactly the recorded bytes, in the recorded order.
+  * sign); never from the recorded reason bytes. [[PreConwayFailureCbor]] must write exactly the
+  * recorded bytes of Alonzo and Babbage, in the recorded order. Conway's are built in its era's
+  * types, from the transaction as Conway's decoder reads it, and [[ConwayFailureCbor]] must write
+  * exactly the recorded bytes, in the recorded order.
   */
 class PlutusFailureReferenceSuite extends FunSuite:
   private final case class Record(label: String, era: Era, tx: Node, reason: Bytes, cli: String):
@@ -149,14 +151,6 @@ class PlutusFailureReferenceSuite extends FunSuite:
       )
     )
 
-  /** The order of the failures of the lists: the reference collects them in the order its rules
-    * run, which differs between Conway (UTXO before the witness checks) and the earlier eras.
-    */
-  private def inOrder(
-      r: Record
-  )(earlier: Vector[PredicateFailure], conway: Vector[PredicateFailure]) =
-    if r.era == Era.Conway then conway else earlier
-
   /** A purpose with no redeemer, and the script that needs it: `MissingRedeemers` and the
     * collection error of UTXOS, with the integrity mismatch when the transaction's hash is not the
     * ledger's.
@@ -165,7 +159,7 @@ class PlutusFailureReferenceSuite extends FunSuite:
     val missing = PredicateFailure.utxow(UtxowFailure.MissingRedeemers(Vector(purpose -> script)))
     val collected = collect(CollectError.NoRedeemer(purpose))
     val mismatch = if withHash then integrity(r) else Vector.empty
-    inOrder(r)(Vector(missing) ++ mismatch :+ collected, Vector(collected) ++ mismatch :+ missing)
+    Vector(missing) ++ mismatch :+ collected
 
   /** The input of the setup transaction that holds the script: output 0. */
   private def scriptInput(r: Record): TxIn =
@@ -181,6 +175,7 @@ class PlutusFailureReferenceSuite extends FunSuite:
 
   private val datumHash = Blake2b.hash256.hash(bytes("182a"))
 
+  /** The failures of Alonzo's and Babbage's lists, in the order their rules run. */
   private def expected(r: Record): Vector[PredicateFailure] =
     val variant = r.kind.substring(r.kind.lastIndexOf('-') + 1)
     r.kind match
@@ -202,10 +197,7 @@ class PlutusFailureReferenceSuite extends FunSuite:
           )
         val extra = PredicateFailure.utxow(UtxowFailure.ExtraRedeemers(Vector((0, BigInt(0)))))
         val mismatch = if variant == "language" then integrity(r) else Vector.empty
-        inOrder(r)(
-          Vector(missing, datums, extra) ++ mismatch,
-          mismatch ++ Vector(extra, datums, missing)
-        )
+        Vector(missing, datums, extra) ++ mismatch
       case "bad-translation-missing-input" =>
         val fake =
           inputs(r).find(_.id == bytes("ab" * 32)).getOrElse(fail(s"${r.label}: no fake input"))
@@ -215,7 +207,6 @@ class PlutusFailureReferenceSuite extends FunSuite:
         )
         r.era match
           case Era.Alonzo => Vector(badInputs) // the translation is not reached
-          case Era.Conway => Vector(badInputs, unresolved)
           case _          => Vector(unresolved, badInputs)
       case "bad-translation-inline-datum" =>
         Vector(
@@ -254,6 +245,161 @@ class PlutusFailureReferenceSuite extends FunSuite:
         )
       case other => fail(s"${r.label}: no failures built for $other")
 
+  // ---- Conway's failures, in its era's types
+
+  private object Conway:
+    import xyz.kd5ujc.scarab.ledger.era.{
+      AlonzoContextError,
+      AsItem,
+      AsIx,
+      BabbageContextError,
+      CollectError as EraCollect,
+      EraTx,
+      EraTxBody,
+      Mismatch as EraMismatch,
+      TxLevel
+    }
+    import xyz.kd5ujc.scarab.ledger.era.conway.{
+      ConwayContextError,
+      ConwayPlutusPurpose,
+      ConwayTx,
+      ConwayTxCert
+    }
+    import xyz.kd5ujc.scarab.ledger.era.rules.{
+      ConwayLedgerPredFailure as L,
+      ConwayUtxoPredFailure as U,
+      ConwayUtxosPredFailure as S,
+      ConwayUtxowPredFailure as W
+    }
+    import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway as C}
+    import xyz.kd5ujc.scarab.protocol.StateLayout
+    import cats.data.{NonEmptyList, NonEmptySet}
+    import scala.collection.immutable.SortedSet
+
+    type Failure = L[C]
+    private given cats.Order[Bytes] = cats.Order.fromOrdering
+    private given cats.Order[TxIn] = cats.Order.fromOrdering
+
+    private def utxow(f: W[C]): Failure = L.ConwayUtxowFailure[C](f)
+    private def utxo(f: U[C]): Failure = utxow(W.UtxoFailure[C](f))
+    private def collect(es: EraCollect[C]*): Failure =
+      utxo(U.UtxosFailure[C](S.CollectErrors[C](NonEmptyList.fromListUnsafe(es.toList))))
+    private def set[A: cats.Order](as: A*): NonEmptySet[A] =
+      NonEmptySet.fromSetUnsafe(SortedSet.from(as)(using cats.Order[A].toOrdering))
+
+    /** The transaction as Conway's decoder reads it. */
+    private def tx(r: Record): ConwayTx =
+      ConwayTx.fromEnvelope(r.tx.original, StateLayout.Node11_1).fold(e => fail(s"$e"), identity)
+
+    private def body(r: Record) =
+      val t = EraTx.conway
+      t.body[TxLevel.Top](tx(r))(using t.bodyOf.top)
+
+    /** The one certificate of the transaction, as Conway's decoder reads it. */
+    private def certificate(r: Record): ConwayTxCert =
+      val b = EraTxBody.conway
+      b.certs[TxLevel.Top](body(r))(using b.top) match
+        case Vector(c) => c
+        case other     => fail(s"${r.label}: certificates $other")
+
+    private def integrity(r: Record): Failure =
+      utxow(W.PPViewHashesDontMatch[C](EraMismatch(suppliedHash(r), Some(expectedHash(r)))))
+
+    /** `MissingRedeemers` and the collection's `NoRedeemer` of a purpose, with the integrity
+      * mismatch when the transaction's hash is not the ledger's, in the order Conway's rules run
+      * (UTXO before the witness checks).
+      */
+    private def noRedeemer(
+        r: Record,
+        purpose: ConwayPlutusPurpose[AsItem],
+        script: Bytes,
+        withHash: Boolean
+    ): Vector[Failure] =
+      val missing = utxow(W.MissingRedeemers[C](NonEmptyList.one(purpose -> script)))
+      val collected = collect(EraCollect.NoRedeemer[C](purpose))
+      Vector(collected) ++ Option.when(withHash)(integrity(r)) :+ missing
+
+    private def translation(e: BabbageContextError[C]): Failure =
+      collect(EraCollect.BadTranslation[C](ConwayContextError.BabbageContextError[C](e)))
+
+    def expected(r: Record): Vector[Failure] =
+      val variant = r.kind.substring(r.kind.lastIndexOf('-') + 1)
+      r.kind match
+        case k if k.startsWith("missing-redeemer-") =>
+          assertEquals(
+            scriptHashOf(certified(r)),
+            scriptHash,
+            s"${r.label}: the certificate names the script"
+          )
+          noRedeemer(
+            r,
+            ConwayPlutusPurpose.ConwayCertifying[AsItem](AsItem(certificate(r))),
+            scriptHash,
+            variant != "hash"
+          )
+        case k if k.startsWith("no-redeemer-spend-") =>
+          noRedeemer(
+            r,
+            ConwayPlutusPurpose.ConwaySpending[AsItem](AsItem(scriptInput(r))),
+            scriptHash,
+            variant != "hash"
+          )
+        case "no-witness-spend-language" | "no-witness-spend-plain" =>
+          val missing = utxow(W.MissingScriptWitnessesUTXOW[C](set(scriptHash)))
+          val datums = utxow(W.NotAllowedSupplementalDatums[C](set(datumHash), Set.empty))
+          val zero = xyz.kd5ujc.scarab.ledger.Unsigned
+            .from[xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32](0)
+            .getOrElse(fail("index 0"))
+          val extra = utxow(
+            W.ExtraRedeemers[C](
+              NonEmptyList.one(ConwayPlutusPurpose.ConwaySpending[AsIx](AsIx(zero)))
+            )
+          )
+          Option.when(variant == "language")(integrity(r)).toVector ++ Vector(
+            extra,
+            datums,
+            missing
+          )
+        case "bad-translation-missing-input" =>
+          val fake =
+            inputs(r).find(_.id == bytes("ab" * 32)).getOrElse(fail(s"${r.label}: no fake input"))
+          Vector(
+            utxo(U.BadInputsUTxO[C](set(fake))),
+            translation(
+              BabbageContextError.AlonzoContextError[C](
+                AlonzoContextError.TranslationLogicMissingInput[C](fake)
+              )
+            )
+          )
+        case "bad-translation-inline-datum" =>
+          Vector(
+            translation(
+              BabbageContextError.InlineDatumsNotSupported[C](
+                TxOutSource.TxOutFromInput(inputAt(r, 4))
+              )
+            )
+          )
+        case "missing-vkey-witness" =>
+          Vector(utxow(W.MissingVKeyWitnessesUTXOW[C](set(missingKey(r)))))
+        case "output-too-small" =>
+          val b = EraTxBody.conway
+          val first = b
+            .outputs[TxLevel.Top](body(r))(using b.top)
+            .headOption
+            .getOrElse(fail(s"${r.label}: no outputs"))
+          Vector(
+            utxo(U.BabbageOutputTooSmallUTxO[C](NonEmptyList.one(first -> Coin(minimum(r)))))
+          )
+        case other => fail(s"${r.label}: no failures built for $other")
+
+    /** The failures' refusal as [[ConwayFailureCbor]] writes it. */
+    def refusal(r: Record): Bytes =
+      NonEmptyList
+        .fromList(expected(r).toList)
+        .fold(fail(s"${r.label}: no failures"))(fs =>
+          ConwayFailureCbor.applyTxError(fs).fold(e => fail(s"${r.label}: $e"), identity)
+        )
+
   test("the recording has the cases of every era") {
     val kinds = records.groupMap(_.era)(_.kind).view.mapValues(_.toSet).toMap
     val common = Set(
@@ -272,13 +418,10 @@ class PlutusFailureReferenceSuite extends FunSuite:
 
   records.foreach { r =>
     test(s"${r.era} ${r.kind}: the bytes are the reference's") {
-      val failures = expected(r)
-      assertEquals(
-        FlatRefusal
-          .applyTxError(r.era, failures)
-          .fold(error => fail(error.message), identity)
-          .map(_.hex),
-        Some(r.reason.hex)
-      )
+      val encoded = r.era match
+        case Era.Conway => Some(Conway.refusal(r))
+        case era =>
+          FlatRefusal.applyTxError(era, expected(r)).fold(error => fail(error.message), identity)
+      assertEquals(encoded.map(_.hex), Some(r.reason.hex))
     }
   }

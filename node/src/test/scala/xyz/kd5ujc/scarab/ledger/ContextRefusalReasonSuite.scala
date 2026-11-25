@@ -6,7 +6,6 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
 
 /** The whole raw reason of each refused context submission (#434).
   *
@@ -18,11 +17,11 @@ import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
   * `V1ContextSuite` reads the one cause that text names and checks that the Scala rule gives that
   * failure; a constructor name appearing in the text does not show that the reference's failure
   * list held only that failure, nor that the encodings agree. Here each refusal is compared as a
-  * whole: the Conway LEDGER rule replays the transaction at the recorded protocol parameters, and
-  * the encoded Scala refusal must be the reference's reason, byte for byte. The encoding lives in
-  * the node module (`PredicateFailureCbor`), which the ledger module cannot reach, so the
-  * comparison is made here. Every recorded refusal is compared without exclusions (#781), by the
-  * flat LEDGER and by the era-typed one, each translation failure with its contents.
+  * whole: Conway's era LEDGER replays the transaction at the recorded protocol parameters, and the
+  * encoded Scala refusal must be the reference's reason, byte for byte. The encoding lives in the
+  * node module (`ConwayFailureCbor`), which the ledger module cannot reach, so the comparison is
+  * made here. Every recorded refusal is compared without exclusions (#781), each translation
+  * failure with its contents.
   *
   * Cases that keep no raw reason (the `v1-context` and `plutus-boundaries` files) are still bounded
   * to containment; register entry `v1context-refusal-membership` stays `bounded` until a fresh
@@ -72,57 +71,20 @@ class ContextRefusalReasonSuite extends FunSuite:
 
   private def utxoOf(c: PlutusCase): Map[TxIn, TxOut] = c.spent ++ c.references ++ c.collateral
 
-  /** The reason the Conway transaction rule gives for `c`, as the node sends it. */
-  private def encodedRefusal(c: PlutusCase, name: String): Bytes =
-    val nes = Build.funded(Build.nes[Conway](5, c.params), utxoOf(c))
-    TestLedger.conwayLedger(nes, c.tx, TestLedger.env) match
-      case Right(_) => fail(s"$name: the node accepts what the reference refused")
-      case Left(LedgerFailure.Rejected.Single(_, failure)) =>
-        PredicateFailureCbor
-          .applyTxError(Vector(failure))
-          .fold(error => fail(error.message), identity)
-      case Left(other) => fail(s"$name: not a single refusal: $other")
-
   test("every refused submission carries the reference's whole raw reason") {
     assertEquals(refused.size, 12, "refusals in the recorded submissions")
     assert(refused.forall(_.reason.nonEmpty), "a refusal with an empty reason")
   }
 
-  refused.foreach { r =>
-    test(s"${r.name}: the ledger rule's encoded refusal is the reference's raw reason") {
-      assertEquals(
-        encodedRefusal(r.plutus, r.name),
-        r.reason,
-        s"encoded refusal of ${r.plutus.name}"
-      )
-    }
-  }
-
   /** The era-typed LEDGER (`ConwayLedger.conwayLedgerTransition`) on `c`, read by Conway's decoder
     * from the bytes the flat transaction keeps, from the same chain, one level below the root as
-    * under MEMPOOL: its failures in the node's flat form (`EraLedgerRun.flat`, a collection's
-    * translation failures with their contents), encoded as the node sends them.
+    * under MEMPOOL: its failures, each translation failure with its contents, written by Conway's
+    * era failure encoder (`ConwayFailureCbor`) as the node sends them.
     */
   private def eraRefusal(c: PlutusCase, name: String): Bytes =
-    import xyz.kd5ujc.scarab.ledger.era.{
-      AlonzoStAnnTx,
-      EraLedgerRun,
-      EraTx,
-      EraTxBody,
-      EraUTxO,
-      Network,
-      PParams,
-      TxLevel,
-      UTxO
-    }
+    import xyz.kd5ujc.scarab.ledger.era.{AlonzoStAnnTx, EraLedgerRun, Network, PParams, UTxO}
     import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayTxOut}
-    import xyz.kd5ujc.scarab.ledger.era.rules.{
-      ConwayGovPredFailure,
-      ConwayUtxo,
-      ConwayUtxowPredFailure,
-      LedgerEnv,
-      UtxoContext
-    }
+    import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayUtxo, LedgerEnv, UtxoContext}
     val env = TestLedger.env
     val nes = Build.funded(Build.nes[Conway](5, c.params), utxoOf(c))
     val witnesses = c.tx.witnesses.raw.getOrElse(fail(s"$name: no witness bytes"))
@@ -164,33 +126,9 @@ class ContextRefusalReasonSuite extends FunSuite:
       env.decoder,
       depth = 1
     )
-    val t = EraTx.conway
-    val body = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
-    val purposes = ConwayUtxowPredFailure.storedPurposes(
-      EraUTxO.conway.getScriptsNeeded[TxLevel.Top](utxo, body)(using
-        EraUTxO.conway.txOf.bodyOf.top
-      ),
-      utxo
-    )
-    val read = ConwayGovPredFailure.readOf(
-      EraTxBody.conway.proposalProcedures[TxLevel.Top](body)(using EraTxBody.conway.top).toVector
-    )
     judged match
       case Right(Left(fs)) =>
-        val flat = PredicateFailureCbor
-          .applyTxError(
-            fs.toChain.toVector.map(f =>
-              EraLedgerRun.flat(f, purposes, read).fold(e => fail(s"$name: $e"), identity)
-            )
-          )
-          .fold(error => fail(error.message), identity)
-        // the era failures written by their own encoder, without the flat form
-        assertEquals(
-          xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck.direct(fs.toChain.toVector).hex,
-          flat.hex,
-          s"$name: direct"
-        )
-        flat
+        xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck.direct(fs.toChain.toVector)
       case Right(Right(_)) => fail(s"$name: the era LEDGER accepts what the reference refused")
       case Left(defect)    => fail(s"$name: era defect $defect")
 

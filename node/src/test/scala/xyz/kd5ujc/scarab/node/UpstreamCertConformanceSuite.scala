@@ -10,15 +10,13 @@ import io.circe.parser.parse
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{
-  Certificate,
   Committee,
   EpochGeometry,
   GovActionId,
   GovActionState,
   LedgerGlobals
 }
-import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.rules.{ConwayCert, Globals, JudgedSts, Pool, PoolCert}
+import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellStateCodecs, NodeOrders, Params, Wire}
@@ -95,7 +93,8 @@ class UpstreamCertConformanceSuite extends FunSuite:
     ).foreach(name => verifyManifestFile(name, dir.resolve(name)))
   }
 
-  test("the generated CERT registration reaches POOL with full decoded state and environment") {
+  test("the era-typed CERT gives the full Haskell certificate state on the upstream judgment") {
+    // the fixture's inputs judged by the era CERT and compared with the reference's post-state
     given ProtVer = protVer
     val dir = base.resolve(s"cases/$seed")
 
@@ -105,57 +104,6 @@ class UpstreamCertConformanceSuite extends FunSuite:
     val context = items(node(dir.resolve("context.cbor")), 2)
     assertEquals(context.map(_.value), Vector(Value.Map(Vector.empty), Value.Map(Vector.empty)))
 
-    val env = items(node(dir.resolve("environment.cbor")), 4)
-    val pp = Params.conwayCodec.decode(env(0)).fold(e => fail(e.render), identity)
-    val epoch = summon[Codec[EpochNo]].decode(env(1)).fold(e => fail(e.render), identity)
-    val committee = Wire
-      .strictMaybe(summon[Codec[Committee]])
-      .decode(env(2))
-      .fold(e => fail(e.render), identity)
-    val proposalCodec = Wire.mapOf(
-      summon[Codec[GovActionId]],
-      summon[Codec[GovActionState]]
-    )
-    val proposals = proposalCodec.decode(env(3)).fold(e => fail(e.render), identity)
-    assert(
-      proposals.isEmpty,
-      s"expected the full generated proposal environment to be empty: $proposals"
-    )
-
-    val before = state(dir.resolve("state.cbor"))
-    val expected = state(dir.resolve("implementation-state.cbor"))
-    val signal = Certificate
-      .decode(node(dir.resolve("signal.cbor")), Era.Conway)
-      .fold(error => fail(s"generated CERT signal: $error"), identity)
-    ConwayCert.of(Bytes.empty, signal).fold(e => fail(e.toString), identity) match
-      case ConwayCert.OfPool(cert @ PoolCert.RegPool(_)) =>
-        val actual = JudgedSts
-          .apply(Pool.Adapter)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(Bytes.empty, _))(
-            globals,
-            Pool.RuleEnv(
-              Bytes.fromArray(
-                "cardano-ledger-CERT-493101".getBytes(java.nio.charset.StandardCharsets.UTF_8)
-              ),
-              pp,
-              epoch.toBigInt
-            ),
-            before.pState,
-            cert
-          )
-          .fold(e => fail(s"Scarab POOL refused upstream-accepted CERT: $e"), identity)
-        assertEquals(actual, expected.pState, "the full POOL substate")
-        assertEquals(before.vState, expected.vState, "unmodified VState")
-        assertEquals(before.dState, expected.dState, "unmodified DState")
-        assertEquals(committee, None, "decoded full committee input")
-      case other =>
-        fail(s"expected upstream CERT to dispatch the generated pool registration: $other")
-  }
-
-  test("the era-typed CERT gives the full Haskell certificate state on the upstream judgment") {
-    // the same fixture inputs, judged by the era CERT and compared with the reference's
-    // post-state, not with the flat rule
-    given ProtVer = protVer
-    val dir = base.resolve(s"cases/$seed")
     val env = items(node(dir.resolve("environment.cbor")), 4)
     val flatPp = Params.conwayCodec.decode(env(0)).fold(e => fail(e.render), identity)
     val pp = xyz.kd5ujc.scarab.ledger.era.PParams[Conway](
@@ -172,9 +120,21 @@ class UpstreamCertConformanceSuite extends FunSuite:
       .mapOf(summon[Codec[GovActionId]], summon[Codec[GovActionState]])
       .decode(env(3))
       .fold(e => fail(e.render), identity)
+    assert(
+      proposals.isEmpty,
+      s"expected the full generated proposal environment to be empty: $proposals"
+    )
+    assertEquals(committee, None, "decoded full committee input")
     val cert = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert
       .decode(node(dir.resolve("signal.cbor")), xyz.kd5ujc.scarab.protocol.StateLayout.Node11_1)
       .fold(e => fail(s"CERT era certificate: $e"), identity)
+    cert match
+      case xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert.ConwayTxCertPool(
+            xyz.kd5ujc.scarab.ledger.era.PoolCert.RegPool(_)
+          ) =>
+        ()
+      case other =>
+        fail(s"expected upstream CERT to dispatch the generated pool registration: $other")
     val actual = xyz.kd5ujc.scarab.ledger.era.EraCertsRun
       .cert(
         globals,
@@ -184,5 +144,9 @@ class UpstreamCertConformanceSuite extends FunSuite:
       )
       .fold(e => fail(s"defect: $e"), identity)
       .fold(fs => fail(s"refused upstream-accepted CERT: $fs"), _._1)
-    assertEquals(actual, state(dir.resolve("implementation-state.cbor")), "full ConwayCertState")
+    val before = state(dir.resolve("state.cbor"))
+    val expected = state(dir.resolve("implementation-state.cbor"))
+    assertEquals(actual, expected, "full ConwayCertState")
+    assertEquals(before.vState, expected.vState, "unmodified VState")
+    assertEquals(before.dState, expected.dState, "unmodified DState")
   }

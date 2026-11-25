@@ -96,6 +96,32 @@ class BoundaryTransactionsSuite extends FunSuite:
             assertEquals(flag, r.c.tx.isValid)
           case other => fail(s"not a validation-tag refusal: $other")
 
+  /** The refusal [[refusal]] reads, as Conway's era LEDGER gives it: its failures in the
+    * reference's order.
+    */
+  private def eraRefusal(r: Recorded, failures: Vector[era.rules.LedgerPredFailure[Conway]]): Unit =
+    import era.rules.{
+      ConwayLedgerPredFailure as L,
+      ConwayUtxoPredFailure as U,
+      ConwayUtxosPredFailure as S,
+      ConwayUtxowPredFailure as W
+    }
+    r.stage match
+      case Stage.Decode =>
+        failures match
+          case Vector(L.ConwayUtxowFailure(W.MalformedScriptWitnesses(hashes))) =>
+            assertEquals(hashes.toSortedSet.toSet, r.c.tx.witnesses.scripts.map(_.hash).toSet)
+          case other => fail(s"not the malformed scripts' refusal: $other")
+      case _ =>
+        failures match
+          case Vector(
+                L.ConwayUtxowFailure(
+                  W.UtxoFailure(U.UtxosFailure(S.ValidationTagMismatch(flag, _)))
+                )
+              ) =>
+            assertEquals(flag == era.IsPhase2Valid.Phase2Valid, r.c.tx.isValid)
+          case other => fail(s"not a validation-tag refusal: $other")
+
   private def disposition(r: Recorded, after: Utxo): Unit =
     val spent = obj(r.boundary, "spentAfter")
     r.c.spent.keys.foreach { in =>
@@ -179,13 +205,17 @@ class BoundaryTransactionsSuite extends FunSuite:
 
     test(s"${c.name}: LEDGER admission and both input roles match the reference") {
       val nes = Build.funded(Build.nes[Conway](5, c.params), r.allInputs)
-      TestLedger.conwayLedger(nes, c.tx, TestLedger.env) match
+      era.conway.ConwayTestKit.eraVerdict(
+        nes,
+        era.conway.ConwayTestKit.typed(c.tx),
+        TestLedger.env
+      ) match
         case Right(after) =>
           assert(r.accepted, "accepted a transaction the reference refused")
-          disposition(r, after.state.utxo.utxo.utxo)
-        case Left(failure) =>
-          assert(!r.accepted, s"refused a reference-accepted transaction: $failure")
-          refusal(r, failure)
+          disposition(r, after.utxo.utxo.utxo)
+        case Left(failures) =>
+          assert(!r.accepted, s"refused a reference-accepted transaction: $failures")
+          eraRefusal(r, failures)
     }
 
     test(s"${c.name}: BBODY admission and both input roles match the reference") {

@@ -1,16 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import xyz.kd5ujc.scarab.ledger.TestGeometry
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
-import java.time.Instant
 import io.circe.Json
 import io.circe.parser.parse
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
-import xyz.kd5ujc.scarab.ledger.{Committee, EnactState, EpochGeometry, LedgerGlobals, Proposals}
-import xyz.kd5ujc.scarab.ledger.rules.{Globals, Gov, GovEnv, GovSignal, JudgedSts}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.ledger.{Committee, EnactState, Proposals}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.era.EraGovRun
 import xyz.kd5ujc.scarab.models.runtime.Codec
@@ -48,18 +45,6 @@ class UpstreamGovConformanceSuite extends FunSuite:
     assertEquals(file.get[String]("sha256").toOption, Some(sha256(path)), s"$name SHA-256")
     assertEquals(file.get[Int]("bytes").toOption, Some(Files.size(path).toInt), s"$name byte size")
 
-  private val globals = Globals(
-    LedgerGlobals(
-      BigInt(0),
-      BigInt(1),
-      Rational.zero,
-      network = Network.Testnet,
-      systemStart = xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
-      kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
-    ),
-    EpochGeometry(Instant.EPOCH, 1000L, 1L, TestGeometry.k(1), TestGeometry.f("0.1"))
-  )
-
   test("the actual generated GOV trace retains accepted statuses and every raw component") {
     val dir = base.resolve(s"cases/$seed")
     assertEquals(
@@ -76,7 +61,9 @@ class UpstreamGovConformanceSuite extends FunSuite:
     ).foreach(name => verify(name, dir.resolve(name)))
   }
 
-  test("the generated empty GOV signal traverses Scarab GOV against the complete typed trace") {
+  test(
+    "the generated empty GOV signal traverses the era-typed GOV against the complete typed trace"
+  ) {
     given ProtVer = protVer
     val dir = base.resolve(s"cases/$seed")
     val context = summon[Codec[EnactState]]
@@ -122,17 +109,7 @@ class UpstreamGovConformanceSuite extends FunSuite:
       .fold(e => fail(s"full GOV implementation state: ${e.render}"), identity)
     assertEquals(before, expected, "pinned generated trace is an accepted no-op")
 
-    val actual = JudgedSts
-      .apply(Gov)(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(txId, _))(
-        globals,
-        GovEnv(txId, epoch.toBigInt, pp, guardrails, cert, committee),
-        before,
-        GovSignal(Vector.empty, Vector.empty, Vector.empty)
-      )
-      .fold(e => fail(s"Scarab GOV refused the upstream-accepted empty signal: $e"), identity)
-    assertEquals(actual, expected, "complete GOV proposal state")
-
-    // and the era-typed GOV on the same judgment: the same proposals after
+    // the era-typed GOV on the judgment: the reference's proposals after
     val eraEnv = xyz.kd5ujc.scarab.ledger.era.rules.GovEnv[Conway](
       Hash32.fromBytes(txId).fold(e => fail(s"id: $e"), identity),
       epoch,

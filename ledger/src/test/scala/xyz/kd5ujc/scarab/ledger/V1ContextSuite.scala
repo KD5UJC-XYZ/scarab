@@ -171,6 +171,48 @@ class V1ContextSuite extends FunSuite:
             assertEquals(flag, c.tx.isValid)
           case other => fail(s"not a validation tag mismatch: $other")
 
+  /** The refusal [[refusalOf]] reads, as Conway's era LEDGER gives it: its failures in the
+    * reference's order. A translation's failure is compared through the projection of the era's
+    * collection error onto the translation error the fixture names (`EraLedgerRun.flatCollect`).
+    */
+  private def eraRefusalOf(
+      c: PlutusCase,
+      r: Verdict,
+      failures: Vector[era.rules.LedgerPredFailure[Conway]]
+  ): Unit =
+    import era.rules.{
+      ConwayLedgerPredFailure as L,
+      ConwayUtxoPredFailure as U,
+      ConwayUtxosPredFailure as S,
+      ConwayUtxowPredFailure as W
+    }
+    r.translation(c) match
+      case Some(error) =>
+        // one level at a time, each at Conway's types
+        val utxow: Option[W[Conway]] = failures match
+          case Vector(L.ConwayUtxowFailure(w)) => Some(w)
+          case _                               => None
+        val utxo: Option[U[Conway]] = utxow.collect { case W.UtxoFailure(u) => u }
+        val utxos: Option[S[Conway]] = utxo.collect { case U.UtxosFailure(f) => f }
+        utxos match
+          case Some(S.CollectErrors(es)) if es.tail.isEmpty =>
+            val collected: era.CollectError[Conway] = es.head
+            assertEquals(
+              era.EraLedgerRun.flatCollect(collected, _ => None),
+              Some(CollectError.BadTranslation(error))
+            )
+          case _ => fail(s"not the reference's translation refusal: $failures")
+      case None =>
+        assert(r.mismatch, r.text)
+        failures match
+          case Vector(
+                L.ConwayUtxowFailure(
+                  W.UtxoFailure(U.UtxosFailure(S.ValidationTagMismatch(flag, _)))
+                )
+              ) =>
+            assertEquals(flag == era.IsPhase2Valid.Phase2Valid, c.tx.isValid)
+          case other => fail(s"not a validation tag mismatch: $other")
+
   private def verdictOf[A](
       c: PlutusCase,
       r: Verdict,
@@ -196,18 +238,31 @@ class V1ContextSuite extends FunSuite:
       c.tx
     )
 
+  /** Conway's era LEDGER on the case's transaction, read by Conway's decoder from its original
+    * parts.
+    */
   private def conwayTx(c: PlutusCase) =
     val nes = Build.funded(Build.nes[Conway](5, c.params), utxoOf(c))
-    TestLedger.conwayLedger(nes, c.tx, TestLedger.env)
+    era.conway.ConwayTestKit.eraVerdict(nes, era.conway.ConwayTestKit.typed(c.tx), TestLedger.env)
 
   recorded.foreach { r =>
     val c = r.plutus
     test(s"${r.file}: ${c.name}: the transaction rule of the era does what the reference did") {
-      val result =
-        if c.protocolMajor >= 9 then conwayTx(c)
-        else if c.protocolMajor >= 7 then eraTx[Babbage](c)
-        else eraTx[Alonzo](c)
-      verdictOf(c, r.verdict, result)
+      if c.protocolMajor >= 9 then
+        conwayTx(c) match
+          case Right(_) =>
+            assert(
+              r.verdict.accepted,
+              s"the node accepts what the reference refused: ${r.verdict.text}"
+            )
+          case Left(failures) =>
+            assert(!r.verdict.accepted, s"the node refuses what the reference accepted: $failures")
+            eraRefusalOf(c, r.verdict, failures)
+      else
+        val result =
+          if c.protocolMajor >= 7 then eraTx[Babbage](c)
+          else eraTx[Alonzo](c)
+        verdictOf(c, r.verdict, result)
     }
   }
 
