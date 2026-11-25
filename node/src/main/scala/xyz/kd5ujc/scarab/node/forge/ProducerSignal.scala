@@ -11,7 +11,8 @@ package xyz.kd5ujc.scarab.node.forge
   * a header, only its major.
   */
 enum ProducerSignal:
-  /** Scarab's identifier, 42 in the registry (`CIP-0203/registry.json`), with no payload: the entry
+  /** Scarab's identifier, 73, requested in the registry (`CIP-0203/registry.json`,
+    * cardano-foundation/CIPs#1334), with no payload: the entry
     * links no payload definition, so the payload is 0 ("Producer requirements").
     */
   case Identified
@@ -37,7 +38,7 @@ object ProducerSignal:
   opaque type Id = Int
 
   object Id:
-    val Scarab: Id = 42
+    val Scarab: Id = 73
     val OptOut: Id = 255
 
     def from(n: Int): Option[Id] = Option.when(n >= 0 && n <= 0xff)(n)

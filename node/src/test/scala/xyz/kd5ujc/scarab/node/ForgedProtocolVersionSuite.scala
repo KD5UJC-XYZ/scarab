@@ -76,11 +76,11 @@ class ForgedProtocolVersionSuite extends FunSuite:
     .fromConfigFile(ReferenceBuild.Leios)(testnet.resolve("testnet/config/config.json"))
     .fold(e => fail(e.message), identity)
 
-  test("under the testnet's configuration the node forges 12.42, its maximum major follows it") {
+  test("under the testnet's configuration the node forges 12.73, its maximum major follows it") {
     assertEquals(testnetSetup.config.settings.experimentalHardForksEnabled, true)
     assertEquals(
       testnetSetup.forgedProtocolVersion(ProducerSignal.Default),
-      (BigInt(12), BigInt(42))
+      (BigInt(12), BigInt(73))
     )
     assertEquals(
       testnetSetup.forgedProtocolVersion(ProducerSignal.OptedOut),
