@@ -178,11 +178,13 @@
       "entryPoints": [
         "Scratch",
         "Public",
-        "KeyText"
+        "KeyText",
+        "Sha512"
       ],
       "suites": [
         "ScratchSuite",
-        "KeyTextSuite"
+        "KeyTextSuite",
+        "Sha512Suite"
       ],
       "docs": [
         "docs/security/threat-model.md"
