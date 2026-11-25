@@ -23,13 +23,14 @@ import xyz.kd5ujc.scarab.storage.UtxoStore
   * it to (`MirrorRules`): the flat rules' body (`EraBlock.Body`) and the era run's
   * (`ConwayBlockRun.Body`), each serial and through the node's bounded workers (ADR 0018), in an
   * order rotated by the block and the round. Each is timed alone; the block's transactions and the
-  * era block are decoded, and the inputs read from the store, outside the timings. The era run's
-  * result through the workers is checked against its serial result, the flat rules' through the
-  * workers against theirs, and the era run's against the flat rules' (the same ledger state and
-  * counters), on the first round, as reading the whole state costs; the last is reported, and the
-  * caller asserts it over the window (`ConwayBodiesReplaySuite`, #85). The era run is the one the
-  * node builds ([[xyz.kd5ujc.scarab.node.MirrorRules.conwayBody]]), from the block and the read set
-  * the node reads ([[NodeRules.prepare]]).
+  * era block are decoded, the inputs read from the store and each way's body built, outside the
+  * timings. The era run's results through the workers, as the node runs it and prepared below the
+  * floor too, are checked against its serial result, the flat rules' through the workers against
+  * theirs, and the era run's against the flat rules' (the same ledger state and counters), on the
+  * first round, as reading the whole state costs; the last is reported, and the caller asserts it
+  * over the window (`ConwayBodiesReplaySuite`, #85). The era run is the one the node builds
+  * ([[xyz.kd5ujc.scarab.node.MirrorRules.conwayBody]]), from the block and the read set the node
+  * reads ([[NodeRules.prepare]]).
   */
 object EraBodies:
   /** The bound of the node's workers the two parallel ways run at, and the rounds of each block. */
@@ -140,16 +141,22 @@ object EraBodies:
                 None
               )
               .fold(e => fail(s"era run: $e"), identity)
+          // every way's body is built before its timer starts, and each way's timer covers only
+          // the scheduler's run of it, serial or prepared alike (#85)
           def run(way: Way): IO[(Either[EraBlock.Outcome, ConwayBlockRun.Result], Long)] =
             way match
-              case Way.FlatSerial   => timed(IO.blocking(flat.serial)).map(_.leftMap(Left(_)))
-              case Way.FlatParallel => timed(parallel(flat)).map(_.leftMap(Left(_)))
-              case Way.EraSerial    => timed(IO.blocking(era.serial)).map(_.leftMap(Right(_)))
-              case Way.EraParallel  => timed(parallel(era)).map(_.leftMap(Right(_)))
+              case Way.FlatSerial =>
+                IO(flat).flatMap(b => timed(IO.blocking(b.serial))).map(_.leftMap(Left(_)))
+              case Way.FlatParallel =>
+                IO(flat).flatMap(b => timed(parallel(b))).map(_.leftMap(Left(_)))
+              case Way.EraSerial =>
+                IO(era).flatMap(b => timed(IO.blocking(b.serial))).map(_.leftMap(Right(_)))
+              case Way.EraParallel =>
+                IO(era).flatMap(b => timed(parallel(b))).map(_.leftMap(Right(_)))
               case Way.FlatPrepared =>
-                timed(parallel(AlwaysPrepared(flat))).map(_.leftMap(Left(_)))
+                IO(AlwaysPrepared(flat)).flatMap(b => timed(parallel(b))).map(_.leftMap(Left(_)))
               case Way.EraPrepared =>
-                timed(parallel(AlwaysPrepared(era))).map(_.leftMap(Right(_)))
+                IO(AlwaysPrepared(era)).flatMap(b => timed(parallel(b))).map(_.leftMap(Right(_)))
           val ways = Way.values.toVector
           val redeeming = txs.count(_.exists(_.witnesses.redeemers.nonEmpty))
           // what the era run's scripts ask and spend, from one serial run recording each request,
@@ -179,13 +186,15 @@ object EraBodies:
             val spent = asked.map(_._2 match
               case EvalResult.Success(u, _)    => u
               case EvalResult.Failure(_, u, _) => u)
+            // what the redeemers declare, as the scheduler sums it, every redeemer's whether or not
+            // the serial run reaches its script; what the scripts spend, from those it reaches
             Json.obj(
               "scripts" -> asked.size.asJson,
-              "preparable" -> era.preparable.asJson,
-              "worthwhile" -> era.worthwhile.asJson,
-              "batchWidths" -> AlwaysPrepared(era).prepare.batches.map(_.size).asJson,
-              "declaredSteps" -> asked.map(_._1.budget.steps).sum.asJson,
-              "declaredMem" -> asked.map(_._1.budget.mem).sum.asJson,
+              "preparable" -> body.preparable.asJson,
+              "worthwhile" -> body.worthwhile.asJson,
+              "batchWidths" -> AlwaysPrepared(body).prepare.batches.map(_.size).asJson,
+              "declaredSteps" -> body.declared.steps.asJson,
+              "declaredMem" -> body.declared.mem.asJson,
               "spentSteps" -> spent.map(_.steps).sum.asJson,
               "scriptBytes" -> asked.map(_._1.script.size).sum.asJson
             )
@@ -199,13 +208,20 @@ object EraBodies:
                 val sameAsFlat = Option.when(round == 0) {
                   val flatSerial = by(Way.FlatSerial)._1
                   val eraSerial = by(Way.EraSerial)._1
+                  // through the workers as the node runs them, and prepared below the floor too
                   assertEquals(by(Way.FlatParallel)._1, flatSerial, s"flat: slot ${header.slot}")
-                  val agrees = (eraSerial, by(Way.EraParallel)._1) match
+                  assertEquals(
+                    by(Way.FlatPrepared)._1,
+                    flatSerial,
+                    s"flat, prepared: slot ${header.slot}"
+                  )
+                  def agrees(way: Way) = (eraSerial, by(way)._1) match
                     case (Right(Right(Right(s))), Right(Right(Right(p)))) =>
                       cats.Eq[LedgerState[Conway]].eqv(s.state.ls, p.state.ls) &&
                       s.state.blocksMade == p.state.blocksMade && s.plutus == p.plutus
                     case (s, p) => s == p
-                  assert(agrees, s"era: slot ${header.slot}")
+                  assert(agrees(Way.EraParallel), s"era: slot ${header.slot}")
+                  assert(agrees(Way.EraPrepared), s"era, prepared: slot ${header.slot}")
                   (flatSerial, eraSerial) match
                     case (Left(EraBlock.Outcome.Applied(after, plutus)), Right(Right(Right(e)))) =>
                       after match
