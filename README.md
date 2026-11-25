@@ -201,7 +201,7 @@ Alongside: `fixtures/` (test vectors and captured chain data, each with its prov
 
 ## Contributing, security, licence
 
-Contributions are welcome: read [CONTRIBUTING.md](CONTRIBUTING.md) (Docker-only build, style rules, the
+Contributions are welcome: read [CONTRIBUTING.md](CONTRIBUTING.md) (the build in Docker or the Nix shell, style rules, the
 gates each kind of change must pass), [docs/process.md](docs/process.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Agent
 sessions follow [AGENTS.md](AGENTS.md). Report
 security problems as [SECURITY.md](SECURITY.md#reporting) describes. Never commit signing keys.
