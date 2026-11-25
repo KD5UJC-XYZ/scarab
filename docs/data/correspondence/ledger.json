@@ -27001,7 +27001,7 @@
    "evidence": [
     "DijkstraUTxOSuite"
    ],
-   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal to the flat decoder's (`DijkstraPurposes.scriptsNeeded`) in order, purpose, index, item and script hash on every body of every Dijkstra transaction the repository holds, at both levels, a certificate's item by its key and script; the UTxO set is the recorded one where the corpus has it and stand-in outputs elsewhere",
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; on every body of every Dijkstra transaction the repository holds, at both levels, the purposes the flat rules needed (recorded by purpose when the flat decoder went, #85; until then equal to them in order, purpose, index, item and script hash); the UTxO set is the recorded one where the corpus has it and stand-in outputs elsewhere",
    "digest": "be9d228c98e07984"
   },
   "def ledger.era.dijkstra.DijkstraUTxO.getDijkstraSupplementalDataHashes": {
@@ -27043,7 +27043,7 @@
    "evidence": [
     "DijkstraUTxOSuite"
    ],
-   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal to the flat measure's (`DijkstraTxMeasures.batchRefScriptsSize`, a test helper since the flat rules went) on every Dijkstra transaction the repository holds",
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; the reference scripts of the outputs each level spends or reads on every Dijkstra transaction the repository holds (DijkstraUTxOSuite), as the flat measure gave until the flat decoder went (#85)",
    "digest": "e6fc40d40b696b29"
   },
   "val ledger.era.dijkstra.DijkstraUTxO.instance": {
@@ -27116,7 +27116,7 @@
     "DijkstraUTxOSuite",
     "DijkstraNativeScriptEvalSuite"
    ],
-   "note": "every member the class has here: `mkBasicTx` is no member of it for any era, `validateNativeScript` is `validateDijkstraNativeScript` (Tx.hs:427-438), and `allInputsTxBodyF` is `EraTxBody.allInputs`; `getTotalExUnits` adds each sub-transaction's units to the top level's, equal to the flat measure's (`DijkstraTxMeasures.totalExUnits`, a test helper since the flat rules went) on every Dijkstra transaction the repository holds, and each sub-transaction's to its redeemers' units as the flat decoder read them. `DijkstraEraTx`'s `hashTx` (`Tx.hs:445-472`) is not here (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184); the annotated transaction's members read from their deferred values (`Eval`)",
+   "note": "every member the class has here: `mkBasicTx` is no member of it for any era, `validateNativeScript` is `validateDijkstraNativeScript` (Tx.hs:427-438), and `allInputsTxBodyF` is `EraTxBody.allInputs`; `getTotalExUnits` adds each sub-transaction's units to the top level's, its redeemers' units and each sub-transaction's on every Dijkstra transaction the repository holds (DijkstraUTxOSuite), as the flat measure gave until the flat decoder went (#85). `DijkstraEraTx`'s `hashTx` (`Tx.hs:445-472`) is not here (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7024127184); the annotated transaction's members read from their deferred values (`Eval`)",
    "digest": "55ee9de189d44b22"
   },
   "val ledger.era.dijkstra.DijkstraState.accounts": {
