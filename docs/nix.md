@@ -51,7 +51,10 @@ before the node starts. The three networks can run at the same time.
 | `.#mainnet` | 7073 | `mainnet` |
 
 `SCARAB_DATA_DIR` defaults to `/tmp/scarab`. Each network directory contains
-`config/`, `db/` and `node.socket`. Node-to-node and separate metrics listeners
+`config/`, `db/` and `node.socket`. The data directory and the network
+directory must belong to you and not be writable by every user, since the app
+reads its configuration back from them; otherwise it stops and asks for a
+`SCARAB_DATA_DIR` of your own. Node-to-node and separate metrics listeners
 are off unless explicitly enabled. Configurations are downloaded over HTTPS
 from the official Cardano environment endpoint documented in
 [network configuration](running/configuration.md); referenced checkpoints and

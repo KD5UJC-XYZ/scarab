@@ -52,8 +52,18 @@ if [[ ! -f $source_dir/scripts/sbtw || ! -f $source_dir/build.sbt || ! -d $sourc
   exit 2
 fi
 
-state_dir=$(realpath -m -- "${SCARAB_DATA_DIR:-/tmp/scarab}/$network")
-mkdir -p -- "$state_dir"
+# The app reads its configuration back from these directories, so another account must not control them.
+own_directory() {
+  mkdir -p -- "$1"
+  if [[ ! -O $1 ]] || (( 8#$(stat -L -c %a -- "$1") & 8#002 )); then
+    printf '%s belongs to another user or is writable by every user; set SCARAB_DATA_DIR to a directory of your own.\n' "$1" >&2
+    exit 2
+  fi
+}
+data_root=$(realpath -m -- "${SCARAB_DATA_DIR:-/tmp/scarab}")
+state_dir=$data_root/$network
+own_directory "$data_root"
+own_directory "$state_dir"
 if [[ -n ${SCARAB_CONFIG_DIR:-} ]]; then
   config_dir=$(realpath -e -- "$SCARAB_CONFIG_DIR")
 else
