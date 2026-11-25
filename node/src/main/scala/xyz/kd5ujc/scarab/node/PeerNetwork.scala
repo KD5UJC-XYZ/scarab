@@ -836,11 +836,20 @@ object PeerNetwork:
                   captured.roots.localSrv,
                   cache
                 )
+                // The groups are compared as local roots, whose members are sets: the reference's
+                // provider writes its groups, whose members are a map, only when they changed
+                // (`monitorDomain`, LocalRootPeers.hs 236-245 of ouroboros-network c45735a5), and
+                // its governor acts only on local roots that differ (`localRoots`,
+                // `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 255),
+                // so an answer of the same addresses in another order is no new generation.
+                val changed =
+                  LocalRoots.fromGroups(resolved) !=
+                    LocalRoots.fromGroups(captured.resolvedLocalRoots)
                 for
                   latest <- runtime.get
                   current <-
                     if latest.generation != captured.generation then F.pure(latest)
-                    else if resolved != captured.resolvedLocalRoots then
+                    else if changed then
                       for
                         known <- state.get
                         public = retainedPublicRoots(captured.roots, captured.roots, known)
