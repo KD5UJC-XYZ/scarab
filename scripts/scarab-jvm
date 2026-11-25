@@ -1,9 +1,11 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 # SPDX-License-Identifier: Apache-2.0
 # Starts the node's JVM so that its memory, and a forging node's keys in it, stay off disk (docs/running/forging.md,
 # "Keys in memory"). The release image's entry point and the Nix network apps (scripts/nix-network) run it as
-# `scarab-jvm <java arguments>`, and it ends in `exec java <its options> <java arguments>`, so the JVM keeps this
-# process and its signals.
+# `scarab-jvm <absolute path of java> <java arguments>`, and it ends in `exec <java> <its options> <java arguments>`,
+# so the JVM keeps this process and its signals. Its arguments are trusted: they come after its options and can
+# override them. Privileged mode (-p) reads no BASH_ENV or ENV file and imports no function from the environment, so
+# nothing runs before these lines and no function stands in for a builtin; a caller that names bash names -p too.
 set -euo pipefail
 
 say() {
@@ -13,6 +15,10 @@ refuse() {
   say "$*"
   exit 2
 }
+
+[[ ${1-} == /* ]] || refuse "the first argument must be the absolute path of java"
+java=$1
+shift
 
 sizing=()
 if [[ -v SCARAB_HEAP_SIZE ]]; then
@@ -27,10 +33,11 @@ fi
 
 case ${SCARAB_JVM_DIAGNOSTICS-} in
   '' | 0)
-    # The JVM reads these before and after its command line; options in them (OnError, HeapDumpPath, a recording at
-    # start, ...) would write memory however the options below are set.
+    # The JVM reads the first three before and after its command line, and options in them (OnError, HeapDumpPath, a
+    # recording at start, ...) would write memory however the options below are set; JDK_ALTERNATE_VM names the
+    # libjvm.so the launcher loads.
     dropped=()
-    for name in JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS; do
+    for name in JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS JDK_ALTERNATE_VM; do
       if [[ -v $name ]]; then
         dropped+=("$name")
         unset "$name"
@@ -46,7 +53,7 @@ case ${SCARAB_JVM_DIAGNOSTICS-} in
     ;;
   1)
     say "memory diagnostics enabled: do not use on a forging node (core files, crash reports, heap dumps and attach" \
-      "are the JVM's defaults, with JAVA_TOOL_OPTIONS, JDK_JAVA_OPTIONS and _JAVA_OPTIONS as given)"
+      "are the JVM's defaults, with JAVA_TOOL_OPTIONS, JDK_JAVA_OPTIONS, _JAVA_OPTIONS and JDK_ALTERNATE_VM as given)"
     memory=()
     ;;
   *)
@@ -54,4 +61,4 @@ case ${SCARAB_JVM_DIAGNOSTICS-} in
     ;;
 esac
 
-exec java "${sizing[@]}" "${memory[@]}" "$@"
+exec "$java" "${sizing[@]}" "${memory[@]}" "$@"

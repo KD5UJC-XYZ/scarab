@@ -83,6 +83,8 @@ def build(args):
     jvm_bom, reviews = candidate_sbom.jvm(artifact, first, identity, native_receipt)
     candidate_sbom.write(sboms / 'jvm.cdx.json', jvm_bom)
     schema_validate(root, sboms / 'jvm.cdx.json', evidence / 'jvm-schema.log')
+    # the launcher of the commit built, not of the working tree, so that the image and its verification agree
+    launcher = candidate_oci.launcher_at(identity['gitCommit'], repo)
     image_tag = 'scarab-candidate:' + uuid.uuid4().hex
     container = 'scarab-candidate-export-' + uuid.uuid4().hex[:12]
     try:
@@ -90,7 +92,7 @@ def build(args):
             context = Path(temporary)
             shutil.copyfile(artifact, context / 'app.jar')
             shutil.copyfile(repo / 'docker/candidate.Dockerfile', context / 'Dockerfile')
-            shutil.copyfile(repo / 'scripts/scarab-jvm', context / 'scarab-jvm')
+            (context / 'scarab-jvm').write_bytes(launcher)
             from_lines = [line for line in (context / 'Dockerfile').read_text().splitlines() if line.startswith('FROM ')]
             if from_lines != ['FROM ' + BASE]:
                 raise ValueError('candidate recipe and approved runtime base differ')
@@ -117,16 +119,19 @@ def build(args):
         results = [json.loads(line) for line in (evidence / 'image-native-smoke.log').read_text().splitlines() if line.startswith('{')]
         if not any(r.get('ok') and r.get('library') == 'portable' for r in results):
             raise ValueError('candidate image did not pass actual portable native smoke')
+        # through the entry point: the launcher drops the JVM option variable, so the JVM never picks it up
         cli = subprocess.run(['docker', 'run', '--rm', '--network', 'none', '--read-only', '--tmpfs', '/tmp:rw,exec,nosuid,size=256m',
-                              '--cpus=2', image_id, '--help'], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                              '--cpus=2', '-e', 'JAVA_TOOL_OPTIONS=-XX:+HeapDumpOnOutOfMemoryError', image_id, '--help'],
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         (evidence / 'image-cli-smoke.log').write_bytes(cli.stdout)
-        if cli.returncode != 2 or b'usage: follow' not in cli.stdout:
+        if (cli.returncode != 2 or b'usage: follow' not in cli.stdout or b'Picked up' in cli.stdout
+                or b'scarab-jvm: dropped JAVA_TOOL_OPTIONS ' not in cli.stdout):
             raise ValueError('candidate image CLI smoke failed')
         docker_archive = root / 'image.docker.tar'
         subprocess.run(['docker', 'image', 'save', '-o', str(docker_archive), image_id], check=True)
         oci = artifacts / f'scarab-node-{identity["version"]}-linux-amd64.oci.tar'
         candidate_oci.convert(docker_archive, oci)
-        inspected = candidate_oci.verify(oci, artifact, identity)
+        inspected = candidate_oci.verify(oci, artifact, identity, launcher=launcher)
         docker_binding = candidate_oci.bind_docker_image(docker_archive, image_inspect, inspected)
         base_layers = base_inspect['RootFS']['Layers']
         if not base_layers or inspected['diffIds'][:len(base_layers)] != base_layers:
@@ -182,7 +187,7 @@ def build(args):
             ('toolchain', evidence / 'toolchain.json'), ('licence-review', evidence / 'licence-review.json')]:
             manifest['evidence'].append(dict(kind=kind, file=record(path)))
         candidate_sbom.write(root / 'candidate.json', manifest)
-        candidate_manifest.validate(root)
+        candidate_manifest.validate(root, launcher=launcher)
         candidate_sbom.write(evidence / 'attempt.json', dict(status='verified', source=identity,
                             manifestSha256=candidate_manifest.sha256(root / 'candidate.json')))
     finally:

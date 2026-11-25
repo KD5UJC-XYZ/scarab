@@ -150,7 +150,9 @@ classpath=$(
 )
 export MALLOC_ARENA_MAX=${MALLOC_ARENA_MAX:-2}
 export SCARAB_HEAP_SIZE=${SCARAB_HEAP_SIZE:-3g} SCARAB_RUN_PROCESSORS=${SCARAB_RUN_PROCESSORS:-4}
-# The release image's launcher keeps a forging node's keys off disk. The build above ran with the caller's environment,
-# JAVA_TOOL_OPTIONS and the like included: it holds no keys.
-exec "$BASH" "$source_dir/scripts/scarab-jvm" --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
+# The release image's launcher keeps a forging node's keys off disk; -p as its first line has it (no BASH_ENV, no
+# functions from the environment), and the java of the app's JDK by its path. The build above ran with the caller's
+# environment, JAVA_TOOL_OPTIONS and the like included: it holds no keys.
+exec "$BASH" -p "$source_dir/scripts/scarab-jvm" "$JAVA_HOME/bin/java" \
+  --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
   -cp "$classpath" xyz.kd5ujc.scarab.node.Main follow "${defaults[@]}" "${node_args[@]}"
