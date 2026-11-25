@@ -24,8 +24,9 @@ nix fmt -- --fail-on-change
 These Nix checks validate the environment and Nix formatting; run the Scala
 `check` separately as shown above. The flake supplies a development environment,
 not a sandboxed application package. It does not run Docker or convert the
-Docker-based preflight and reference scenarios to Nix. The owner authorized
-this Nix workflow in the implementing chat session on 2026-11-24.
+Docker-based preflight and reference scenarios to Nix: `scripts/preflight --check`,
+the scenarios and CI stay on Docker
+([CONTRIBUTING.md](../CONTRIBUTING.md#build-docker-or-the-nix-shell)).
 
 With direnv and nix-direnv configured, `direnv allow` enables the included `.envrc`.
 
