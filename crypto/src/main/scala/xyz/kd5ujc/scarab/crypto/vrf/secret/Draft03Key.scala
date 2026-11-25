@@ -8,29 +8,30 @@ import java.util.Arrays
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover.{Failure, Proved}
 
-/** The secret steps of ECVRF-ED25519-SHA512-Elligator2 (draft-03) proving, as libsodium's
-  * `crypto_vrf_ietfdraft03_prove` (IntersectMBO/libsodium dbb48cce, `crypto_vrf/ietfdraft03/
-  * prove.c`) takes them, over the input's hash-to-curve point H, which
-  * [[xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover]] computes from the public key and alpha (public
-  * inputs) and hands in as its encoding.
+/** The secret steps of ECVRF-ED25519-SHA512-Elligator2 (draft-03) proving, in the order and form of
+  * the Cardano libsodium fork's `crypto_vrf_ietfdraft03_prove` (IntersectMBO/libsodium dbb48cce,
+  * `src/libsodium/crypto_vrf/ietfdraft03/prove.c` 25-70), over the input's hash-to-curve point H,
+  * which [[xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover]] computes from the public key and alpha
+  * (public inputs) and hands in as its encoding.
   *
   * The key holds its 32-byte seed and nothing derived from it. Each operation copies the seed into
-  * a [[Scratch]] and expands it there, as libsodium expands the key on every call: SHA-512 of the
-  * seed, its first half clamped as the scalar x and its second half the nonce key. Every value
-  * computed from them (x and its radix-16 digits, the nonce digest, the nonce k and its digits, the
-  * encodings of Gamma, U = [k]B and V = [k]H) lives in that scratch and is zeroed when the
-  * operation ends, on failure too.
+  * a [[Scratch]] and expands it there, as the reference expands the key on every call (25-28):
+  * SHA-512 of the seed, its first half clamped as the scalar x, which the multiplication and the
+  * response take unreduced (41, 67), and its second half the nonce key. Every value computed from
+  * them (x and its radix-16 digits, the nonce digest, the nonce k and its digits, the encodings of
+  * Gamma, U = [k]B and V = [k]H) lives in that scratch and is zeroed when the operation ends, on
+  * failure too; the reference zeroes the expanded key and the nonce (69-70).
   *
   * Every operation on x and k is the constant-time arithmetic of the vendored curve25519 code: the
   * fixed-base and variable-base multiplications by radix-16 digits
   * (`EdwardsBasepointTable.multiplyRadix16`, `EdwardsPoint.multiplyRadix16`, each digit selected
   * from its table by masks), the radix-16 recoding (`Scalar.toRadix16`), the reduction of the nonce
   * (`Scalar.reduceWide`) and the response `s = c x + k` (`Scalar.multiplyAndAdd`), and point
-  * encoding (`EdwardsPoint.compress`, an inversion by a fixed addition chain). The output is the
-  * hash of the encoding of `[8]Gamma` computed from the constant-time point, and the challenge the
-  * hash of the encodings as computed; no secret-derived point is decoded. This package may name no
-  * variable-time routine (`scripts/check_crypto_guard.py`). That is the structure of the code: the
-  * JIT and the processor give no constant-time guarantee, and the curve library's intermediates
+  * encoding (`EdwardsPoint.compress`, an inversion by a fixed addition chain). The challenge is the
+  * hash of the encodings as computed (52-63), and the output the hash of the encoding of `[8]Gamma`
+  * computed from the constant-time point; no secret-derived point is decoded. This package may name
+  * no variable-time routine (`scripts/check_crypto_guard.py`). That is the structure of the code:
+  * the JIT and the processor give no constant-time guarantee, and the curve library's intermediates
   * (its field elements) are immutable objects that are not erased.
   *
   * The seed is zeroed by [[forget]], under this key's monitor, which every copy of it also holds:

@@ -14,9 +14,9 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * What the types guarantee: a buffer is a [[Buffer]] of its own scratch, a type member that names
   * that scratch, and [[Scratch.within]] returns only a value with a [[Public]] instance, which no
   * buffer, array or function has. A buffer, or a function that would read one later, cannot be the
-  * result. Main code has no `var` and no mutable collection to hide one in (WartRemover), and
-  * [[array]] and [[buffer]] refuse once the scratch has ended, so a use after the erasure is a
-  * defect that throws rather than a read of zeros.
+  * result. Main code has no `var` and no mutable collection to keep one in (WartRemover; an array
+  * of arrays would still do, which review refuses), and every method refuses once the scratch has
+  * ended, so a use after the erasure is a defect that throws rather than a read of zeros.
   *
   * What they do not: the JVM may have copied an array before it is zeroed (a moving collector
   * evacuates live objects and does not clear the space they left), the JIT may have kept values in
@@ -50,7 +50,9 @@ private[vrf] final class Scratch private (observe: List[Array[Byte]] => Unit):
     b
 
   /** The size of `b` in bytes. */
-  def size(b: Buffer): Int = b.length
+  def size(b: Buffer): Int =
+    live()
+    b.length
 
   /** A copy of `length` bytes of `b` from `from`, as a value that leaves the scratch: what the
     * computation publishes.
