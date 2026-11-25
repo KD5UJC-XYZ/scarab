@@ -255,9 +255,10 @@ enum GovFailure:
   case UnelectedCommitteeVoters(credentials: Vector[Credential])
 
 /** The Conway LEDGER predicate failures (`ConwayLedgerPredFailure`): what a transaction can be
-  * refused for, as a closed set whose constructors carry the payload the ledger reports. The
-  * node-to-client encoding (`PredicateFailureCbor`) writes exactly these shapes, so that
-  * `cardano-cli transaction submit` renders them.
+  * refused for, as a closed set whose constructors carry the payload the ledger reports. The rules
+  * of the eras before Conway refuse with these, which their node-to-client encoding
+  * (`PreConwayFailureCbor`) writes so that `cardano-cli transaction submit` renders them; Conway's
+  * refusals are its era rules' failures, written by `ConwayFailureCbor`.
   *
   * `Mempool` is the ledger's own free-text failure (`ConwayMempoolFailure`), which the node sends
   * for what the ledger does not report as a predicate failure (a full mempool).

@@ -920,7 +920,7 @@
       "evidence": {
         "suites": [
           "ConwayLedgerSuite",
-          "PredicateFailureCborSuite",
+          "ConwayFailureCborSuite",
           "ConwayUtxoChecksSuite"
         ],
         "issues": [

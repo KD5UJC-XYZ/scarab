@@ -1449,7 +1449,7 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Every tick of a Dijkstra state runs the era's EPOCH, with the ratification and enactment the pulser reaches:
     `rules.Tick.sts` of a Dijkstra state is `DijkstraTick.onRecord`, so the block's tick (`EraBlock.ticked`, through
     `Hfc.tick`, which D8(c)'s Dijkstra blocks reach too), the mempool's (`PoolLedger.ticked`, through `Hfc.tick`), the
-    forger's (`Forger.tickedTo`, through `Hfc.tick`) take it; `MempoolLedger.tick` ticks Conway only. The forger
+    forger's (`Forger.tickedTo`, through `Hfc.tick`) take it; `MempoolLedger`'s tick ticked Conway only (gone in stage 3's C5). The forger
     ticks a Dijkstra block's ledger once, from its parent's state to its slot (`Forger.crossed`), as block
     application ticks it, so its snapshot provider is given the state the block is validated against; it ticked
     to the epoch's first slot and then to the slot before, which past the new epoch's slot of no return
@@ -3257,7 +3257,7 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Evidence (`ConwayMempoolRunSuite`):
     - on every Conway case of the refusal corpus, at its recorded protocol version and at 9, 10 and 11, under each
       build, `applyTx` and `reapply` (of the transaction held as validated in that state: under 11.2 and the Leios
-      build on the annotation of its validation) give the flat MEMPOOL's (`MempoolLedger.submit` and `reapply`)
+      build on the annotation of its validation) give the flat MEMPOOL's (`MempoolLedger`'s `submit` and `reapply`)
       failures in the same order, through the flat projection, or the same ledger state; where the 11.2 and Leios builds
       refuse a withdrawal in LEDGER below version 11, the three cases of the moved withdrawals (the named difference
       of [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484)), the complete ordered list is
@@ -3291,7 +3291,7 @@ Conway's rules on the classes follow as the rest of stage 2.
       refused with `AllInputsSpent` by `applyTx` and `reapply` under every build without being annotated: the
       judgment's annotation (`Judging.annotation`, Conway's `mkStAnnTx` in the node) is one that fails if made, which
       a transaction MEMPOOL does not refuse makes.
-  - The flat pool's `MempoolLedger.reapply` was 11.1's `reapplyTx` under every build, so under 11.2 and the Leios
+  - The flat pool's `reapply` (`MempoolLedger`'s) was 11.1's `reapplyTx` under every build, so under 11.2 and the Leios
     build it admitted again a held transaction whose major version changed, which their `reapplyValidatedTx`
     validates in full (the suite asserts it); the pool reapplies by the build since its switch (above).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that

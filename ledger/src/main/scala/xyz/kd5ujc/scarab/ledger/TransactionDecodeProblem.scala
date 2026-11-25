@@ -67,11 +67,10 @@ enum MempoolProblem:
   case AllInputsSpent
   case UnelectedCommittee(voters: Vector[Credential])
   case Ledger(cause: LedgerFailure)
-  case Rule(cause: PredicateFailure)
 
   /** A failure of Conway's rules on the era's types that the reference has no constructor for (the
     * node's own context errors, a pool registration that does not read as the reference's), sent as
-    * its text in place, as the flat encoder sends such a failure ([[Rule]]).
+    * its text in place.
     */
   case ConwayRule(
       cause: xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure[
@@ -100,7 +99,6 @@ enum MempoolProblem:
         .map(credential)
         .mkString("[", ",", "]")
     case Ledger(cause)     => cause.message
-    case Rule(cause)       => cause.detail
     case ConwayRule(cause) => cause.toString
     case Malformed(cause)  => s"malformed transaction: ${cause.message}"
     case Capacity(dimension, needed, free) =>

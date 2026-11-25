@@ -109,7 +109,7 @@ that meets it, and Scarab does the same in each place:
   (`Mempool/Impl/Common.hs` 403–422, `Shelley/Ledger/Mempool.hs` 325–338), which runs MEMPOOL and
   LEDGER without their static checks (cardano-ledger f649f975 `Shelley/API/Mempool.hs` 472–473):
   no witness signature is verified and no script is decoded or evaluated, so no provider is asked.
-  Scarab does the same (`MempoolLedger.reapply`, `TxEnv.Validation.NonStatic`). A result without
+  Scarab does the same (`ConwayPoolLedger.reapply`, `ConwayMempoolRun.reapply`). A result without
   a verdict therefore does not arise there; were one to, or were the rules to throw, the
   transaction leaves the pool with that reason and the revalidation goes on to the new tip
   (`MempoolState.sync`, `MempoolState.judging`). The reference's exception aborts the state

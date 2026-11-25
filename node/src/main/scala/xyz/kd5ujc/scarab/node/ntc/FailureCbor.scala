@@ -25,8 +25,8 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   * item); and the voting procedures and pool relays of Conway's context errors and certificates.
   *
   * Conway's encoder of the era's failures ([[ConwayFailureCbor]]), the encoder of the eras before
-  * Conway ([[PreConwayFailureCbor]]), the context errors' ([[ContextFailureCbor]]) and the flat
-  * rules' Conway encoder ([[PredicateFailureCbor]]) write with these.
+  * Conway ([[PreConwayFailureCbor]]) and the context errors' ([[ContextFailureCbor]]) write with
+  * these.
   */
 object FailureCbor:
   private[ntc] type W = CborOut

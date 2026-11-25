@@ -57,7 +57,7 @@ former name is read as that build, which has the same cardano-ledger, so the rec
 
 For a **Conway** case the suite decodes the state and UTxO with Scarab's Haskell-state codecs (a state
 that does not read and write back byte for byte fails its own test), ticks it to the slot after the tip
-(`MempoolLedger.tick`), and puts `item` through Scarab's own node-to-client path:
+(`Tick`, then `ConwayPoolLedger.of`, the pool's Conway ledger), and puts `item` through Scarab's own node-to-client path:
 `LocalSubmission.unwrap`, `MempoolState.add` on an empty mempool, `LocalSubmission.reasonItem`. The
 result must equal `reason` byte for byte: every failure, their number and their order.
 
