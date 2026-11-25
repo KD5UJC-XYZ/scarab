@@ -218,6 +218,12 @@ class ConwayBbodySuite extends FailsOnUncaught:
     /** The era run's verdict, where it reached one. */
     def era: Verdict = eraRun.fold(defect => fail(s"era defect $defect"), identity)
 
+  /** The script the era run gives no verdict for, as it names it: its transaction and redeemer. */
+  private def unavailable(j: Judged, what: String): LedgerFailure.Unavailable =
+    j.eraRun match
+      case Left(ConwayRuleDefect.ScriptUnavailable(failure)) => failure
+      case other => fail(s"$what: the era run's ${other.map(_.map(_._1))}")
+
   /** A script's failure in a form that compares by value: a machine's failure by its error and
     * whether the reference attaches a term to it (`ErrorWithCause`), since the term (`Cause`, read
     * only when asked for) compares by identity; every other failure as it is, whose fields compare
@@ -814,6 +820,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     Vector("size" -> size, "hash" -> hash).foreach { (what, raw) =>
       val j = judge(first, raw)
       assertEquals(j.flat, Left(Vector(BlockFailure.BodyCommitment)), what)
+      assertEquals(j.era, Left(Vector(BlockFailure.BodyCommitment)), what)
       same(what, j.era, j.flat)
     }
     // the era predicates' own failures, with the reference's mismatches: the body's (supplied)
@@ -1060,6 +1067,11 @@ class ConwayBbodySuite extends FailsOnUncaught:
         Left(Vector(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))),
         s"$major"
       )
+      assertEquals(
+        refused.era,
+        Left(Vector(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))),
+        s"$major"
+      )
       same(s"$major refused", refused.era, refused.flat)
       val admitted = judge(third, blockOf(txs.init), change = world)
       assert(admitted.era.isRight, s"$major: ${admitted.era}")
@@ -1179,6 +1191,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
       )
     )
     assertEquals(at11.flat, Left(Vector(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))))
+    assertEquals(at11.era, Left(Vector(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))))
     same("11", at11.era, at11.flat)
   }
 
@@ -1241,6 +1254,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     // the script ran, as the flat rules count it, and its output is spent
     assertEquals((admitted.eraEvaluated, admitted.flatEvaluated), (1, 1))
     assertEquals(admitted.flatPlutus, Some(PlutusStats(1, 0, 1, 1)))
+    assertEquals(admitted.eraPlutus, Some(PlutusStats(1, 0, 1, 1)))
     assertEquals(admitted.eraPlutus, admitted.flatPlutus)
     admitted.era.foreach((ls, _) => assert(ls.utxo.utxo.utxo.get(utxo.head._1).isEmpty))
     Vector(
@@ -1250,6 +1264,11 @@ class ConwayBbodySuite extends FailsOnUncaught:
       val refused = judge(third, raw, change = holding(utxo, _.copy(maxBlockExUnits = below)))
       assertEquals(
         refused.flat,
+        Left(Vector(BlockFailure.BlockExUnitsTooBig(units, below))),
+        s"$below"
+      )
+      assertEquals(
+        refused.era,
         Left(Vector(BlockFailure.BlockExUnitsTooBig(units, below))),
         s"$below"
       )
@@ -1360,31 +1379,53 @@ class ConwayBbodySuite extends FailsOnUncaught:
     )
     // each block's transactions, those flagged invalid and the counters; a valid transaction's
     // passed scripts then an invalid one's failed ones are two transactions
-    Vector[(String, Vector[Built], Vector[Int], PlutusStats)](
-      ("valid", Vector(valid), Vector.empty, PlutusStats(1, 0, 2, 1)),
-      ("all fail", Vector(allFail), Vector(0), PlutusStats(0, 1, 1, 1)),
-      ("pass and fail", Vector(passAndFail), Vector(0), PlutusStats(0, 1, 2, 1)),
-      ("valid, then all fail", Vector(valid, allFail), Vector(1), PlutusStats(1, 1, 3, 2)),
-      ("all fail, then valid", Vector(allFail, valid), Vector(0), PlutusStats(1, 1, 3, 2)),
+    val (passed, failed) = (Right(Came.Passed), Right(Came.Failed))
+    Vector[(String, Vector[Built], Vector[Int], PlutusStats, Vector[Phase2.Collected[Came]])](
+      ("valid", Vector(valid), Vector.empty, PlutusStats(1, 0, 2, 1), Vector(passed)),
+      ("all fail", Vector(allFail), Vector(0), PlutusStats(0, 1, 1, 1), Vector(failed)),
+      ("pass and fail", Vector(passAndFail), Vector(0), PlutusStats(0, 1, 2, 1), Vector(failed)),
+      (
+        "valid, then all fail",
+        Vector(valid, allFail),
+        Vector(1),
+        PlutusStats(1, 1, 3, 2),
+        Vector(passed, failed)
+      ),
+      (
+        "all fail, then valid",
+        Vector(allFail, valid),
+        Vector(0),
+        PlutusStats(1, 1, 3, 2),
+        Vector(failed, passed)
+      ),
       (
         "every kind",
         Vector(passAndFail, valid, datumOnly, allFail),
         Vector(0, 3),
-        PlutusStats(1, 2, 5, 4)
+        PlutusStats(1, 2, 5, 4),
+        Vector(failed, passed, failed)
       ),
-      ("datum only", Vector(datumOnly), Vector.empty, PlutusStats(0, 0, 0, 1))
-    ).foreach { (what, txs, invalid, expected) =>
+      ("datum only", Vector(datumOnly), Vector.empty, PlutusStats(0, 0, 0, 1), Vector.empty)
+    ).foreach { (what, txs, invalid, expected, observed) =>
       val j = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo))
       assert(j.era.isRight, s"$what: ${j.era}")
       same(what, j.era, j.flat)
       // the plan deferred the scripts of each transaction whose scripts ran
       assertEquals(j.deferred.flatten.size, txs.count(_ != datumOnly), what)
       assertEquals(j.flatPlutus, Some(expected), what)
+      assertEquals(j.eraPlutus, Some(expected), what)
       assertEquals(j.eraPlutus, j.flatPlutus, what)
       // the phase-2 observations (`--plutus-cases`), one by transaction whose scripts ran, and
       // with the observer the same verdict and counters
       val o = judge(third, blockOf(txs, invalid = invalid), change = holding(utxo), observe = true)
       assertEquals(o.flatObserved.size, txs.count(_ != datumOnly), what)
+      assertEquals(outcomes(o.flatObserved), observed, what)
+      assertEquals(eraOutcomes(o.eraObserved), observed, what)
+      assertEquals(
+        o.eraObserved.map(comparable(_).tx.body.id),
+        txs.filter(_ != datumOnly).map(_.id),
+        what
+      )
       sameObserved(o, what)
       same(what, o.era, j.era)
       assertEquals(o.eraPlutus, j.eraPlutus, what)
@@ -1416,16 +1457,20 @@ class ConwayBbodySuite extends FailsOnUncaught:
         case Left(Vector(BlockFailure.Tx(failure: LedgerFailure.Unavailable))) => failure
         case other => fail(s"$n: the flat rules' ${other.map(_._1)}")
       assertEquals(j.eraRun.left.toOption, Some(ConwayRuleDefect.ScriptUnavailable(failure)), s"$n")
+      val eraFailure = unavailable(j, s"$n")
       // the evaluation stops at the script with no verdict on both sides
       assertEquals((j.eraEvaluated, j.flatEvaluated), (n, n), s"$n")
+      assertEquals(j.eraEvaluated, n, s"$n")
       // the transactions observed, the last with no verdict on the script, and with the observer
       // the same naming
       val o =
         judge(third, raw, change = holding(utxo), unsupportedAt = Some(n), observe = true)
       assertEquals(o.flatObserved.size, if n <= 2 then 1 else 2, s"$n")
+      assertEquals(o.eraObserved.size, if n <= 2 then 1 else 2, s"$n")
       sameObserved(o, s"$n")
       assertEquals(o.eraRun.left.toOption, j.eraRun.left.toOption, s"$n")
-      (failure.txId, failure.location)
+      assertEquals((eraFailure.txId, eraFailure.location), (failure.txId, failure.location))
+      (eraFailure.txId, eraFailure.location)
     }
     // each of the four scripts named once, the first two of the valid transaction
     assertEquals(
@@ -1521,7 +1566,17 @@ class ConwayBbodySuite extends FailsOnUncaught:
     assert(admitted.era.isRight, s"${admitted.era}")
     same("admitted", admitted.era, admitted.flat)
     assertEquals(admitted.eraPlutus, admitted.flatPlutus)
+    assertEquals(admitted.eraPlutus, Some(PlutusStats(1, 0, 2, 1)))
     // the two requests are equal, at certificates 0 and 2
+    val eraEvaluations = admitted.eraObserved.map(comparable) match
+      case Vector(ObservationForm(_, _, _, _, _, _, Right(OutcomeForm.Passed(evaluations)))) =>
+        evaluations
+      case other => fail(s"the era run's observations $other")
+    assertEquals(
+      eraEvaluations.map((r, _, _) => (r.tag, r.index)).toSet,
+      Set[(Int, BigInt)]((2, 0), (2, 2))
+    )
+    assertEquals(eraEvaluations.map(_._2).distinct.size, 1)
     val evaluations = admitted.flatObserved match
       case Vector(Phase2.Observation(_, _, _, _, _, _, Right(Phase2.Outcome.Passed(report)))) =>
         report.evaluations
@@ -1545,7 +1600,8 @@ class ConwayBbodySuite extends FailsOnUncaught:
           s"$n"
         )
         sameObserved(j, s"$n")
-        failure.location
+        assertEquals(unavailable(j, s"$n").txId, tx.id, s"$n")
+        unavailable(j, s"$n").location
       }.distinct
     }
     assertEquals(named.map(_.size), Vector(1, 1))
@@ -1610,6 +1666,9 @@ class ConwayBbodySuite extends FailsOnUncaught:
     same("admitted", admitted.era, admitted.flat)
     assertEquals(admitted.eraPlutus, admitted.flatPlutus)
     assertEquals(admitted.eraPlutus, Some(PlutusStats(3, 1, 4, 4)))
+    val (passed, failed) = (Right(Came.Passed), Right(Came.Failed))
+    assertEquals(outcomes(admitted.flatObserved), Vector(passed, passed, failed, passed))
+    assertEquals(eraOutcomes(admitted.eraObserved), Vector(passed, passed, failed, passed))
     sameObserved(admitted, "admitted")
     assertEquals(admitted.deferred, Vector(Vector(0), Vector(1, 2), Vector(3)))
     // no verdict on each script in turn: the plan stops where the serial run stops, and names it
@@ -1621,6 +1680,9 @@ class ConwayBbodySuite extends FailsOnUncaught:
           case Left(Vector(BlockFailure.Tx(failure: LedgerFailure.Unavailable))) => failure
           case other => fail(s"$n: the flat rules' ${other.map(_._1)}")
         assertEquals(j.eraRun.left.toOption, Some(ConwayRuleDefect.ScriptUnavailable(failure)))
+        // each transaction holds one script: the n th is the n th transaction's
+        assertEquals(unavailable(j, s"$n").txId, txs(n - 1).id, s"$n")
+        assertEquals(j.eraEvaluated, n, s"$n")
         sameObserved(j, s"$n")
       }
     }
@@ -1713,12 +1775,20 @@ class ConwayBbodySuite extends FailsOnUncaught:
 
   /** The request of the first script of the `n` th transaction the flat rules observed. */
   private def requestOf(j: Judged, n: Int): EvalRequest =
-    j.flatObserved.lift(n).map(_.outcome) match
+    val flat = j.flatObserved.lift(n).map(_.outcome) match
       case Some(Right(Phase2.Outcome.Passed(report))) =>
         report.evaluations.headOption.fold(fail(s"$n: no evaluation"))(_.request)
       case Some(Right(Phase2.Outcome.Failed(report, _))) =>
         report.evaluations.headOption.fold(fail(s"$n: no evaluation"))(_.request)
       case other => fail(s"$n: observed $other")
+    val era = j.eraObserved.lift(n).map(comparable(_).outcome) match
+      case Some(Right(OutcomeForm.Passed(evaluations))) =>
+        evaluations.headOption.fold(fail(s"$n: no evaluation"))(_._2)
+      case Some(Right(OutcomeForm.Failed(evaluations, _))) =>
+        evaluations.headOption.fold(fail(s"$n: no evaluation"))(_._2)
+      case other => fail(s"$n: observed $other")
+    assertEquals(era, flat, s"$n")
+    era
 
   test(
     "a raw defect of a script's evaluation: the prepared era run raises the very defect the serial run raises, after the same observations, and none the serial run never reaches"
@@ -1938,6 +2008,16 @@ class ConwayBbodySuite extends FailsOnUncaught:
       case Phase2.Outcome.Unavailable(_, _, _) => Came.Unavailable
     })
 
+  /** The outcomes of the era run's observations, in order ([[outcomes]]). */
+  private def eraOutcomes(
+      observed: Vector[ConwayPhase2.Observation]
+  ): Vector[Phase2.Collected[Came]] =
+    observed.map(comparable(_).outcome.map {
+      case OutcomeForm.Passed(_)            => Came.Passed
+      case OutcomeForm.Failed(_, _)         => Came.Failed
+      case OutcomeForm.Unavailable(_, _, _) => Came.Unavailable
+    })
+
   test(
     "a V1 script transaction whose context cannot be built: refused by both, and observed by the era run, serial and prepared, as the flat rules observe it"
   ) {
@@ -1956,13 +2036,16 @@ class ConwayBbodySuite extends FailsOnUncaught:
       )
     )
     assertEquals(j.flat, refusal)
+    assertEquals(j.era, refusal)
     same("refused", j.era, j.flat)
     // observed, with the same verdict; the plan's observations are the serial run's (`judge`)
     val o = judge(third, raw, change = holding(utxo), observe = true)
     assertEquals(outcomes(o.flatObserved), Vector(Left(inlineDatumRefused)))
+    assertEquals(eraOutcomes(o.eraObserved), Vector(Left(inlineDatumRefused)))
     sameObserved(o, "observed")
     assertEquals(o.eraRefusal, j.eraRefusal)
     assertEquals(o.flat, refusal)
+    assertEquals(o.era, refusal)
   }
 
   test(
@@ -1995,6 +2078,14 @@ class ConwayBbodySuite extends FailsOnUncaught:
         s"$what: ${o.flat}"
       )
       assertEquals(outcomes(o.flatObserved), expected, what)
+      assert(
+        o.eraFailures.exists {
+          case ConwayBbodyPredFailure.LedgersFailure(_) => true
+          case _                                        => false
+        },
+        s"$what: ${o.eraFailures}"
+      )
+      assertEquals(eraOutcomes(o.eraObserved), expected, what)
       sameObserved(o, what)
       assertEquals(o.eraRefusal, j.eraRefusal, what)
       // through the node's bounded workers, with the serial run's results: the serial run's
@@ -2066,6 +2157,13 @@ class ConwayBbodySuite extends FailsOnUncaught:
         case _                                                         => false
       },
       s"${j.flat}"
+    )
+    assert(
+      j.era match {
+        case Left(Vector(xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(_))) => true
+        case _                                                         => false
+      },
+      s"${j.era}"
     )
     same("missing input", j.era, j.flat)
     // the input LEDGERS refuses, as UTXO's `BadInputsUTxO` names it
@@ -2360,6 +2458,10 @@ class ConwayBbodySuite extends FailsOnUncaught:
     )
     // a block with no transaction leaves the record as it was, never read
     val empty = judge(third, blockOf(Vector.empty), change = holding(utxo))
+    assert(empty.era.isRight, s"${empty.era}")
+    empty.era.foreach((ls, _) =>
+      assertEquals(ls.utxo.gov.proposals, empty.ticked.es.ls.utxo.gov.proposals)
+    )
     same("empty", empty.era, empty.flat)
   }
 
