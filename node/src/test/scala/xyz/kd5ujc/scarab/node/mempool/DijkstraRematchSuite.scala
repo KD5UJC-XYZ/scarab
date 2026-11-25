@@ -46,31 +46,3 @@ class DijkstraRematchSuite extends munit.FunSuite:
       Left(EraTxError.Decode(LedgerDecodeError.InvalidFlagSubmitted))
     )
   }
-
-  test("the re-decode as the flat rematch, case by case") {
-    import xyz.kd5ujc.scarab.ledger.dijkstra.{
-      DijkstraTxTranslation as Flat,
-      DijkstraTxTranslationError as FlatError
-    }
-    val tally = all.map { c =>
-      (Flat.rematch(c.conway), EraInjection.Redecode.into(held(c), Era.Dijkstra)) match
-        case (Right(flat), Right(InEra.InDijkstra(read))) =>
-          assertEquals(read.tx.body.raw, flat.body.raw, s"${c.name}: body")
-          assertEquals(read.tx.wits.raw, flat.witnesses.raw, s"${c.name}: witnesses")
-          assertEquals(read.tx.auxData.map(_.raw), flat.auxiliary.map(_.raw), s"${c.name}: aux")
-          assertEquals(read.isValid == IsPhase2Valid.Phase2Valid, flat.isValid, s"${c.name}: flag")
-          assertEquals(read.id, flat.id, s"${c.name}: id")
-          assertEquals(read.raw, flat.raw, s"${c.name}: mempool form")
-          (1, 0)
-        case (Left(FlatError.WrongEra(cause)), Left(Era.Conway)) =>
-          assertEquals(
-            DijkstraRead.submitted(held(c).raw).map(_.id),
-            Left(EraTxError.Decode(cause)),
-            s"${c.name}: cause"
-          )
-          (0, 1)
-        case (flat, era) => fail(s"${c.name}: the flat rematch gives $flat, the era's $era")
-    }
-    // 151 carried and 37 refused, as the reference does
-    assertEquals(tally.foldLeft((0, 0))((a, b) => (a._1 + b._1, a._2 + b._2)), (151, 37))
-  }

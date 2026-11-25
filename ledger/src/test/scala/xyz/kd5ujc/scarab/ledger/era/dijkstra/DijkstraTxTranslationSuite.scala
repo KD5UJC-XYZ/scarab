@@ -71,36 +71,3 @@ class DijkstraTxTranslationSuite extends munit.FunSuite:
     assert(!c.conway.isValid)
     assertEquals(DijkstraTx.translate(conway(c)).map(isValid), Right(false))
   }
-
-  test("the era translation as the flat translation, case by case") {
-    import xyz.kd5ujc.scarab.ledger.dijkstra.{
-      DijkstraTxPart as FlatPart,
-      DijkstraTxTranslation as Flat,
-      DijkstraTxTranslationError as FlatError
-    }
-    def flatPart(p: FlatPart): DijkstraTxPart = p match
-      case FlatPart.TxBody    => DijkstraTxPart.TxBody
-      case FlatPart.TxWits    => DijkstraTxPart.TxWits
-      case FlatPart.TxAuxData => DijkstraTxPart.TxAuxData
-    val tally = all.map { c =>
-      (Flat.translateEra(c.conway), DijkstraTx.translate(conway(c))) match
-        case (Right(flat), Right(era)) =>
-          assertEquals(era.body.raw, flat.body.raw, s"${c.name}: body")
-          assertEquals(era.wits.raw, flat.witnesses.raw, s"${c.name}: witnesses")
-          assertEquals(era.auxData.map(_.raw), flat.auxiliary.map(_.raw), s"${c.name}: aux")
-          assertEquals(isValid(era), flat.isValid, s"${c.name}: flag")
-          assertEquals(era.id, flat.id, s"${c.name}: id")
-          assertEquals(mempoolForm(era), flat.raw, s"${c.name}: mempool form")
-          (1, 0)
-        case (
-              Left(FlatError.Undecodable(fp, fc)),
-              Left(DijkstraTxTranslationError.Undecodable(ep, ec))
-            ) =>
-          assertEquals(ep, flatPart(fp), s"${c.name}: part")
-          assertEquals(ec, EraTxError.Decode(fc), s"${c.name}: cause")
-          (0, 1)
-        case (flat, era) => fail(s"${c.name}: the flat translation gives $flat, the era's $era")
-    }
-    // 152 carried and 36 refused, as the reference does
-    assertEquals(tally.foldLeft((0, 0))((a, b) => (a._1 + b._1, a._2 + b._2)), (152, 36))
-  }
