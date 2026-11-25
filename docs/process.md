@@ -26,8 +26,14 @@ navigation, not sources of truth: they point to the documents above and to the c
 that moves what they point to updates them.
 
 Working notes, run logs and scratch analysis stay out of the repository (contributors keep them
-locally; the maintainer's sessions use the ignored `.workspace/` directory). What a reader needs
-later is distilled into one of the documents above.
+locally; the maintainer's sessions use the ignored `.workspace/` directory). The files a workflow tool
+writes for its own use are working notes too: a spec, a plan, a task list or a validation log, for
+example a `specs/` directory. What a reader needs later is distilled into one of the documents above:
+an approved plan into a [design document](design/README.md), its tasks into issues, and its evidence
+into the pull request and wherever the [definition of done](#definition-of-done) asks for it.
+`scripts/check_top_level.py` refuses a tracked top-level directory that is not on its list; a real new
+one is added to that list in the pull request that adds it (owner's decision, 2026-11-25,
+[decisions register](decisions.md#process)).
 
 ## Lifecycle of an item
 

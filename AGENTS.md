@@ -181,5 +181,6 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
 ## What does not belong in the repository
 
 Signing keys or any secret; run data and logs; private working notes (keep them outside the checkout
-or in an ignored directory). Distil what a later reader needs into the documents listed in
-[docs/process.md](docs/process.md#one-place-per-question).
+or in an ignored directory), among them the spec, plan, task list or validation log a workflow tool
+writes, such as a `specs/` directory. Distil what a later reader needs into the documents listed in
+[docs/process.md](docs/process.md#one-place-per-question), which says where each kind goes.
