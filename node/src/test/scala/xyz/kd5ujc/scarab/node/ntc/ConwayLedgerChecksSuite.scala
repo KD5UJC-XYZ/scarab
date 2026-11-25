@@ -60,10 +60,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
   * protocol version and at 9, 10 and 11, under each build and validation policy: the same failures
   * in the same order, or the same ledger state. Where the reference refused a transaction for
   * LEDGER, the era rule's failures, one level below MEMPOOL, encode to the reference's refusal byte
-  * for byte.
-  * The corpora recorded for the era rules alone
-  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out: stage 3 retires
-  * the flat comparison, and `ReferenceRefusalSuite` binds the era rules to them.
+  * for byte. The corpora recorded for the era rules alone
+  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out: stage 3 retires the
+  * flat comparison, and `ReferenceRefusalSuite` binds the era rules to them.
   */
 class ConwayLedgerChecksSuite extends FunSuite:
   import ReferenceRefusalSuite.*

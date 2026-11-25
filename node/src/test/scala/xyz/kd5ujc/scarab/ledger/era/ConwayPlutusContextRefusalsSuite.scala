@@ -30,10 +30,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
   * flat translation (`ScriptContexts`) on every transaction of the recorded Conway refusal corpora,
   * with the UTxO set each was refused against, at its parameters' protocol version: the same data,
   * or the same failure. The corpora carry no era history, so slot `s` is the time `s` seconds for
-  * both.
-  * The corpora recorded for the era rules alone
-  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out: stage 3 retires
-  * the flat comparison, and `ReferenceRefusalSuite` binds the era rules to them.
+  * both. The corpora recorded for the era rules alone
+  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out: stage 3 retires the
+  * flat comparison, and `ReferenceRefusalSuite` binds the era rules to them.
   */
 class ConwayPlutusContextRefusalsSuite extends FunSuite:
   private def right[E, A](what: String)(e: Either[E, A]): A =

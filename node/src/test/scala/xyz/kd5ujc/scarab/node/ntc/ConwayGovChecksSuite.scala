@@ -45,10 +45,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.HaskellState
 /** Conway's GOV predicates on the era types against the flat rule, on every transaction of the
   * recorded Conway refusal corpora and on cases crafted from them: the failures the predicates
   * report are the ones the flat GOV rule records for the same checks, each as often. A predicate
-  * the corpus never fails is named, and a crafted case fails it.
-  * The corpora recorded for the era rules alone
-  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out: stage 3 retires
-  * the flat comparison, and `ReferenceRefusalSuite` binds the era rules to them.
+  * the corpus never fails is named, and a crafted case fails it. The corpora recorded for the era
+  * rules alone ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out: stage 3
+  * retires the flat comparison, and `ReferenceRefusalSuite` binds the era rules to them.
   */
 class ConwayGovChecksSuite extends FunSuite:
   import ReferenceRefusalSuite.*

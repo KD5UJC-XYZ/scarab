@@ -42,8 +42,8 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
   * `getScriptsNeeded` and `getScriptsProvided`), checked against the flat path's on every case. A
   * predicate the corpus never fails is named, and refused on a case crafted from a recorded one.
   * The corpora recorded for the era rules alone
-  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out: stage 3 retires
-  * the flat comparison, and `ReferenceRefusalSuite` binds the era rules to them.
+  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out: stage 3 retires the
+  * flat comparison, and `ReferenceRefusalSuite` binds the era rules to them.
   */
 class ConwayUtxowChecksSuite extends FunSuite:
   private given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway

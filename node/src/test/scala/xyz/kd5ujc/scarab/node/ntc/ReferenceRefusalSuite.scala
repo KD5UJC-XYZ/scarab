@@ -337,8 +337,8 @@ object ReferenceRefusalSuite:
     * reference where the era rules do not: the flat GOV lists a refusal's votes, voters and
     * accounts in the order the body's maps arrived in
     * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427), and a case judged
-    * after items the reference admitted first (`before`) is not one a single rule can judge from the
-    * recorded state.
+    * after items the reference admitted first (`before`) is not one a single rule can judge from
+    * the recorded state.
     */
   val EraOnly: Set[String] =
     Set("conway-constructors", "conway-gov-order", "conway-mempool", "conway-constructors-v11")
