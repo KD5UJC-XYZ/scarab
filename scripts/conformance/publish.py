@@ -20,12 +20,14 @@ The repository holds
 `--apply` it
 
   1. checks that each report's Scarab commit is on GitHub (`gh api`), so that the provenance resolves;
-  2. fetches the site at its pinned commit (`pins.json`), whose data the scores need, into `--inputs` unless a
-     verified copy is there (as `run.py` does), or into a temporary directory of its own;
+  2. fetches the site at its pinned commit (`pins.json`), whose schemas and data the checks and scores need, into
+     `--inputs` unless a verified copy is there (as `run.py` does), or into a temporary directory of its own, and
+     checks each report against it;
   3. clones the reports repository shallowly into that temporary directory (`--repo-url`; Git's own credentials,
      which the workflow gives through `GIT_SSH_COMMAND` and its deploy key);
-  4. copies each report and its provenance under `reports/`, refusing a dated file that is already there unless
-     `--replace` is given; points `latest/` at a report unless a newer one is there; writes `README.md`;
+  4. writes each report and its provenance under `reports/`, the very bytes it checked, refusing a dated file that
+     is already there unless `--replace` is given; points `latest/` at a report unless a newer one is there; writes
+     `README.md`;
   5. stages exactly those files, commits, with a message that names the Scarab commits, and pushes to `main`.
 
 The clone is the script's own and is removed on normal exit and on exceptions. A failure before the push publishes
@@ -33,18 +35,23 @@ nothing; after a push failure, the remote's `main` is checked to determine wheth
 cannot be determined, the outcome is reported as unknown. Running it again starts from the remote's `main` and
 refuses already-published reports unless `--replace` is given; identical files are never committed again.
 
-Every file is checked first: its name is `scarab-YYYYMMDD-<scenario>[-<era>].json.gz`, its provenance beside it
-names it with the same sha256, and records a passed validation of a checkout with no uncommitted changes and, for a
-report of timings (uplc-turbo), the CPU they were taken on.
+Every file is read once, and those bytes are checked and, with `--apply`, written. A report and its provenance must
+be a pair as `run.py` writes them (`evidence.py`: the provenance's shape, the file's name, size and sha256, the
+report's scenario, era, time, commit and CPU against it, and, once the site is there, its schema and the site's
+reading of it); the checkout must have had no uncommitted changes; and a report of timings (uplc-turbo) must have
+been measured on its reference CPU (`scenarios.py`), wherever it was written. A file that fails any check refuses the
+whole publication. These checks give consistency, not authenticity: they do not show that a measurement was made as
+its provenance says.
+
+A run directory's `summary.json` names the scenarios the run was asked for; each one with no report there, such as
+uplc-turbo on a runner of another CPU, is printed as not published, and its `latest/` stays as it is.
 """
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -56,8 +63,9 @@ from typing import Callable, Sequence
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from conformance import inputs, score  # noqa: E402
+from conformance import evidence, inputs, provenance, score  # noqa: E402
 from conformance.scenarios import NAME, SCENARIOS, label, provenance_name  # noqa: E402
+from conformance.schema import loads  # noqa: E402
 
 SCARAB = "KD5UJC-XYZ/scarab"
 REPOSITORY = "KD5UJC-XYZ/scarab-conformance"
@@ -75,9 +83,13 @@ class PublishError(ValueError):
 
 @dataclass(frozen=True)
 class Report:
+    """A report file and its provenance, with the bytes of each as they were read and checked."""
     path: Path
     provenance: Path
     commit: str
+    data: bytes
+    provenance_data: bytes
+    record: dict
 
     @property
     def label(self) -> str:
@@ -99,54 +111,71 @@ class Report:
         return f"latest/{self.label}.json.gz"
 
 
-def sha256(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+def policy(name: str, record: dict) -> list[str]:
+    """What publication asks beyond a consistent pair (`evidence.problems`): a clean checkout, and a report of
+    timings measured on its scenario's reference CPU. A CPU the provenance does not name is never the reference."""
+    found = [] if record["scarab"]["dirty"] is False else ["it was written from a checkout with uncommitted changes"]
+    reference = SCENARIOS[LABELS[NAME.match(name)["label"]]].reference_cpu
+    model = provenance.cpu_model(record)
+    if reference is not None and model != reference:
+        found.append(f"it is a timing report measured on {model or 'a CPU its provenance does not name'}, not on the "
+                     f"reference CPU {reference}")
+    return found
 
 
-def timed_on(record: dict) -> bool:
-    """Whether the provenance names the CPU a report's timings were taken on: a count of logical CPUs at least, as
-    `run.py` records it since uplc-turbo became a scenario of GitHub-hosted runners. A report written before then
-    names none; on a runner, only `run.py --allocation-only` could write one, its timings not offered as
-    measurements."""
-    environment = record.get("environment")
-    cpu = environment.get("cpu") if isinstance(environment, dict) else None
-    count = cpu.get("logical_cpus") if isinstance(cpu, dict) else None
-    return isinstance(count, int) and not isinstance(count, bool) and count > 0
-
-
-def collect(paths: Sequence[Path]) -> list[Report]:
-    """The reports among `paths` (directories are searched one level deep), each checked with its provenance."""
+def collect(paths: Sequence[Path], pinned: evidence.Pinned | None = None) -> list[Report]:
+    """The reports among `paths` (directories are searched one level deep), each read once and checked with its
+    provenance (`evidence.problems`, against the site when `pinned` is given) and by `policy`."""
     files = sorted({candidate for path in paths
                     for candidate in (path.glob("scarab-*.json.gz") if path.is_dir() else [path])})
     reports = []
     for path in files:
         if not path.is_file() or NAME.match(path.name) is None:
             raise PublishError(f"{path.name}: not a report name (scarab-YYYYMMDD-<scenario>[-<era>].json.gz)")
-        provenance = path.with_name(provenance_name(path.name))
-        if not provenance.is_file():
-            raise PublishError(f"{path.name}: no {provenance.name} beside it")
-        record = json.loads(provenance.read_text(encoding="utf-8"))
-        problems = []
-        if record.get("report") != path.name:
-            problems.append(f"its provenance is of {record.get('report')!r}")
-        if record.get("sha256") != sha256(path):
-            problems.append("its sha256 is not the one its provenance records")
-        if record.get("validation", {}).get("valid") is not True:
-            problems.append("its provenance records no passed validation")
-        if SCENARIOS[LABELS[NAME.match(path.name)["label"]]].timed and not timed_on(record):
-            problems.append("it is a timing report whose provenance names no CPU the timings were taken on")
-        scarab = record.get("scarab", {})
-        if scarab.get("dirty") is not False:
-            problems.append("it was written from a checkout with uncommitted changes")
-        commit = str(scarab.get("commit", ""))
-        if len(commit) != 40 or any(c not in "0123456789abcdef" for c in commit):
-            problems.append("its provenance names no Scarab commit")
-        if problems:
-            raise PublishError(f"{path.name}: " + "; ".join(problems))
-        reports.append(Report(path, provenance, commit))
+        beside = path.with_name(provenance_name(path.name))
+        if not beside.is_file():
+            raise PublishError(f"{path.name}: no {beside.name} beside it")
+        data, provenance_data = path.read_bytes(), beside.read_bytes()
+        try:
+            record = loads(provenance_data.decode("utf-8"))
+        except (UnicodeDecodeError, ValueError) as error:
+            raise PublishError(f"{path.name}: its provenance is not standard JSON: {error}") from error
+        found = evidence.problems(path.name, data, record, pinned)
+        found += policy(path.name, record) if not found else []
+        if found:
+            raise PublishError(f"{path.name}: " + "; ".join(found))
+        reports.append(Report(path, beside, record["scarab"]["commit"], data, provenance_data, record))
     if len({report.label for report in reports}) != len(reports):
         raise PublishError("two reports of the same scenario and era: publish one of them")
     return reports
+
+
+def against_site(reports: list[Report], pinned: evidence.Pinned) -> None:
+    """Refuse the publication unless every report is valid against the site's schema and readable by its scoring."""
+    for report in reports:
+        found = evidence.problems(report.path.name, report.data, report.record, pinned)
+        if found:
+            raise PublishError(f"{report.path.name}: " + "; ".join(found))
+
+
+def unpublished(paths: Sequence[Path]) -> list[str]:
+    """For each run directory among `paths`, the scenarios its `summary.json` says were asked for and have no report
+    there, each with what the run said of it: their `latest/` is left as it is."""
+    lines = []
+    for path in paths:
+        summary = path / "summary.json"
+        try:
+            run = loads(summary.read_text(encoding="utf-8")) if path.is_dir() and summary.is_file() else None
+        except (OSError, UnicodeDecodeError, ValueError):
+            run = None
+        if not isinstance(run, dict) or not isinstance(run.get("outcomes"), list):
+            continue
+        for item in run["outcomes"]:
+            if isinstance(item, dict) and item.get("status") != "report":
+                what = label(str(item.get("scenario")), item.get("era") if isinstance(item.get("era"), str) else None)
+                lines.append(f"not published: {what} ({item.get('status')}: {item.get('detail', 'no detail')}); "
+                             f"latest/{what} is left as it is")
+    return lines
 
 
 @dataclass(frozen=True)
@@ -208,18 +237,22 @@ also writes this file: do not edit it by hand. Scarab's Plutus evaluator is its 
 """
 
 
+def stage(data: bytes, destination: Path) -> None:
+    """Write `data`, the bytes that were checked, to `destination` in the clone."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(data)
+
+
 def lay_out(placements: list[Placement], clone: Path, site: score.Site) -> list[str]:
-    """Copy the reports into the clone and write its README; the paths written, relative to the clone."""
+    """Write the reports into the clone and its README; the paths written, relative to the clone."""
     written = []
     for placement in placements:
         report = placement.report
-        targets = [(report.path, report.dated), (report.provenance, provenance_name(report.dated))]
+        targets = [(report.data, report.dated), (report.provenance_data, provenance_name(report.dated))]
         if placement.latest:
-            targets += [(report.path, report.latest), (report.provenance, provenance_name(report.latest))]
+            targets += [(report.data, report.latest), (report.provenance_data, provenance_name(report.latest))]
         for source, target in targets:
-            destination = clone / target
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(source, destination)
+            stage(source, clone / target)
             written.append(target)
     (clone / "README.md").write_text(readme(clone, site), encoding="utf-8")
     return written + ["README.md"]
@@ -234,15 +267,23 @@ def site_pin() -> inputs.Pin:
     return pin
 
 
-def scoring_site(root: Path) -> score.Site:
-    """The site's data its scores need, from its checkout at the pinned commit under `root`, fetched there unless
-    a verified copy is there."""
+def scoring_site(root: Path) -> evidence.Pinned:
+    """The site's checkout at the pinned commit under `root`, fetched there unless a verified copy is there."""
     pin = site_pin()
     try:
-        return score.Site.read(inputs.fetch(pin, root))
+        return evidence.Pinned.read(inputs.fetch(pin, root))
     except (OSError, ValueError, subprocess.CalledProcessError) as error:
         raise PublishError(f"the site at {pin.spec['commit'][:9]} could not be fetched or read: {error}; nothing "
                            "was published") from error
+
+
+def verified_site(root: Path | None) -> evidence.Pinned | None:
+    """The pinned site already verified under `root`, read without fetching anything; None when it is not there."""
+    target = inputs.verified(site_pin(), root) if root is not None else None
+    try:
+        return evidence.Pinned.read(target) if target is not None else None
+    except (OSError, ValueError) as error:
+        raise PublishError(f"the verified site under {root} cannot be read: {error}") from error
 
 
 def message(reports: list[Report]) -> str:
@@ -291,25 +332,27 @@ def execute(argv: Sequence[str]) -> subprocess.CompletedProcess:
     return subprocess.run(list(argv), text=True, capture_output=True)
 
 
-def dry_run(reports: list[Report], url: str, replace: bool, identity: str | None, root: Path | None) -> None:
-    """Print every action of `--apply`, running none."""
-    print(f"# dry run: nothing is checked, cloned, written, committed or pushed. With --apply, for {len(reports)} "
-          "report(s):")
+def dry_run(reports: list[Report], url: str, replace: bool, identity: str | None, root: Path | None,
+            checked_against_site: bool) -> None:
+    """Print every action of `--apply`, running none; the files themselves were read and checked."""
+    print(f"# dry run: nothing is fetched, cloned, written, committed or pushed. The {len(reports)} report(s) were "
+          "checked" + (" against the verified site too" if checked_against_site else
+                       "; their check against the site's schema and scoring waits for its checkout") + ". With --apply:")
     for commit in sorted({report.commit for report in reports}):
         print(shlex.join(commit_check(commit)))
     pin = site_pin()
     target = (root or Path("<temporary directory>")) / pin.directory
-    print(f"# fetch the site at {pin.spec['commit']} into {target}, unless a verified copy is there, to score "
-          "latest/:")
+    print(f"# fetch the site at {pin.spec['commit']} into {target}, unless a verified copy is there, to check the "
+          "reports against it and score latest/:")
     for command in inputs.git_commands(pin, target):
         print(shlex.join(command))
     clone = Path("<temporary clone>")
     print(shlex.join(clone_command(url, clone)))
     written = []
     for report in reports:
-        print(f"# copy {report.path} -> {report.dated}, and its provenance "
+        print(f"# write {report.path}'s checked bytes -> {report.dated}, and its provenance's "
               f"({'replacing one already there' if replace else 'refused if one is already there'})")
-        print(f"# copy {report.path} -> {report.latest}, and its provenance, unless a newer report is there")
+        print(f"# write them -> {report.latest}, and its provenance's, unless a newer report is there")
         written += [report.dated, provenance_name(report.dated), report.latest, provenance_name(report.latest)]
     print("# write README.md from latest/: the scores of its reports by the site's rules, and their provenance")
     commands = git_commands(clone, reports, identity, [*written, "README.md"])
@@ -332,7 +375,9 @@ def apply(reports: list[Report], url: str, replace: bool, identity: str | None, 
         if found.returncode != 0 or found.stdout.strip() != commit:
             raise PublishError(f"Scarab commit {commit} is not on GitHub: push it before publishing its reports")
     with tempfile.TemporaryDirectory(prefix="scarab-conformance-") as scratch:
-        site = scoring_site(root or Path(scratch) / "inputs")
+        pinned = scoring_site(root or Path(scratch) / "inputs")
+        against_site(reports, pinned)
+        site = pinned.scoring
         clone = Path(scratch) / "clone"
         git(run, clone_command(url, clone), "clone")
         try:
@@ -382,15 +427,18 @@ def main(argv: list[str] | None = None, run: Run = execute) -> int:
     args = parser.parse_args(sys.argv[1:] if argv is None else argv)
     try:
         identity_flags(args.identity)
-        reports = collect(args.paths)
+        root = args.inputs.resolve() if args.inputs else None
+        pinned = verified_site(root)
+        reports = collect(args.paths, pinned)
+        for line in unpublished(args.paths):
+            print(line)
         if not reports:
             print("no report to publish")
             return 0
-        root = args.inputs.resolve() if args.inputs else None
         if args.apply:
             apply(reports, args.repo_url, args.replace, args.identity, run, root)
         else:
-            dry_run(reports, args.repo_url, args.replace, args.identity, root)
+            dry_run(reports, args.repo_url, args.replace, args.identity, root, pinned is not None)
     except (PublishError, OSError, json.JSONDecodeError) as error:
         print(f"refused: {error}", file=sys.stderr)
         return 1

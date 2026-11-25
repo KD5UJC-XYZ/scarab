@@ -17,13 +17,14 @@ import gzip
 import hashlib
 import json
 from pathlib import Path
+import re
 import statistics
 import sys
 import zlib
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from conformance import inputs as fetching, outcomes, score  # noqa: E402
+from conformance import evidence, inputs as fetching, outcomes, provenance, score  # noqa: E402
 from conformance.scenarios import NAME, SCENARIOS, provenance_name  # noqa: E402
 from conformance.schema import loads  # noqa: E402
 
@@ -31,6 +32,8 @@ INVALID = (OSError, ValueError, KeyError, TypeError, EOFError, zlib.error)
 TURBO = "uplc-turbo"
 # The missed programs the page lists, the worst first; turbo-score.json lists them all.
 TURBO_ROWS = 50
+# What a code span on the page may hold.
+CODE = re.compile(r"[A-Za-z0-9._-]+")
 
 
 def explanation(error: Exception) -> str:
@@ -129,9 +132,10 @@ def _rounded(value: float | None) -> float | None:
 
 def _miss(miss: score.Miss) -> dict:
     item = miss.item or {}
-    return {"bench": miss.bench, "shortfall": miss.shortfall.value, "cpu_ratio": _rounded(miss.cpu_ratio),
-            "memory_ratio": _rounded(miss.memory_ratio), "cpu_us": item.get("cpu_us"),
-            "budget_cpu": item.get("budget_cpu"), "mem_bytes": item.get("mem_bytes"),
+    return {"bench": miss.bench, "shortfall": miss.shortfall.value, "cpu_within": miss.cpu,
+            "memory_within": miss.memory, "cpu_ratio": _rounded(miss.cpu_ratio),
+            "memory_ratio": _rounded(miss.memory_ratio), "failing_ratio": _rounded(miss.failing_ratio),
+            "cpu_us": item.get("cpu_us"), "budget_cpu": item.get("budget_cpu"), "mem_bytes": item.get("mem_bytes"),
             "budget_mem": item.get("budget_mem")}
 
 
@@ -141,15 +145,16 @@ def percentile_index(count: int, percent: int) -> int:
     return -(-count * percent // 100) - 1
 
 
-def turbo_summary(breakdown: score.Turbo, provenance: dict) -> dict:
+def turbo_summary(breakdown: score.Turbo, record: dict) -> dict:
     """The score of a uplc-turbo report, the programs it misses by why, and its bytes per memory unit; the CPU and
-    runner come from the report's provenance."""
+    runner come from the report's provenance (checked by `evidence.check`), and whether that CPU is the reference."""
     ratios = breakdown.memory_ratios
-    environment = provenance.get("environment") if isinstance(provenance.get("environment"), dict) else {}
+    environment = record["environment"]
     return {
-        "verdict": "scored", "scarab_commit": str(provenance.get("scarab", {}).get("commit", "")),
-        "report": provenance.get("report"), "runner": environment.get("runner"), "cpu": environment.get("cpu"),
-        "limits": environment.get("limits"),
+        "verdict": "scored", "scarab_commit": record["scarab"]["commit"], "report": record["report"],
+        "runner": environment["runner"], "cpu": environment["cpu"], "limits": environment["limits"],
+        "reference_cpu": SCENARIOS[TURBO].reference_cpu,
+        "on_reference_cpu": provenance.cpu_model(record) == SCENARIOS[TURBO].reference_cpu,
         "met": breakdown.score.met, "total": breakdown.score.total,
         "missed": {shortfall.value: len(breakdown.missed(shortfall)) for shortfall in score.Shortfall},
         "missed_on_memory_also_on_cpu": sum(1 for miss in breakdown.missed(score.Shortfall.MEMORY)
@@ -172,21 +177,38 @@ def turbo(directory: Path, inputs: Path) -> dict | None:
     mine = [item for item in items if item.get("scenario") == TURBO]
     if not mine and TURBO not in run.get("requested", []):
         return None
+    if len(mine) == 1 and mine[0].get("status") == "not-reference-cpu":
+        return {"verdict": "not-reference-cpu", "reference_cpu": SCENARIOS[TURBO].reference_cpu,
+                "reason": str(mine[0].get("detail") or "this runner's CPU is not the reference")}
     try:
         if len(mine) != 1:
             raise outcomes.OutcomeError(f"the run summary has {len(mine)} uplc-turbo outcomes, not one")
         if mine[0].get("status") != "report":
             raise outcomes.OutcomeError(str(mine[0].get("detail") or "the scenario did not produce a checked report"))
-        report, provenance = checked(directory, mine[0], TURBO)
-        site = inputs / fetching.load_pins()["site"].directory
-        breakdown = score.turbo_breakdown(report, score.turbo_benchmarks(site / SCENARIOS[TURBO].schema))
+        name = str(mine[0].get("report", ""))
+        site = fetching.verified(fetching.load_pins()["site"], inputs)
+        if site is None:
+            raise outcomes.OutcomeError("the pinned site under --inputs is missing or not the one its receipt "
+                                        "verified, so the report cannot be checked or scored against it")
+        pinned = evidence.Pinned.read(site)
+        record = loads((directory / provenance_name(name)).read_text(encoding="utf-8"))
+        report = evidence.check(name, (directory / name).read_bytes(), record, pinned)
+        breakdown = score.turbo_breakdown(report, pinned.scoring.turbo)
     except INVALID as error:
         return {"verdict": "incomplete", "reason": explanation(error)}
-    return turbo_summary(breakdown, provenance)
+    return turbo_summary(breakdown, record)
 
 
 def _cell(text: object) -> str:
-    return str(text).replace("|", "&#124;").replace("<", "&lt;").replace("`", "&#96;").replace("\n", " ")
+    """Text for a Markdown table cell, outside a code span."""
+    return str(text).replace("&", "&amp;").replace("|", "&#124;").replace("<", "&lt;").replace("`", "&#96;") \
+        .replace("\n", " ")
+
+
+def _code(text: object) -> str:
+    """Text as a code span when it is made of letters, digits, `.`, `_` and `-` alone, which a code span shows as
+    they are (an entity there is shown as written, not decoded); otherwise as escaped text."""
+    return f"`{text}`" if CODE.fullmatch(str(text)) else _cell(text)
 
 
 def _times(ratio: float | None) -> str:
@@ -197,17 +219,26 @@ def turbo_markdown(summary: dict) -> str:
     lines = ["# uplc-turbo score", ""]
     if summary["verdict"] == "incomplete":
         return "\n".join(lines + ["**INCOMPLETE: no score can be given.**", "", _cell(summary["reason"]), ""])
-    cpu = summary.get("cpu") if isinstance(summary.get("cpu"), dict) else {}
-    limits = summary.get("limits") if isinstance(summary.get("limits"), dict) else {}
+    if summary["verdict"] == "not-reference-cpu":
+        return "\n".join(lines + [
+            "**NOT MEASURED: this runner's CPU is not the reference.**", "", _cell(summary["reason"]), "",
+            "Re-run the uplc-turbo job to be given another runner, or dispatch with `uplc-turbo-any-cpu` to measure "
+            "on any CPU; a report of another CPU is never published.", ""])
+    cpu = summary["cpu"]
+    limits = summary["limits"]
     missed = summary["missed"]
-    lines += [f"**{summary['met']:,} of {summary['total']:,} programs met** by the site's rule at "
+    publishable = [] if summary["on_reference_cpu"] else [
+        f"**Not publishable: measured on {_cell(cpu['model'] or 'a CPU the probe could not name')}, not the reference "
+        f"CPU {_cell(summary['reference_cpu'])}.**", ""]
+    lines += publishable + [
+              f"**{summary['met']:,} of {summary['total']:,} programs met** by the site's rule at "
               f"`{score.SITE_COMMIT[:9]}`: CPU time and memory each within twice the budget, or within "
               f"{score.CPU_TOLERANCE_US} µs or {score.MEMORY_TOLERANCE_BYTES // 1024} KiB of it. The site also fails "
               "a program whose budget disagrees with the other nodes' reports, which this count leaves out.", "",
-              f"Scarab `{summary['scarab_commit'][:9]}`, written on `{_cell(summary.get('runner'))}`: CPU "
-              f"{_cell(cpu.get('model') or 'model unknown')}, {_cell(cpu.get('logical_cpus') or '?')} logical CPUs, "
-              f"{_cell(cpu.get('available_cpus') or '?')} available to the container; container limits "
-              f"{_cell(limits.get('cpus', '?'))} CPUs and {_cell(limits.get('memory', '?'))}. "
+              f"Scarab {_code(summary['scarab_commit'][:9])}, written on {_code(summary['runner'])}: CPU "
+              f"{_cell(cpu['model'] or 'model unknown')}, {_cell(cpu['logical_cpus'] or '?')} logical CPUs, "
+              f"`nproc` {_cell(cpu['available_cpus'] or '?')} and a quota of {_cell(cpu['quota_cpus'] or 'none')} in "
+              f"the container; container limits {_cell(limits['cpus'])} CPUs and {_cell(limits['memory'])}. "
               "Timings vary from run to run on any machine.", "",
               "| Missed | Programs |", "|---|---:|",
               f"| on memory | {missed['memory']} ({summary['missed_on_memory_also_on_cpu']} also on CPU) |",
@@ -217,10 +248,11 @@ def turbo_markdown(summary: dict) -> str:
               f"Within the memory limit: {summary['within_memory_limit']:,} of {summary['total']:,}; bytes per memory "
               f"unit, median {summary['bytes_per_memory_unit_median']}, 95th percentile "
               f"{summary['bytes_per_memory_unit_p95']}.", ""]
-    misses = sorted(summary["misses"], key=lambda miss: -max(miss["cpu_ratio"] or 0, miss["memory_ratio"] or 0))
+    # The worst first, by the dimensions that fail each program; one that fails none comes last.
+    misses = sorted(summary["misses"], key=lambda miss: -(miss["failing_ratio"] or 0))
     if misses:
         lines += ["| Program | Missed on | CPU time over budget | Memory over budget |", "|---|---|---:|---:|"]
-        lines += [f"| `{_cell(miss['bench'])}` | {miss['shortfall']} | {_times(miss['cpu_ratio'])} | "
+        lines += [f"| {_code(miss['bench'])} | {miss['shortfall']} | {_times(miss['cpu_ratio'])} | "
                   f"{_times(miss['memory_ratio'])} |" for miss in misses[:TURBO_ROWS]]
         if len(misses) > TURBO_ROWS:
             lines += ["", f"And {len(misses) - TURBO_ROWS} more, in `turbo-score.json`."]

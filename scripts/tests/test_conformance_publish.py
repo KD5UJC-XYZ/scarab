@@ -2,6 +2,7 @@
 """`scripts/conformance/publish.py`: which files may be published, that a dry run runs nothing, and what `--apply`
 does, against real Git repositories in a temporary directory (a local bare remote with a first commit), a fake `gh`
 and a synthetic site that is taken for the pinned one (`conformance_site`): nothing leaves the test's directory."""
+import gzip
 import hashlib
 import io
 import json
@@ -15,21 +16,17 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from conformance import inputs, publish  # noqa: E402
-from conformance_site import ABSENT, gzipped, ledger_report, write_site  # noqa: E402
+from conformance import evidence, inputs, publish, scenarios  # noqa: E402
+from conformance_site import (ABSENT, COMMIT, CPU, cbor_report, ledger_report, turbo_report,  # noqa: E402
+                              verify, write_pair, write_site)
 
-COMMIT = "c" * 40
 LEDGER = "scarab-20261114-ledger-rules.json.gz"
+SCARAB = {"repository": "KD5UJC-XYZ/scarab", "commit": COMMIT, "dirty": False}
 
 
-def write_report(directory, name=LEDGER, body=b"\x1f\x8b report", **changes):
-    path = Path(directory, name)
-    path.write_bytes(body)
-    record = {"report": name, "sha256": hashlib.sha256(body).hexdigest(),
-              "validation": {"valid": True}, "scarab": {"commit": COMMIT, "dirty": False}}
-    record.update(changes)
-    Path(directory, name.removesuffix(".json.gz") + ".provenance.json").write_text(json.dumps(record))
-    return path
+def write_report(directory, name=LEDGER, report=None, cpu=None, **changes):
+    """A report and its provenance as run.py writes them (`write_pair`)."""
+    return write_pair(directory, name, report, cpu, **changes)
 
 
 def never(argv):
@@ -43,8 +40,7 @@ def verified_site(root):
     target = write_site(Path(root, pin.directory), {"00001-pass": ABSENT, "00002-fail": {"predicate": "P"}},
                         [{"id": "v", "plutus_version": "V3", "protocol_version": "10.0", "evaluation": "ok",
                           "budget": None}], ["a.flat"])
-    Path(root, f"{pin.directory}.verified.json").write_text(json.dumps(inputs.receipt(pin, target)))
-    return Path(root)
+    return verify(root, target)
 
 
 # Git as the tests run it: no global or system configuration (no signing, no hooks), and never a prompt.
@@ -127,10 +123,10 @@ class CollectTest(unittest.TestCase):
 
     def test_unfit_files_are_refused(self):
         cases = {
-            "dirty": {"scarab": {"commit": COMMIT, "dirty": True}},
-            "unvalidated": {"validation": {"valid": False}},
+            "dirty": {"scarab": dict(SCARAB, dirty=True)},
+            "unvalidated": {"validation": {"schema": "s", "valid": False, "checks": []}},
             "another sha256": {"sha256": "0" * 64},
-            "no commit": {"scarab": {"dirty": False}},
+            "no commit": {"scarab": {"repository": "KD5UJC-XYZ/scarab", "dirty": False}},
         }
         for case, changes in cases.items():
             with tempfile.TemporaryDirectory() as tmp, self.assertRaises(publish.PublishError, msg=case):
@@ -149,46 +145,137 @@ class CollectTest(unittest.TestCase):
 
 
 TURBO = "scarab-20261114-uplc-turbo.json.gz"
-CPU = {"model": "Some CPU @ 2.00GHz", "logical_cpus": 4, "available_cpus": 3}
+OTHER_CPU = {"model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz"}
 
 
-def environment(runner, cpu=CPU):
-    return {"runner": runner, "cpu": cpu, "limits": {"cpus": "3", "memory": "8g"}}
+class ReferenceCpuTest(unittest.TestCase):
+    """A report of timings (uplc-turbo) is published only when it was measured on its reference CPU, wherever it was
+    written; any other report needs no CPU of its own."""
 
-
-class TimedReportTest(unittest.TestCase):
-    """A report of timings (uplc-turbo) is published wherever it was written, once its provenance names the CPU the
-    timings were taken on."""
-
-    def collected(self, name, **changes):
+    def collected(self, name, cpu=None, **changes):
         with tempfile.TemporaryDirectory() as tmp:
-            write_report(tmp, name, **changes)
+            write_report(tmp, name, cpu=cpu, **changes)
             return [report.path.name for report in publish.collect([Path(tmp)])]
 
-    def test_a_turbo_report_from_a_runner_or_a_local_machine_is_published(self):
-        for runner in ("github-actions", "local"):
-            self.assertEqual(self.collected(TURBO, environment=environment(runner)), [TURBO], runner)
-        self.assertEqual(self.collected(TURBO, environment=environment("local", {"model": None, "logical_cpus": 8})),
-                         [TURBO], "a CPU the kernel names no model of")
+    def test_a_turbo_report_of_the_reference_cpu_is_published_from_a_runner_or_a_local_machine(self):
+        self.assertEqual(scenarios.SCENARIOS["uplc-turbo"].reference_cpu, "Intel(R) Xeon(R) 6975P-C")
+        self.assertEqual(self.collected(TURBO), [TURBO], "a runner")
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_report(tmp, TURBO)
+            record = json.loads(path.with_name(scenarios.provenance_name(TURBO)).read_text())
+            record["environment"]["runner"] = "local"
+            path.with_name(scenarios.provenance_name(TURBO)).write_text(json.dumps(record))
+            self.assertEqual([r.path.name for r in publish.collect([Path(tmp)])], [TURBO], "a local machine")
 
-    def test_a_turbo_report_that_names_no_cpu_is_refused(self):
-        # As every turbo report run.py wrote before it recorded the CPU: on a runner, run.py --allocation-only's.
-        cases = {"runner alone": {"environment": {"runner": "github-actions"}},
-                 "local, no CPU": {"environment": {"runner": "local"}}, "no environment": {},
-                 "environment null": {"environment": None},
-                 "the probe failed": {"environment": environment("github-actions",
-                                                                 {"model": "x", "logical_cpus": None})},
-                 "a count of zero": {"environment": environment("local", {"model": "x", "logical_cpus": 0})},
-                 "a boolean count": {"environment": environment("local", {"model": "x", "logical_cpus": True})},
-                 "a count as text": {"environment": environment("local", {"model": "x", "logical_cpus": "4"})},
-                 "cpu not an object": {"environment": environment("local", "x")}}
-        for case, changes in cases.items():
-            with self.subTest(case), self.assertRaisesRegex(publish.PublishError, "names no CPU"):
-                self.collected(TURBO, **changes)
+    def test_a_turbo_report_of_another_cpu_or_none_is_refused_naming_both(self):
+        with self.assertRaises(publish.PublishError) as refused:
+            self.collected(TURBO, OTHER_CPU)
+        self.assertIn("measured on Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz, not on the reference CPU "
+                      "Intel(R) Xeon(R) 6975P-C", str(refused.exception))
+        for case, cpu in {"no model line": {"model": None},
+                          "the probe failed": {"model": None, "logical_cpus": None, "failure": "the probe exited 125"}
+                          }.items():
+            with self.subTest(case), self.assertRaisesRegex(publish.PublishError, "a CPU its provenance does not name"):
+                self.collected(TURBO, cpu)
 
-    def test_a_report_of_no_timings_needs_no_cpu(self):
-        self.assertEqual(self.collected(LEDGER), [LEDGER])
-        self.assertEqual(self.collected(LEDGER, environment={"runner": "github-actions"}), [LEDGER])
+    def test_a_report_of_no_timings_needs_no_reference_cpu(self):
+        self.assertEqual(self.collected(LEDGER, OTHER_CPU), [LEDGER])
+        self.assertEqual(self.collected(LEDGER, {"model": None}), [LEDGER])
+
+
+class CheckedBytesTest(unittest.TestCase):
+    """The publisher checks the very bytes it would stage against their provenance (`evidence.py`), and against the
+    site's schema and scoring when the site is there, and refuses the whole publication for any it cannot read."""
+
+    def refused(self, path, pinned=None):
+        with self.assertRaises(publish.PublishError) as refused:
+            publish.collect([path.parent], pinned)
+        return str(refused.exception)
+
+    def rewrite(self, path, report):
+        """`report` in place of the file at `path`, with its provenance's hashes made to match, as a forger would."""
+        record = json.loads(path.with_name(scenarios.provenance_name(path.name)).read_text())
+        raw = json.dumps(report).encode()
+        data = scenarios.compressed_bytes(raw)
+        path.write_bytes(data)
+        record.update(sha256=hashlib.sha256(data).hexdigest(), bytes=len(data),
+                      json_sha256=hashlib.sha256(raw).hexdigest(), generated_at=report.get("generated_at"))
+        path.with_name(scenarios.provenance_name(path.name)).write_text(json.dumps(record))
+
+    def test_files_it_cannot_read_are_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_report(tmp)
+            raw = b"\x1f\x8b not gzip"
+            path.write_bytes(raw)
+            record = json.loads(path.with_name(scenarios.provenance_name(LEDGER)).read_text())
+            record.update(sha256=hashlib.sha256(raw).hexdigest(), bytes=len(raw))
+            path.with_name(scenarios.provenance_name(LEDGER)).write_text(json.dumps(record))
+            self.assertIn("not gzipped standard JSON", self.refused(path))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_report(tmp)
+            path.with_name(scenarios.provenance_name(LEDGER)).write_text('{"report": NaN}')
+            self.assertIn("its provenance is not standard JSON", self.refused(path))
+
+    def test_a_report_that_disagrees_with_its_provenance_is_refused(self):
+        cases = {
+            "another scenario": (LEDGER, lambda r: dict(r, scenario="uplc-conformance"),
+                                 "a report of 'uplc-conformance'"),
+            "another date": (LEDGER, lambda r: dict(r, generated_at="2026-11-13T23:00:00Z"), "date"),
+            "another commit": ("scarab-20261114-cbor-decoding-conway.json.gz",
+                               lambda r: dict(r, implementation_commit="d" * 40), "Scarab commits"),
+            "another CPU": (TURBO, lambda r: dict(r, machine=dict(r["machine"], cpu="Another CPU")), "names the CPU"),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            pinned = evidence.Pinned.read(Path(verified_site(Path(tmp, "inputs")),
+                                               inputs.load_pins()["site"].directory))
+            for case, (name, change, said) in cases.items():
+                with self.subTest(case), tempfile.TemporaryDirectory() as out:
+                    path = write_report(out, name)
+                    self.rewrite(path, change(json.loads(gzip.decompress(path.read_bytes()))))
+                    self.assertIn(said, self.refused(path, pinned))
+                    self.assertIn(said, self.refused(path), "found without the site too")
+
+    def test_a_report_the_site_would_not_take_is_refused_once_the_site_is_there(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pinned = evidence.Pinned.read(Path(verified_site(Path(tmp, "inputs")),
+                                               inputs.load_pins()["site"].directory))
+            path = write_report(Path(tmp, "out"), TURBO)
+            self.rewrite(path, dict(json.loads(gzip.decompress(path.read_bytes())), version="experimental"))
+            self.assertEqual([r.path.name for r in publish.collect([path.parent])], [TURBO],
+                             "consistent with its provenance, so without the site it passes")
+            message = self.refused(path, pinned)
+            self.assertIn("not valid against the site's scenarios/uplc-turbo/schema.json", message)
+            self.assertIn("the site's scoring cannot read it", message)
+
+    def test_the_bytes_staged_are_the_bytes_checked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_report(tmp)
+            checked = path.read_bytes()
+            report = publish.collect([Path(tmp)])[0]
+            path.write_bytes(b"changed after the check")
+            clone = Path(tmp, "clone")
+            publish.lay_out([publish.Placement(report, True)], clone, score_site(Path(tmp, "site")))
+            self.assertEqual(Path(clone, report.dated).read_bytes(), checked)
+            self.assertEqual(Path(clone, report.latest).read_bytes(), checked)
+
+    def test_scenarios_asked_for_without_a_report_are_named(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            write_report(tmp)
+            Path(tmp, "summary.json").write_text(json.dumps({"outcomes": [
+                {"scenario": "ledger-rules", "status": "report", "report": LEDGER},
+                {"scenario": "uplc-turbo", "status": "not-reference-cpu", "detail": "this runner's CPU is X"}]}))
+            self.assertEqual(publish.unpublished([Path(tmp)]),
+                             ["not published: uplc-turbo (not-reference-cpu: this runner's CPU is X); "
+                              "latest/uplc-turbo is left as it is"])
+            with mock.patch("sys.stdout", new=io.StringIO()) as out:
+                self.assertEqual(publish.main([tmp], run=never), 0)
+            self.assertIn("not published: uplc-turbo", out.getvalue())
+            self.assertIn(f"-> reports/ledger-rules/{LEDGER}", out.getvalue(), "the others are published")
+
+
+def score_site(root):
+    from conformance import score
+    return score.Site.read(write_site(root, {"00001-a": ABSENT}, [], ["a.flat"]))
 
 
 class DryRunTest(unittest.TestCase):
@@ -287,7 +374,7 @@ class ApplyTest(unittest.TestCase):
 
     def test_the_readme_scores_latest_by_the_site_s_rules(self):
         remote = Remote(self.root)
-        write_report(self.out, body=gzipped(ledger_report([("00001", "pass"), ("00002", "Q")])))
+        write_report(self.out, report=ledger_report([("00001", "pass"), ("00002", "Q")]))
         code, said = self.publish(remote, Runner())
         self.assertEqual(code, 0, said)
         readme = remote.files()["README.md"].decode()
@@ -313,15 +400,15 @@ class ApplyTest(unittest.TestCase):
     def test_a_failed_copy_publishes_nothing_and_a_retry_only_its_own_files(self):
         remote = Remote(self.root)
         write_report(self.out)
-        copy, calls = publish.shutil.copyfile, []
+        stage, calls = publish.stage, []
 
-        def failing(source, target):
+        def failing(data, target):
             calls.append(target)
             if len(calls) == 3:
                 raise OSError("disk full")
-            return copy(source, target)
+            return stage(data, target)
 
-        with mock.patch.object(publish.shutil, "copyfile", side_effect=failing):
+        with mock.patch.object(publish, "stage", side_effect=failing):
             code, said = self.publish(remote, Runner())
         self.assertEqual(code, 1)
         self.assertIn("nothing was published", said)

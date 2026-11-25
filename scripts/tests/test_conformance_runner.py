@@ -18,7 +18,7 @@ from pathlib import Path
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from conformance import inputs, publish, run, scenarios  # noqa: E402
+from conformance import inputs, provenance, publish, run, scenarios  # noqa: E402
 from conformance.schema import NonStandardJson, UnsupportedSchema, date_time, loads, validate  # noqa: E402
 
 COMMIT = "a" * 40
@@ -343,12 +343,60 @@ class ChecksTest(unittest.TestCase):
         self.assertEqual(scenarios.SCENARIOS["ledger-rules"].arguments(ctx, None, "/out")[-2:],
                          ["--dataset-commit", ctx.pins["ledger-rules-documents"].spec["commit"]])
         self.assertIn(COMMIT, scenarios.SCENARIOS["cbor-decoding"].arguments(ctx, "conway", "/out"))
-        self.assertEqual([scenario.id for scenario in scenarios.SCENARIOS.values() if scenario.timed], ["uplc-turbo"],
-                         "uplc-turbo alone reports timings")
+        self.assertEqual({scenario.id: scenario.reference_cpu for scenario in scenarios.SCENARIOS.values()
+                          if scenario.reference_cpu is not None}, {"uplc-turbo": scenarios.TURBO_REFERENCE_CPU},
+                         "uplc-turbo alone reports timings, and has a reference CPU")
 
 
 def checkout(root):
     return run.Checkout(Path(root), COMMIT, False, Path(root) / ".git", Path(root) / ".cache")
+
+
+def before_finish():
+    """The provenance run.py has built when it hands a report to `finish`, which adds the report's fields."""
+    return {
+        "schemaVersion": 1, "scenario": "ledger-rules", "era": None,
+        "scarab": {"repository": "KD5UJC-XYZ/scarab", "commit": COMMIT, "dirty": False},
+        "tool": {"main": "m", "arguments": [], "jvm": [], "exit_status": 0}, "inputs": [],
+        "environment": {"image": "i", "image_id": None, "java": None, "docker": None, "python": "3",
+                        "runner": "local", "cpu": {"model": None, "logical_cpus": 4, "available_cpus": 3,
+                                                   "quota_cpus": None},
+                        "limits": {"cpus": "3", "memory": "8g"}},
+        "timings_seconds": {"build": 1.0, "fetch": 0.0, "run": 1.0},
+        "started_at": "2026-11-14T10:00:00Z", "finished_at": "2026-11-14T10:01:00Z",
+    }
+
+
+# The fields `finish` adds, and the validation it records.
+AFTER = {"validation": {"schema": "s", "valid": True, "checks": []}, "report": "r", "sha256": "0" * 64, "bytes": 1,
+         "json_sha256": "0" * 64, "generated_at": 0}
+
+
+class ProvenanceTest(unittest.TestCase):
+    def test_the_shape_run_py_writes(self):
+        self.assertEqual(provenance.problems(before_finish() | AFTER), [])
+        cases = {
+            "a count as text": ("cpu", {"model": None, "logical_cpus": "4", "available_cpus": None,
+                                        "quota_cpus": None}),
+            "a count of zero": ("cpu", {"model": None, "logical_cpus": 0, "available_cpus": None, "quota_cpus": None}),
+            "a boolean count": ("cpu", {"model": None, "logical_cpus": True, "available_cpus": None,
+                                        "quota_cpus": None}),
+            "a field it does not have": ("cpu", {"model": None, "logical_cpus": 4, "available_cpus": 3,
+                                                 "quota_cpus": None, "speed": 1}),
+            "a missing field": ("cpu", {"model": None, "logical_cpus": 4}),
+            "cpu not an object": ("cpu", "x"),
+            "limits of another form": ("limits", {"cpus": "3 cpus", "memory": "8g"}),
+            "a runner it does not know": ("runner", "lab"),
+        }
+        for case, (field, value) in cases.items():
+            with self.subTest(case):
+                record = before_finish() | AFTER
+                record["environment"] = dict(record["environment"], **{field: value})
+                self.assertTrue(provenance.problems(record), case)
+        self.assertTrue(provenance.problems(dict(before_finish() | AFTER, extra=1)), "no field of its own")
+        self.assertEqual(provenance.cpu_model({"environment": {"cpu": {"model": "M"}}}), "M")
+        for record in ({}, {"environment": None}, {"environment": {"cpu": {"model": ""}}}, None):
+            self.assertIsNone(provenance.cpu_model(record), repr(record))
 
 
 class RunTest(unittest.TestCase):
@@ -394,8 +442,8 @@ class RunTest(unittest.TestCase):
             ctx = context(site)
             raw = Path(tmp, "report.json")
             raw.write_text(json.dumps(ledger_report(["00001", "00002"])))
-            outcome = run.finish(scenarios.SCENARIOS["ledger-rules"], None, raw, ctx, out, {"scenario": "x"})
-            self.assertEqual(outcome.status, "report", outcome.checks)
+            outcome = run.finish(scenarios.SCENARIOS["ledger-rules"], None, raw, ctx, out, before_finish())
+            self.assertEqual(outcome.status, "report", (outcome.detail, outcome.checks))
             self.assertEqual(outcome.report, "scarab-20261114-ledger-rules.json.gz")
             record = json.loads((out / "scarab-20261114-ledger-rules.provenance.json").read_text())
             self.assertTrue(record["validation"]["valid"])
@@ -407,9 +455,24 @@ class RunTest(unittest.TestCase):
             failed_out = Path(tmp, "failed")
             failed_out.mkdir()
             raw.write_text(json.dumps(ledger_report(["00001"])))
-            outcome = run.finish(scenarios.SCENARIOS["ledger-rules"], None, raw, ctx, failed_out, {})
+            outcome = run.finish(scenarios.SCENARIOS["ledger-rules"], None, raw, ctx, failed_out, before_finish())
             self.assertEqual(outcome.status, "failed")
             self.assertEqual(list(failed_out.iterdir()), [], "a failed report is not named")
+
+    def test_a_provenance_of_another_shape_is_never_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            site = Site(Path(tmp, "site")).root
+            out = Path(tmp, "out")
+            out.mkdir()
+            raw = Path(tmp, "report.json")
+            raw.write_text(json.dumps(ledger_report(["00001", "00002"])))
+            record = before_finish()
+            record["environment"]["limits"] = {"cpus": "three", "memory": "8g"}
+            outcome = run.finish(scenarios.SCENARIOS["ledger-rules"], None, raw, context(site), out, record)
+            self.assertEqual(outcome.status, "failed")
+            self.assertIn("its provenance is not one publish.py takes", outcome.detail)
+            self.assertIn("$.environment.limits.cpus", outcome.detail)
+            self.assertEqual(list(out.iterdir()), [], "neither the report nor its provenance is written")
 
     def test_implementation_commit_must_be_this_checkout(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -461,30 +524,34 @@ class RunTest(unittest.TestCase):
             run.arguments(["uplc-turbo", "--out", "/x", "--allocation-only"])
 
     def test_the_cpu_is_read_as_the_probe_prints_it(self):
-        x86 = "logical 4\navailable 3\nmodel name\t: Intel(R) Xeon(R) 6975P-C\n"
+        x86 = "logical 4\navailable 3\nquota 300000 100000\nmodel name\t: Intel(R) Xeon(R) 6975P-C\n"
         self.assertEqual(run.parse_cpu(x86), {"model": "Intel(R) Xeon(R) 6975P-C", "logical_cpus": 4,
-                                              "available_cpus": 3})
-        self.assertEqual(run.parse_cpu("logical 8\navailable 8\n"),
-                         {"model": None, "logical_cpus": 8, "available_cpus": 8}, "a kernel that names no model")
-        self.assertEqual(run.parse_cpu("logical 16\navailable \nmodel name\t:\n"),
-                         {"model": None, "logical_cpus": 16, "available_cpus": None},
+                                              "available_cpus": 3, "quota_cpus": 3.0})
+        self.assertEqual(run.parse_cpu("logical 8\navailable 8\nquota max 100000\n"),
+                         {"model": None, "logical_cpus": 8, "available_cpus": 8, "quota_cpus": None},
+                         "a kernel that names no model, and a cgroup that sets no quota")
+        self.assertEqual(run.parse_cpu("logical 16\navailable \nquota 150000 100000\nmodel name\t:\n"),
+                         {"model": None, "logical_cpus": 16, "available_cpus": None, "quota_cpus": 1.5},
                          "an empty name is none, and nproc's absence leaves the machine's count")
         for output in ("", "logical 0\n", "logical -2\n", "logical four\n", "logical 4.5\n", "4\n"):
             self.assertIsNone(run.parse_cpu(output)["logical_cpus"], repr(output))
+        for quota in ("", "300000", "300000 0", "a b", "300000 100000 1"):
+            self.assertIsNone(run.parse_cpu(f"quota {quota}\n")["quota_cpus"], repr(quota))
 
     def test_the_environment_records_the_cpu_and_limits_the_tool_container_sees(self):
         seen = []
 
         def docker(argv, **kwargs):
             seen.append(argv)
-            output = "logical 4\navailable 3\nmodel name\t: Some CPU @ 2.00GHz\n" \
+            output = "logical 4\navailable 3\nquota 300000 100000\nmodel name\t: Some CPU @ 2.00GHz\n" \
                 if argv[-3:-1] == ["sh", "-c"] else "x\n"
             return subprocess.CompletedProcess(argv, 0, output, "")
 
         with mock.patch.object(run.subprocess, "run", side_effect=docker), \
                 mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}):
             recorded = run.environment("img", "owner-1", "3", "8g")
-        self.assertEqual(recorded["cpu"], {"model": "Some CPU @ 2.00GHz", "logical_cpus": 4, "available_cpus": 3})
+        self.assertEqual(recorded["cpu"], {"model": "Some CPU @ 2.00GHz", "logical_cpus": 4, "available_cpus": 3,
+                                           "quota_cpus": 3.0})
         self.assertEqual(recorded["limits"], {"cpus": "3", "memory": "8g"})
         self.assertEqual(recorded["runner"], "github-actions")
         probe = next(argv for argv in seen if argv[-3:-1] == ["sh", "-c"])
@@ -492,11 +559,71 @@ class RunTest(unittest.TestCase):
         text = " ".join(probe)
         for flags in ("--network none", "--cpus 3 --memory 8g", "xyz.kd5ujc.scarab.owner=owner-1"):
             self.assertIn(flags, text, "the probe runs as the tool's containers do")
-        with mock.patch.object(run.subprocess, "run",
-                               side_effect=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 125, "", "no")):
+        with mock.patch.object(run.subprocess, "run", side_effect=lambda argv, **kwargs: subprocess.CompletedProcess(
+                argv, 125, "", "docker: Error response from daemon: no such image\nmore")):
             self.assertEqual(run.environment("img", "o", "3", "8g")["cpu"],
-                             {"model": None, "logical_cpus": None, "available_cpus": None},
-                             "a failed probe records no CPU")
+                             {"model": None, "logical_cpus": None, "available_cpus": None, "quota_cpus": None,
+                              "failure": "the probe exited 125: docker: Error response from daemon: no such image"},
+                             "a failed probe records no CPU, and why")
+        with mock.patch.object(run.subprocess, "run",
+                               side_effect=lambda argv, **kwargs: subprocess.CompletedProcess(argv, 0, "", "")):
+            self.assertEqual(run.environment("img", "o", "3", "8g")["cpu"]["failure"], "the probe printed no CPU count")
+        with mock.patch.object(run.subprocess, "run", side_effect=FileNotFoundError(2, "No such file or directory")):
+            recorded = run.environment("img", "o", "3", "8g")
+        self.assertEqual((recorded["image_id"], recorded["java"], recorded["docker"]), (None, None, None),
+                         "a command that cannot start gives None, not an exception")
+        self.assertEqual(recorded["cpu"]["failure"], "docker could not be started: No such file or directory")
+        self.assertEqual(provenance.problems(dict(before_finish(), environment=recorded) | AFTER), [],
+                         "and the record keeps its shape")
+
+    def test_on_ci_a_timing_scenario_off_its_reference_cpu_ends_before_the_build(self):
+        reference = scenarios.TURBO_REFERENCE_CPU
+        cases = {
+            "another CPU": ("Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz", "github-actions", False, True),
+            "an unknown CPU": (None, "github-actions", False, True),
+            "the reference CPU": (reference, "github-actions", False, False),
+            "any CPU asked for": ("Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz", "github-actions", True, False),
+            "a local machine": ("Some CPU", "local", False, False),
+        }
+        selected = [scenarios.SCENARIOS["ledger-rules"], scenarios.SCENARIOS["uplc-turbo"]]
+        for case, (model, runner, any_cpu, skipped) in cases.items():
+            with self.subTest(case), mock.patch("sys.stderr", new=io.StringIO()) as err:
+                env = {"runner": runner, "cpu": {"model": model, "logical_cpus": 4, "failure": "the probe exited 1"}
+                       if model is None else {"model": model, "logical_cpus": 4}}
+                kept, outcomes = run.off_reference(selected, env, any_cpu)
+                self.assertEqual([scenario.id for scenario in kept],
+                                 ["ledger-rules"] if skipped else ["ledger-rules", "uplc-turbo"])
+                self.assertEqual([(o.scenario, o.status) for o in outcomes],
+                                 [("uplc-turbo", "not-reference-cpu")] if skipped else [])
+                if skipped:
+                    self.assertIn(f"not the reference {reference}", outcomes[0].detail)
+                    self.assertIn(model or "unknown (the probe exited 1)", outcomes[0].detail)
+                if model != reference and not skipped:
+                    self.assertIn("publish.py will refuse its report", err.getvalue(), "measured, and said so")
+
+    def test_a_run_off_the_reference_cpu_on_ci_builds_nothing_and_succeeds(self):
+        calls = []
+
+        def docker(argv, **kwargs):
+            calls.append(argv)
+            if argv[-3:-1] == ["sh", "-c"]:
+                return subprocess.CompletedProcess(argv, 0, "logical 4\navailable 3\nquota 300000 100000\n"
+                                                   "model name\t: Another CPU\n", "")
+            return subprocess.CompletedProcess(argv, 0, "x\n", "")
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.dict(os.environ, {"GITHUB_ACTIONS": "true"}), \
+                mock.patch.object(run, "checkout_facts", return_value=checkout(tmp)), \
+                mock.patch.object(run.subprocess, "run", side_effect=docker), \
+                mock.patch("sys.stdout", new=io.StringIO()) as out, mock.patch("sys.stderr", new=io.StringIO()):
+            Path(tmp, scenarios.SCENARIOS["uplc-turbo"].source).parent.mkdir(parents=True)
+            Path(tmp, scenarios.SCENARIOS["uplc-turbo"].source).write_text("")
+            self.assertEqual(run.main(["uplc-turbo", "--out", str(Path(tmp, "out"))]), 0, "the job stays green")
+            summary = json.loads(Path(tmp, "out", "summary.json").read_text())
+        self.assertFalse([argv for argv in calls if "scripts/sbtw" in argv], "the tools were not built")
+        self.assertEqual([(o["scenario"], o["status"]) for o in summary["outcomes"]],
+                         [("uplc-turbo", "not-reference-cpu")])
+        self.assertIn("not-reference-cpu uplc-turbo: this runner's CPU is Another CPU", out.getvalue())
 
     def test_an_out_directory_with_reports_is_refused(self):
         with tempfile.TemporaryDirectory() as tmp, \

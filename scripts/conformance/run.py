@@ -6,8 +6,10 @@
 
 For the scenarios given (ledger-rules, uplc-conformance, uplc-turbo, cbor-decoding) it
 
-  1. builds the `tools` module in the JDK image (`docker/jdk.Dockerfile`; never java or sbt on the host) and exports
-     its runtime classpath. A scenario whose tool is not in this checkout is skipped, before anything is fetched;
+  1. builds the JDK image (`docker/jdk.Dockerfile`; never java or sbt on the host) when it is absent, probes in it
+     the CPU a tool container sees, then builds the `tools` module and exports its runtime classpath. A scenario
+     whose tool is not in this checkout is skipped, before anything is fetched; on GitHub Actions a timing scenario
+     off its reference CPU ends after the probe (below);
   2. fetches the scenario's pinned inputs (`pins.json`) into a directory of their own (`--inputs`) and verifies them;
   3. runs the tool in a fresh container of the image: no network, the checkout, the dependency cache and the inputs
      read-only, only its own work directory writable. The Plutus scenarios use Scarab's own evaluator;
@@ -16,18 +18,20 @@ For the scenarios given (ledger-rules, uplc-conformance, uplc-turbo, cbor-decodi
      checkout's commit;
   5. writes `scarab-YYYYMMDD-<scenario>[-<era>].json.gz`, dated by the report's `generated_at` in UTC, and beside it
      `...provenance.json`: the Scarab commit, the inputs and their pins, the tool and its arguments, the image, the
-     CPU a tool container sees (its model, the machine's logical CPUs and those the container may use) and its
-     limits (`--cpus`, `--memory`), the checks and the time each phase took. No host name, user or host path is
-     recorded.
+     CPU a tool container sees and its limits (`--cpus`, `--memory`), the checks and the time each phase took, in
+     the shape `provenance.py` gives, which is checked before anything is written. No host name, user or host path
+     is recorded.
 
-`summary.json` in `--out` lists what each scenario gave: a report, a skip and why, or a failure and why. The exit
-status is 1 if a scenario failed, 2 for a usage error. Nothing is published: that is `publish.py`'s, on demand.
-`--dry-run` prints the plan (commands, inputs and report names) without building, fetching or running anything.
+`summary.json` in `--out` lists what each scenario gave: a report, a skip and why, `not-reference-cpu` and why, or a
+failure and why. The exit status is 1 if a scenario failed, 2 for a usage error. Nothing is published: that is
+`publish.py`'s, on demand. `--dry-run` prints the plan (commands, inputs and report names) without building,
+fetching or running anything.
 
-uplc-turbo measures each program's CPU time and allocated bytes. Its reference budget is the default limits with the
-scenario's 4 GB heap, which a GitHub-hosted runner supplies; a report written there or locally names in its
-provenance the runner and the CPU that took its timings, and publish.py refuses a timing report that names no CPU.
-docs/running/conformance.md has the details.
+uplc-turbo measures each program's CPU time and allocated bytes, at the default limits with the scenario's 4 GB
+heap, on its reference CPU (`scenarios.py`). On GitHub Actions, on a runner of another CPU or one the probe cannot
+name, it ends as `not-reference-cpu` before the tools are built, which is no failure; `--any-cpu` measures it there
+anyway. Elsewhere it is always measured, and publish.py refuses a report of another CPU. docs/running/conformance.md
+has the details.
 """
 from __future__ import annotations
 
@@ -50,9 +54,9 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from conformance import inputs as fetching  # noqa: E402
-from conformance.scenarios import (SCENARIOS, Context, Scenario, compress, label, provenance_name,  # noqa: E402
-                                   report_date, report_name)
+from conformance import inputs as fetching, provenance  # noqa: E402
+from conformance.scenarios import (SCENARIOS, Context, Scenario, compressed_bytes, label,  # noqa: E402
+                                   provenance_name, report_date, report_name)
 from conformance.schema import UnsupportedSchema, loads, validate  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -165,10 +169,14 @@ def tool_command(scenario: Scenario, era: str | None, checkout: Checkout, contex
             "java", *scenario.jvm, "-cp", classpath, scenario.main, *scenario.arguments(context, era, "/out")]
 
 
-# Printed in a tool container: the machine's logical CPUs, the CPUs `nproc` says the container may use, and the CPU's
+# Printed in a tool container, one labelled line each: the machine's logical CPUs, the CPUs `nproc` reports (the
+# image's `nproc` counts the container's quota), the quota as the container's cgroup v2 states it, and the CPU's
 # model as the kernel names it (x86).
 CPU_PROBE = ('printf "logical %s\\n" "$(grep -c "^processor" /proc/cpuinfo)"; '
-             'printf "available %s\\n" "$(nproc)"; grep -m 1 "^model name" /proc/cpuinfo; true')
+             'printf "available %s\\n" "$(nproc)"; printf "quota %s\\n" "$(cat /sys/fs/cgroup/cpu.max)"; '
+             'grep -m 1 "^model name" /proc/cpuinfo; true')
+# How much of a failed probe's message the provenance keeps.
+FAILURE_TEXT = 200
 
 
 def _count(text: str) -> int | None:
@@ -176,30 +184,63 @@ def _count(text: str) -> int | None:
     return int(text) if text.isdecimal() and int(text) > 0 else None
 
 
+def _quota(text: str) -> float | None:
+    """The CPUs a cgroup v2 `cpu.max` (`<quota> <period>` in microseconds) allows; None for `max <period>`, which
+    sets no limit, and for anything else."""
+    parts = text.split()
+    if len(parts) != 2 or not all(part.isdecimal() for part in parts) or int(parts[1]) == 0:
+        return None
+    return int(parts[0]) / int(parts[1])
+
+
 def parse_cpu(output: str) -> dict:
     """The CPU from `CPU_PROBE`'s output: its model, None when the kernel names none (as on most ARM CPUs), the
-    machine's logical CPUs and those the container may use, each None when it is not a positive number."""
+    machine's logical CPUs and those `nproc` reports, each None when it is not a positive number, and the quota."""
     lines = output.splitlines()
 
     def field(prefix: str) -> str:
         return next((line.removeprefix(prefix) for line in lines if line.startswith(prefix)), "")
 
     return {"model": field("model name").partition(":")[2].strip() or None,
-            "logical_cpus": _count(field("logical ")), "available_cpus": _count(field("available "))}
+            "logical_cpus": _count(field("logical ")), "available_cpus": _count(field("available ")),
+            "quota_cpus": _quota(field("quota "))}
+
+
+def _first_line(text: str) -> str:
+    lines = text.strip().splitlines()
+    return lines[0][:FAILURE_TEXT] if lines else "no message"
+
+
+def probe_command(image: str, owner: str, cpus: str, memory: str) -> list[str]:
+    """`CPU_PROBE` in a container with the tool's flags."""
+    return ["docker", "run", "--rm", "--network", "none", "--cpus", cpus, "--memory", memory,
+            *labels("conformance", owner), image, "sh", "-c", CPU_PROBE]
+
+
+def probe_cpu(image: str, owner: str, cpus: str, memory: str) -> dict:
+    """The CPU a tool container sees (`parse_cpu`), in a container with the tool's flags; with `failure` when the
+    probe could not run or gave no CPU count, saying why."""
+    try:
+        done = subprocess.run(probe_command(image, owner, cpus, memory), text=True, capture_output=True)
+    except OSError as error:
+        return {**parse_cpu(""), "failure": f"docker could not be started: {error.strerror or type(error).__name__}"}
+    if done.returncode != 0:
+        return {**parse_cpu(""), "failure": f"the probe exited {done.returncode}: {_first_line(done.stderr)}"}
+    cpu = parse_cpu(done.stdout)
+    return cpu if cpu["logical_cpus"] is not None else {**cpu, "failure": "the probe printed no CPU count"}
 
 
 def environment(image: str, owner: str, cpus: str, memory: str) -> dict:
-    """What the tools ran on. The CPU is what a tool container sees: the machine's logical CPUs (`/proc/cpuinfo`), so
-    that a change of hardware shows, and those it may use (`nproc`, which in the image counts the `--cpus` quota),
-    with the container's limits beside them."""
+    """What the tools ran on (`provenance.py` describes each field); a command that cannot run gives None, never an
+    exception."""
     def ask(argv: list[str]) -> str | None:
-        done = subprocess.run(argv, text=True, capture_output=True)
+        try:
+            done = subprocess.run(argv, text=True, capture_output=True)
+        except OSError:
+            return None
         text = (done.stdout or done.stderr).strip()
         return text.splitlines()[0] if done.returncode == 0 and text else None
 
-    container = ["docker", "run", "--rm", "--network", "none", "--cpus", cpus, "--memory", memory,
-                 *labels("conformance", owner), image]
-    probe = subprocess.run([*container, "sh", "-c", CPU_PROBE], text=True, capture_output=True)
     return {
         "image": image,
         "image_id": ask(["docker", "image", "inspect", "--format", "{{.Id}}", image]),
@@ -208,9 +249,30 @@ def environment(image: str, owner: str, cpus: str, memory: str) -> dict:
         "docker": ask(["docker", "version", "--format", "{{.Server.Version}}"]),
         "python": platform.python_version(),
         "runner": "github-actions" if os.environ.get("GITHUB_ACTIONS") == "true" else "local",
-        "cpu": parse_cpu(probe.stdout if probe.returncode == 0 else ""),
+        "cpu": probe_cpu(image, owner, cpus, memory),
         "limits": {"cpus": cpus, "memory": memory},
     }
+
+
+def off_reference(selected: list[Scenario], env: dict, any_cpu: bool) -> tuple[list[Scenario], list[Outcome]]:
+    """On GitHub Actions, unless `any_cpu`: the timing scenarios this runner's CPU is not the reference of, as
+    outcomes of their own (`not-reference-cpu`), and the scenarios to run. A CPU the probe could not name is never
+    the reference. Elsewhere every scenario runs, and the publisher refuses a timing report of another CPU."""
+    model = env["cpu"]["model"]
+    seen = model or f"unknown ({env['cpu'].get('failure', 'the kernel names no model')})"
+    if env["runner"] != "github-actions" or any_cpu:
+        for scenario in selected:
+            if scenario.reference_cpu is not None and model != scenario.reference_cpu:
+                print(f"{scenario.id}: this CPU, {seen}, is not the reference {scenario.reference_cpu}: publish.py "
+                      "will refuse its report", file=sys.stderr)
+        return selected, []
+    skipped = [scenario for scenario in selected if scenario.reference_cpu is not None
+               and model != scenario.reference_cpu]
+    return [scenario for scenario in selected if scenario not in skipped], [
+        Outcome(scenario.id, era, "not-reference-cpu",
+                f"this runner's CPU is {seen}, not the reference {scenario.reference_cpu}: re-run for another runner, "
+                "or measure on any CPU (--any-cpu; never published)")
+        for scenario in skipped for era in scenario.eras]
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -254,11 +316,14 @@ def finish(scenario: Scenario, era: str | None, raw: Path, context: Context, out
         return outcome
     data = raw.read_bytes()
     name = report_name(report_date(report.get("generated_at"), now()), scenario.id, era)
-    target = out / name
-    compress(data, target)
-    compressed = target.read_bytes()
+    compressed = compressed_bytes(data)
     record.update({"report": name, "sha256": sha256_bytes(compressed), "bytes": len(compressed),
                    "json_sha256": sha256_bytes(data), "generated_at": report.get("generated_at")})
+    shape = provenance.problems(record)
+    if shape:
+        outcome.detail = f"its provenance is not one publish.py takes: {'; '.join(shape[:5])}"
+        return outcome
+    (out / name).write_bytes(compressed)
     (out / provenance_name(name)).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
     outcome.status, outcome.report = "report", name
     return outcome
@@ -269,6 +334,11 @@ def plan(args: argparse.Namespace, checkout: Checkout, selected: list[Scenario],
           + (" (uncommitted changes)" if checkout.dirty else ""))
     if args.build_image:
         print(shlex.join(["docker", "build", "-f", "docker/jdk.Dockerfile", "-t", args.image, str(checkout.root)]))
+    print(shlex.join(probe_command(args.image, args.owner, args.cpus, args.memory)))
+    for scenario in selected:
+        if scenario.reference_cpu is not None:
+            print(f"# {scenario.id}: " + ("measured on any CPU" if args.any_cpu else
+                                          f"on GitHub Actions, measured only on {scenario.reference_cpu}"))
     print(shlex.join(build_command(checkout, args.image, args.owner)))
     mounted = {name: f"/inputs/{pin.directory}" for name, pin in pins.items()}
     context = Context(checkout.commit, pins, {}, mounted)
@@ -350,6 +420,16 @@ def run_scenarios(args: argparse.Namespace, checkout: Checkout, selected: list[S
                                               capture_output=True).returncode != 0:
             subprocess.run(["docker", "build", "-f", "docker/jdk.Dockerfile", "-t", args.image, str(checkout.root)],
                            cwd=checkout.root, check=True)
+    except (subprocess.CalledProcessError, OSError) as error:
+        return outcomes + [Outcome(scenario.id, era, "failed", f"the image could not be built: {error}")
+                           for scenario in runnable for era in scenario.eras]
+    # The CPU first, in the image: a timing scenario off the reference CPU ends here, before the build.
+    env = environment(args.image, args.owner, args.cpus, args.memory)
+    runnable, skipped = off_reference(runnable, env, args.any_cpu)
+    outcomes += skipped
+    if not runnable:
+        return outcomes
+    try:
         prepare_cache(checkout.cache)
         print(f"building tools at {checkout.commit} in {args.image}", file=sys.stderr)
         done = subprocess.run(build_command(checkout, args.image, args.owner), text=True, capture_output=True)
@@ -362,7 +442,6 @@ def run_scenarios(args: argparse.Namespace, checkout: Checkout, selected: list[S
         return outcomes + [Outcome(scenario.id, era, "failed", str(error))
                            for scenario in runnable for era in scenario.eras]
     build_seconds = time.monotonic() - clock
-    env = environment(args.image, args.owner, args.cpus, args.memory)
     for scenario in runnable:
         if not has_class(classpath, scenario.main, checkout):
             outcomes += [Outcome(scenario.id, era, "skipped", f"{scenario.main} is not on the tools classpath")
@@ -390,6 +469,9 @@ def arguments(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--memory", default="8g", help="memory of each tool container (default: %(default)s)")
     parser.add_argument("--allow-dirty", action="store_true",
                         help="run with uncommitted changes (recorded; publish.py refuses such reports)")
+    parser.add_argument("--any-cpu", action="store_true",
+                        help="on GitHub Actions, measure a timing scenario on whatever CPU the runner has, not only "
+                        "on its reference CPU (publish.py refuses a report of another CPU)")
     parser.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
     args = parser.parse_args(argv)
     if not OWNER.match(args.owner):
