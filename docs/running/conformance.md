@@ -113,14 +113,19 @@ then 16.5 million memory units from protocol 11, per the [clarified scenario](ht
 These are Plutus execution units. The runner measures JVM allocation separately in bytes.
 
 Timings vary from run to run, on a shared runner as on any machine, and with them the score the site gives a
-program near its CPU limit. The provenance says where a report was written (`environment.runner`), which CPU a tool
-container saw (`environment.cpu`: its model, when the kernel names one, the machine's logical CPUs and those
-`nproc` says the container may use, which `--cpus` lowers) and the container's limits (`environment.limits`), so a
-change of hardware between two reports shows.
-`publish.py` refuses a `uplc-turbo` report whose provenance names no CPU. On 2026-11-25, at `ae5ed2c2c` and the
-runner's settings, three runs on GitHub-hosted runners, all on an Intel Xeon 6975P-C, met 3,995, 3,994 and 3,995
-of the 3,997 programs, and three on a development laptop 3,981, 3,986 and 3,992. One program missed on memory and
-CPU in every run; the others missed on CPU alone, at 2.0 to 2.1 times their budget on the runners.
+program near its CPU limit. GitHub-hosted runners also differ in CPU from one run to the next, which moves the
+score further. The provenance says where a report was written (`environment.runner`), which CPU a tool container
+saw (`environment.cpu`: its model, when the kernel names one, the machine's logical CPUs and those `nproc` says the
+container may use, which `--cpus` lowers) and the container's limits (`environment.limits`), so a change of
+hardware between two reports shows; the job summary names the CPU too, so read it before publishing a run.
+`publish.py` refuses a `uplc-turbo` report whose provenance names no CPU.
+
+On 2026-11-25, at the runner's settings and with one evaluator (`ae5ed2c2c` to `8e2701101`, no change to it between
+them), four runs on GitHub-hosted runners with an Intel Xeon 6975P-C met 3,995, 3,994, 3,995 and 3,992 of the 3,997
+programs, one with an Intel Xeon Platinum 8370C met 3,857, and three on a development laptop 3,981, 3,986 and
+3,992. One program missed on memory and CPU in every run. The others missed on CPU alone: at 2.0 to 2.1 times their
+budget on the first three runner runs, up to 2.9 times on the fourth, and 139 programs at 2.0 to 3.9 times on the
+8370C.
 
 The bytes a program allocates depend mostly on the JVM's settings and CPU count, which the runner fixes, and little
 on the machine's speed or load: a program's figure moves by a fraction of a per cent from run to run, since the

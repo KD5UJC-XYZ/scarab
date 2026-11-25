@@ -6,7 +6,8 @@ name: Conformance reports
 # chosen scenario on its pinned inputs and checks the report; the files are kept as a workflow artifact.
 # The nightly run writes cbor-decoding, the CBOR detector, and uplc-turbo, whose CPU times and memory are measured
 # on this runner at run.py's own budget (3 CPUs, 8 GB, a 4 GB heap); its provenance names the runner's CPU, and
-# the job summary gives its score by the site's rule. Timings vary from run to run, as on any machine.
+# the job summary gives its score by the site's rule and the CPU. Timings vary from run to run, as on any machine,
+# and GitHub-hosted runners differ in CPU, which moves the score: read the CPU before publishing a run.
 # With `publish`, from main only, scripts/conformance/publish.py commits them to the public reports repository
 # KD5UJC-XYZ/scarab-conformance, pushing with the deploy key in the CONFORMANCE_REPO_DEPLOY_KEY secret.
 # Dispatched runs share one concurrency group and run one at a time; a newer dispatch replaces one still waiting.
