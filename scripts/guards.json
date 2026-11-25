@@ -12,6 +12,7 @@
   {"id": "parameter-comments", "title": "no new comments in parameter and argument lists", "argv": ["scripts/check_parameter_comments.py"]},
   {"id": "correspondence", "title": "every definition of a mirrored area is mapped, glue or baselined, and its entry is current", "argv": ["scripts/check_correspondence.py"]},
   {"id": "local-paths", "title": "no absolute home paths", "argv": ["scripts/check_local_paths.py"]},
+  {"id": "top-level", "title": "no top-level directory that is not on the list", "argv": ["scripts/check_top_level.py"]},
   {"id": "licences", "title": "licence records", "argv": ["scripts/check_notice.py"]},
   {"id": "compatibility", "title": "compatibility register", "argv": ["scripts/render_compatibility.py", "--check"]},
   {"id": "roadmap", "title": "roadmap register", "argv": ["scripts/render_roadmap.py", "--check"]},
