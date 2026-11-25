@@ -55,10 +55,12 @@ fi
 # The app reads its configuration back from these directories, so another account must not control them.
 own_directory() {
   local mode
+  # Only the directory itself is made private; parents that -p creates keep the umask's mode.
+  # shellcheck disable=SC2174
   mkdir -p -m 700 -- "$1"
   mode=$(stat -L -c %a -- "$1")
-  if [[ ! -O $1 ]] || (( 8#$mode & 8#002 )); then
-    printf '%s belongs to another user or is writable by every user; set SCARAB_DATA_DIR to a directory of your own.\n' "$1" >&2
+  if [[ ! -O $1 ]] || (( 8#$mode & 8#022 )); then
+    printf '%s belongs to another user or is writable by others; set SCARAB_DATA_DIR to a directory of your own, or remove group and other write access to it.\n' "$1" >&2
     exit 2
   fi
 }

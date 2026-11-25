@@ -55,7 +55,7 @@ before the node starts. The three networks can run at the same time.
 `config/`, `db/` and `node.socket`. The data directory and the network directory
 must belong to you, since the app reads its configuration back from them;
 otherwise it stops and asks for a `SCARAB_DATA_DIR` of your own, as it does for
-one writable by every user. A directory it creates is private. While a node
+one writable by others. A directory it creates is private. While a node
 runs, a second start on the same network directory is refused, since the node
 would remove the first one's socket: use another `SCARAB_DATA_DIR`, or pass both
 `--db` and `--local-socket`. Node-to-node and separate metrics listeners are off
