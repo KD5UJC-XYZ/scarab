@@ -150,14 +150,18 @@ class OutboundPeerShareSuite extends FailsOnUncaught:
         established <- w.outbound.establish(peer, DiffusionMode.InitiatorOnly, Provenance.Outbound)
         handle <- IO.fromEither(established.leftMap(e => new AssertionError(e.toString)))
         before <- w.outbound.requestPeerShare(peer, five)(_ => Some(peer))
-        closing <- handle.close.start
-        // the close said `Done` before it released the connection into `OutboundIdle`
-        _ <- w.idle.get
-        after <- w.outbound.requestPeerShare(peer, five)(_ => Some(peer))
-        monitoring <- handle.read
-        state <- w.state
-        reports <- w.reports.get
-        _ <- closing.cancel
+        // the close, in progress for the rest of the test, is cancelled however the test ends
+        observed <- handle.close.background.use { _ =>
+          for
+            // the close said `Done` before it released the connection into `OutboundIdle`
+            _ <- w.idle.get
+            after <- w.outbound.requestPeerShare(peer, five)(_ => Some(peer))
+            monitoring <- handle.read
+            state <- w.state
+            reports <- w.reports.get
+          yield (after, monitoring, state, reports)
+        }
+        (after, monitoring, state, reports) = observed
       yield
         assert(handle.peerSharing, "peer sharing was agreed")
         assertEquals(before, PeerShare.Result.Peers(Vector(peer)))

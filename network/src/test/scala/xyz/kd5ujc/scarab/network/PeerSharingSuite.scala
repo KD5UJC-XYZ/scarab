@@ -345,7 +345,7 @@ class PeerSharingSuite extends FailsOnUncaught:
   private enum Call:
     case Request, Done
 
-  test("a request taken before the Done is answered; after the Done none reaches the client"):
+  test("a request in flight as the Done is asked is answered; after it, none reaches the client"):
     typed {
       (Deferred[IO, Unit], Deferred[IO, Unit], Ref.of[IO, Vector[Call]](Vector.empty)).tupled
         .flatMap { (started, answer, calls) =>

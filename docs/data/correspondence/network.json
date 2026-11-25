@@ -2314,12 +2314,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "PeerSharingSuite",
-    "OutboundPeerShareSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1439#issuecomment-7161652843",
    "note": "a peer's entry in the registry and its controller, as one value of the connection: present (the client registered) until its Done, absent after. The reference's controller is a depth-1 mailbox the client loop takes requests from; here a request calls the client, under a lock that also orders the Done",
    "digest": "153b5f6a77245e61"
   },
@@ -2346,13 +2343,10 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "PeerSharingSuite",
-    "OutboundPeerShareSuite"
-   ],
-   "note": "the registry lookup and the request: no registered client is PeerSharingNotRegisteredYet, without touching the connection; otherwise the client's answer. A request that looked the controller up before it was unregistered and queued its amount after the client had taken Terminate is never answered there (requestPeers waits on its result for ever, until the peer-share job gives up on it); here the lookup and the request are one step under the controller's lock, so such a request answers NotRegisteredYet at once",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1439#issuecomment-7161652843",
+   "note": "the registry lookup and the request: no registered client is PeerSharingNotRegisteredYet, without touching the connection; otherwise the client's answer. The outcomes of a request concurrent with the Done are among the reference's: it is answered when it takes the lock first (the reference's client takes a queued request before Terminate, PeerSharing.hs 115-122), and otherwise answers NotRegisteredYet once the Done is sent, as a lookup after the bracket's release does there; the reference's third outcome, a request that looked the controller up before the release and queued after Terminate waiting until the job gives up, does not arise, the lookup and the queueing being one step under the lock. The governor asks a peer once at a time (its share time is set when it is picked), so no second request queues behind one in flight. The behaviour is the reference's; the structure differs with no differential evidence yet, hence the Gap",
    "digest": "2f25913cf9a15248"
   },
   "def network.PeerSharingController#done": {
@@ -2378,12 +2372,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "PeerSharingSuite",
-    "OutboundPeerShareSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1439#issuecomment-7161652843",
    "note": "the client's Terminate branch (SendMsgDone) and the bracket's release that unregisters it, which also runs when the Done raises; a second Done finds no client and does nothing, as the reference's client sends MsgDone once",
    "digest": "d416909dd641809d"
   },
@@ -2418,12 +2409,9 @@
      ]
     }
    ],
-   "class": "Mirror",
+   "class": "Gap",
    "structure": "differs",
-   "evidence": [
-    "PeerSharingSuite",
-    "OutboundPeerShareSuite"
-   ],
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1439#issuecomment-7161652843",
    "note": "the registration of a fresh controller for the client, which the warm connection holds for the life of the client (NodeToNode.warm)",
    "digest": "55ccc820c14653f1"
   }
