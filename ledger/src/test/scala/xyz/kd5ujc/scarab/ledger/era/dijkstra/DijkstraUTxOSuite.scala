@@ -33,7 +33,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxLevel,
   UTxO
 }
-import xyz.kd5ujc.scarab.ledger.rules.DijkstraTxMeasures
+import xyz.kd5ujc.scarab.ledger.dijkstra.DijkstraTxMeasures
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, LedgerStateGen}
 import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage}
 

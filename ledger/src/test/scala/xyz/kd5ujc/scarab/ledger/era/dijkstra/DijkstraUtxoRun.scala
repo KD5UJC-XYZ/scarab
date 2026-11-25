@@ -35,9 +35,9 @@ import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, UTxOState}
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 
 /** Dijkstra's UTXOW on the era types (`DijkstraUtxow.dijkstraUtxowTransition`, with its UTXO and
-  * Conway's UTXOS) run in one judgment, for the suites that compare it with the flat rule and with
-  * the reference's verdicts (`DijkstraRulesOracleSuite` in the node, `DijkstraUtxowSuite`), and
-  * SUBUTXOW with its SUBUTXO ([[Sub]], `DijkstraSubUtxowSuite`).
+  * Conway's UTXOS) run in one judgment, for the suites that compare it with the reference's
+  * verdicts (`DijkstraRulesOracleSuite` in the node, `DijkstraUtxowSuite`), and SUBUTXOW with its
+  * SUBUTXO ([[Sub]], `DijkstraSubUtxowSuite`).
   */
 object DijkstraUtxoRun extends munit.Assertions:
   type Rec = UtxowPredFailure[Dijkstra]

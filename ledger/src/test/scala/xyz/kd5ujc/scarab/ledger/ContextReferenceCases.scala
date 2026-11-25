@@ -53,6 +53,28 @@ object ContextReferenceCases extends Assertions:
     def collect: Phase2.Collected[Vector[(Redeemer, xyz.kd5ujc.scarab.plutus.EvalRequest)]] =
       Phase2.collect[Conway](tx, params, scripts, spent, references, slot => Right(slot * 100))
 
+    /** The transaction as Conway's decoder reads it from its original parts. */
+    lazy val eraTx: era.conway.ConwayTx = era.conway.ConwayTestKit.typed(tx)
+
+    /** The transaction's scripts with their contexts as Conway's era collects them
+      * (`collectPlutusScriptsWithContext`, `Alonzo/Plutus/Evaluate.hs:83-118`, cardano-ledger
+      * f649f975), on the same outputs, parameters and clock as [[collect]].
+      */
+    def eraCollect: Either[
+      cats.data.NonEmptyList[era.CollectError[Conway]],
+      List[era.PlutusWithContext]
+    ] =
+      val pp = era.PParams[Conway](
+        era.conway.ConwayPParams.fromStored(params).fold(e => fail(s"$name: $e"), identity)
+      )
+      val utxo = era.conway.ConwayUTxO.fromStored(known).fold(e => fail(s"$name: $e"), identity)
+      era.AlonzoPlutusEvaluate.collectPlutusScriptsWithContext[Conway](
+        slot => Right(slot * 100),
+        pp,
+        eraTx,
+        utxo
+      )
+
   val all: Vector[Recorded] =
     parse(Files.readString(Path.of("fixtures/reference/context-errors/collection.json")))
       .fold(error => fail(error.message), identity)

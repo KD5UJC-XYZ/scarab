@@ -14,7 +14,8 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayProposals
-import xyz.kd5ujc.scarab.ledger.rules.{DijkstraConway, Globals, Judge, Sts, Test, focus}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraConway
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts, Test, focus}
 import xyz.kd5ujc.scarab.ledger.state.{
   Accounts,
   ChainAccountState,

@@ -8,7 +8,7 @@ import cats.syntax.all.*
 import com.comcast.ip4s.*
 import fs2.concurrent.SignallingRef
 import xyz.kd5ujc.scarab.codec.Rational
-import xyz.kd5ujc.scarab.consensus.HeaderChain
+import xyz.kd5ujc.scarab.consensus.{ChainSelection, HeaderChain}
 import xyz.kd5ujc.scarab.ledger.{Header, PeerError}
 import xyz.kd5ujc.scarab.network.*
 import xyz.kd5ujc.scarab.network.genesis.{LeakyBucket, LimitOnPatience}
@@ -17,10 +17,16 @@ import xyz.kd5ujc.scarab.protocol.{ChainSync, NtNHeader}
 import scala.concurrent.duration.*
 
 /** A session's candidate follows the header gate's history as it is trimmed to our chain's anchor
-  * (issue 810): once more headers than the retained window have passed while our anchor advanced,
-  * the candidate is still short, its capacity room never runs out, and publication never starves.
-  * Before, the candidate grew to the window and its oldest block, long ours and never fetched
-  * again, held the session's ChainSync still.
+  * (issue 810): while our anchor advances over many windows of headers, the session takes every
+  * header it is asked for and its candidate ends past the first window, so publication never
+  * starves. Before, the candidate grew to the window and its oldest block, long ours and never
+  * fetched again, held the session's ChainSync still.
+  *
+  * The candidate can still reach the window for a moment: the publisher trims after each of its
+  * steps, and a trim dropped because ChainSync replaced the candidate mid-step waits for the next
+  * step (https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7165499533). How long that
+  * takes depends on how the fibers are scheduled, so the cases assert only what holds on every
+  * schedule.
   */
 class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   override def munitIOTimeout: FiniteDuration = 60.seconds
@@ -69,48 +75,86 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       def snapshot: IO[LeakyBucket.State] =
         IO.pure(LeakyBucket.State(Rational.zero, 0, false, 0, LeakyBucket.Config.disabled))
 
-  test(
-    "a candidate trimmed to our advancing anchor never fills its window or starves publication"
-  ) {
-    forged.flatMap { chain =>
-      // every header the forged chain has but the last few, which the peer serves at its tip
-      val pulls = chain.headers.size - forecast - 2
-      assert(pulls > retained * 4, s"${chain.headers.size} headers are too few to pass the window")
-      FetchCoordinator
-        .create[IO]()
-        .flatMap { coordinator =>
-          // this coordinator decides nothing: no block is ever fetched, as no window's oldest is
-          coordinator.session(11L).use { session =>
-            TestControl.executeEmbed {
-              for
-                taken <- SignallingRef.of[IO, Int](0)
-                anchor <- Ref.of[IO, ChainSync.Point](ChainSync.Point.Origin)
-                longest <- Ref.of[IO, Int](0)
-                _ <- connected(chain, gate(Some(taken), anchor), session) { peer =>
-                  val candidate =
-                    peer.headerCandidate.getOrElse(fail("a streaming session has a candidate"))
-                  val pull = peer.next.flatMap {
-                    case SyncEvent.RollForward(header, _) =>
-                      val index = chain.headers.indexWhere(_.point == header.point)
-                      // our chain adopts what the consumer takes, its anchor `anchorLag` behind
-                      chain.headers.lift(index - anchorLag).traverse_(h => anchor.set(h.point)) *>
-                        taken.set(header.blockNo.toInt) *>
-                        candidate.get.flatMap(c => longest.update(_.max(c.headers.size)))
-                    case SyncEvent.RollBackward(_, _) => IO.unit
-                  }
-                  peer.intersect(Vector(ChainSync.Point.Origin)) *>
-                    (1 to pulls).toList.traverse_(_ => pull)
+  /** What [[advancing]] saw: the headers the consumer took, of how many it pulled for, the
+    * candidate's base, as a position in the chain (-1 for the origin), and size at the end, and how
+    * the session ended if it did not take them all.
+    */
+  private final case class Advance(
+      took: Int,
+      pulls: Int,
+      base: Int,
+      size: Int,
+      ended: Option[Throwable]
+  )
+
+  /** The consumer pulls every header the peer has but its last few, our chain adopting each with
+    * its anchor `anchorLag` behind, while no block is ever fetched.
+    */
+  private def advancing(chain: ForgedChain): IO[Advance] =
+    // every header the forged chain has but the last few, which the peer serves at its tip
+    val pulls = chain.headers.size - forecast - 2
+    def position(point: ChainSync.Point) = chain.headers.indexWhere(_.point == point)
+    FetchCoordinator
+      .create[IO]()
+      .flatMap { coordinator =>
+        // this coordinator decides nothing: no block is ever fetched, as no window's oldest is
+        coordinator.session(11L).use { session =>
+          TestControl.executeEmbed {
+            for
+              taken <- SignallingRef.of[IO, Int](0)
+              anchor <- Ref.of[IO, ChainSync.Point](ChainSync.Point.Origin)
+              took <- Ref.of[IO, Int](0)
+              last <- Ref.of[IO, Option[ChainSelection.Candidate]](None)
+              // a session that stalls ends with the error of the connection's end; what it took
+              // and its candidate then say why
+              ended <- connected(chain, gate(Some(taken), anchor), session) { peer =>
+                val candidate =
+                  peer.headerCandidate.getOrElse(fail("a streaming session has a candidate"))
+                val pull = peer.next.flatMap {
+                  case SyncEvent.RollForward(header, _) =>
+                    val index = position(header.point)
+                    // our chain adopts what the consumer takes, its anchor `anchorLag` behind
+                    chain.headers.lift(index - anchorLag).traverse_(h => anchor.set(h.point)) *>
+                      taken.set(header.blockNo.toInt) *> took.update(_ + 1)
+                  case SyncEvent.RollBackward(_, _) => IO.unit
                 }
-                most <- longest.get
-              yield most
-            }
+                peer.intersect(Vector(ChainSync.Point.Origin)) *>
+                  (1 to pulls).toList
+                    .traverse_(_ => pull.guarantee(candidate.get.flatMap(c => last.set(Some(c)))))
+              }.attempt
+              count <- took.get
+              seen <- last.get
+            yield Advance(
+              count,
+              pulls,
+              seen.fold(-1)(c => position(c.base)),
+              seen.fold(0)(_.headers.size),
+              ended.left.toOption
+            )
           }
         }
-        .map { most =>
-          // the anchor, what the consumer has not taken yet and the forecast range, well inside the
-          // window of eight
-          assert(most < retained, s"the candidate reached $most headers")
-        }
+      }
+
+  test("a candidate trimmed to our advancing anchor lets the session take every header") {
+    forged.flatMap { chain =>
+      advancing(chain).map { seen =>
+        assert(
+          seen.pulls > retained * 4,
+          s"${chain.headers.size} headers are too few to pass the window"
+        )
+        val context =
+          s"the session took ${seen.took} of ${seen.pulls} headers, its candidate ${seen.size} " +
+            s"headers from position ${seen.base} (a window of $retained)"
+        // whatever ended the session fails the case, with its cause; fewer headers taken than
+        // pulled for is a starved publication
+        seen.ended.foreach(cause =>
+          if seen.took < seen.pulls then fail(s"publication starved: $context", cause)
+          else fail(s"the session failed after its last pull: $context", cause)
+        )
+        assert(seen.took == seen.pulls, s"publication starved: $context")
+        // the candidate followed our anchor: it ends past the first window
+        assert(seen.base >= retained, s"the candidate is still inside the first window: $context")
+      }
     }
   }
 

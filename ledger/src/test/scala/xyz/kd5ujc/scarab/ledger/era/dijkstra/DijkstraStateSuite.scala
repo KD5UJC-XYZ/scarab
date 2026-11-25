@@ -16,7 +16,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   PParams,
   TxLevel
 }
-import xyz.kd5ujc.scarab.ledger.rules.{Deposits, DijkstraUtxo}
+import xyz.kd5ujc.scarab.ledger.rules.Deposits
 import xyz.kd5ujc.scarab.ledger.rules.NativeRewardFixture
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
@@ -108,6 +108,17 @@ class DijkstraStateSuite extends FunSuite:
       )
     }
 
+  /** `dijkstraTotalRefundsTxCerts` (`Dijkstra/TxCert.hs:262-271`, cardano-ledger 9df9f98c) over the
+    * Conway form of the body: the refunds its certificates declare, as the flat Dijkstra UTXO read
+    * them.
+    */
+  private def declaredRefunds(body: xyz.kd5ujc.scarab.ledger.TxBody): BigInt =
+    body.certificates.iterator.map {
+      case xyz.kd5ujc.scarab.ledger.Certificate.Unregister(_, refund) => refund.getOrElse(BigInt(0))
+      case xyz.kd5ujc.scarab.ledger.Certificate.UnregisterDRep(_, refund) => refund
+      case _                                                              => BigInt(0)
+    }.sum
+
   test("the deposits and refunds of a transaction without sub-transactions equal the flat rules'") {
     val forms = cases.flatMap(c => conwayForm(c).map(c -> _))
     val compared = forms.collect { case (c, Right(flat)) =>
@@ -124,7 +135,7 @@ class DijkstraStateSuite extends FunSuite:
         (deposits.value, refunds.value),
         (
           Deposits.of(c.stored, LedgerStateGen.conwayCert, flat.body)._1,
-          DijkstraUtxo.declaredRefunds(flat.body)
+          declaredRefunds(flat.body)
         ),
         c.name
       )

@@ -18,18 +18,18 @@ outputs or accumulated typed predicate failures:
 | double-spend | Rejected | The second copy spends the input already consumed by the first payment. |
 
 Both accepted native states are independently checked against the original integration
-trace's final state before export. Scarab's `UpstreamLedgerJudgments` adapter runs the production
-LEDGER transitions with the native LEDGERS fold and sub-rule nesting, on original transaction body
-and witness bytes, retaining valid signatures and script data.
+trace's final state before export. Scarab runs Conway's era-typed
+LEDGERS (`ShelleyLedgers.ledgersTransition`), with the native LEDGERS fold and sub-rule nesting, on
+the transactions read by Conway's decoder from their original body and witness bytes, retaining
+valid signatures and script data.
 It compares every input/output field, UTxO accounting and all remaining native state.
 MemPack has no original `TxOut.raw` or Scala change-history bookkeeping; those local
 representations are the only state-comparison exclusions, as in the original trace.
 
-For rejected batches, the adapter uses the accumulating judgment policy. The production Conway
-predicate-failure encoder writes every typed cause, and the complete list must equal the unchanged
-native bytes, including order and multiplicity. Selecting the first-failure policy instead makes
-both rejected-batch comparisons fail. The comparison does not branch on rendered diagnostic
-messages; production block application retains its separate first-failure policy.
+For rejected batches, the judgment accumulates every failure. Conway's era failure encoder
+(`ConwayFailureCbor`) writes every typed cause, and the complete list must equal the unchanged
+native bytes, including order and multiplicity. The comparison does not branch on rendered
+diagnostic messages.
 
 `manifest.json` pins all retained bytes, observer patches, source/dependency revisions,
 runner arguments and source trace manifest. This is bounded native coverage, not a formal

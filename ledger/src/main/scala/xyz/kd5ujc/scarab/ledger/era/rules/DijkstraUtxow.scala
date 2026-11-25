@@ -8,11 +8,10 @@ import cats.syntax.all.*
 import scala.collection.immutable.SortedSet
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{LedgerDefect, TxIn, Verdicts}
-import xyz.kd5ujc.scarab.ledger.dijkstra.{DijkstraPurpose, DijkstraUtxowFailure}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
-import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraPlutusPurpose, DijkstraUTxO, PlutusLegacyMode}
-import xyz.kd5ujc.scarab.ledger.rules.{Convert, Judge, Sts, Test}
+import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraUTxO, PlutusLegacyMode}
+import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts, Test}
 import xyz.kd5ujc.scarab.ledger.state.{Credential, Dijkstra, EraTag, Guard, UTxOState}
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 
@@ -68,78 +67,9 @@ enum DijkstraUtxowPredFailure[E <: EraTag]:
     */
   case MalformedGuardDatums(credentials: NonEmptySet[Credential[Guard]])
 
-/** What a failure's flat form cannot hold without what the transaction gives: UTXOS's collection
-  * errors, and the purposes of missing redeemers, which the flat failure names in its own
-  * vocabulary. It also holds the extra redeemers of an index past the range of `Int`, which the
-  * reference's `Word32` index admits and the flat failure's `Int` cannot hold.
-  */
-enum DijkstraUtxowUnprojected:
-  case CollectErrors(errors: NonEmptyList[CollectError[Dijkstra]])
-  case MissingRedeemers(purposes: NonEmptyList[(DijkstraPlutusPurpose[AsItem], Bytes)])
-  case ExtraRedeemers(purposes: NonEmptyList[DijkstraPlutusPurpose[AsIx]])
-
 object DijkstraUtxowPredFailure:
   given [E <: EraTag]: CanEqual[DijkstraUtxowPredFailure[E], DijkstraUtxowPredFailure[E]] =
     CanEqual.derived
-
-  /** The failure in the node's flat form (`DijkstraUtxowFailure`), as
-    * [[DijkstraUtxoPredFailure.toStored]] gives UTXO's: glue until the era failures have their own
-    * encoders (#85), one-way. A missing redeemer's purpose is given its flat form by `purpose`; one
-    * it does not give leaves the failure as it is, as do UTXOS's collection errors and an extra
-    * redeemer whose `Word32` index the flat `Int` cannot hold: it is never narrowed.
-    */
-  def toStored(
-      failure: DijkstraUtxowPredFailure[Dijkstra],
-      purpose: DijkstraPlutusPurpose[AsItem] => Option[DijkstraPurpose]
-  ): Either[DijkstraUtxowUnprojected, DijkstraUtxowFailure] =
-    def ok(f: DijkstraUtxowFailure) = Right(f)
-    def creds(cs: NonEmptySet[Credential[Guard]]) = cs.toSortedSet.unsorted.map(Convert.back)
-    failure match
-      case UtxoFailure(u) =>
-        DijkstraUtxoPredFailure
-          .toStored(u)
-          .bimap(DijkstraUtxowUnprojected.CollectErrors(_), DijkstraUtxowFailure.UtxoFailure(_))
-      case InvalidWitnessesUTXOW(ks) =>
-        ok(DijkstraUtxowFailure.InvalidWitnesses(ks.toList.toVector))
-      case MissingVKeyWitnessesUTXOW(hs) =>
-        ok(DijkstraUtxowFailure.MissingVKeyWitnesses(hs.toSortedSet))
-      case MissingScriptWitnessesUTXOW(hs) =>
-        ok(DijkstraUtxowFailure.MissingScriptWitnesses(hs.toSortedSet))
-      case ScriptWitnessNotValidatingUTXOW(hs) =>
-        ok(DijkstraUtxowFailure.ScriptWitnessNotValidating(hs.toSortedSet))
-      case MissingTxBodyMetadataHash(h) => ok(DijkstraUtxowFailure.MissingTxBodyMetadataHash(h))
-      case MissingTxMetadata(h)         => ok(DijkstraUtxowFailure.MissingTxMetadata(h))
-      case ConflictingMetadataHash(m) => ok(DijkstraUtxowFailure.ConflictingMetadataHash(m.stored))
-      case InvalidMetadata()          => ok(DijkstraUtxowFailure.InvalidMetadata)
-      case ExtraneousScriptWitnessesUTXOW(hs) =>
-        ok(DijkstraUtxowFailure.ExtraneousScriptWitnesses(hs.toSortedSet))
-      case MissingRedeemers(ps) =>
-        ps.toList.toVector
-          .traverse((p, h) => purpose(p).map(_ -> h))
-          .fold(Left(DijkstraUtxowUnprojected.MissingRedeemers(ps)))(fs =>
-            ok(DijkstraUtxowFailure.MissingRedeemers(fs))
-          )
-      case MissingRequiredDatums(m, r) =>
-        ok(DijkstraUtxowFailure.MissingRequiredDatums(m.toSortedSet, r))
-      case NotAllowedSupplementalDatums(u, a) =>
-        ok(DijkstraUtxowFailure.NotAllowedSupplementalDatums(u.toSortedSet, a))
-      case PPViewHashesDontMatch(m) => ok(DijkstraUtxowFailure.PPViewHashesDontMatch(m.stored))
-      case UnspendableUTxONoDatumHash(ins) =>
-        ok(DijkstraUtxowFailure.UnspendableUTxONoDatumHash(ins.toSortedSet))
-      case ExtraRedeemers(ps) =>
-        ps.toList.toVector
-          .traverse(p => Option.when(p.ix.value.isValidInt)(p.tag -> p.ix.value.intValue))
-          .fold(Left(DijkstraUtxowUnprojected.ExtraRedeemers(ps)))(is =>
-            ok(DijkstraUtxowFailure.ExtraRedeemers(is))
-          )
-      case MalformedScriptWitnesses(hs) =>
-        ok(DijkstraUtxowFailure.MalformedScriptWitnesses(hs.toSortedSet))
-      case MalformedReferenceScripts(hs) =>
-        ok(DijkstraUtxowFailure.MalformedReferenceScripts(hs.toSortedSet))
-      case ScriptIntegrityHashMismatch(m, e) =>
-        ok(DijkstraUtxowFailure.ScriptIntegrityHashMismatch(m.stored, e))
-      case MissingRequiredGuards(cs) => ok(DijkstraUtxowFailure.MissingRequiredGuards(creds(cs)))
-      case MalformedGuardDatums(cs)  => ok(DijkstraUtxowFailure.MalformedGuardDatums(creds(cs)))
 
 /** Dijkstra's functions of UTXOW (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs`,
   * cardano-ledger 9df9f98c).

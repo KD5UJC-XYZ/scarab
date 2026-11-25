@@ -292,18 +292,11 @@ class PreConwayFailureCborSuite extends FunSuite:
 
   // ---- the eras and Conway
 
-  test("Byron has no ledger failures; Conway's are PredicateFailureCbor's") {
+  test("Byron has no ledger failures; Conway's are its era rules', not the flat ones'") {
     val f = PredicateFailure.utxo(UtxoFailure.InputSetEmpty)
     assertEquals(reason(Era.Byron, f), None)
-    assertEquals(
-      reason(Era.Conway, f),
-      Some(
-        PredicateFailureCbor
-          .applyTxError(Vector(f))
-          .fold(error => fail(error.message), identity)
-          .hex
-      )
-    )
+    // Conway refuses in its era's types (`ConwayFailureCbor`, #85): no flat failure is written
+    assertEquals(reason(Era.Conway, f), None)
   }
 
   test("a failure the era does not have is not encoded: Conway's in Shelley, Shelley's in Conway") {

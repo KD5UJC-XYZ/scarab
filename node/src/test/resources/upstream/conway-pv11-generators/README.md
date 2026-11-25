@@ -13,10 +13,10 @@ The Scala [replay suite](../../../scala/xyz/kd5ujc/scarab/node/UpstreamFreshLedg
 uses the original signed body and witness bytes and compares complete native
 states. Native inline MemPack does not retain `TxOut.raw` or Scala change-history
 bookkeeping; every decoded output/cache/accounting field is compared independently
-before comparing the remaining state. Rejections run the production transaction rules under
-accumulation and compare the complete encoded native failure list, including order and multiplicity.
-LEDGERS uses the native outer fold and sub-rule nesting through `UpstreamLedgerJudgments`;
-production block application retains its first-failure policy. Differing native/formal
+before comparing the remaining state. Each judgment runs Conway's era-typed
+rule (UTXO, UTXOW, LEDGER or LEDGERS) at the root, as the hook ran it. Rejections accumulate every
+failure and compare the complete native failure list, written by Conway's era failure encoder,
+including order and multiplicity. LEDGERS uses the native outer fold and sub-rule nesting. Differing native/formal
 rejection text is retained; it is not claimed equal.
 
 ## Results and bounded scope

@@ -59,6 +59,31 @@ class DetachedOutputFailureSuite extends FunSuite:
       TxOut.fromBytes(original)(using ByteStrings.Chunked).fold(e => fail(e.message), identity)
     )
 
+  /** UTXO's `OutputTooSmallUTxO` of the output as Conway's era reads it, written by
+    * [[ConwayFailureCbor]].
+    */
+  private def conwayRefusal(out: TxOut): Bytes =
+    import xyz.kd5ujc.scarab.ledger.era.conway.ConwayUTxO
+    import xyz.kd5ujc.scarab.ledger.era.rules.{
+      ConwayLedgerPredFailure,
+      ConwayUtxoPredFailure,
+      ConwayUtxowPredFailure
+    }
+    import xyz.kd5ujc.scarab.ledger.state.Conway
+    val input = xyz.kd5ujc.scarab.ledger.TxIn(Bytes(Vector.fill(32)(0.toByte)), 0)
+    val eraOut = ConwayUTxO
+      .fromStored(Map(input -> out))
+      .fold(e => fail(s"the era's output: $e"), _.unUTxO.getOrElse(input, fail("no output")))
+    ConwayFailureCborCheck.direct(
+      Vector(
+        ConwayLedgerPredFailure.ConwayUtxowFailure[Conway](
+          ConwayUtxowPredFailure.UtxoFailure[Conway](
+            ConwayUtxoPredFailure.OutputTooSmallUTxO[Conway](cats.data.NonEmptyList.one(eraOut))
+          )
+        )
+      )
+    )
+
   test("the corpus has detached values from Mary to Conway") {
     assertEquals(rows.map(_.era).toSet, eras.keySet)
   }
@@ -68,18 +93,15 @@ class DetachedOutputFailureSuite extends FunSuite:
       val (original, out) = output(row)
       val expected = written(row)
       assertNotEquals(expected, original)
-      val failure = PredicateFailure.utxo(UtxoFailure.OutputTooSmall(Vector(out)))
       val era = eras.getOrElse(row.era, fail(row.era))
       val answer =
-        if era == Era.Conway then
-          Some(
-            PredicateFailureCbor
-              .applyTxError(Vector(failure))
-              .fold(error => fail(error.message), identity)
-          )
+        if era == Era.Conway then Some(conwayRefusal(out))
         else
           PreConwayFailureCbor
-            .applyTxError(era, Vector(failure))
+            .applyTxError(
+              era,
+              Vector(PredicateFailure.utxo(UtxoFailure.OutputTooSmall(Vector(out))))
+            )
             .fold(error => fail(error.message), identity)
       val hex = answer.map(_.hex).getOrElse(fail(s"${row.name}: no encoding"))
       assert(hex.contains(expected.hex), hex)

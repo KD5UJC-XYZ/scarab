@@ -13,22 +13,9 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.mempack.TxOutMemPack
-import xyz.kd5ujc.scarab.ledger.rules.{
-  Counted,
-  Globals,
-  InstantStakeOps,
-  JudgedSts,
-  Ledger,
-  LedgerEnv,
-  LedgersEnv,
-  StAnnTx,
-  Utxo,
-  UtxoEnv,
-  Utxow
-}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, InstantStakeOps}
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.models.runtime.{Codec, Node}
-import xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{Params, Wire}
 
@@ -98,21 +85,6 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     assertEquals(result.body.raw, fs(0).original)
     assertEquals(result.witnesses.raw, Some(fs(1).original))
     result
-  private def env(slot: BigInt, epoch: BigInt, index: Int = 0): TxEnv = TxEnv(
-    slot,
-    epoch,
-    0,
-    geometry.firstSlot(epoch + 1),
-    geometry.stabilityWindow.toBigInt,
-    txIndex = index,
-    clock = Some(
-      xyz.kd5ujc.scarab.ledger.PosixClock.Total(s =>
-        BigInt(geometry.systemStart.toEpochMilli) + geometry.slotOffsetMillis(s)
-      )
-    ),
-    evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
-    decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder
-  )
   private def sameUtxo(found: UTxOState[Conway], wanted: UTxOState[Conway]): Unit =
     def parts(s: UTxOState[Conway]) = s.utxo.utxo.toMap.toVector
       .traverse { (input, output) => TxOutMemPack.parts(output).map(input -> _) }
@@ -133,20 +105,21 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       None
     )
 
-  /** Compare the complete rule-level failure list with the unchanged native encoding. */
-  private def rejection(rule: String, e: LedgerFailure, failures: Node): Unit = e match
-    case LedgerFailure.Rejected(_, causes) => rejected(rule, causes.toChain.toVector, failures)
-    case other                             => fail(s"expected typed native refusal, got $other")
-
-  /** Compare the rule's failures, in the node's flat form, with the unchanged native encoding. */
-  private def rejected(rule: String, predicates: Vector[PredicateFailure], failures: Node): Unit =
+  /** Compare the rule's failures, embedded as LEDGER's, written by the era's encoder
+    * (`UpstreamEraLedger.refusal`), with the unchanged native encoding of the rule's own, byte for
+    * byte as written, never re-encoded: LEDGER's and LEDGERS's list whole, and UTXO's and UTXOW's
+    * failures each as LEDGER's embeds it, in order and with their multiplicity.
+    */
+  private def rejected(
+      rule: String,
+      failures: Vector[xyz.kd5ujc.scarab.ledger.era.rules.LedgerPredFailure[Conway]],
+      native: Node
+  ): Unit =
     val answer = Cbor
-      .decode(
-        PredicateFailureCbor.applyTxError(predicates).fold(error => fail(error.message), identity)
-      )
+      .decode(UpstreamEraLedger.refusal(failures))
       .fold(e => fail(e.message), identity)
-    val ledgerFailures = array(array(array(answer).head)(1))
-    val encoded = ledgerFailures.map { ledgerFailure =>
+    val list = array(array(answer).head)(1)
+    val written = array(list).map { ledgerFailure =>
       rule match
         case "UTXO"    => array(array(ledgerFailure)(1))(1)
         case "UTXOW"   => array(ledgerFailure)(1)
@@ -154,8 +127,13 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
         case "LEDGER"  => ledgerFailure
         case other     => fail(s"unsupported native STS rule $other")
     }
-    val bytes = Cbor.encode(Value.Arr(encoded)).fold(e => fail(e.message), identity)
-    assertEquals(bytes.hex, failures.original.hex, "complete native failure bytes, including order")
+    assertEquals(
+      written.map(_.original.hex),
+      array(native).map(_.original.hex),
+      "each native failure's bytes, in order"
+    )
+    if rule == "LEDGER" || rule == "LEDGERS" then
+      assertEquals(list.original.hex, native.original.hex, "the complete native failure list")
 
   private def cacheInvariant(state: UTxOState[Conway], incoherent: Boolean): Unit =
     val empty = ConwayInstantStake(
@@ -179,102 +157,52 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
         "native smartUTxOState cache matches the complete original UTxO"
       )
 
-  private def replay(row: Json, directory: Path, incoherent: Boolean): Unit =
+  /** The era-typed UTXO or UTXOW on a UTXO or UTXOW row's inputs, the transaction read by Conway's
+    * decoder from its original parts, the root of its judgment as the hook ran it: an accepted
+    * judgment leaves the reference's post-state, a refused one's failures encode to its bytes in
+    * their order.
+    */
+  private def eraUtxoReplay(row: Json, directory: Path, incoherent: Boolean): Unit =
     def read(name: String): Node = nodeAt(directory.resolve(s"$name.cbor"))
     val rule = text(row, "rule")
     val fields = array(read("environment"))
-    val result = text(row, "native")
     assertEquals(Files.readString(directory.resolve("result.txt")), text(row, "result"))
-    if rule == "UTXO" || rule == "UTXOW" then
-      assertEquals(fields.size, 3)
-      val slot = decode(fields(0), summon[Codec[SlotNo]]).toBigInt
-      val pp = decode(fields(1), Params.conwayCodec)
-      val cert = decode(fields(2), summon[Codec[ConwayCertState]])
-      val before = decode(read("state"), UpstreamNativeStates.nativeUtxoState)
-      cacheInvariant(before, incoherent)
-      val transaction = tx(read("signal"))
-      val execution = UtxoEnv(env(slot, geometry.epochOf(slot)), pp, cert)
-      val signal = StAnnTx(transaction, before.utxo.utxo)
-      val actual =
-        if rule == "UTXO" then
-          UpstreamLedgerJudgments.run(Utxo)(
-            globals,
-            execution,
-            Counted(before, PlutusStats.zero),
-            signal
-          )
-        else
-          UpstreamLedgerJudgments.run(Utxow)(
-            globals,
-            execution,
-            Counted(before, PlutusStats.zero),
-            signal
-          )
-      result match
-        case "accepted" =>
-          sameUtxo(
-            actual.fold(e => fail(e.message), _.state),
-            decode(read("implementation-state"), UpstreamNativeStates.nativeUtxoState)
-          )
-        case "rejected" =>
-          rejection(
-            rule,
-            actual.swap.toOption.getOrElse(fail("native rejection accepted")),
-            read("implementation-failures")
-          )
-        case other => fail(s"unknown observation $other")
-    else
-      val before = decode(read("state"), UpstreamNativeStates.nativeLedgerState)
-      cacheInvariant(before.utxo, incoherent)
-      val slot = decode(fields(0), summon[Codec[SlotNo]]).toBigInt
-      val (epoch, index, pp, account) = if rule == "LEDGERS" then
-        assertEquals(fields.size, 4)
-        (
-          decode(fields(1), summon[Codec[EpochNo]]).toBigInt,
-          0,
-          decode(fields(2), Params.conwayCodec),
-          decode(fields(3), summon[Codec[ChainAccountState]])
+    assertEquals(fields.size, 3)
+    val slot = decode(fields(0), summon[Codec[SlotNo]]).toBigInt
+    val pp = decode(fields(1), Params.conwayCodec)
+    val cert = decode(fields(2), summon[Codec[ConwayCertState]])
+    val before = decode(read("state"), UpstreamNativeStates.nativeUtxoState)
+    cacheInvariant(before, incoherent)
+    val transaction =
+      UpstreamEraLedger
+        .transaction(read("signal"))
+        .fold(e => fail(s"era transaction: $e"), identity)
+    // the original parts as signed, retained whole by Conway's decoder
+    assertEquals(array(read("signal")).size, 4)
+    assert(UpstreamEraLedger.retains(read("signal"), transaction), "retain the signed parts")
+    val judged = rule match
+      case "UTXO" =>
+        UpstreamEraLedger
+          .utxo(globals, slot, pp, cert, before, transaction)
+          .fold(e => fail(s"era inputs: $e"), identity)
+          .fold(e => fail(s"era defect: $e"), identity)
+          .leftMap(fs => UpstreamEraLedger.ofUtxo(fs.toChain.toVector))
+      case "UTXOW" =>
+        UpstreamEraLedger
+          .utxow(globals, slot, pp, cert, before, transaction)
+          .fold(e => fail(s"era inputs: $e"), identity)
+          .fold(e => fail(s"era defect: $e"), identity)
+          .leftMap(fs => UpstreamEraLedger.ofUtxow(fs.toChain.toVector))
+      case other => fail(s"not a UTXO or UTXOW row: $other")
+    (text(row, "native"), judged) match
+      case ("accepted", Right(state)) =>
+        sameUtxo(
+          state,
+          decode(read("implementation-state"), UpstreamNativeStates.nativeUtxoState)
         )
-      else
-        assertEquals(fields.size, 5)
-        val epoch = array(fields(1)).headOption.fold(geometry.epochOf(slot))(n =>
-          decode(n, summon[Codec[EpochNo]]).toBigInt
-        )
-        (
-          epoch,
-          decode(fields(2), Wire.word16).toInt,
-          decode(fields(3), Params.conwayCodec),
-          decode(fields(4), summon[Codec[ChainAccountState]])
-        )
-      assertEquals(pp, before.utxo.gov.curPParams)
-      val actual =
-        if rule == "LEDGERS" then
-          UpstreamLedgerJudgments.run(UpstreamLedgerJudgments.ledgers)(
-            globals,
-            LedgersEnv(env(slot, epoch), account.treasury),
-            Counted(before, PlutusStats.zero),
-            array(read("signal")).map(tx)
-          )
-        else
-          UpstreamLedgerJudgments.run(Ledger)(
-            globals,
-            LedgerEnv(env(slot, epoch, index), account.treasury),
-            Counted(before, PlutusStats.zero),
-            tx(read("signal"))
-          )
-      result match
-        case "accepted" =>
-          sameLedger(
-            actual.fold(e => fail(e.message), _.state),
-            decode(read("implementation-state"), UpstreamNativeStates.nativeLedgerState)
-          )
-        case "rejected" =>
-          rejection(
-            rule,
-            actual.swap.toOption.getOrElse(fail("native rejection accepted")),
-            read("implementation-failures")
-          )
-        case other => fail(s"unknown observation $other")
+      case ("rejected", Left(failures)) =>
+        rejected(rule, failures, read("implementation-failures"))
+      case (native, other) => fail(s"native $native, era $other")
 
   /** The era-typed LEDGER or LEDGERS on a LEDGER or LEDGERS row's inputs, each transaction read by
     * Conway's decoder from its original parts, the root of its judgment as the hook ran it: an
@@ -288,18 +216,22 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
   ): UpstreamEraLedger.Outcome =
     def read(name: String): Node = nodeAt(directory.resolve(s"$name.cbor"))
     def eraTx(n: Node) =
-      UpstreamEraLedger.transaction(n).fold(e => fail(s"era transaction: $e"), identity)
+      val read = UpstreamEraLedger.transaction(n).fold(e => fail(s"era transaction: $e"), identity)
+      // the original parts as signed, retained whole by Conway's decoder
+      assertEquals(array(n).size, 4)
+      assert(UpstreamEraLedger.retains(n, read), "retain the signed body and witnesses")
+      read
     val rule = text(row, "rule")
     val fields = array(read("environment"))
     assertEquals(Files.readString(directory.resolve("result.txt")), text(row, "result"))
     val before = decode(read("state"), UpstreamNativeStates.nativeLedgerState)
     cacheInvariant(before.utxo, incoherent)
     val slot = decode(fields(0), summon[Codec[SlotNo]]).toBigInt
-    val (txs, judged) = rule match
+    val judged = rule match
       case "LEDGERS" =>
         assertEquals(fields.size, 4)
         val txs = array(read("signal")).map(eraTx)
-        txs -> UpstreamEraLedger
+        UpstreamEraLedger
           .ledgers(
             globals,
             slot,
@@ -313,7 +245,7 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
       case "LEDGER" =>
         assertEquals(fields.size, 5)
         val tx = eraTx(read("signal"))
-        Vector(tx) -> UpstreamEraLedger
+        UpstreamEraLedger
           .ledger(
             globals,
             slot,
@@ -326,6 +258,10 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
           )
           .map(UpstreamEraLedger.ofLedger)
       case other => fail(s"not a LEDGER or LEDGERS row: $other")
+    assertEquals(
+      decode(fields(if rule == "LEDGERS" then 2 else 3), Params.conwayCodec),
+      before.utxo.gov.curPParams
+    )
     val outcome = judged
       .fold(e => fail(s"era inputs: $e"), identity)
       .fold(e => fail(s"era defect: $e"), identity)
@@ -337,27 +273,21 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
         )
         outcome
       case ("rejected", UpstreamEraLedger.Outcome.Refused(failures)) =>
-        val predicates = UpstreamEraLedger
-          .stored(txs, before, failures)
-          .fold(e => fail(s"flat form: $e"), identity)
-        // the era failures written by their own encoder, without the flat form
-        assertEquals(
-          xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck.direct(failures).hex,
-          PredicateFailureCbor.applyTxError(predicates).fold(error => fail(error.message), _.hex),
-          "direct"
-        )
-        rejected(rule, predicates, read("implementation-failures"))
+        rejected(rule, failures, read("implementation-failures"))
         outcome
       case (native, other) => fail(s"native $native, era $other")
 
   private val ledgerRules = Set("LEDGER", "LEDGERS")
 
-  cases.filter(row => ledgerRules(text(row, "rule"))).foreach { row =>
+  cases.foreach { row =>
     val id = text(row, "id")
+    val incoherent = text(row, "replayScope") == "incoherent-cache"
     test(
       s"the era-typed ${text(row, "rule")} gives the native ${text(row, "native")} outcome: $id"
     ) {
-      eraReplay(row, base.resolve(s"cases/$id"), text(row, "replayScope") == "incoherent-cache")
+      if ledgerRules(text(row, "rule")) then
+        val _ = eraReplay(row, base.resolve(s"cases/$id"), incoherent)
+      else eraUtxoReplay(row, base.resolve(s"cases/$id"), incoherent)
     }
   }
 
@@ -417,17 +347,6 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     )
   }
 
-  cases.foreach { row =>
-    val id = text(row, "id")
-    val rule = text(row, "rule")
-    val scope =
-      if text(row, "native") == "rejected" then "complete ordered native refusal"
-      else "native accepted-state replay"
-    test(s"$rule $scope: $id") {
-      replay(row, base.resolve(s"cases/$id"), text(row, "replayScope") == "incoherent-cache")
-    }
-  }
-
   private val originalInputs = manifest.hcursor
     .get[Vector[Json]]("originalGeneratedArtifacts")
     .fold(e => fail(e.message), identity)
@@ -446,13 +365,6 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
             )
         )
       case other => fail(s"expected one native rule binding for $id, found ${other.size}")
-
-  originalRefusals.foreach { row =>
-    val id = text(row, "id")
-    test(s"original generated-cache native refusal membership: $id") {
-      replay(originalRefusal(row), base.resolve(s"original-generated/$id"), incoherent = true)
-    }
-  }
 
   originalRefusals.foreach { row =>
     val id = text(row, "id")
@@ -491,7 +403,7 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     assertEquals(allTuples.distinct.size, 56)
   }
 
-  test("native-only standalone UTXO refuses missing collateral without redeemers") {
+  test("the era-typed standalone UTXO refuses missing collateral without redeemers as the native") {
     val supplement = Path.of("node/src/test/resources/upstream/conway-utxo-missing-collateral")
     val provenance = parse(Files.readString(supplement.resolve("manifest.json")))
       .fold(e => fail(e.message), identity)
@@ -532,25 +444,30 @@ class UpstreamFreshLedgerConformanceSuite extends FunSuite:
     assertEquals(observed("environment").original, node("utxo-274101", "environment").original)
     assertEquals(observed("state").original, node("utxo-274101", "state").original)
     assertEquals(observed("original-signal").original, node("utxo-274101", "signal").original)
-    val signal = StAnnTx(transaction, before.utxo.utxo)
-    val actual = JudgedSts.apply(Utxo)(LedgerFailure.Rejected(signal.id, _))(
-      globals,
-      UtxoEnv(env(slot, geometry.epochOf(slot)), params, cert),
-      Counted(before, PlutusStats.zero),
-      signal
-    )
-    val cause = PredicateFailure.utxo(UtxoFailure.BadInputs(transaction.body.collateral.toSet))
-    assertEquals(actual.swap.toOption, Some(LedgerFailure.Rejected(signal.id, cause)))
+    // the era-typed UTXO at the root, as the hook ran it: the collateral the state does not hold,
+    // as UTXO's `BadInputsUTxO` (`Babbage/Rules/Utxo.hs:375`, the collateral among all the
+    // inputs, cardano-ledger f649f975)
+    val eraTransaction = UpstreamEraLedger
+      .transaction(observed("signal"))
+      .fold(e => fail(s"era transaction: $e"), identity)
+    val failures = UpstreamEraLedger
+      .utxo(globals, slot, params, cert, before, eraTransaction)
+      .fold(e => fail(s"era inputs: $e"), identity)
+      .fold(e => fail(s"era defect: $e"), identity)
+      .fold(_.toChain.toVector, state => fail(s"admitted: $state"))
+    failures match
+      case Vector(xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxoPredFailure.BadInputsUTxO(inputs)) =>
+        assertEquals(inputs.toSortedSet.toSet, transaction.body.collateral.toSet)
+      case other => fail(s"expected the collateral as bad inputs, got $other")
     val encoded = Cbor
-      .decode(
-        PredicateFailureCbor
-          .applyTxError(Vector(cause))
-          .fold(error => fail(error.message), identity)
-      )
+      .decode(UpstreamEraLedger.refusal(UpstreamEraLedger.ofUtxo(failures)))
       .fold(e => fail(e.message), identity)
     val ledgerFailure = array(array(array(encoded).head)(1)).head
     val utxoFailure = array(array(ledgerFailure)(1))(1)
-    assertEquals(array(observed("native-failures")).map(_.value), Vector(utxoFailure.value))
+    assertEquals(
+      array(observed("native-failures")).map(_.original.hex),
+      Vector(utxoFailure.original.hex)
+    )
   }
   test("every original input, native output and independent formal verdict is pinned") {
     cases.foreach { row =>
