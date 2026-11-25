@@ -561,3 +561,81 @@ basepoint (curve25519-dalek's width 8) would save time and change the vendored a
 
 **Repeat.** `tools/runMain xyz.kd5ujc.scarab.crypto.witness.VerifyAllocationBench 10` from the checkout's root, or
 the class on the tools module's exported runtime classpath in a JVM of its own, as here.
+
+## 67. Timing of the VRF secret path, fixed against random secrets (#1418)
+
+**2026-11-25.** `SecretPathTiming` (`tools`, package `crypto.vrf`) is a dudect-style test of the secret steps of
+VRF proving (`secret.Draft03Key`) and of the two constant-time multiplications they make. For each operation two
+classes of secret input, one fixed and one random, are measured interleaved in a random order, and Welch's t of the
+two classes' times is computed on all measurements and on each of dudect's 100 crops (the measurements below the
+percentile 1 − 0.5^(10(i + 1)/100)); both are printed, the largest over the crops in the table below, and the
+verdict is on the larger of |t| on all measurements and that largest (in every run here the crops' was the larger).
+The secret of `prove` and `output` is the key (a fixed seed against random seeds, with the same hash-to-curve point H
+for both classes at each measurement); that of
+`[k]H` and `[k]B` is the scalar, against two fixed classes: zero, whose digits select the identity from every
+table, and a scalar drawn at random once. Three controls frame the targets: `[k]H` with both classes random, for
+what the machine reports when there is nothing to find; Bouncy Castle's straight-line field arithmetic in place (no
+table, no selection, no allocation) with an element drawn once against random ones, for what the machine does with
+a value repeated against values that change; and the variable-time double-and-add of
+`Ed25519Point.scalarMultiply`, which leaks by construction.
+
+Every input is chosen before the timing starts; the two pools of a target are made in one loop, an entry of each in
+turn, and an array input is copied, untimed, into the one buffer every measurement of its target passes, so the two
+classes run the same code over the same memory and differ only in values.
+
+Run in the JDK image (`scarab-jdk:local`, JDK 25), in a JVM of its own, on an idle machine:
+
+<!-- register:listing perf-73.c1 -->
+```
+# in the JDK image, from the checkout (CONTRIBUTING.md, "Build: Docker only")
+bash scripts/sbtw "export tools/Runtime/fullClasspath" | tail -n 1 > /tmp/tools.cp
+java -XX:+UseSerialGC -Xbatch -cp "$(cat /tmp/tools.cp)" \
+  xyz.kd5ujc.scarab.crypto.vrf.SecretPathTiming [measurements]
+```
+<!-- /register -->
+
+**Measured.** An Intel Core i7-10875H (8 cores, 16 threads, a laptop part with turbo), a Docker container with no
+CPU limit, the host's load average between 2.6 and 8.2 from other work (not an idle machine); 400,000 measurements
+a multiplication and 100,000 a proof or output, about 15 minutes a run (the default, 100,000 a multiplication,
+takes a quarter of that). Four runs: the first two before the field-arithmetic control was added, otherwise the same
+program. Time a call is the range of the two classes' means over the runs.
+
+<!-- register:table perf-73.t1 -->
+| Operation | Fixed class of the secret | Time a call, µs | Max \|t\|, run 1 | Run 2 | Run 3 | Run 4 |
+|---|---|---:|---:|---:|---:|---:|
+| `prove` | a seed (the key) | 482–575 | 1.8 | 1.9 | 2.4 | 2.6 |
+| `output` | a seed (the key) | 206–213 | 3.6 | 2.1 | 2.8 | 2.1 |
+| `[k]H`, `multiplyRadix16` | zero | 193–196 | 4.0 | 9.4 | 11.1 | 10.1 |
+| `[k]B`, the table's `multiplyRadix16` | zero | 71–89 | 5.1 | 9.9 | 10.0 | 3.5 |
+| `[k]H`, `multiplyRadix16` | a scalar drawn once | 190–212 | 10.4 | 15.5 | 8.2 | 4.9 |
+| `[k]B`, the table's `multiplyRadix16` | a scalar drawn once | 72–99 | 6.0 | 7.7 | 3.3 | 4.3 |
+| Control: `[k]H` | none (random against random) | 189–226 | 4.3 | 2.5 | 1.8 | 1.5 |
+| Control: field arithmetic (Bouncy Castle, in place) | an element drawn once | 80–86 | – | – | 12.6 | 6.6 |
+| Control: `Ed25519Point.scalarMultiply` (variable-time) | a scalar of one bit | 91–175 | 4,528 | 3,270 | 2,731 | 2,042 |
+<!-- /register -->
+
+**What it shows.** Proving and the output, whose secret is a key and so a scalar like any other, read 1.8 to 3.6,
+within the random/random control's 1.5 to 4.3. The multiplications read higher against a fixed scalar, zero or not,
+3.3 to 15.5 with no consistent order between targets or runs, and so does the field-arithmetic control, which has no
+table, no selection, no allocation and no branch or index on its data at all: on this machine a value repeated
+against values that change is enough for |t| of 7 to 13. The variable-time control reads in the
+thousands. At this size and on this machine, then, the test finds nothing in the secret path that it does not also
+find in straight-line arithmetic, and it would have found a leak of the double-and-add's kind at once; differences
+of the order of tens of nanoseconds in 70 to 500 µs it cannot tell from the machine's own.
+
+**What the harness got wrong first.** The first form timed two different closures, one fetching the fixed input and
+one the random (a `Vector` lookup), and read |t| of 27 for `[k]H` and `[k]B` against zero; the second fetched the
+input outside the timed call but left each class's pool where it was made (the fixed pool contiguous, the random
+pool among other allocations), and read 6 to 22 against zero or a fixed scalar, while the random/random control,
+whose pools were made alike, read 1.5 to 2.9. A fixed-against-random test measures its harness as much as the code:
+a positive is read as the secret's only against controls run the same way.
+
+**What it cannot show.** It is not a proof of constant time, and a run on one machine is not a property of the
+code. The JIT compiles what it measures, and may compile it otherwise on another JVM, with other flags or after
+another input history. `System.nanoTime` resolves tens of nanoseconds, a collection or another thread adds noise
+that cropping only partly removes, and a difference below what the machine itself produces (above) is not seen. It
+sees time only: not the cache lines or branch-predictor state another process on the same core could observe, nor
+power. The value-dependent effect the field control shows could be of the kind data-dependent power and frequency
+produce (the Hertzbleed class), to which a laptop part with turbo is subject; telling it from other causes needs a
+machine with its frequency pinned, which these runs did not have. The source-level structure it complements is in
+`secret.Draft03Key` and `scripts/check_crypto_guard.py`; the review of the JVM and processor behaviour remains #230.

@@ -100,7 +100,7 @@ object TxSubmitPeer extends IOApp:
       }
 
   /** The `.tx` files of `path` in name order, or `path` itself when it is a file. */
-  private def files(path: Path): IO[Vector[Path]] =
+  private[tools] def files(path: Path): IO[Vector[Path]] =
     IO.blocking(
       if Files.isDirectory(path) then
         Files

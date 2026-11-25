@@ -15,6 +15,12 @@
  *       {@code java.io.Serializable} hooks ({@code writeObject}, {@code readObject}, {@code readObjectNoData}) of
  *       {@link EdwardsPoint}, {@link RistrettoElement}, {@link CompressedEdwardsY}, {@link CompressedRistretto} and
  *       {@link Scalar}, the only code that assigns their {@code transient} fields after construction.</li>
+ *   <li>FUN-2 (d), secret material erased in place: {@code Scalar.reduceWide}, {@code Scalar.multiplyAndAdd} and
+ *       {@code Scalar.toRadix16} over byte arrays, and {@code multiplyRadix16} of {@link EdwardsBasepointTable} and
+ *       {@link EdwardsPoint}, read and write arrays their caller owns and allocate none of their own, so that the VRF
+ *       prover keeps its secret scalars and their digits in storage it zeroes ({@code xyz.kd5ujc.scarab.crypto.vrf.secret}).
+ *       The allocating forms ({@code fromBytesModOrderWide}, {@code multiplyAndAdd(Scalar, Scalar)},
+ *       {@code toRadix16()}, {@code multiply(Scalar)}) compute through them.</li>
  * </ul>
  *
  * <p>No exception covers the decoders that throw on a malformed encoding ({@link InvalidEncodingException} from

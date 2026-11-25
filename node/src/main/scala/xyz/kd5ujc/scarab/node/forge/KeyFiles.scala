@@ -6,6 +6,7 @@ import io.circe.Json
 import io.circe.parser
 import io.circe.syntax.*
 import java.nio.file.{Files, Path}
+import scala.util.control.Exception.allCatch
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.consensus.leios.VotingKey
 import xyz.kd5ujc.scarab.crypto.bls.SecretKey
@@ -257,14 +258,37 @@ object KeyFiles:
       opCertFile: Path,
       blsFile: Option[Path] = None
   ): Either[ForgeError, PoolCredentials] =
-    for
-      vrfText <- read(vrfFile)
-      vrf <- vrfSigningKey(vrfFile.toString, vrfText)
-      // the voting keys after the VRF key and before the KES key and the certificate, as
-      // `readLeaderCredentialsSingleton` reads them (`Cardano/Node/Protocol/Shelley.hs:187-201`,
-      // cardano-node b004fe0c)
-      keys <- blsFile.traverse(loadBlsSigningKeys).map(_.getOrElse(Vector.empty))
-      hot <- KesFiles.readHot(kesFile, opCertFile)
-      credentials = PoolCredentials(vrf, hot.kes, hot.opCert, hot.coldVkey, keys)
-      _ <- PoolCredentials.check(credentials)
-    yield credentials
+    read(vrfFile).flatMap(vrfSigningKey(vrfFile.toString, _)).flatMap { vrf =>
+      erasedUnless(
+        vrf,
+        for
+          // the voting keys after the VRF key and before the KES key and the certificate, as
+          // `readLeaderCredentialsSingleton` reads them (`Cardano/Node/Protocol/Shelley.hs:187-201`,
+          // cardano-node b004fe0c)
+          keys <- blsFile.traverse(loadBlsSigningKeys).map(_.getOrElse(Vector.empty))
+          hot <- KesFiles.readHot(kesFile, opCertFile)
+          credentials = PoolCredentials(vrf, hot.kes, hot.opCert, hot.coldVkey, keys)
+          _ <- PoolCredentials.check(credentials)
+        yield credentials
+      )(_ => true)
+    }
+
+  /** `result`, computed with the VRF key `vrf` read for it, which nothing else holds: the key is
+    * erased unless `result` is a value that `keeps` it, so that credentials that are not taken
+    * leave no copy of its seed. A computation that throws, whatever it throws, erases the key too,
+    * and its `Throwable` is passed on as it came (ERR-4); that is the reason for the suppression.
+    */
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  private[forge] def erasedUnless[A](
+      vrf: Draft03Prover.SigningKey,
+      result: => Either[ForgeError, A]
+  )(
+      keeps: A => Boolean
+  ): Either[ForgeError, A] =
+    allCatch.either(result) match
+      case Right(computed) =>
+        if !computed.exists(keeps) then vrf.forget()
+        computed
+      case Left(thrown) =>
+        vrf.forget()
+        throw thrown

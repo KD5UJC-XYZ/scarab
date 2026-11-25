@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Async, Deferred, Ref, Resource}
+import cats.effect.{Async, Deferred, Ref, Resource, Unique}
 import cats.effect.std.Mutex
 import cats.syntax.all.*
 import scala.concurrent.duration.FiniteDuration
@@ -416,17 +416,25 @@ final class FetchCoordinator[F[_]: Async] private (
         .map(_.toMap)
     )
 
+  /** Session `id` 's tip and candidate, and its GSV `sample` ([[newer]]). A candidate announced at
+    * a [[Revision]] replaces one its writer announced at an older revision only, so that of two
+    * announcements of one writer that race, the later state's stays, whichever lands last; one of
+    * another writer, or without a revision, replaces it.
+    */
   private def announce(
       id: Long,
       tip: Option[Header],
       performance: FetchGsv.PeerGsv,
-      announced: Option[FetchCandidates.Announced]
+      announced: Option[FetchCandidates.Announced],
+      revision: Option[Revision]
   ): F[Unit] =
     change { s =>
       s.copy(
-        peers = s.peers.updatedWith(id)(
-          _.map(peer => newer(peer, performance).copy(tip = tip, announced = announced))
-        )
+        peers = s.peers.updatedWith(id)(_.map { peer =>
+          val sampled = newer(peer, performance)
+          if revision.exists(r => peer.revision.exists(_.supersedes(r))) then sampled
+          else sampled.copy(tip = tip, announced = announced, revision = revision)
+        })
       )
     }
 
@@ -643,6 +651,13 @@ object FetchCoordinator:
   /** The decision lock is held by `by` for `running`. */
   private[node] final case class LockHolder(by: DecisionHolder, running: FiniteDuration)
 
+  /** The `number` th state of a session's candidate as its `writer`, one session's ChainSync, made
+    * it: a writer's states are numbered in the order it made them.
+    */
+  private[node] final case class Revision(writer: Unique.Token, number: Long):
+    /** Whether this revision is of the same writer as `other` and not older. */
+    def supersedes(other: Revision): Boolean = writer == other.writer && number >= other.number
+
   /** What takes the decision lock. */
   private[node] enum DecisionHolder:
     case InstallGenesis, TransitionGenesis, Change, Decide
@@ -715,6 +730,7 @@ object FetchCoordinator:
       order: PeerOrder,
       tip: Option[Header] = None,
       announced: Option[FetchCandidates.Announced] = None,
+      revision: Option[Revision] = None,
       weighing: Option[Weighing] = None,
       performance: FetchGsv.PeerGsv = FetchGsv.default,
       control: Control = Control.Continue,
@@ -771,17 +787,19 @@ object FetchCoordinator:
         performance: FetchGsv.PeerGsv,
         candidate: Option[ChainSelection.Candidate] = None
     ): F[Unit] =
-      owner.announce(id, tip, performance, candidate.map(FetchCandidates.Announced.of))
+      owner.announce(id, tip, performance, candidate.map(FetchCandidates.Announced.of), None)
 
     /** Report the session's candidate with the index its session carried to it, so that nothing of
-      * it is scanned again.
+      * it is scanned again, as of `revision` of the session's candidate state: it replaces only the
+      * candidate of an older revision of the same writer.
       */
     private[node] def announce(
         tip: Option[Header],
         performance: FetchGsv.PeerGsv,
-        announced: FetchCandidates.Announced
+        announced: FetchCandidates.Announced,
+        revision: Revision
     ): F[Unit] =
-      owner.announce(id, tip, performance, Some(announced))
+      owner.announce(id, tip, performance, Some(announced), Some(revision))
     def identity: Long = id
 
     /** Let [[diagnostics]] read this session's pipeline through `probe`, which must not block. */

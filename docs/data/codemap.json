@@ -144,12 +144,30 @@
       ],
       "suites": [
         "Draft03ProverSuite",
+        "Draft03ProverDifferentialSuite",
         "StrictDraft03Suite",
         "PraosVrfCertificateSuite",
         "PraosLeaderThresholdSuite"
       ],
       "docs": [
         "docs/adr/0001-haskell-node-as-reference.md"
+      ]
+    },
+    {
+      "module": "crypto",
+      "path": "crypto/vrf/secret",
+      "responsibility": "The secret steps of VRF proving: the key's seed, and the working storage erased after each operation",
+      "entryPoints": [
+        "Draft03Key",
+        "Scratch",
+        "Public"
+      ],
+      "suites": [
+        "Draft03KeySuite",
+        "ScratchSuite"
+      ],
+      "docs": [
+        "docs/security/threat-model.md"
       ]
     },
     {
@@ -1498,6 +1516,16 @@
       "responsibility": "Hand-run benchmarks for the `crypto.witness` package (its package, for its package-private access): the allocation and time of one Ed25519 verification, through `VartimeEd25519` and through the vendored objects",
       "entryPoints": [
         "VerifyAllocationBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "crypto/vrf",
+      "responsibility": "Hand-run timing test of the `crypto.vrf` package's secret path (its package, for its package-private access): a dudect-style fixed-against-random comparison of proving, the output and the constant-time multiplications",
+      "entryPoints": [
+        "SecretPathTiming"
       ],
       "suites": [],
       "docs": []

@@ -469,13 +469,17 @@ def recorded(records: list[dict]) -> list[dict]:
             for path in (*RECORDED_EVIDENCE, *pages) if path in by_path]
 
 
-def candidate(directory: Path | None, commit: str) -> tuple[Outcome, dict, dict[str, bytes]]:
-    """Validated release-candidate SBOMs, copied; artifacts and other evidence by digest only."""
+def candidate(directory: Path | None, commit: str, tree: Path) -> tuple[Outcome, dict, dict[str, bytes]]:
+    """Validated release-candidate SBOMs, copied; artifacts and other evidence by digest only.
+
+    `tree` is the packet's source, materialized from `commit`: its scripts/scarab-jvm is the launcher the image must
+    carry.
+    """
     if directory is None:
         return Outcome.NOT_SUPPLIED, dict(status=Outcome.NOT_SUPPLIED.value), {}
     root = directory.resolve()
     try:
-        manifest = candidate_manifest.validate(root)
+        manifest = candidate_manifest.validate(root, launcher=(tree / "scripts/scarab-jvm").read_bytes())
     except (OSError, ValueError, KeyError, TypeError) as error:
         raise CandidateMismatch(f"release candidate does not validate: {error}") from error
     if manifest["source"]["buildIdentity"]["gitCommit"] != commit:
@@ -662,7 +666,7 @@ def generate(repo: Path, revision: str, candidate_dir: Path | None, scratch: Pat
     if register is not None:
         members["packet/coverage/test-coverage-register.json"] = register
     gates[Gate.REFERENCES], reference_pins = references(root)
-    gates[Gate.SBOM], sbom, copies = candidate(candidate_dir, identity["commit"])
+    gates[Gate.SBOM], sbom, copies = candidate(candidate_dir, identity["commit"], root)
     members.update({"packet/" + name: raw for name, raw in copies.items()})
     jdk_image = sbom.get("jdkImage")
     members["packet/commands.json"] = canonical(dict(

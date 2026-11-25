@@ -7,7 +7,7 @@ import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import candidate_manifest as contract
-from candidate_fixture import make_candidate
+from candidate_fixture import LAUNCHER, make_candidate
 
 
 class CandidateManifestTest(unittest.TestCase):
@@ -30,8 +30,8 @@ class CandidateManifestTest(unittest.TestCase):
         self.save()
 
     def test_real_transport_fixture_and_all_signing_subjects_validate(self):
-        self.assertEqual(contract.validate(self.root, require_release=True)['status'], 'verified')
-        subjects = contract.signing_subjects(self.root)
+        self.assertEqual(contract.validate(self.root, require_release=True, launcher=LAUNCHER)['status'], 'verified')
+        subjects = contract.signing_subjects(self.root, launcher=LAUNCHER)
         self.assertEqual(len(subjects), 6)
         self.assertEqual({s['name'] for s in subjects}, {'candidate.json', 'oci-manifest'} |
                          {item['file']['path'] for item in self.manifest['subjects']} |
@@ -41,9 +41,9 @@ class CandidateManifestTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             make_candidate(root, release=False)
-            self.assertEqual(contract.validate(root)['source']['buildIdentity']['mode'], 'development')
+            self.assertEqual(contract.validate(root, launcher=LAUNCHER)['source']['buildIdentity']['mode'], 'development')
             with self.assertRaisesRegex(ValueError, 'development'):
-                contract.validate(root, require_release=True)
+                contract.validate(root, require_release=True, launcher=LAUNCHER)
 
     def test_each_missing_mandatory_evidence_kind_fails(self):
         for kind in contract.EVIDENCE:
@@ -52,7 +52,7 @@ class CandidateManifestTest(unittest.TestCase):
                 self.manifest['evidence'] = [item for item in original if item['kind'] != kind]
                 self.save()
                 with self.assertRaisesRegex(ValueError, 'mandatory'):
-                    contract.validate(self.root)
+                    contract.validate(self.root, launcher=LAUNCHER)
                 self.manifest['evidence'] = original
 
     def test_dropped_bom_component_fails_even_after_updating_transport_hash(self):
@@ -64,7 +64,7 @@ class CandidateManifestTest(unittest.TestCase):
         subject['bom']['file'] = contract.file_record(self.root, path)
         self.save()
         with self.assertRaisesRegex(ValueError, 'resolved/packaged'):
-            contract.validate(self.root)
+            contract.validate(self.root, launcher=LAUNCHER)
 
     def test_native_identity_must_bind_the_pinned_packaged_library(self):
         # a self-consistent receipt that names other bytes is refused: the validator recomputes it
@@ -72,19 +72,19 @@ class CandidateManifestTest(unittest.TestCase):
             value['resources']['Linux/amd64/libblst.so'].update(pinned='b' * 64, packaged='b' * 64)
         self.replace_evidence('native-identity', forged)
         with self.assertRaisesRegex(ValueError, 'native identity'):
-            contract.validate(self.root)
+            contract.validate(self.root, launcher=LAUNCHER)
 
     def test_native_identity_cannot_omit_or_add_a_platform(self):
         def omitted(value):
             value['resources'].pop('Linux/amd64/libblst.so')
         self.replace_evidence('native-identity', omitted)
         with self.assertRaisesRegex(ValueError, 'native identity'):
-            contract.validate(self.root)
+            contract.validate(self.root, launcher=LAUNCHER)
 
     def test_native_identity_cannot_claim_a_gated_library_that_is_not(self):
         self.replace_evidence('native-identity', lambda value: value['isa'].update(ungatedEntries=0, gatedRegion=99))
         with self.assertRaisesRegex(ValueError, 'native identity'):
-            contract.validate(self.root)
+            contract.validate(self.root, launcher=LAUNCHER)
 
     def test_os_omission_cannot_be_hidden_by_refreshing_all_descriptor_hashes(self):
         record = next(e for e in self.manifest['evidence'] if e['kind'] == 'image-inventory')
@@ -99,16 +99,16 @@ class CandidateManifestTest(unittest.TestCase):
         record['file'] = contract.file_record(self.root, inventory_path)
         self.save()
         with self.assertRaisesRegex(ValueError, 'installed OS package'):
-            contract.validate(self.root)
+            contract.validate(self.root, launcher=LAUNCHER)
 
     def test_licence_review_cannot_be_silently_called_approved(self):
         self.manifest['assurance']['licenceReview']['status'] = 'approved'
         self.save()
         with self.assertRaisesRegex(ValueError, 'review boundary'):
-            contract.validate(self.root)
+            contract.validate(self.root, launcher=LAUNCHER)
 
     def test_boolean_is_not_an_integer_schema_version(self):
         self.manifest['schemaVersion'] = True
         self.save()
         with self.assertRaisesRegex(ValueError, 'unsupported'):
-            contract.validate(self.root)
+            contract.validate(self.root, launcher=LAUNCHER)

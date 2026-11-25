@@ -14,11 +14,13 @@ INSPECT = ('{"Id":{{json .Id}},"Architecture":{{json .Architecture}},"Os":{{json
            '"Labels":{{json .Config.Labels}}},"Descriptor":{{json .Descriptor}},"RepoDigests":{{json .RepoDigests}}}')
 
 
-def expected_image(root, manifest):
+def expected_image(root, manifest, source):
+    """`source` is the authenticated release commit, whose scripts/scarab-jvm the image must carry."""
     jar = next(row for row in manifest['subjects'] if row['kind'] == 'jar')
     image = next(row for row in manifest['subjects'] if row['kind'] == 'oci-archive')
     return candidate_oci.verify(safe_path(root, image['file']['path']), safe_path(root, jar['file']['path']),
-                                manifest['source']['buildIdentity'], manifest['image']['manifest']['digest'])
+                                manifest['source']['buildIdentity'], manifest['image']['manifest']['digest'],
+                                launcher=candidate_oci.launcher_at(source))
 
 
 def inspect_image(reference, environment=None):

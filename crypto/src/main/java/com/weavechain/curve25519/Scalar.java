@@ -86,8 +86,19 @@ public class Scalar implements Serializable {
      * group order $\ell$.
      */
     public static Scalar fromBytesModOrderWide(byte[] input) {
-        if (input.length != 64) {
-            throw new IllegalArgumentException("Input must by 64 bytes");
+        byte[] result = new byte[32];
+        reduceWide(input, result);
+        return new Scalar(result);
+    }
+
+    /**
+     * Reduce a 512-bit little-endian integer modulo the group order $\ell$ into the 32 bytes of
+     * {@code result}, allocating nothing: the form {@link #fromBytesModOrderWide(byte[])} computes in, for
+     * callers that keep the input and the result in storage of their own (a nonce that is erased after use).
+     */
+    public static void reduceWide(byte[] input, byte[] result) {
+        if (input.length != 64 || result.length != 32) {
+            throw new IllegalArgumentException("Input must by 64 bytes and result 32 bytes");
         }
 
         // s0,..., s22 have 21 bits, s23 has 29 bits
@@ -319,7 +330,6 @@ public class Scalar implements Serializable {
         // @formatter:on
 
         // s0, ..., s11 got 21 bits each.
-        byte[] result = new byte[32];
         result[0] = (byte) s0;
         result[1] = (byte) (s0 >> 8);
         result[2] = (byte) ((s0 >> 16) | (s1 << 5));
@@ -352,7 +362,6 @@ public class Scalar implements Serializable {
         result[29] = (byte) (s11 >> 1);
         result[30] = (byte) (s11 >> 9);
         result[31] = (byte) (s11 >> 17);
-        return new Scalar(result);
     }
 
     /**
@@ -500,42 +509,57 @@ public class Scalar implements Serializable {
      * @return $a * b + c \bmod \ell$
      */
     public Scalar multiplyAndAdd(Scalar b, Scalar c) {
-        long a0 = 0x1FFFFF & FieldElement.load_3(this.s, 0);
-        long a1 = 0x1FFFFF & (FieldElement.load_4(this.s, 2) >> 5);
-        long a2 = 0x1FFFFF & (FieldElement.load_3(this.s, 5) >> 2);
-        long a3 = 0x1FFFFF & (FieldElement.load_4(this.s, 7) >> 7);
-        long a4 = 0x1FFFFF & (FieldElement.load_4(this.s, 10) >> 4);
-        long a5 = 0x1FFFFF & (FieldElement.load_3(this.s, 13) >> 1);
-        long a6 = 0x1FFFFF & (FieldElement.load_4(this.s, 15) >> 6);
-        long a7 = 0x1FFFFF & (FieldElement.load_3(this.s, 18) >> 3);
-        long a8 = 0x1FFFFF & FieldElement.load_3(this.s, 21);
-        long a9 = 0x1FFFFF & (FieldElement.load_4(this.s, 23) >> 5);
-        long a10 = 0x1FFFFF & (FieldElement.load_3(this.s, 26) >> 2);
-        long a11 = (FieldElement.load_4(this.s, 28) >> 7);
-        long b0 = 0x1FFFFF & FieldElement.load_3(b.s, 0);
-        long b1 = 0x1FFFFF & (FieldElement.load_4(b.s, 2) >> 5);
-        long b2 = 0x1FFFFF & (FieldElement.load_3(b.s, 5) >> 2);
-        long b3 = 0x1FFFFF & (FieldElement.load_4(b.s, 7) >> 7);
-        long b4 = 0x1FFFFF & (FieldElement.load_4(b.s, 10) >> 4);
-        long b5 = 0x1FFFFF & (FieldElement.load_3(b.s, 13) >> 1);
-        long b6 = 0x1FFFFF & (FieldElement.load_4(b.s, 15) >> 6);
-        long b7 = 0x1FFFFF & (FieldElement.load_3(b.s, 18) >> 3);
-        long b8 = 0x1FFFFF & FieldElement.load_3(b.s, 21);
-        long b9 = 0x1FFFFF & (FieldElement.load_4(b.s, 23) >> 5);
-        long b10 = 0x1FFFFF & (FieldElement.load_3(b.s, 26) >> 2);
-        long b11 = (FieldElement.load_4(b.s, 28) >> 7);
-        long c0 = 0x1FFFFF & FieldElement.load_3(c.s, 0);
-        long c1 = 0x1FFFFF & (FieldElement.load_4(c.s, 2) >> 5);
-        long c2 = 0x1FFFFF & (FieldElement.load_3(c.s, 5) >> 2);
-        long c3 = 0x1FFFFF & (FieldElement.load_4(c.s, 7) >> 7);
-        long c4 = 0x1FFFFF & (FieldElement.load_4(c.s, 10) >> 4);
-        long c5 = 0x1FFFFF & (FieldElement.load_3(c.s, 13) >> 1);
-        long c6 = 0x1FFFFF & (FieldElement.load_4(c.s, 15) >> 6);
-        long c7 = 0x1FFFFF & (FieldElement.load_3(c.s, 18) >> 3);
-        long c8 = 0x1FFFFF & FieldElement.load_3(c.s, 21);
-        long c9 = 0x1FFFFF & (FieldElement.load_4(c.s, 23) >> 5);
-        long c10 = 0x1FFFFF & (FieldElement.load_3(c.s, 26) >> 2);
-        long c11 = (FieldElement.load_4(c.s, 28) >> 7);
+        byte[] result = new byte[32];
+        multiplyAndAdd(this.s, b.s, c.s, result);
+        return new Scalar(result);
+    }
+
+    /**
+     * Compute $a * b + c \bmod \ell$ into {@code result}, from and to 32-byte little-endian encodings,
+     * allocating nothing: the form {@link #multiplyAndAdd(Scalar, Scalar)} computes in, for callers that
+     * keep their operands in storage of their own (secret scalars that are erased after use). Each
+     * operand is an integer below $2^{255}$, the range of a Scalar, reduced or not; the result is reduced.
+     */
+    public static void multiplyAndAdd(byte[] a, byte[] b, byte[] c, byte[] result) {
+        if (a.length != 32 || b.length != 32 || c.length != 32 || result.length != 32) {
+            throw new IllegalArgumentException("Operands and result must be 32 bytes");
+        }
+        long a0 = 0x1FFFFF & FieldElement.load_3(a, 0);
+        long a1 = 0x1FFFFF & (FieldElement.load_4(a, 2) >> 5);
+        long a2 = 0x1FFFFF & (FieldElement.load_3(a, 5) >> 2);
+        long a3 = 0x1FFFFF & (FieldElement.load_4(a, 7) >> 7);
+        long a4 = 0x1FFFFF & (FieldElement.load_4(a, 10) >> 4);
+        long a5 = 0x1FFFFF & (FieldElement.load_3(a, 13) >> 1);
+        long a6 = 0x1FFFFF & (FieldElement.load_4(a, 15) >> 6);
+        long a7 = 0x1FFFFF & (FieldElement.load_3(a, 18) >> 3);
+        long a8 = 0x1FFFFF & FieldElement.load_3(a, 21);
+        long a9 = 0x1FFFFF & (FieldElement.load_4(a, 23) >> 5);
+        long a10 = 0x1FFFFF & (FieldElement.load_3(a, 26) >> 2);
+        long a11 = (FieldElement.load_4(a, 28) >> 7);
+        long b0 = 0x1FFFFF & FieldElement.load_3(b, 0);
+        long b1 = 0x1FFFFF & (FieldElement.load_4(b, 2) >> 5);
+        long b2 = 0x1FFFFF & (FieldElement.load_3(b, 5) >> 2);
+        long b3 = 0x1FFFFF & (FieldElement.load_4(b, 7) >> 7);
+        long b4 = 0x1FFFFF & (FieldElement.load_4(b, 10) >> 4);
+        long b5 = 0x1FFFFF & (FieldElement.load_3(b, 13) >> 1);
+        long b6 = 0x1FFFFF & (FieldElement.load_4(b, 15) >> 6);
+        long b7 = 0x1FFFFF & (FieldElement.load_3(b, 18) >> 3);
+        long b8 = 0x1FFFFF & FieldElement.load_3(b, 21);
+        long b9 = 0x1FFFFF & (FieldElement.load_4(b, 23) >> 5);
+        long b10 = 0x1FFFFF & (FieldElement.load_3(b, 26) >> 2);
+        long b11 = (FieldElement.load_4(b, 28) >> 7);
+        long c0 = 0x1FFFFF & FieldElement.load_3(c, 0);
+        long c1 = 0x1FFFFF & (FieldElement.load_4(c, 2) >> 5);
+        long c2 = 0x1FFFFF & (FieldElement.load_3(c, 5) >> 2);
+        long c3 = 0x1FFFFF & (FieldElement.load_4(c, 7) >> 7);
+        long c4 = 0x1FFFFF & (FieldElement.load_4(c, 10) >> 4);
+        long c5 = 0x1FFFFF & (FieldElement.load_3(c, 13) >> 1);
+        long c6 = 0x1FFFFF & (FieldElement.load_4(c, 15) >> 6);
+        long c7 = 0x1FFFFF & (FieldElement.load_3(c, 18) >> 3);
+        long c8 = 0x1FFFFF & FieldElement.load_3(c, 21);
+        long c9 = 0x1FFFFF & (FieldElement.load_4(c, 23) >> 5);
+        long c10 = 0x1FFFFF & (FieldElement.load_3(c, 26) >> 2);
+        long c11 = (FieldElement.load_4(c, 28) >> 7);
         long s0;
         long s1;
         long s2;
@@ -793,7 +817,6 @@ public class Scalar implements Serializable {
         carry10 = s10 >> 21; s11 += carry10; s10 -= carry10 << 21;
         // @formatter:on
 
-        byte[] result = new byte[32];
         result[0] = (byte) s0;
         result[1] = (byte) (s0 >> 8);
         result[2] = (byte) ((s0 >> 16) | (s1 << 5));
@@ -826,7 +849,6 @@ public class Scalar implements Serializable {
         result[29] = (byte) (s11 >> 1);
         result[30] = (byte) (s11 >> 9);
         result[31] = (byte) (s11 >> 17);
-        return new Scalar(result);
     }
 
     public Scalar square() {
@@ -1158,6 +1180,22 @@ public class Scalar implements Serializable {
      */
     byte[] toRadix16() {
         final byte[] e = new byte[64];
+        toRadix16(this.s, e);
+        return e;
+    }
+
+    /**
+     * Write the 32-byte little-endian encoding {@code s} of an integer below $2^{255}$ in radix 16 into
+     * the 64 bytes of {@code e}, with coefficients in range $[-8, 8)$ and the last in $[-8, 8]$, allocating
+     * nothing: the form {@link #toRadix16()} computes in, and the digits that
+     * {@link EdwardsBasepointTable#multiplyRadix16(byte[])} and {@link EdwardsPoint#multiplyRadix16(byte[])}
+     * take, for callers that keep a secret scalar and its digits in storage of their own. The recoding has no
+     * branch and no index that depends on {@code s}.
+     */
+    public static void toRadix16(final byte[] s, final byte[] e) {
+        if (s.length != 32 || e.length != 64) {
+            throw new IllegalArgumentException("Input must be 32 bytes and digits 64");
+        }
         int i;
         // Radix 16 notation
         for (i = 0; i < 32; i++) {
@@ -1175,7 +1213,6 @@ public class Scalar implements Serializable {
         }
         e[63] += carry;
         /* each e[i] is between -8 and 7 */
-        return e;
     }
 
     /**

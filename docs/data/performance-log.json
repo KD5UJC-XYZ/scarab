@@ -5658,6 +5658,131 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-73",
+   "section": "67",
+   "heading": "67. Timing of the VRF secret path, fixed against random secrets (#1418)",
+   "subject": "Timing of the VRF secret path, fixed against random secrets (#1418)",
+   "date": "2026-11-25",
+   "dateSource": "text",
+   "issues": [
+    "#1418"
+   ],
+   "commits": [],
+   "links": [],
+   "page": "mainnet-follower",
+   "results": [
+    {
+     "id": "perf-73.t1",
+     "header": [
+      "Operation",
+      "Fixed class of the secret",
+      "Time a call, µs",
+      "Max \\|t\\|, run 1",
+      "Run 2",
+      "Run 3",
+      "Run 4"
+     ],
+     "separator": "|---|---|---:|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "`prove`",
+       "a seed (the key)",
+       "482–575",
+       "1.8",
+       "1.9",
+       "2.4",
+       "2.6"
+      ],
+      [
+       "`output`",
+       "a seed (the key)",
+       "206–213",
+       "3.6",
+       "2.1",
+       "2.8",
+       "2.1"
+      ],
+      [
+       "`[k]H`, `multiplyRadix16`",
+       "zero",
+       "193–196",
+       "4.0",
+       "9.4",
+       "11.1",
+       "10.1"
+      ],
+      [
+       "`[k]B`, the table's `multiplyRadix16`",
+       "zero",
+       "71–89",
+       "5.1",
+       "9.9",
+       "10.0",
+       "3.5"
+      ],
+      [
+       "`[k]H`, `multiplyRadix16`",
+       "a scalar drawn once",
+       "190–212",
+       "10.4",
+       "15.5",
+       "8.2",
+       "4.9"
+      ],
+      [
+       "`[k]B`, the table's `multiplyRadix16`",
+       "a scalar drawn once",
+       "72–99",
+       "6.0",
+       "7.7",
+       "3.3",
+       "4.3"
+      ],
+      [
+       "Control: `[k]H`",
+       "none (random against random)",
+       "189–226",
+       "4.3",
+       "2.5",
+       "1.8",
+       "1.5"
+      ],
+      [
+       "Control: field arithmetic (Bouncy Castle, in place)",
+       "an element drawn once",
+       "80–86",
+       "–",
+       "–",
+       "12.6",
+       "6.6"
+      ],
+      [
+       "Control: `Ed25519Point.scalarMultiply` (variable-time)",
+       "a scalar of one bit",
+       "91–175",
+       "4,528",
+       "3,270",
+       "2,731",
+       "2,042"
+      ]
+     ]
+    }
+   ],
+   "listings": [
+    {
+     "id": "perf-73.c1",
+     "fence": "```",
+     "lines": [
+      "# in the JDK image, from the checkout (CONTRIBUTING.md, \"Build: Docker only\")",
+      "bash scripts/sbtw \"export tools/Runtime/fullClasspath\" | tail -n 1 > /tmp/tools.cp",
+      "java -XX:+UseSerialGC -Xbatch -cp \"$(cat /tmp/tools.cp)\" \\",
+      "  xyz.kd5ujc.scarab.crypto.vrf.SecretPathTiming [measurements]"
+     ],
+     "close": "```"
+    }
+   ]
   }
  ]
 }

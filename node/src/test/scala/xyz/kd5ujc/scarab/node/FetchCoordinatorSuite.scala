@@ -617,6 +617,35 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
     }
   }
 
+  test("an announcement of an older candidate state never replaces a newer one of its writer") {
+    // a trimmed candidate's announcement (revision 2) lands before the batch's it trimmed (1)
+    val headers = Vector(FetchTesting.header(1), FetchTesting.header(2), FetchTesting.header(3))
+    val whole = ChainSelection.Candidate(Point.Origin, headers)
+    val trimmed = ChainSelection.Candidate(headers(0).point, headers.drop(1))
+    def index(candidate: ChainSelection.Candidate) = FetchCandidates.Announced.of(candidate)
+    def sizes(coordinator: FetchCoordinator[IO]) =
+      coordinator.diagnostics.map(_.map(_.candidateHeaders))
+    (FetchCoordinator.create[IO](), IO.unique, IO.unique).flatMapN { (coordinator, one, other) =>
+      coordinator.session(0).use { session =>
+        def announce(candidate: ChainSelection.Candidate, revision: FetchCoordinator.Revision) =
+          session.announce(headers.lastOption, FetchGsv.default, index(candidate), revision)
+        for
+          _ <- announce(trimmed, FetchCoordinator.Revision(one, 2))
+          _ <- announce(whole, FetchCoordinator.Revision(one, 1))
+          late <- sizes(coordinator)
+          _ <- announce(whole, FetchCoordinator.Revision(one, 3))
+          newer <- sizes(coordinator)
+          // the session's next writer counts its own revisions
+          _ <- announce(trimmed, FetchCoordinator.Revision(other, 0))
+          next <- sizes(coordinator)
+        yield
+          assertEquals(late, Vector(Some(2)), "the late batch replaced it")
+          assertEquals(newer, Vector(Some(3)))
+          assertEquals(next, Vector(Some(2)), "another writer's first state was not taken")
+      }
+    }
+  }
+
   test("receipts use acknowledged limits and recompute Ready or Busy independently") {
     val first = FetchTesting.header(1).copy(blockSizeHint = FetchTesting.sizeHint(1000))
     val second = FetchTesting.header(2).copy(blockSizeHint = FetchTesting.sizeHint(299000))

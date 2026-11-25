@@ -24,7 +24,8 @@ The audit that produced this page counted 213 top-level `var` declarations in th
 `7dfcded1` (2026-10-19), before WartRemover existed. It counts declarations rather than clusters, and
 many of those declarations have since been converted: what is left is 89 declarations in 24 suppressed
 definitions, across fifteen clusters in eight modules. Every one of them is under a suppression; none
-is an unguarded site the compiler let through.
+is an unguarded site the compiler let through. The VRF secret path's cluster in the index below came after
+that count (#1418).
 
 The inventory, so that this page can be re-derived rather than trusted:
 
@@ -58,6 +59,7 @@ the same rule and are not indexed here, and `try`/`catch`/`finally` has its own 
 | The Scalus budget spenders | plutus, plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ReferenceBudget.scala | 3 (2) | Scalus's `BudgetSpender` is a mutable callback of the machine, as the reference's spender is a counter array; the restricting spender also signals an exhausted budget only by throwing, which the machine stops on | [Section 44](plutus-budget-arithmetic.md#44-the-references-budget-arithmetic-in-the-evaluator-485) for the arithmetic; the callback contract for the form |
 | The evaluation-local refusal log | plutus, plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScalusEvaluator.scala | 1 (1) | `BuiltinRuntime.f` returns a `CekValue`, not an `Either`, and the machine catches callback exceptions into a `BuiltinError`: there is no failure-value path, so the typed refusal is kept here and signalled by the documented exception | Exemption: a library contract, not a performance claim |
 | The KES signing key's period | crypto, `crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/kes/Sum6KesSigning.scala` | 1 (1) | The key evolves in place and zeroes the material of the periods it leaves, so that no copy of an earlier period's key survives: forward security, not speed | Exemption: erased in place, which [FUN-2](../design-rules.md#fun-2) (d) allows without a measurement |
+| The VRF secret path's working storage and key | crypto, `crypto/src/main/scala/xyz/kd5ujc/scarab/crypto/vrf/secret/Scratch.scala` and `Draft03Key.scala` | 2 (2) | A scratch's arrays, zeroed in place when its computation ends, after which it hands none out; and the VRF key's forgotten flag, set with the zeroing of its seed under the key's monitor (#1418) | Exemption: erased in place, which [FUN-2](../design-rules.md#fun-2) (d) allows without a measurement |
 | The models runtime writer | models, `models/src/main/scala/xyz/kd5ujc/scarab/models/runtime/Writer.scala` | 2 (1) | The buffer and its fill count that every encoder of the models runtime writes through; a functional writer would thread the output through every codec. Not measured yet | Exemption: the measurement is [#664](https://github.com/KD5UJC-XYZ/scarab/issues/664) |
 
 Each row either cites a section that measures the path (or the walk the site belongs to) or names, in its
