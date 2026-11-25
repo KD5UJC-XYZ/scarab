@@ -46,8 +46,9 @@ import xyz.kd5ujc.scarab.storage.haskell.state.HaskellState
   * recorded Conway refusal corpora and on cases crafted from them: the failures the predicates
   * report are the ones the flat GOV rule records for the same checks, each as often. A predicate
   * the corpus never fails is named, and a crafted case fails it. The corpora recorded for the era
-  * rules alone ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out: stage 3
-  * retires the flat comparison, and `ReferenceRefusalSuite` binds the era rules to them.
+  * rules alone ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out of the
+  * flat comparisons, which stage 3 retires; the era rules' own assertions keep them, and
+  * `ReferenceRefusalSuite` binds the era rules to them.
   */
 class ConwayGovChecksSuite extends FunSuite:
   import ReferenceRefusalSuite.*
@@ -69,7 +70,8 @@ class ConwayGovChecksSuite extends FunSuite:
       flatPp: ProtocolParams,
       pp: PParams[Conway],
       families: Vector[Family],
-      reason: Bytes
+      reason: Bytes,
+      afterAdmitted: Boolean
   )
 
   private def right[E, A](what: String)(e: Either[E, A]): A =
@@ -77,7 +79,7 @@ class ConwayGovChecksSuite extends FunSuite:
 
   private val seen: Vector[Seen] =
     val loaded = right("the refusal corpus")(load(Path.of("fixtures/reference/refusals")))
-    loaded.corpora.filter(c => c.era == RefusalEra.Conway && !EraOnly(c.path)).flatMap { c =>
+    loaded.corpora.filter(_.era == RefusalEra.Conway).flatMap { c =>
       val setup = right(s"${c.path} genesis")(
         NodeSetup.fromFiles(c.build)(name => c.genesis.get(name).map(_.toArray))
       )
@@ -103,7 +105,8 @@ class ConwayGovChecksSuite extends FunSuite:
             right(s"$what typed parameters")(ConwayPParams.fromStored(gov.curPParams))
           ),
           rc.families,
-          rc.reason
+          rc.reason,
+          rc.before.nonEmpty
         )
       }
     }
@@ -244,13 +247,16 @@ class ConwayGovChecksSuite extends FunSuite:
     assertEquals(typed, flat, s.label)
     flat
 
+  /** The cases the flat comparisons judge: the corpora recorded for the era rules alone aside. */
+  private lazy val flatSeen: Vector[Seen] = seen.filterNot(s => eraOnly(s.label))
+
   test("the typed GOV predicates report the flat rule's failures on every Conway case"):
-    assert(seen.nonEmpty)
-    seen.foreach(compared)
+    assert(flatSeen.nonEmpty)
+    flatSeen.foreach(compared)
 
   /** The predicates the corpus fails somewhere. */
   private lazy val refusedSomewhere: Set[String] =
-    seen.flatMap(s => flatFailures(s).keys.flatMap(predicateOf)).toSet
+    flatSeen.flatMap(s => flatFailures(s).keys.flatMap(predicateOf)).toSet
 
   // ---- crafted from a recorded case
 
@@ -402,7 +408,7 @@ class ConwayGovChecksSuite extends FunSuite:
 
   test("the whole era-typed GOV gives the flat rule's verdict on every Conway case, at 9, 10, 11"):
     // the failures in order as the root, or the same proposals after
-    versions.foreach { s =>
+    versions.filterNot(s => eraOnly(s.label)).foreach { s =>
       assertEquals(eraRun(s).map(_._1), flatRun(s), s.label)
     }
     assert(versions.exists(s => eraRun(s).isLeft), "no case GOV refuses")
@@ -471,8 +477,9 @@ class ConwayGovChecksSuite extends FunSuite:
 
   test("where only GOV refused, the era-typed GOV's refusal is the reference's, byte for byte"):
     // GOV two levels down, under MEMPOOL and LEDGER, its failures under LEDGER's, encoded by
-    // Conway's encoder as the node sends a refusal
-    val govOnly = seen.filter(s => s.families == Vector(Family.GOV))
+    // Conway's encoder as the node sends a refusal; a case the reference judged after admitting
+    // items first is replayed by `ReferenceRefusalSuite`, which admits them too
+    val govOnly = seen.filter(s => s.families == Vector(Family.GOV) && !s.afterAdmitted)
     assert(govOnly.nonEmpty, "no case only GOV refuses")
     govOnly.foreach { s =>
       val failures = eraGov(s, depth = 2).fold(

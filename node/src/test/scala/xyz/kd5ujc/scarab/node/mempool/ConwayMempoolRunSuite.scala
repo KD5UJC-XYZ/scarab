@@ -73,7 +73,8 @@ class ConwayMempoolRunSuite extends FunSuite:
       judging: ConwayMempoolRun.Judging,
       build: ReferenceBuild,
       families: Vector[Family],
-      reason: Option[Bytes]
+      reason: Option[Bytes],
+      afterAdmitted: Boolean = false
   ):
     def utxo: UTxO[Conway] =
       right(s"$label: typed UTxO")(ConwayMempoolRun.utxoOf(ledger.ls, typed))
@@ -119,7 +120,7 @@ class ConwayMempoolRunSuite extends FunSuite:
 
   private val corpus: Vector[Seen] =
     val loaded = right("the refusal corpus")(load(Path.of("fixtures/reference/refusals")))
-    loaded.corpora.filter(c => c.era == RefusalEra.Conway && !EraOnly(c.path)).flatMap { c =>
+    loaded.corpora.filter(_.era == RefusalEra.Conway).flatMap { c =>
       val setup = right(s"${c.path} genesis")(
         NodeSetup.fromFiles(c.build)(name => c.genesis.get(name).map(_.toArray))
       )
@@ -165,7 +166,8 @@ class ConwayMempoolRunSuite extends FunSuite:
           ),
           c.build,
           rc.families,
-          Some(rc.reason)
+          Some(rc.reason),
+          rc.before.nonEmpty
         )
       }
     }
@@ -226,10 +228,22 @@ class ConwayMempoolRunSuite extends FunSuite:
   )
 
   test("applyTx's refusal at the root is the reference's, byte for byte, on every MEMPOOL case"):
+    // a case the reference judged after admitting items first is replayed by
+    // `ReferenceRefusalSuite`, which admits them too
     val (left, compared) =
-      corpus.partition(s => Capacity.phase1(s.flat, s.ledger.params).isLeft)
+      corpus
+        .filterNot(_.afterAdmitted)
+        .partition(s => Capacity.phase1(s.flat, s.ledger.params).isLeft)
     assertEquals(left.map(_.label).toSet, Measured, "the cases the measure refuses")
-    assertEquals((corpus.size, compared.size), (84, 81), "the Conway cases, and those compared")
+    assertEquals(
+      corpus.filter(_.afterAdmitted).map(_.label).toSet,
+      Set(
+        "conway-mempool/mempool-vote-on-admitted-proposal",
+        "conway-mempool/mempool-authorization-after-admitted-proposal"
+      ),
+      "the cases judged after admitted items"
+    )
+    assertEquals((corpus.size, compared.size), (112, 107), "the Conway cases, and those compared")
     assert(compared.exists(_.families == Vector(Family.MEMPOOL)), "no case of MEMPOOL's own")
     compared.foreach { recorded =>
       // under the corpus's own build

@@ -83,8 +83,8 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
   * recorded Conway refusal corpora: the same verdict, failures included, from each. A predicate the
   * corpus never fails is named, since only a failing case tells the two apart. The corpora recorded
   * for the era rules alone ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left
-  * out: stage 3 retires the flat comparison, and `ReferenceRefusalSuite` binds the era rules to
-  * them.
+  * out of the flat comparisons, which stage 3 retires; the era rules' own assertions keep them, and
+  * `ReferenceRefusalSuite` binds the era rules to them.
   */
 class ConwayUtxoChecksSuite extends FunSuite:
   import ReferenceRefusalSuite.*
@@ -111,7 +111,8 @@ class ConwayUtxoChecksSuite extends FunSuite:
       utxoState: UTxOState[Conway],
       build: ReferenceBuild,
       families: Vector[Family],
-      reason: Bytes
+      reason: Bytes,
+      afterAdmitted: Boolean
   )
 
   private def right[E, A](what: String)(e: Either[E, A]): A =
@@ -119,7 +120,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
 
   private val seen: Vector[Seen] =
     val loaded = right("the refusal corpus")(load(Path.of("fixtures/reference/refusals")))
-    loaded.corpora.filter(c => c.era == RefusalEra.Conway && !EraOnly(c.path)).flatMap { c =>
+    loaded.corpora.filter(_.era == RefusalEra.Conway).flatMap { c =>
       val setup = right(s"${c.path} genesis")(
         NodeSetup.fromFiles(c.build)(name => c.genesis.get(name).map(_.toArray))
       )
@@ -153,7 +154,8 @@ class ConwayUtxoChecksSuite extends FunSuite:
             .copy(utxo = UtxoTables(Utxo.fromMap(stored))),
           c.build,
           rc.families,
-          rc.reason
+          rc.reason,
+          rc.before.nonEmpty
         )
       }
     }
@@ -371,9 +373,12 @@ class ConwayUtxoChecksSuite extends FunSuite:
   private def isPoolRegistered(s: Seen)(k: KeyHash[StakePool]): Boolean =
     CertLens.pools.get(s.cert).contains(k)
 
+  /** The cases the flat comparisons judge: the corpora recorded for the era rules alone aside. */
+  private lazy val flatSeen: Vector[Seen] = seen.filterNot(s => eraOnly(s.label))
+
   test("getMinFeeTxUtxo is the flat path's minimum fee on every Conway case"):
     val u = EraUTxO.conway
-    seen.foreach { s =>
+    flatSeen.foreach { s =>
       assertEquals(
         u.getMinFeeTxUtxo[TxLevel.Top](s.pp, s.typed, s.utxo)(using u.txOf.bodyOf.top).value,
         flatMinFee(s),
@@ -384,7 +389,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
   test("getConsumedValue and getProducedValue are the flat path's on every Conway case"):
     val u = EraUTxO.conway
     val stored = StoredTxOut.conway
-    seen.foreach { s =>
+    flatSeen.foreach { s =>
       val tb = u.txOf.body[TxLevel.Top](s.typed)(using u.txOf.bodyOf.top)
       val (consumed, produced) = flatBalance(s)
       assertEquals(
@@ -407,7 +412,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
     "certsTotalDepositsTxBody and certsTotalRefundsTxBody are the flat path's on every Conway case"
   ):
     val c = EraCertState.conway
-    seen.foreach { s =>
+    flatSeen.foreach { s =>
       val tb = EraTx.conway.body[TxLevel.Top](s.typed)(using EraTx.conway.bodyOf.top)
       val (deposits, refunds) = Deposits.of(s.flatPp, s.cert, s.flat.body)
       assertEquals(
@@ -429,7 +434,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
     assert(clue(seen.size) > 0)
 
   test("each typed predicate gives the flat one's verdict on every Conway case"):
-    seen.foreach { s =>
+    flatSeen.foreach { s =>
       pairs(s).foreach { (name, flat, typed) =>
         assertEquals(typed, flat, s"${s.label}: $name")
       }
@@ -437,7 +442,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
 
   /** The predicates some case fails, so the comparison above saw them refuse. */
   private val refusedSomewhere: Set[String] =
-    seen.flatMap(s => pairs(s).collect { case (name, flat, _) if flat.isInvalid => name }).toSet
+    flatSeen.flatMap(s => pairs(s).collect { case (name, flat, _) if flat.isInvalid => name }).toSet
 
   /** The bytes of `s` 's transaction with its body's fields edited by `f`, and both paths' reading
     * of them. The predicates are pure, so a body whose witnesses no longer sign it still tells them
@@ -857,7 +862,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
   test(
     "babbageUtxoValidation gives the flat UTXO's verdict on every Conway case, build and policy"
   ):
-    seen.foreach { s =>
+    flatSeen.foreach { s =>
       for
         build <- ReferenceBuild.values
         validation <- TxEnv.Validation.values
@@ -872,8 +877,9 @@ class ConwayUtxoChecksSuite extends FunSuite:
     // the mempool's measure refuses never reaches the ledger (`txMeasureAlonzo`,
     // `Shelley/Ledger/Mempool.hs:590-612`, ouroboros-consensus 82ecba32; `Capacity.phase1`), so its
     // refusal is the measure's, not UTXO's
+    // (a case the reference judged after admitting items first is `ReferenceRefusalSuite`'s)
     val utxoOnly = seen.filter(s =>
-      s.families.nonEmpty && s.families.forall(_ == Family.UTXO) &&
+      s.families.nonEmpty && s.families.forall(_ == Family.UTXO) && !s.afterAdmitted &&
         xyz.kd5ujc.scarab.node.mempool.Capacity.phase1(s.flat, s.flatPp).isRight
     )
     assert(utxoOnly.nonEmpty, "no case that only UTXO refuses")

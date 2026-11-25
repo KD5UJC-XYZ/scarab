@@ -332,16 +332,21 @@ class ReferenceRefusalSuite extends FunSuite:
 
 object ReferenceRefusalSuite:
   /** The corpora recorded for the era rules alone (#85 stage 3, slice C2c): this suite binds the
-    * era rules to them, and the suites that compare the era rules with the flat ones, whose flat
-    * comparison stage 3 retires, leave them out. On these corpora the flat rules differ from the
-    * reference where the era rules do not: the flat GOV lists a refusal's votes, voters and
-    * accounts in the order the body's maps arrived in
-    * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427), and a case judged
-    * after items the reference admitted first (`before`) is not one a single rule can judge from
-    * the recorded state.
+    * era rules to them, and the suites that compare the era rules with the flat ones leave them out
+    * of those comparisons, which stage 3 retires, and keep them in their era rules' own assertions.
+    * On these corpora the flat rules differ from the reference where the era rules do not: the flat
+    * GOV lists a refusal's votes, voters and accounts in the order the body's maps arrived in
+    * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427). A case judged after
+    * items the reference admitted first (`before`) is not one a single rule can judge from the
+    * recorded state, so a suite judging one rule leaves those out too.
     */
   val EraOnly: Set[String] =
     Set("conway-constructors", "conway-gov-order", "conway-mempool", "conway-constructors-v11")
+
+  /** Whether the case labelled `corpus/label` is of a corpus of [[EraOnly]]: the flat comparisons
+    * leave it out, the era rules' own assertions keep it.
+    */
+  def eraOnly(label: String): Boolean = EraOnly.exists(c => label.startsWith(s"$c/"))
 
   /** A case whose refusal the rules of `other`, a build other than its corpus's, would not send:
     * replayed under them, Scarab's refusal must differ from the recorded one. Each shows that the
