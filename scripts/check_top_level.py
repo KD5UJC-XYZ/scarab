@@ -8,7 +8,7 @@ validation log, for example a `specs/` directory. Those are working notes, and s
 (docs/process.md, "One place per question", says where their content goes instead). The guard reads the index
 (`git ls-files --stage`), so the untracked files of an ignored directory (`.workspace`, `target`, `.cache`) never
 count, while a file added to one by force does. A file at the top level is not its concern; a submodule there (a
-gitlink) is a directory. A path that is not printable is shown escaped. A real new top-level directory is added to
+gitlink) is a directory. A path that is not printable ASCII is shown escaped. A real new top-level directory is added to
 `DIRECTORIES` in the pull request that adds it.
 
     python3 scripts/check_top_level.py    exit 0 when every tracked top-level directory is listed, 1 when one is not
@@ -78,8 +78,9 @@ def tracked(root: Path) -> tuple[list[str], frozenset[str]]:
 
 
 def shown(path: str) -> str:
-    """The path as it is, or escaped when it holds a control character or bytes that are not UTF-8."""
-    return path if path.isprintable() else ascii(path)
+    """The path as it is, or escaped when it holds anything but printable ASCII (a control character, bytes that are
+    not UTF-8, or a letter an ASCII standard output could not print)."""
+    return path if path.isascii() and path.isprintable() else ascii(path)
 
 
 def main(argv: list[str] | None = None, root: Path = ROOT) -> int:

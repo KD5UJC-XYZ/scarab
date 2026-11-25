@@ -46,6 +46,7 @@ class UnlistedTest(unittest.TestCase):
         self.assertEqual(top.shown('specs/plan.md'), 'specs/plan.md')
         self.assertEqual(top.shown('a\nb'), "'a\\nb'")
         self.assertEqual(top.shown('sp\udcffecs'), "'sp\\udcffecs'")
+        self.assertEqual(top.shown('caf\u00e9/plan.md'), "'caf\\xe9/plan.md'")
 
     def test_the_list_holds_single_names_and_today_s_tree_passes(self):
         self.assertEqual([d for d in top.DIRECTORIES if not d or '/' in d], [])
