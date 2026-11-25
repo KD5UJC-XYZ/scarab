@@ -187,6 +187,10 @@ class AllegraRedeemMirrorSuite extends CatsEffectSuite:
       assertEquals(r.restoredAllegra.era, Era.Allegra)
       // the run without the restart returns it (the test above): the same reserves
       assertEquals(reserves(r.restoredAllegra), reserves(r.allegra))
-      assert(MirrorStep.utxoOf(r.restoredAllegra).flatMap(_.get(key)).isEmpty)
+      // the output is in the store, not in the diff: its deletion must be in the diff to reach it
+      assertEquals(
+        MirrorStep.utxoOf(r.restoredAllegra).flatMap(_.diff.get(key)).map(_.out),
+        Some(None)
+      )
     }
   }

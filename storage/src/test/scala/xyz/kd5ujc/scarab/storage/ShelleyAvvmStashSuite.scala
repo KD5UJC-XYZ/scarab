@@ -76,3 +76,27 @@ class ShelleyAvvmStashSuite extends FunSuite:
       case _ => false
     })
   }
+
+  test("an entry's byte strings are definite, as version 2 reads them: a chunked one is refused") {
+    val chunkedId = hex(s"a1 82 5f 5810${"09" * 16} 5810${"09" * 16} ff 03 82 581d${raw.hex} 01")
+    assert(read(codec, chunkedId) match {
+      case Left(DecodeError(DecodeError.Kind.TypeMismatch("definite byte string", _), _, _, _)) =>
+        true
+      case _ => false
+    })
+    val chunkedAddress = hex(s"a1 82 5820${id.hex} 03 82 5f 4161 581c${"05" * 28} ff 01")
+    assert(read(codec, chunkedAddress) match {
+      case Left(
+            DecodeError(DecodeError.Kind.Domain(_: LedgerDecodeError.IndefiniteLength), _, _, _)
+          ) =>
+        true
+      case _ => false
+    })
+    assert(read(codec, hex(s"a1 82 5820${id.hex} 03 82 581d${raw.hex} 01")).isRight)
+  }
+
+  test("a stash whose coin is not a Word64 is not written") {
+    val big = TxOut(address, Value(BigInt(1) << 64, Map.empty))
+    assert(codec.check(UtxoTables(Utxo.fromMap(Map(in -> big)))).isDefined)
+    assertEquals(codec.check(UtxoTables(Utxo.fromMap(Map(in -> out)))), None)
+  }
