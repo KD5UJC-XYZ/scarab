@@ -422,15 +422,22 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         (if early then anchor.get <* waited else waited *> anchor.get)
           .map(point => Some(HeaderChain.at[NodeHeaderState](point, None))))
 
-  /** How [[trimmedAtRest]] moves the session while the publisher's step waits in its read of our
-    * anchor, the third header for the first two:
-    *   - `Resting`: nothing moves;
-    *   - `Replaced`: ChainSync takes one more header, replacing the candidate;
-    *   - `Overtaken`: our anchor moves to the fifth header, past the publisher's cursor, and
-    *     ChainSync takes one more header, after the step read our old anchor, the origin.
+  /** How [[trimmedAtRest]] moves the session while the publisher's step, its cursor moved to the
+    * fifth header, waits in its read of our anchor:
+    *   - `Resting`: nothing moves; our anchor is the third header;
+    *   - `Replaced`: our anchor moves to the third header and ChainSync takes one more header,
+    *     replacing the candidate;
+    *   - `Reached`: our anchor moves to the fifth header, the step's cursor, and ChainSync takes
+    *     one more header, after the step read our old anchor, the origin;
+    *   - `MovedBack`: the step read our anchor at the fifth header; the header gate's base then
+    *     moves back to the origin, as a rollback into the local chain the gate captured moves it,
+    *     and ChainSync takes one more header.
     */
   private enum Meanwhile:
-    case Resting, Replaced, Overtaken
+    case Resting, Replaced, Reached, MovedBack
+
+    /** Whether the step's read gives our anchor as it was when the read began. */
+    def early: Boolean = this == Reached || this == MovedBack
 
   /** What [[trimmedAtRest]] saw once every fiber came to rest after the publisher's step: the
     * session's candidate, as the position of its base in the chain and its size, the size of the
@@ -466,10 +473,9 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             Deferred[IO, Unit],
             Ref.of[IO, Int](0)
           ).flatMapN { (allowed, anchor, hold, held, trim, resume, finish, parked) =>
-            val early = meanwhile == Meanwhile.Overtaken
             val program = connected(
               chain,
-              holding(chain, allowed, anchor, hold, held, early),
+              holding(chain, allowed, anchor, hold, held, meanwhile.early),
               session,
               readAhead = 1
             ) { peer =>
@@ -485,6 +491,7 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 // past the one the consumer took and waits for the consumer
                 _ <- control.tick
                 one <- parked.get.map(_ == 1)
+                _ <- anchor.set(chain.headers(4).point).whenA(meanwhile == Meanwhile.MovedBack)
                 _ <- resume.complete(())
                 _ <- control.tick
                 waiting <- held.get
@@ -492,9 +499,11 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 _ <- meanwhile match
                   case Meanwhile.Resting => anchor.set(chain.headers(2).point)
                   case Meanwhile.Replaced =>
-                    allowed.set(first + 1) *> control.tick *> anchor.set(chain.headers(2).point)
-                  case Meanwhile.Overtaken =>
+                    anchor.set(chain.headers(2).point) *> allowed.set(first + 1) *> control.tick
+                  case Meanwhile.Reached =>
                     anchor.set(chain.headers(4).point) *> allowed.set(first + 1) *> control.tick
+                  case Meanwhile.MovedBack =>
+                    anchor.set(ChainSync.Point.Origin) *> allowed.set(first + 1) *> control.tick
                 _ <- trim.complete(())
                 _ <- control.tick
                 sessions <- coordinator.diagnostics
@@ -540,13 +549,23 @@ class PeerCandidateTrimSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("a trim our anchor asks for past the cursor is taken by the step that moves the cursor") {
-    forged.flatMap(trimmedAtRest(_, Meanwhile.Overtaken)).map { seen =>
+  test("a batch recorded while the publisher's step is under way trims at the cursor it moved") {
+    forged.flatMap(trimmedAtRest(_, Meanwhile.Reached)).map { seen =>
       scheduled(seen)
-      // ChainSync's batch trimmed only to the cursor, the fourth header; the step that publishes
-      // the fifth, our anchor, trims to it, though it read our old anchor
+      // the batch trims to our anchor, the fifth header, which the step's cursor has reached,
+      // though the step read our old anchor
       assertEquals((seen.base, seen.size), (4, 2), "the trim waits for another step")
       assertEquals(seen.announced, Vector(Some(2)))
+    }
+  }
+
+  test("the publisher does not trim with a base the header gate moved back from meanwhile") {
+    forged.flatMap(trimmedAtRest(_, Meanwhile.MovedBack)).map { seen =>
+      scheduled(seen)
+      // the batch read the gate's base back at the origin; the step's read, the fifth header, is
+      // older than the batch, so the candidate keeps every header
+      assertEquals((seen.base, seen.size), (-1, 7), "the step trimmed with a stale base")
+      assertEquals(seen.announced, Vector(Some(7)))
     }
   }
 

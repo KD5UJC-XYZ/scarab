@@ -1444,9 +1444,22 @@ object Peer:
               // (`intersectsWithCurrentChain`, ouroboros-consensus 82ecba329
               // MiniProtocol/ChainSync/Client.hs 942-992): as a batch is recorded, as the capacity
               // wait follows our chain, and after each step of the publisher, which takes a trim its
-              // old cursor held back ([[CandidateState.trimmed]]). Each trim reads our anchor itself,
-              // after the cursor it is bounded by moved.
+              // old cursor held back ([[CandidateState.trimmed]]). Each trim reads our anchor just
+              // before it trims. The gate's base moves, forward or back, only in ChainSync's own flow,
+              // so the batch and the capacity wait trim with what they read last.
               trim = anchor.flatMap(_.traverse_(at => commit(_.trimmed(at)).void))
+              // The publisher's trim reads our anchor after its step moved the cursor, so it sees
+              // every base a batch recorded before that saw. It trims only the state its step left: a
+              // transition in between, a batch that may have moved the base back, a restart or the
+              // capacity wait's trim, made its own trim against the moved cursor.
+              trimAfter = (step: CandidateState) =>
+                anchor.flatMap(
+                  _.traverse_(at =>
+                    commit(state =>
+                      if state.revision == step.revision then state.trimmed(at) else state
+                    ).void
+                  )
+                )
               capacity = (update: ChainSyncClient.Update[NtNHeader]) =>
                 update match
                   case ChainSyncClient.Update.RollBackward(_, _) => F.unit
@@ -1639,8 +1652,8 @@ object Peer:
               }
               // The publisher's step: the events since the cursor and the cursor moved to them, in one
               // transition ([[CandidateState.published]]); then the candidate trimmed to our anchor as
-              // read after that, which takes a trim the old cursor held back; then the events offered
-              // to the consumer in order. The candidate is published as ChainSync accepts it; nothing
+              // read after that ([[trimAfter]]), which takes a trim the old cursor held back; then the
+              // events offered to the consumer in order. The candidate is published as ChainSync accepts it; nothing
               // here waits for a body (BlockFetch is independent of ChainSync, State.hs:317–335).
               _ <- F.tailRecM(()) { _ =>
                 permits.acquire *> transition { state =>
@@ -1651,7 +1664,7 @@ object Peer:
                   case (Left(divergence), _) =>
                     PeerError.Diverged(divergence).raise[F, Either[Unit, Unit]]
                   case (Right((state, events)), changed) =>
-                    trim *> (
+                    trimAfter(state) *> (
                       if events.nonEmpty then
                         events.zipWithIndex
                           .traverse_ { (event, index) =>
