@@ -339,9 +339,43 @@ class RedeemerIndexReferenceSuite extends FunSuite:
             assert(!after.contains(in), s"${r.label}: $in is spent")
           }
           val id = b.id[TxLevel.Top](body)(using b.top)
-          b.outputs[TxLevel.Top](body)(using b.top).indices.foreach { ix =>
-            assert(after.contains(TxIn(id, BigInt(ix))), s"${r.label}: output $ix is added")
+          // each output of the signed body at its index, as it was written
+          assertEquals(b.outputs[TxLevel.Top](body)(using b.top).size, flatTx.body.outputs.size)
+          flatTx.body.outputs.zipWithIndex.foreach { (out, ix) =>
+            assertEquals(
+              after.toMap.get(TxIn(id, BigInt(ix))),
+              Some(out),
+              s"${r.label}: output $ix"
+            )
           }
+          // a valid transaction keeps its collateral: UTXOS's `babbageEvalScriptsTxValid` spends
+          // only the inputs (`Babbage/Rules/Utxos.hs:172-190`, cardano-ledger f649f975)
+          assert(flatTx.body.collateral.nonEmpty, r.label)
+          flatTx.body.collateral.foreach { in =>
+            assert(after.contains(in), s"${r.label}: collateral $in is kept")
+          }
+          // the fee added to the fee pot (`utxosFeesL <>~ feeTxBodyL`,
+          // `Shelley/Rules/Utxo.hs:600`, cardano-ledger f649f975)
+          assertEquals(
+            state.utxo.fees.value,
+            ls.utxo.fees.value + flatTx.body.fee,
+            s"${r.label}: the fee pot"
+          )
+          // the credential delegated to the pool of the last of its delegations: DELEG's
+          // `delegStake` (`Conway/Rules/Deleg.hs:338-345`, cardano-ledger f649f975), in the order
+          // of the body's certificates
+          val lastPool = flatTx.body.certificates
+            .collect { case Certificate.Delegate(`credential`, Some(pool), _, _) => pool }
+            .lastOption
+            .getOrElse(fail(s"${r.label}: no delegation"))
+          val staking = xyz.kd5ujc.scarab.ledger.rules.Convert
+            .credential[xyz.kd5ujc.scarab.ledger.state.Staking](credential)
+            .fold(e => fail(s"$e"), identity)
+          assertEquals(
+            state.cert.dState.accounts.states.get(staking).flatMap(_.pool).map(_.bytes),
+            Some(lastPool),
+            s"${r.label}: the delegation"
+          )
           // one passing transaction, each redeemer's script run once: UTXOS's one
           // `SuccessfulPlutusScriptsEvent` with every script (`Babbage/Rules/Utxos.hs:155`,
           // cardano-ledger f649f975), through LEDGER's embedding
