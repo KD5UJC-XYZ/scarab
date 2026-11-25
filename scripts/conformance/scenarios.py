@@ -28,7 +28,7 @@ TURBO_JVM = ("-Xms4g", "-Xmx4g", *JDK_FLAGS)
 PROTOCOL_ERAS = ((10, "conway"), (12, "dijkstra"))
 # The CPU uplc-turbo's published reports are measured on, as run.py's probe reads its model from /proc/cpuinfo: that
 # of the GitHub-hosted runners it is written on. A runner cannot be chosen by CPU, and the score moves with it
-# (docs/performance/rewards-and-evaluation.md, section 67), so a runner of another CPU skips the scenario and
+# (docs/performance/rewards-and-evaluation.md, section 68), so a runner of another CPU skips the scenario and
 # publish.py refuses a report of another CPU. Change it deliberately, in a commit of its own with a measurement,
 # when GitHub retires this hardware.
 TURBO_REFERENCE_CPU = "Intel(R) Xeon(R) 6975P-C"
