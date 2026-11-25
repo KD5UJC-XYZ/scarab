@@ -48,6 +48,21 @@ class ContextFailureCborSuite extends FunSuite:
   private def utxos(f: ConwayUtxosPredFailure[Conway]): Bytes =
     ConwayFailureCbor.utxos(f).fold(e => fail(s"no Conway encoding: $e"), identity)
 
+  /** The body's bytes of the recorded transaction, as it was signed. */
+  private def signedBody(recorded: ContextReferenceCases.Recorded): Bytes =
+    xyz.kd5ujc.scarab.codec.Cbor
+      .decode(recorded.original)
+      .fold(e => fail(s"${recorded.name}: $e"), identity)
+      .value match
+      case xyz.kd5ujc.scarab.codec.Value.Arr(parts) if parts.size == 4 => parts(0).original
+      case other => fail(s"${recorded.name}: not a complete transaction: $other")
+
+  /** The body id of the transaction as Conway's decoder read it. */
+  private def eraId(recorded: ContextReferenceCases.Recorded): Bytes =
+    val t = xyz.kd5ujc.scarab.ledger.era.EraTx.conway
+    val b = EraTxBody.conway
+    b.id[TxLevel.Top](t.body[TxLevel.Top](recorded.eraTx)(using t.bodyOf.top))(using b.top)
+
   private def refused(recorded: ContextReferenceCases.Recorded): NonEmptyList[EraCollect[Conway]] =
     recorded.eraCollect.swap.fold(_ => fail("collection unexpectedly succeeded"), identity)
 
@@ -132,8 +147,10 @@ class ContextFailureCborSuite extends FunSuite:
         assert(p.metadata.exists(_.hex.startsWith("9802")))
         (p.relays, p.metadata)
       case _ => fail("not pool parameters")
-    val poolBody = pool.tx.body.raw
-    val poolId = pool.tx.body.id
+    // the era transaction the encoding is made from keeps the body as signed
+    val poolBody = pool.eraTx.body.raw
+    assertEquals(poolBody, signedBody(pool))
+    val poolId = eraId(pool)
     val b = EraTxBody.conway
     val t = xyz.kd5ujc.scarab.ledger.era.EraTx.conway
     val eraCertificate = b
@@ -153,8 +170,8 @@ class ContextFailureCborSuite extends FunSuite:
         )
         .isRight
     )
-    assertEquals(pool.tx.body.raw, poolBody)
-    assertEquals(pool.tx.body.id, poolId)
+    assertEquals(pool.eraTx.body.raw, poolBody)
+    assertEquals(eraId(pool), poolId)
     certificate match
       case Certificate.RegisterPool(p) => assertEquals((p.relays, p.metadata), originalPool)
       case _                           => fail("not pool parameters")
@@ -167,11 +184,12 @@ class ContextFailureCborSuite extends FunSuite:
       case _                                             => fail("not a parameter change")
     assertEquals(update.encodings.toMap.apply(0).hex, "1801")
     assertEquals(update.encodings.toMap.apply(9).hex, "d81e820204")
-    val body = proposal.tx.body.raw
-    val id = proposal.tx.body.id
+    val body = proposal.eraTx.body.raw
+    assertEquals(body, signedBody(proposal))
+    val id = eraId(proposal)
     assert(ConwayFailureCbor.utxos(collectErrors(refused(proposal))).isRight)
-    assertEquals(proposal.tx.body.raw, body)
-    assertEquals(proposal.tx.body.id, id)
+    assertEquals(proposal.eraTx.body.raw, body)
+    assertEquals(eraId(proposal), id)
     assertEquals(update.encodings.toMap.apply(0).hex, "1801")
     assertEquals(update.encodings.toMap.apply(9).hex, "d81e820204")
   }
