@@ -2,13 +2,15 @@
 package xyz.kd5ujc.scarab.ledger.era.conway
 
 import cats.{Id, Monad}
+import cats.data.NonEmptyList
 import cats.syntax.all.*
 import java.util.concurrent.{Callable, Executors}
 import java.util.concurrent.atomic.AtomicReference
 import scala.jdk.CollectionConverters.*
 import munit.Assertions
-import xyz.kd5ujc.scarab.ledger.{Phase2, PosixClock, ProtocolParams, Redeemer, Tx, TxIn, TxOut}
-import xyz.kd5ujc.scarab.ledger.era.rules.ConwayBlockRun
+import xyz.kd5ujc.scarab.ledger.{Phase2, PosixClock, ProtocolParams, Redeemer, TxIn, TxOut}
+import xyz.kd5ujc.scarab.ledger.era.{CollectError, Tx, TxLevel}
+import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayBlockRun, ConwayPhase2}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState}
 import xyz.kd5ujc.scarab.plutus.{
   EvalFailure,
@@ -25,7 +27,7 @@ import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
 /** Conway's era run on a block prepared for the node's bounded parallel evaluation of its scripts
   * (ADR 0018), against its serial run ([[ConwayBlockRun.program]]): the plan's result is the serial
   * run's, and so are the observations it tells the node's phase-2 observer (`--plutus-cases`,
-  * [[Phase2.Observation]]), whatever order its jobs run in, on as many threads as the node's
+  * [[ConwayPhase2.Observation]]), whatever order its jobs run in, on as many threads as the node's
   * workers, and with none run at all; as `DijkstraPlanned` checks Dijkstra's run. The node's own
   * scheduler (`ParallelPlutus`) runs them in `ConwayBbodyImpWorkersSuite` (node).
   */
@@ -56,14 +58,14 @@ object ConwayPlanned extends Assertions:
     * told, kept in order, with the one clock every run of a check shares.
     */
   final class Observations(clock: PosixClock):
-    private val told = AtomicReference(Vector.empty[Phase2.Observation])
+    private val told = AtomicReference(Vector.empty[ConwayPhase2.Observation])
     val observing: ConwayBlockRun.Observing = ConwayBlockRun.Observing(
       o =>
         val _ = told.updateAndGet(_ :+ o)
       ,
       Some(clock)
     )
-    def all: Vector[Phase2.Observation] = told.get
+    def all: Vector[ConwayPhase2.Observation] = told.get
 
   /** A script's failure as two runs compare it: a machine's failure by its error, the term the
     * reference attaches to it (`ErrorWithCause`), discharged and compared as a tree, and its trace,
@@ -106,16 +108,16 @@ object ConwayPlanned extends Assertions:
     * form ([[OutcomeForm]]).
     */
   final case class Projection(
-      tx: Tx,
+      tx: Tx[TxLevel.Top, Conway],
       params: ProtocolParams,
       slot: BigInt,
       spent: Map[TxIn, TxOut],
       references: Map[TxIn, TxOut],
       clock: Option[PosixClock],
-      outcome: Phase2.Collected[OutcomeForm]
+      outcome: Either[NonEmptyList[CollectError[Conway]], OutcomeForm]
   )
 
-  def projected(observations: Vector[Phase2.Observation]): Vector[Projection] =
+  def projected(observations: Vector[ConwayPhase2.Observation]): Vector[Projection] =
     def result(r: EvalResult): ResultForm = r match
       case EvalResult.Success(used, logs) => ResultForm.Passed(used, logs)
       case EvalResult.Failure(reason, used, logs) =>
@@ -150,7 +152,7 @@ object ConwayPlanned extends Assertions:
       jobs: Int,
       batches: Vector[Vector[Int]],
       worthwhile: Boolean,
-      observations: Vector[Phase2.Observation]
+      observations: Vector[ConwayPhase2.Observation]
   )
 
   /** How a check runs a body program with a number of workers, in the effect `F`: [[threaded]]

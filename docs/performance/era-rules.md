@@ -301,3 +301,45 @@ decisive measurement is a JFR of the follower after a deploy, with the same clas
 jdk.ExecutionSample --stack-depth 64` and `jdk.ThreadStart`; offline `xyz.kd5ujc.scarab.ledger.ApplyBenchMain <blocks.hex> 400 6`,
 `ApplyBenchMain plutus 40` and `xyz.kd5ujc.scarab.consensus.DecideBenchMain 50000 20` from the test classpath.
 
+
+## 64. Reading an endorser block's closure into Dijkstra's types in one pass (#85)
+
+**Why.** A JFR of the node running the Leios testnet's pool (main `33ef11c76`) caught it adopting its own certifying
+block, whose closure of 1,174 transactions took 494 ms; 13 of the 14 samples in `MirrorDijkstra.closure` were in
+`deserializeTxForLeios`, decoding, and over 30 minutes 3,013 samples sat under the era decoder `DijkstraTx.inBlock`.
+That decoder read each transaction twice: the flat block decoder's transaction, then its projection into the era's types,
+which read every output, native script and metadatum again from its bytes, read the witness set's datums and redeemers
+again, and decoded each datum and redeemer's data a second time.
+
+**What changed.** The era decoder reads the body, the witness set and the auxiliary data from the transaction's item
+straight into the era's types (`DijkstraTxBody.readTop`, `DijkstraTxWits.read`, `DijkstraTxAuxData.read`), with the flat
+decoder's keys, fields and refusals in its order and the leaf readers the projection already used. The flat decoder
+reads as before; a few of its readers are only made visible to the era's. `DijkstraOnePassSuite` and the fuzz target `dijkstra-tx-one-pass` hold the one pass to the two: the same value
+or the same refusal on every recorded transaction and on mutants of them.
+
+**Measured offline** (`DijkstraDecodeBench`: the recorded closure of the endorser block at slot 1,455,869, 323
+transactions and 602,811 bytes, four times a round, each read whole from its bytes as the closure reads it; Docker, four
+pinned cores; five JVMs of each build alternated, 30 rounds after 20 warm-up rounds each, the median of each JVM's
+rounds):
+
+<!-- register:table perf-70.t1 -->
+| `DijkstraDecodeBench`, 1,292 transactions a round (the closure four times) | Median of the run medians | Range of the run medians | Allocated a round |
+|---|---:|---:|---:|
+| before: `DijkstraTx.inBlock` at `c03e65283`, two passes | 15.42 ms | 15.35 to 16.09 ms | 69.4 MB |
+| after: `DijkstraTx.inBlock`, one pass | 9.34 ms | 9.00 to 9.41 ms | 38.1 to 41.3 MB |
+| after, in the same JVM: `inBlockByFlat`, the two passes | 16.10 ms | 15.39 to 17.54 ms | 68.9 to 72.9 MB |
+<!-- /register -->
+
+The one pass takes 0.61 of the time and under 0.6 of the allocation of the two. A JIT-warm closure of 1,292
+transactions reads in under 10 ms here, far below the 494 ms the pool's adoption took: the offline number ranks the
+decoders and does not predict the node's.
+
+**Not done, and why.** Of what remains, a third is the metadata (`Metadatum.read` on the heap walk, ADR 0011, and the
+copy of each byte string), and a quarter the outputs, which Dijkstra's output reader reads with the flat output decoder
+and then walks again for the value's size and the reference script; both are shared with other readers. Replacing cats'
+`traverse` of a `Vector` (through `Chain` and `Eval`) with a loop cut the allocation by a tenth and the time by nothing
+measurable, so it was not kept. The ranking block's transactions (`DijkstraTx.ofBlock`) are still projected from the
+flat ones `LeiosBlock` holds.
+
+**Repeat.** `tools/runMain xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraDecodeBench 30 20 4` from the checkout's
+root, on a build of each commit; in one build it also times the two passes (`inBlockByFlat`).

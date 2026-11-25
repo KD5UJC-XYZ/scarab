@@ -224,6 +224,12 @@ object HeaderClock:
         cats.Applicative[F]
     ): F[Option[xyz.kd5ujc.scarab.consensus.ChainSelection.Local]] = inner.intersectionSelection
 
+    override def ourChainChanged(using cats.Applicative[F]): F[Option[F[Unit]]] =
+      inner.ourChainChanged
+
+    override def followOurChain(using cats.Applicative[F]): F[HeaderGate.Following] =
+      inner.followOurChain
+
     def accept(batch: Vector[SyncEvent])(using Raise[F, PeerError]): F[Unit] =
       eligible(batch).flatMap {
         case HeaderGate.Acceptance.Accepted => inner.accept(batch)

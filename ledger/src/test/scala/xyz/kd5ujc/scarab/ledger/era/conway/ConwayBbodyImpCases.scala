@@ -455,14 +455,14 @@ trait ConwayBbodyImpCases[F[_]](using F: Monad[F]) extends munit.Assertions:
             // observed for the node's phase-2 observer, each script transaction in the block's
             // order, its one script passed where it is flagged valid and failed where flagged
             // invalid
-            assertEquals(c.observations.map(_.tx.body.id), scripted.map(_.id))
+            assertEquals(c.observations.map(o => ConwayPhase2.txId(o.tx)), scripted.map(_.id))
             c.observations.foreach(o =>
               o.outcome match
                 case Right(xyz.kd5ujc.scarab.ledger.Phase2.Outcome.Passed(report)) =>
-                  assert(o.tx.isValid, s"$o")
+                  assertEquals(EraTx.conway.isValid(o.tx), IsPhase2Valid.Phase2Valid, s"$o")
                   assertEquals(report.scripts, 1)
                 case Right(xyz.kd5ujc.scarab.ledger.Phase2.Outcome.Failed(report, _)) =>
-                  assert(!o.tx.isValid, s"$o")
+                  assertEquals(EraTx.conway.isValid(o.tx), IsPhase2Valid.Phase2Invalid, s"$o")
                   assertEquals(report.scripts, 1)
                 case other => fail(s"not one script ran: $other")
             )

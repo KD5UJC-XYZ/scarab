@@ -1721,7 +1721,7 @@ object Main extends IOApp:
         setup.handOver,
         setup.byronHistory,
         run.plutus,
-        phase2Observer = cases.map(c => c.observe),
+        phase2Observer = cases.map(c => MirrorRules.Phase2Observer(c.observe, c.observeConway)),
         utxoStore = Some(store),
         afterBlock = Some(afterBlock),
         compute = Some(scheduling.compute),

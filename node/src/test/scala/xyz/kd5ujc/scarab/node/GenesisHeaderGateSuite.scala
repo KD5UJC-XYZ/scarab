@@ -424,3 +424,117 @@ class GenesisHeaderGateSuite extends FailsOnUncaught:
       _ = assertEquals(snapshot.map(_.tipPoint), Some(offered(1).point))
     yield ()
   }
+
+  // issue 810: while a session waits for local capacity no header is recorded, so the gate follows
+  // our chain itself, as the reference's client does whenever our chain changes
+  // (`intersectsWithCurrentChain`, ouroboros-consensus 82ecba329 MiniProtocol/ChainSync/Client.hs
+  // 942-992)
+  test("a gate follows our chain between headers: trimmed to its anchor, or no longer through it") {
+    val headers = Fixtures.chain(10)
+    val fork = Fixtures.chain(6, salt = 7, from = Some(headers(1)))
+    for
+      applied <- chain(headers.take(2), 2)
+      state <- Ref.of[IO, VolatileChain[BigInt]](applied)
+      given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
+      given Ask[IO, ChainSelection.Local] = selected(state, headers ++ fork)
+      gate <- HeaderCheck
+        .forNodeChain[IO, BigInt](model(100), Compute.inline[IO], 100)
+        .start(applied.tip)
+      accepted <- Fault.fiber(
+        gate.accept(headers.slice(2, 8).map(SyncEvent.RollForward(_, ChainSync.Tip.Origin)))
+      )
+      before <- gate.snapshot
+      // our chain adopts the peer's headers; with k = 2 its anchor moves to the sixth
+      adopted <- chain(headers.take(8), 2)
+      _ <- state.set(adopted)
+      trimmed <- gate.followOurChain
+      after <- gate.snapshot
+      known <- gate.intersectionSelection
+      again <- gate.followOurChain
+      // our chain leaves the peer's for a fork after the second header, its anchor off the history
+      forked <- chain(headers.take(2) ++ fork, 2)
+      _ <- state.set(forked)
+      lost <- gate.followOurChain
+      kept <- gate.snapshot
+    yield
+      assertEquals(accepted, Right(()))
+      assertEquals(before.map(_.base), Some(applied.tip))
+      assertEquals(trimmed, HeaderGate.Following.Trimmed)
+      assertEquals(after.map(_.base), Some(adopted.anchor.point))
+      assertEquals(after.map(_.tipPoint), Some(headers(7).point))
+      assertEquals(known.map(_.anchor), Some(adopted.anchor.point))
+      assertEquals(again, HeaderGate.Following.Unchanged)
+      assertEquals(lost, HeaderGate.Following.NoLongerIntersects(headers(7).point))
+      // the history is left as it was, for the next header to find a new intersection
+      assertEquals(kept.map(_.base), Some(adopted.anchor.point))
+  }
+
+  test("a gate's wait for our chain's change completes at the change after it was taken") {
+    val headers = Fixtures.chain(3)
+    (Deferred[IO, Unit], Ref.of[IO, Boolean](false)).flatMapN { (release, finished) =>
+      val program =
+        for
+          applied <- chain(headers, 50)
+          state <- Ref.of[IO, VolatileChain[BigInt]](applied)
+          given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
+          given Ask[IO, ChainSelection.Local] = selected(state, headers)
+          revisions <- SignallingRef.of[IO, Long](0L)
+          changes = new HeaderCheck.Changes[IO]:
+            def revision: IO[Long] = revisions.get
+            def changed(after: Long): IO[Long] =
+              revisions.discrete.dropWhile(_ <= after).head.compile.lastOrError
+          gate <- HeaderCheck
+            .forNodeChain[IO, BigInt](model(100), Compute.inline[IO], 100, changes = Some(changes))
+            .start(applied.tip)
+          // the wait is taken first; our chain changes only once it is parked
+          waiting <- gate.ourChainChanged.flatMap(IO.fromOption(_)(new AssertionError("no wait")))
+          _ <- (waiting *> finished.set(true)).start
+          _ <- release.get
+          _ <- revisions.update(_ + 1)
+          // without a change source the gate waits by its poll, as its forecast waits do
+          polled <- HeaderCheck
+            .forNodeChain[IO, BigInt](model(100), Compute.inline[IO], 100)
+            .start(applied.tip)
+            .flatMap(_.ourChainChanged)
+        yield polled.isDefined
+      TestControl.execute(program).flatMap { control =>
+        for
+          // every fiber runs to its wait at the same instant: the wait is still pending
+          _ <- control.tick
+          early <- finished.get
+          _ <- release.complete(())
+          _ <- control.tick
+          late <- finished.get
+          result <- control.results
+        yield
+          assertEquals(early, false)
+          assertEquals(late, true)
+          assertEquals(result, Some(cats.effect.kernel.Outcome.succeeded(cats.Id(true))))
+      }
+    }
+  }
+
+  test("a gate's wait counts our chain's changes from when it was taken, not from when it runs") {
+    val headers = Fixtures.chain(3)
+    TestControl.executeEmbed {
+      for
+        applied <- chain(headers, 50)
+        state <- Ref.of[IO, VolatileChain[BigInt]](applied)
+        given Stateful[IO, VolatileChain[BigInt]] = RefStateful(state)
+        given Ask[IO, ChainSelection.Local] = selected(state, headers)
+        revisions <- SignallingRef.of[IO, Long](0L)
+        changes = new HeaderCheck.Changes[IO]:
+          def revision: IO[Long] = revisions.get
+          def changed(after: Long): IO[Long] =
+            revisions.discrete.dropWhile(_ <= after).head.compile.lastOrError
+        gate <- HeaderCheck
+          .forNodeChain[IO, BigInt](model(100), Compute.inline[IO], 100, changes = Some(changes))
+          .start(applied.tip)
+        // taken, then our chain changes, and only then is the wait run: it has already seen the
+        // change (a wait that read the revision when run would never end here)
+        waiting <- gate.ourChainChanged.flatMap(IO.fromOption(_)(new AssertionError("no wait")))
+        _ <- revisions.update(_ + 1)
+        _ <- waiting
+      yield ()
+    }
+  }

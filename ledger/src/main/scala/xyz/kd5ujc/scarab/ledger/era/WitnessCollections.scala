@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import scala.collection.immutable.SortedMap
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusData}
 
@@ -10,7 +10,7 @@ import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusData}
   * era))`, `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs:111`, cardano-ledger
   * f649f975): a witness datum or a redeemer's data, decoded once, when the witness set is, so that
   * what reads it cannot fail. Its hash is over the bytes it arrived as. Made only by
-  * [[Data.decode]].
+  * [[Data.decode]] and [[Data.read]].
   */
 final class Data private (val originalBytes: Bytes, val getPlutusData: PlutusData):
   // Not a case class: its derived `Mirror` would make one from any data, whatever its bytes. Equal
@@ -35,6 +35,12 @@ object Data:
     */
   def decode(raw: Bytes): Either[PlutusData.DecodeError, Data] =
     PlutusData.decode(raw).map(Data(raw, _))
+
+  /** The data of an item a decoder has read as part of its input, with the item's bytes: what
+    * [[decode]] reads from those bytes, without reading them again.
+    */
+  private[ledger] def read(n: Node): Either[PlutusData.DecodeError, Data] =
+    PlutusData.fromNode(n).map(Data(n.original, _))
 
 /** The datums of a witness set with the bytes they arrived as (`newtype TxDats era = MkTxDats
   * (MemoBytes (TxDatsRaw era))`, cardano-ledger f649f975

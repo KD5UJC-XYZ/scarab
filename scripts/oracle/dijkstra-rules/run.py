@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""Reference verdicts of the Dijkstra BBODY, UTXOW, CERTS and GOV rules of the Leios testnet build (#54).
+"""Reference verdicts of the Dijkstra BBODY, UTXOW, ENTITIES, CERTS and GOV rules of the Leios testnet build (#54).
 
 The cases are the Dijkstra blocks of the reference cluster's chain (`fixtures/dijkstra-devnet`), as
 they are and with a header or the parameters changed, and certificates, votes and proposals in their
@@ -140,11 +140,46 @@ def reg_drep(i, deposit=DREP):
     return arr(uint(16), key(i), uint(deposit), NULL)
 
 
-def pool_reg(i):
+def pool_reg(i, bls=None, cost=None, network=0, vrf=None):
     """A pool's registration, `[3, operator, vrf, pledge, cost, margin, account, owners, relays,
-    metadata]`, without a BLS key, its cost the minimum."""
-    return arr(uint(3), bstr(h28(i)), bstr(bytes([i]) * 32), uint(0), uint(PARAMS["minPoolCost"]),
-               head(6, 30) + arr(uint(0), uint(1)), account(i), tagged_set([]), arr(), NULL)
+    metadata]`, by default without a BLS key, its cost the minimum; with `bls`, the key and its
+    proof `[key, proof]` after the VRF key, as version 12 writes them
+    (`withStakePoolParamsFlatEncoding`, `libs/cardano-ledger-core/src/Cardano/Ledger/State/`
+    `StakePool.hs:716-740`, cardano-ledger 9df9f98c)."""
+    voting = [] if bls is None else [arr(bstr(bytes.fromhex(bls[0])), bstr(bytes.fromhex(bls[1])))]
+    return arr(uint(3), bstr(h28(i)), bstr(bytes([i if vrf is None else vrf]) * 32), *voting, uint(0),
+               uint(PARAMS["minPoolCost"] if cost is None else cost),
+               head(6, 30) + arr(uint(0), uint(1)), account(i, network), tagged_set([]), arr(), NULL)
+
+
+# A devnet pool's voting key with its proof of possession, and with the proof of another key, as
+# the Leios genesis corpus has them (`fixtures/reference/leios-genesis`).
+GENESIS_CORPUS = ROOT / "fixtures/reference/leios-genesis/cases.jsonl"
+
+
+def voting_key(case):
+    """The `[key, proof]` hex of the voting key a case of the Leios genesis corpus sets."""
+    (value,) = [c["value"] for c in map(json.loads, GENESIS_CORPUS.read_text().splitlines())
+                if c["name"] == case]
+    return value["blsPubKey"], value["blsPossessionProof"]
+
+
+# The update keys Dijkstra adds to Conway's (34 to 56), by the parameter corpus's names
+# (`fixtures/reference/dijkstra-pparams`).
+DIJKSTRA_KEYS = dict(enumerate([
+    "maxRefScriptSizePerBlock", "maxRefScriptSizePerTx", "refScriptCostStride", "refScriptCostMultiplier",
+    "maxPledgeLeverage", "minPoolMargin", "leiosAnnouncementPeriodLength", "leiosVotePeriodLength",
+    "leiosDiffusionPeriodLength", "leiosCommitteeSize", "leiosQuorumStakeThreshold",
+    "maxEndorserBlockReferencesSize", "maxEndorserBlockTxsSize", "maxEndorserBlockExUnits",
+    "maxRefScriptSizePerEndorserBlock", "perasMinCandidateBlockAge", "perasHealingFactor", "perasCertBoost",
+    "perasTargetCommitteeSize", "perasBootstrapRound", "perasQuorumThresholdSafetyMargin",
+    "refInputsCostPerMultiAssetPolicy", "refInputsCostPerDatumByte",
+], start=34))
+PPARAMS_CORPUS = ROOT / "fixtures/reference/dijkstra-pparams/cases.jsonl"
+
+
+def pparams_corpus():
+    return [json.loads(line) for line in PPARAMS_CORPUS.read_text().splitlines() if line]
 
 
 def proposal(action, deposit=GOV, ret=account(1)):
@@ -323,6 +358,87 @@ def generate():
         change = arr(uint(0), NULL, bytes.fromhex(update), NULL)
         case(f"gov/{name}", "gov", setup=pool_setup, proposals=tagged_set([proposal(change)]),
              votes=votes(pool_voter))
+    # The cases recorded after the era failure encoder (#85), appended so that the earlier ones keep
+    # their lines.
+    #
+    # A pool's vote on a parameter change of each other key Dijkstra adds (34 to 56), and parameter
+    # changes Dijkstra's `ppuWellFormed` refuses (`Dijkstra/PParams.hs:1149-1175`, cardano-ledger
+    # 9df9f98c): the empty update and a zero `maxBBSize`. The updates are the parameter corpus's.
+    corpus = {c["id"]: c["update"] for c in pparams_corpus()}
+    for update_key, field in DIJKSTRA_KEYS.items():
+        if update_key in (38, 47):
+            continue
+        change = arr(uint(0), NULL, bytes.fromhex(corpus[f"{field} non-zero"]), NULL)
+        case(f"gov/pool-vote-key-{update_key}", "gov", setup=pool_setup, proposals=tagged_set([proposal(change)]),
+             votes=votes(pool_voter))
+    for name, update in {"empty": "a0", "max-block-size-zero": corpus["maxBBSize zero"]}.items():
+        change = arr(uint(0), NULL, bytes.fromhex(update), NULL)
+        case(f"gov/parameter-change-{name}", "gov", setup=setup, proposals=tagged_set([proposal(change)]))
+
+    # At protocol 9, the bootstrap phase (`HardForks.bootstrapPhase`): a DRep's vote on the
+    # transaction's parameter change, and a proposal of treasury withdrawals.
+    bootstrap = {"major": 9}
+    key_47 = arr(uint(0), NULL, bytes.fromhex(corpus["maxEndorserBlockExUnits non-zero"]), NULL)
+    case("gov/bootstrap-drep-vote", "gov", params=bootstrap, setup=setup,
+         proposals=tagged_set([proposal(key_47)]), votes=votes(drep_voter))
+    case("gov/bootstrap-treasury-withdrawal", "gov", params=bootstrap, setup=setup,
+         proposals=tagged_set([proposal(arr(uint(2), cmap([(account(1), uint(5))]), NULL))]))
+
+    # Votes of several voters on several actions, none of which exists: the order of the failures,
+    # and of the actions and voters each names.
+    unknown = arr(uint(2), bstr(h28(7)))
+    several = cmap([
+        (drep_voter, cmap([(arr(bstr(TX), uint(3)), arr(uint(1), NULL)),
+                           (arr(bstr(bytes([5]) * 32), uint(0)), arr(uint(0), NULL))])),
+        (unknown, cmap([(arr(bstr(TX), uint(1)), arr(uint(2), NULL))])),
+        (pool_voter, cmap([(arr(bstr(TX), uint(2)), arr(uint(1), NULL))])),
+    ])
+    case("gov/votes-several-unknown", "gov", setup=setup, votes=several)
+
+    # POOL: registrations with a voting key and its proof of possession (the key and proofs of the
+    # Leios genesis corpus, `fixtures/reference/leios-genesis`: a devnet pool's, and another key's
+    # proof, a point of the curve), and its other refusals.
+    for name, cs in {
+        "pool-register-bls": [pool_reg(8, bls=voting_key("bls-key-of-a-devnet-pool"))],
+        "pool-register-bls-other-proof": [pool_reg(8, bls=voting_key("bls-key-proof-of-another-key"))],
+        "pool-register-cost-low": [pool_reg(8, cost=PARAMS["minPoolCost"] - 1)],
+        "pool-register-mainnet-account": [pool_reg(8, network=1)],
+        "pool-register-vrf-taken": [pool_reg(8), pool_reg(9, vrf=8)],
+        "pool-retire-past-emax": [pool_reg(8), arr(uint(4), bstr(h28(8)), uint(1 + PARAMS["eMax"] + 1))],
+        "pool-retire-this-epoch": [pool_reg(8), arr(uint(4), bstr(h28(8)), uint(1))],
+    }.items():
+        case(f"certs/{name}", "certs", certs=[c.hex() for c in cs])
+
+    # A collateral return to a pointer address (`validateNoPtrInCollateralReturn`,
+    # `Dijkstra/Rules/Utxo.hs:245-256`, cardano-ledger 9df9f98c).
+    pointer = bstr(bytes([0x40]) + h28(7) + bytes([1, 2, 3]))
+    t, u = script_tx(all_of, [all_of], extra=[(uint(16), arr(pointer, uint(5_000_000)))])
+    case("utxow/collateral-return-pointer", "utxow", tx=t.hex(), utxo=u, slot=DEVNET_TX_SLOT)
+
+    # ENTITIES (`Dijkstra/Rules/Entities.hs:261-314`, cardano-ledger 9df9f98c) of a transaction
+    # whose body withdraws (key 5), deposits directly (25) or bounds accounts' balances (26, and 27
+    # for the original ones), after the registration of the key account of 28 bytes of 1, whose
+    # balance is zero; and of a deregistration of it whose refund is not the deposit held.
+    registered_one = [reg(1).hex()]
+    one, five = account(1), account(5)
+    for name, extra in {
+        "withdraw-zero": [(uint(5), cmap([(one, uint(0))]))],
+        "withdraw-mainnet": [(uint(5), cmap([(account(1, 1), uint(0))]))],
+        "withdraw-unregistered": [(uint(5), cmap([(five, uint(0))]))],
+        "withdraw-exceeding": [(uint(5), cmap([(one, uint(5))]))],
+        "direct-deposit-mainnet": [(uint(25), cmap([(account(1, 1), uint(5))]))],
+        "direct-deposit-unregistered": [(uint(25), cmap([(five, uint(5))]))],
+        "balance-exact-zero": [(uint(26), cmap([(one, uint(0))]))],
+        "balance-mainnet": [(uint(26), cmap([(account(1, 1), uint(0))]))],
+        "balance-unregistered": [(uint(26), cmap([(five, arr(uint(1), NULL))]))],
+        "balance-below-lower": [(uint(26), cmap([(one, arr(uint(5), uint(9)))]))],
+        "starting-balance-not-below-upper": [(uint(27), cmap([(one, arr(NULL, uint(0)))]))],
+        "starting-balance-unregistered": [(uint(27), cmap([(five, uint(0))]))],
+        "deregister-refund-wrong": [(uint(4), tagged_set([unreg(1, 5)]))],
+    }.items():
+        t, u = script_tx(all_of, [all_of], extra=extra)
+        case(f"entities/{name}", "entities", tx=t.hex(), utxo=u, setup=registered_one)
+
     names = [c["name"] for c in cases]
     assert len(names) == len(set(names)), "case names must be unique"
     return cases
@@ -431,12 +547,14 @@ def main():
         image = subprocess.check_output(["docker", "image", "inspect", IMAGE, "--format", "{{.Id}}"], text=True).strip()
         PROVENANCE.write_text(json.dumps({
             "schemaVersion": 1,
-            "scope": "Dijkstra's BBODY, UTXOW (with UTXO and UTXOS), CERTS (with Dijkstra's CERT, POOL and "
+            "scope": "Dijkstra's BBODY, UTXOW (with UTXO and UTXOS), ENTITIES, CERTS (with Dijkstra's CERT, POOL and "
                      "GOVCERT) and GOV of the Leios testnet build, each applied on its own with every check "
                      "run: BBODY over the devnet's Dijkstra blocks, UTXOW over the devnet transaction and its "
                      "variants, CERTS on the default certificate state, GOV after a CERTS setup on the "
-                     "default store of proposals, pools' votes on parameter changes of keys 38 and 47 "
-                     "among them; not LEDGER on its own, ENTITIES or the SUB rules",
+                     "default store of proposals, pools' votes on parameter changes of keys 34 to 56, "
+                     "ill-formed parameter changes and the bootstrap phase's refusals among them, pool "
+                     "registrations with voting keys, ENTITIES over a transaction's withdrawals, direct deposits, "
+                     "balance intervals and certificates; not LEDGER on its own or the SUB rules",
             "image": IMAGE,
             "imageId": image,
             "ledger": {"repository": "IntersectMBO/cardano-ledger",

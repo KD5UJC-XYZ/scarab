@@ -5406,6 +5406,55 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-70",
+   "section": "64",
+   "heading": "64. Reading an endorser block's closure into Dijkstra's types in one pass (#85)",
+   "subject": "Reading an endorser block's closure into Dijkstra's types in one pass (#85)",
+   "date": "2026-11-25",
+   "dateSource": "text",
+   "issues": [
+    "#85"
+   ],
+   "commits": [
+    "c03e65283"
+   ],
+   "links": [],
+   "page": "era-rules",
+   "results": [
+    {
+     "id": "perf-70.t1",
+     "header": [
+      "`DijkstraDecodeBench`, 1,292 transactions a round (the closure four times)",
+      "Median of the run medians",
+      "Range of the run medians",
+      "Allocated a round"
+     ],
+     "separator": "|---|---:|---:|---:|",
+     "rows": [
+      [
+       "before: `DijkstraTx.inBlock` at `c03e65283`, two passes",
+       "15.42 ms",
+       "15.35 to 16.09 ms",
+       "69.4 MB"
+      ],
+      [
+       "after: `DijkstraTx.inBlock`, one pass",
+       "9.34 ms",
+       "9.00 to 9.41 ms",
+       "38.1 to 41.3 MB"
+      ],
+      [
+       "after, in the same JVM: `inBlockByFlat`, the two passes",
+       "16.10 ms",
+       "15.39 to 17.54 ms",
+       "68.9 to 72.9 MB"
+      ]
+     ]
+    }
+   ],
+   "listings": []
   }
  ]
 }

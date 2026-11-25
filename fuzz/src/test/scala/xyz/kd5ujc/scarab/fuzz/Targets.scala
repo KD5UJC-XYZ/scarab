@@ -981,6 +981,30 @@ object Targets:
         tree("dijkstra-tx-in-block")(DijkstraTx.inBlock(_).isRight)
       ),
       Target(
+        "dijkstra-tx-one-pass",
+        () =>
+          Corpus.dijkstraSubmitted ++ Corpus.sampled("dijkstra:block_transaction", 40) ++
+            Corpus.sampled("dijkstra:mempool_transaction", 40) ++ Corpus.tricky,
+        in =>
+          Probe.run("dijkstra-tx-one-pass", in, perByte = 4000L) {
+            // the era decoder reads a transaction in one pass as its two passes did (#85): the
+            // same transaction or the same refusal, in both forms; four decodes of the transaction
+            // and one of its CBOR, so four times the allocation of one decoder
+            import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraTwoPasses, DijkstraTx as EraTx}
+            val b = raw(in)
+            val submitted = EraTx.fromSubmission(b)
+            req(
+              submitted == DijkstraTwoPasses.fromSubmission(b),
+              "a mempool form reads otherwise in one pass"
+            )
+            Cbor.decode(b).foreach { n =>
+              val read = EraTx.inBlock(n)
+              req(read == DijkstraTwoPasses.inBlock(n), "a block form reads otherwise in one pass")
+              seen("dijkstra-tx-one-pass", read.isRight || submitted.isRight)
+            }
+          }
+      ),
+      Target(
         "dijkstra-tx-body",
         () =>
           Corpus.dijkstraParts(0) ++ Corpus.sampled("dijkstra:transaction_body", 60) ++

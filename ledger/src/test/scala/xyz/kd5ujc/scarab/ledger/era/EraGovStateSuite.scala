@@ -255,8 +255,11 @@ class EraGovStateSuite extends DisciplineSuite:
             case other                              => fail(s"$name #$i: $other")
         }
     }
-    // every kind of action but a parameter change goes through, by its case; the two parameter
-    // changes, of keys 38 and 47, have no flat form, which the flat update has no field for
+    // every kind of action but a parameter change goes through, by its case; no parameter change
+    // has a flat form (`DijkstraConway.action` halts on it, `DijkstraPending.ParameterChangeProposal`).
+    // The cases of 2026-11-24 (#85) add the bootstrap phase's treasury withdrawals to the first, and
+    // 23 parameter changes to the second: one of each other key Dijkstra adds, 34 to 56, the empty
+    // update, a zero `maxBBSize` (key 2), and the change of key 47 the bootstrap phase's DRep votes on
     assertEquals(
       written.collect { case (name, Right(kind)) => name -> kind },
       Vector(
@@ -274,7 +277,8 @@ class EraGovStateSuite extends DisciplineSuite:
         "gov/constitution" -> 5,
         "gov/vote-own-info" -> 6,
         "gov/two-proposals-vote-second" -> 6,
-        "gov/two-proposals-vote-second" -> 3
+        "gov/two-proposals-vote-second" -> 3,
+        "gov/bootstrap-treasury-withdrawal" -> 2
       )
     )
     assertEquals(
@@ -282,9 +286,18 @@ class EraGovStateSuite extends DisciplineSuite:
       Vector(
         "gov/pool-vote-key-38" -> (15, Vector(BigInt(38))),
         "gov/pool-vote-key-47" -> (16, Vector(BigInt(47)))
+      ) ++ (34 to 56)
+        .filterNot(Set(38, 47))
+        .toVector
+        .zipWithIndex
+        .map((k, j) => s"gov/pool-vote-key-$k" -> (17 + j, Vector(BigInt(k)))) ++ Vector(
+        "gov/parameter-change-empty" -> (38, Vector.empty[BigInt]),
+        "gov/parameter-change-max-block-size-zero" -> (39, Vector(BigInt(2))),
+        "gov/bootstrap-drep-vote" -> (40, Vector(BigInt(47)))
       )
     )
-    assertEquals(items.size, 17)
+    // 17 proposals of the earlier cases, and 25 of the cases of 2026-11-24
+    assertEquals(items.size, 17 + 25)
   }
 
   private given BothLevels[TxLevel.Top] = BothLevels.Top

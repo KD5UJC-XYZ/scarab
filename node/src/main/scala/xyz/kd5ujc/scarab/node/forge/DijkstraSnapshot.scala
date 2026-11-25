@@ -12,7 +12,6 @@ import xyz.kd5ujc.scarab.ledger.era.{Tx, TxLevel}
 import xyz.kd5ujc.scarab.ledger.state.{Dijkstra, NewEpochState}
 import xyz.kd5ujc.scarab.network.LocalTxMonitorServer.TxMeasure
 import xyz.kd5ujc.scarab.node.mempool.{
-  Capacity,
   CertifyingView,
   DijkstraAdmitted,
   DijkstraPoolEnv,
@@ -116,7 +115,7 @@ object DijkstraSnapshots:
       withheld: Vector[(Entry, Rejection)]
   ): DijkstraSnapshot =
     DijkstraSnapshot(
-      kept.map((entry, admitted) => DijkstraHeld(admitted.read.tx, Capacity.measure(entry))),
+      kept.map((entry, admitted) => DijkstraHeld(admitted.read.tx, entry.measure)),
       withheld.map((entry, reason) => entry.id -> reason).toMap
     )
 

@@ -24288,10 +24288,11 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
+    "DijkstraOnePassSuite",
     "DijkstraTxSuite"
    ],
-   "note": "the flat decoder's reading of the bytes, projected to the era's types by the object's private projection, its sub-transactions at the sub-transaction level in the order read and by id; the flat decoder refused an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again; caveat: the node is trusted to be the CBOR parser's, its value the reading of its bytes, as every decoder of a node assumes, since a node built by hand can hold a value its bytes are not (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999001864)",
-   "digest": "f791edaf7359499c"
+   "note": "read from the item straight into the era's types in one pass (DijkstraTxBody.readTop, DijkstraTxWits.read, DijkstraTxAuxData.read), with the flat block decoder's refusals in its order, not the flat decoder's reading projected; its sub-transactions at the sub-transaction level in the order read and by id; the decoder refuses an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again; the same value or refusal as the two passes (inBlockByFlat, fromSubmissionByFlat) on every recorded transaction, on mutants of them, and on written cases: competing refusals across the parts and within one (the first reported), every form of Plutus data in datums and redeemers, and a fault at each key of a body, a sub-transaction's body, a witness set and auxiliary data; caveat: the node is trusted to be the CBOR parser's, its value the reading of its bytes, as every decoder of a node assumes, since a node built by hand can hold a value its bytes are not (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999001864)",
+   "digest": "afcf692463a5a6e4"
   },
   "def ledger.era.dijkstra.DijkstraTx.forBlockInclusion": {
    "upstream": [
@@ -24332,10 +24333,11 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
+    "DijkstraOnePassSuite",
     "DijkstraTxSuite"
    ],
-   "note": "the flat decoder's reading of the bytes, projected to the era's types by the object's private projection, its sub-transactions at the sub-transaction level in the order read and by id; the flat decoder refused an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again; the one read the mempool takes (DijkstraRead.submitted)",
-   "digest": "eeee96b1efa85803"
+   "note": "read from the item straight into the era's types in one pass (DijkstraTxBody.readTop, DijkstraTxWits.read, DijkstraTxAuxData.read), with the flat block decoder's refusals in its order, not the flat decoder's reading projected; its sub-transactions at the sub-transaction level in the order read and by id; the decoder refuses an id twice (`decodeNonEmptySetLikeEnforceNoDuplicatesAnn (flip OMap.|>)`, `TxBody.hs:467-471`), and the ordered map refuses it again; the same value or refusal as the two passes (inBlockByFlat, fromSubmissionByFlat) on every recorded transaction, on mutants of them, and on written cases: competing refusals across the parts and within one (the first reported), every form of Plutus data in datums and redeemers, and a fault at each key of a body, a sub-transaction's body, a witness set and auxiliary data; the one read the mempool takes (DijkstraRead.submitted)",
+   "digest": "bd9e7dafedb145d8"
   },
   "def ledger.era.dijkstra.DijkstraTx.withIsValid": {
    "upstream": [
@@ -24357,6 +24359,66 @@
    ],
    "note": "the lens's setter on a top-level transaction; the era's transaction keeps no bytes of the whole, so its parts' memoised bytes, its size and its id are unchanged",
    "digest": "3009519f1be255e1"
+  },
+  "def ledger.era.dijkstra.DijkstraTx.translate": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Translation.hs",
+     "symbol": "TranslateEra DijkstraEra (Tx TopTx)",
+     "lines": [
+      53,
+      68
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxTranslationSuite"
+   ],
+   "note": "each part's memoised bytes read whole at Dijkstra's version (translateEraThroughCBOR), in the reference's order, the flag kept; the body is read by the block decoder's body decoder and projected, as DijkstraTx's decoders read one. Unwired: Scarab's 11.1 build, whose injection uses it (hardForkInjectTxs, ouroboros-consensus 82ecba329), never enters Dijkstra",
+   "digest": "f830e75436dc1764"
+  },
+  "enum ledger.era.dijkstra.DijkstraTxPart": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Translation.hs",
+     "symbol": "translateEraThroughCBOR \"TxBody\"",
+     "lines": [
+      60,
+      62
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the labels the translation gives each part's read",
+   "digest": "ca0e6950437742ba"
+  },
+  "enum ledger.era.dijkstra.DijkstraTxTranslationError": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Translation.hs",
+     "symbol": "DecoderError",
+     "lines": [
+      54,
+      54
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxTranslationSuite"
+   ],
+   "note": "the DecoderError labelled with its part; the cause is the era decoder's typed refusal, not the reference's text",
+   "digest": "7219268031a1bd9a"
   },
   "def ledger.era.rules.DijkstraMempoolRun.annotate": {
    "upstream": [
@@ -48714,6 +48776,241 @@
    ],
    "note": "the transition of dijkstraLedgerTransition given the UTxO set before the transaction (the reference's utxosUtxo, `:400`), which applyLeiosClosure read for the annotation from the same state, as the reference annotates and judges against the one set; the proposals the era's, in their own capability beside the ledger state, as SUBLEDGER's are; the committee and the constitution the governance state's, the committee's proposals put in the node's record EntitiesEnv holds; the UTxO set before the transaction the stored outputs of every level's inputs, reference inputs and collateral; the epoch the environment's or the slot's by the geometry of Globals; the reference's assertions (shelleyLedgerAssertions) not run, as at Conway; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO; a predicate's condition evaluated only when the judgment checks predicates (`Sts.validating`), as under ValidateNone the reference evaluates none (`Extended.hs:715-720`)",
    "digest": "61f756449b6ce2f1"
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody.readTop": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "symbol": "DecCBOR (Annotator (DijkstraTxBodyRaw l era))",
+     "lines": [
+      339,
+      479
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraOnePassSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "a top-level body read from its item straight into the era's types in one pass: the flat decoder's keys, fields, refusals and their order (Sparse.read, then each key in turn), each output by Dijkstra's reader, each certificate from its own item and each required guard's datum decoded once (Data.read); its sub-transactions by the reader DijkstraTx gives, in the order read and by id. The same value or refusal as the two passes it replaced (topOf over the flat decoder) on every recorded transaction, on mutants of them, and on written cases: competing refusals across the parts and within one (the first reported), every form of Plutus data in datums and redeemers, and a fault at each key of a body, a sub-transaction's body, a witness set and auxiliary data",
+   "digest": "c99c7eb1e6a031af"
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody.readSub": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "symbol": "DecCBOR (Annotator (DijkstraTxBodyRaw l era))",
+     "lines": [
+      339,
+      479
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraOnePassSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "a sub-transaction's body read from its item in one pass, as readTop reads a top-level one with the sub-transaction level's keys, which leave out the fee, the collateral, the sub-transactions and the starting balance intervals; the same value or refusal as subOf over the flat decoder; checked on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
+   "digest": "8fbcc9f15a46a22b"
+  },
+  "def ledger.era.dijkstra.DijkstraTxWits.read": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "symbol": "DecCBOR (Annotator (AlonzoTxWitsRaw era))",
+     "lines": [
+      620,
+      721
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraOnePassSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the witness set read from its item straight into the era's types in one pass: the flat decoder's keys, fields and refusals in its order, each script once by Dijkstra's readers (whose hashes the set's uniqueness and the map are by, the first of one hash kept), each datum and redeemer's data decoded once from its item (Data.read), the bytes of keys 4 and 5 kept; a purpose given twice the last read (Map.fromList). The same value or refusal as fromFlat over the flat decoder; checked on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
+   "digest": "1bbf184246007f42"
+  },
+  "def ledger.era.dijkstra.DijkstraTxAuxData.read": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "DecCBOR (Annotator (AlonzoTxAuxDataRaw era))",
+     "lines": [
+      214,
+      313
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraOnePassSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "auxiliary data read from its item straight into the era's types in one pass, chosen by the first token as the flat decoder chooses (a map, a list of two, the tag 259 over a sparse map of keys 0 to 5), each metadatum once by Metadatum.read and each native script by Dijkstra's reader, which refuse what the flat decoder's refuse with the same errors. The same value or refusal as fromFlat over the flat decoder; checked on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
+   "digest": "d64e203a0a64f30e"
+  },
+  "def ledger.era.Data.read": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "symbol": "DecCBOR (Annotator (Data era))",
+     "lines": [
+      100,
+      124
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraOnePassSuite"
+   ],
+   "note": "the data of an item its decoder has already read, with the item's bytes (Mem: the bytes the annotator saw, the value Cborg.decode read): what Data.decode reads from those bytes, without decoding them again; every form of data (constructor tags 102, 121 to 127 and 1280 to 1400, big numbers at and past 64 bits, byte strings chunked at 64 bytes, nested lists and maps) and the refused ones read the same as through the bytes",
+   "digest": "a99b39ccbcf96bbe"
+  },
+  "def ledger.dijkstra.DijkstraTx.guards": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "symbol": "decodeGuards",
+     "lines": [
+      1662,
+      1678
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the first element decides the form of all: a list makes every element a credential, anything else every element a key hash; no guard twice (decodeOSet)",
+   "digest": "f6a29c633d3db178"
+  },
+  "def ledger.dijkstra.DijkstraTx.positive": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+     "symbol": "decodePositiveCoin",
+     "lines": [
+      226,
+      231
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "a Word64 other than zero",
+   "digest": "29df2e537a93d1fd"
+  },
+  "def ledger.dijkstra.DijkstraTx.networkId": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "symbol": "FromCBOR Network",
+     "lines": [
+      899,
+      914
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "a Word8 that is 0 or 1 (word8ToNetwork)",
+   "digest": "011731243d5e98cc"
+  },
+  "def ledger.dijkstra.DijkstraTx.accountMap": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "symbol": "decodeMap",
+     "lines": [
+      792,
+      800
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "a map of account addresses, none twice, not empty (decodeMap, then failOnNull at the body's key)",
+   "digest": "dc62291b5bbbc5cd"
+  },
+  "def ledger.dijkstra.DijkstraWitnesses.vkeyWitnesses": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/WitVKey.hs",
+     "symbol": "DecCBOR (WitVKey kr)",
+     "lines": [
+      106,
+      110
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "key 0 of the witness set: a non-empty set, the tag 258 allowed, of decodeRecordNamed of a 32-byte key and a 64-byte signature, no witness twice",
+   "digest": "1f847cf732537417"
+  },
+  "def ledger.dijkstra.DijkstraWitnesses.bootstrapWitnesses": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs",
+     "symbol": "DecCBOR BootstrapWitness",
+     "lines": [
+      109,
+      113
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "key 2 of the witness set: a non-empty set, the tag 258 allowed, of decodeRecordNamed of the key, the signature, a 32-byte chain code and the attributes, no witness twice under its Ord",
+   "digest": "875396eb173ff25b"
   }
  },
  "glue": [
@@ -50036,15 +50333,16 @@
    ]
   },
   {
-   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Conway block the era rules judge (#85): a script located among the block's transactions (Located, locate: its context collected again one purpose at a time in the ledger state the rules ran it in and compared); a script with no verdict named by its transaction and redeemer as the flat rules name it (LedgerFailure.Unavailable), so that the node withholds the block as it does the flat rules'; the phase-2 observation of a transaction's scripts (--plutus-cases) as the flat rules make it (Phase2.Observation of the flat transaction, flatTx, and outcome), and of a transaction whose scripts UTXOS could not collect, with the flat rules' collection's failures (uncollected, Phase2.collect); and the phase-2 counters (PlutusStats) of a block the rules admitted: what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan); and what a prepared block reads of its transactions: a transaction's id, its place among the block's transactions, whether it holds a redeemer, and its footprint in the dependency graph (TxDependencies.Footprint), the flat transaction's",
+   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Conway block the era rules judge (#85): a script located among the block's transactions (Located, locate: its context collected again one purpose at a time in the ledger state the rules ran it in and compared); a script with no verdict named by its transaction and redeemer as the flat rules name it (LedgerFailure.Unavailable), so that the node withholds the block as it does the flat rules'; the phase-2 observation of a transaction's scripts (--plutus-cases), made from the era's transaction and state with no flat transaction (Observation, observation, and outcome), as the flat rules observe theirs, and of a transaction whose scripts UTXOS could not collect, with the era's collection's failures (collectPlutusScriptsWithContext, which Phase2Deferral.uncollected carries), named in the case files as the flat collection's were through their projection into the flat vocabulary (storedErrors, the flat purposes of ConwayUtxowPredFailure.storedPurposes and the flat certificates of ConwayTxCert.toStored), glue for the case files' text; and the phase-2 counters (PlutusStats) of a block the rules admitted: what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan); and what a prepared block reads of its transactions: a transaction's id, its place among the block's transactions, whether it holds a redeemer, and its footprint in the dependency graph (TxDependencies.Footprint), the flat transaction's",
    "definitions": [
     "class ledger.era.rules.ConwayPhase2.Located",
     "def ledger.era.rules.ConwayPhase2.counted",
-    "def ledger.era.rules.ConwayPhase2.flatTx",
     "def ledger.era.rules.ConwayPhase2.locate",
     "def ledger.era.rules.ConwayPhase2.named",
     "def ledger.era.rules.ConwayPhase2.outcome",
-    "def ledger.era.rules.ConwayPhase2.uncollected",
+    "class ledger.era.rules.ConwayPhase2.Observation",
+    "def ledger.era.rules.ConwayPhase2.observation",
+    "def ledger.era.rules.ConwayPhase2.storedErrors",
     "def ledger.era.rules.ScriptsTold.of",
     "enum ledger.era.rules.ScriptsTold",
     "object ledger.era.rules.ConwayPhase2",
@@ -50183,6 +50481,15 @@
    "reason": "whether a block's validation error is a refusal, or no verdict as the follower routes it (a script the evaluator could not judge, a crypto provider's defect; issue 567), which the reference has no counterpart for: the refused-block metric counts refusals only (#85)",
    "definitions": [
     "def ledger.ValidationError#refuses"
+   ]
+  },
+  {
+   "reason": "the era decoder's two passes, the flat block decoder followed by the projection of what it read, kept callable for the differential that compares them with the one pass and for its benchmark (#85); the reference reads each type once and has no counterpart",
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraTx.inBlockByFlat",
+    "def ledger.era.dijkstra.DijkstraTx.fromSubmissionByFlat",
+    "def ledger.era.dijkstra.DijkstraTx.witsByFlat",
+    "def ledger.era.dijkstra.DijkstraTx.auxDataByFlat"
    ]
   }
  ]

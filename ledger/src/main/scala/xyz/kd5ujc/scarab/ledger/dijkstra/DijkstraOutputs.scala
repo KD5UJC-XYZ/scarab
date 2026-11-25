@@ -192,7 +192,7 @@ end DijkstraTxOut
   * known ones, none twice, and the required ones all present. The value of each key is read by the
   * caller.
   */
-private[dijkstra] object Sparse:
+private[ledger] object Sparse:
   def read(n: Node, what: DecodeSite, required: Set[Int])(known: Set[Int]): Result[Map[Int, Node]] =
     for
       kvs <- V12.entries(n, what)

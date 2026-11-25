@@ -1954,6 +1954,7 @@
           "DijkstraGenesisSuite",
           "DijkstraTranslationSuite",
           "DijkstraTxTranslationSuite",
+          "DijkstraRematchSuite",
           "DijkstraCrossingSuite",
           "DijkstraStoredOutputsSuite",
           "DijkstraStateTranslationSuite",

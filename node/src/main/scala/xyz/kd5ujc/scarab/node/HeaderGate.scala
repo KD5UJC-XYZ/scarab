@@ -46,7 +46,34 @@ trait HeaderGate[F[_]]:
 
   def intersectionSelection(using F: Applicative[F]): F[Option[ChainSelection.Local]] = F.pure(None)
 
+  /** A wait for our chain's next change after this call, for a session that waits while no header
+    * of it is being checked; none when the gate does not follow our chain.
+    */
+  def ourChainChanged(using F: Applicative[F]): F[Option[F[Unit]]] = F.pure(None)
+
+  /** Follow our chain while no header of the session is being checked, as the reference's ChainSync
+    * client does whenever our chain changes (`intersectsWithCurrentChain`, ouroboros-consensus
+    * 82ecba329 MiniProtocol/ChainSync/Client.hs 942-992): the history is trimmed to the anchor of
+    * our current selection, which it is published with from then on, unless it no longer passes
+    * through that anchor.
+    */
+  def followOurChain(using F: Applicative[F]): F[HeaderGate.Following] =
+    F.pure(HeaderGate.Following.Unchanged)
+
 object HeaderGate:
+  /** What [[HeaderGate.followOurChain]] found. */
+  enum Following:
+    /** Nothing to drop: the history already starts at our anchor, or the gate follows no chain. */
+    case Unchanged
+
+    /** The history now starts at our new anchor. */
+    case Trimmed
+
+    /** The history, up to `tip`, does not pass through our anchor (the reference's
+      * `NoLongerIntersects`): the session drains and finds a new intersection.
+      */
+    case NoLongerIntersects(tip: ChainSync.Point)
+
   /** A gate that can take the validated headers of a Genesis jump as its own (`graft`): a gate of
     * the node's own header check ([[HeaderCheck.forNodeChain]]), which is what a Genesis node is
     * built with ([[HeaderCheck.Grafting]]).
@@ -85,6 +112,11 @@ object HeaderGate:
 
     override def intersectionSelection(using Applicative[F]): F[Option[ChainSelection.Local]] =
       inner.intersectionSelection
+
+    override def ourChainChanged(using Applicative[F]): F[Option[F[Unit]]] = inner.ourChainChanged
+
+    override def followOurChain(using Applicative[F]): F[HeaderGate.Following] =
+      inner.followOurChain
 
   enum TimeForecast:
     case Known(onsetPicos: BigInt)
@@ -683,6 +715,31 @@ object HeaderCheck:
 
         override def intersectionSelection(using Applicative[F]): F[Option[ChainSelection.Local]] =
           knownSelection.get
+
+        // a gate built without a change source waits as its forecast waits do, by its poll
+        override def ourChainChanged(using Applicative[F]): F[Option[F[Unit]]] =
+          canonical.traverse(_ => revision.map(waitForChange))
+
+        // History and selection change as one checkpoint, as `record` keeps them, and no header is
+        // prepared against the selection they replace. The session calls this only between headers
+        // (Peer's capacity wait), so no `record` runs meanwhile.
+        override def followOurChain(using Applicative[F]): F[HeaderGate.Following] =
+          // the committed selection alone, read once: its anchor is both where the history must
+          // pass and where it is trimmed to
+          canonical.fold(F.pure(HeaderGate.Following.Unchanged)) { context =>
+            (context.selection, state.get).tupled.flatMap { (ours, hc) =>
+              if !hc.withinFragmentBounds(ours.anchor) then
+                F.pure(HeaderGate.Following.NoLongerIntersects(hc.tipPoint))
+              else
+                val trimmed = hc.trimmedTo(ours.anchor)
+                if trimmed eq hc then
+                  knownSelection.set(Some(ours)).as(HeaderGate.Following.Unchanged)
+                else
+                  F.uncancelable(_ =>
+                    state.set(trimmed) *> knownSelection.set(Some(ours)) *> prepared.set(None)
+                  ).as(HeaderGate.Following.Trimmed)
+            }
+          }
 
         def graftWith(equality: H =:= NodeHeaderState)(
             snapshot: HeaderChain[NodeHeaderState],

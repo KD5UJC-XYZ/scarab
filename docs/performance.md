@@ -92,4 +92,5 @@ One row per measurement section, in the order the sections were written; the sec
 | 61 | 2026-11-23 | GET /state on a mainnet state: one build at a time, and the kept answer (#1150) | #1150 | [Memory, snapshots and bootstrap](performance/memory-and-snapshots.md#61-get-state-on-a-mainnet-state-one-build-at-a-time-and-the-kept-answer-1150) |
 | 62 | 2026-11-24 | Chain selection from the admitted block, through the forest's successors index (#810) | #810 | [Peers, connections and the network path](performance/peers-and-network.md#62-chain-selection-from-the-admitted-block-through-the-forests-successors-index-810) |
 | 63 | 2026-11-24 | The evaluator's allocation per builtin application and per operand (#1411) | #1411 | [Rewards, parallel Plutus and script decoding](performance/rewards-and-evaluation.md#63-the-evaluators-allocation-per-builtin-application-and-per-operand-1411) |
+| 64 | 2026-11-25 | Reading an endorser block's closure into Dijkstra's types in one pass (#85) | #85 | [Era rules: the differential harness and the epoch boundary](performance/era-rules.md#64-reading-an-endorser-blocks-closure-into-dijkstras-types-in-one-pass-85) |
 <!-- /register -->
