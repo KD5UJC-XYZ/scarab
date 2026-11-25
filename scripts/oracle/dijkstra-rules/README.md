@@ -1,5 +1,5 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
-# Dijkstra rules: BBODY, UTXOW, CERTS and GOV
+# Dijkstra rules: BBODY, UTXOW, ENTITIES, CERTS and GOV
 
 **Status: Current** — optional offline reference oracle for [#54](https://github.com/KD5UJC-XYZ/scarab/issues/54).
 
@@ -13,7 +13,7 @@ python3 scripts/oracle/dijkstra-rules/run.py --record   # rewrite the fixture an
 ```
 
 `Main.hs` applies one Dijkstra rule of the unchanged cardano-ledger `9df9f98c`, the revision cardano-node
-`b004fe0c` pins, to each case `run.py` builds, with `applySTS` and every check run, and writes the rule's
+`b004fe0c` (release `rc-2026w44`) and `b9c1dbea` (`rc-2026w47`) pin, to each case `run.py` builds, with `applySTS` and every check run, and writes the rule's
 acceptance or each predicate failure (its `EncCBOR` at version 12 and its `show`). The
 [fixture](../../../fixtures/reference/dijkstra-rules/README.md) records the cases, the pins and the scope. No
 public-network connection, node or key is needed.
