@@ -1913,7 +1913,17 @@ private[dijkstra] object DijkstraOnePassExpected:
     case n: Node      => s"""nd("${n.original.hex}")"""
     case v: Vector[?] => v.map(canonical).mkString("Vector(", ", ", ")")
     case v: Set[?]    => v.toVector.map(canonical).sorted.mkString("Set(", ", ", ")")
-    case r: Rational  => s"Rational(${canonical(r.numerator)}, ${canonical(r.denominator)})"
+    case m: Map[?, ?] =>
+      m.toVector
+        .map((k, v) => s"${canonical(k)} -> ${canonical(v)}")
+        .sorted
+        .mkString("Map(", ", ", ")")
+    case r: Rational => s"Rational(${canonical(r.numerator)}, ${canonical(r.denominator)})"
+    // a native script by the bytes it was read from, which its tree is read from again
+    case n: DijkstraNativeScript => s"DijkstraNativeScript(${canonical(n.raw)})"
+    // a pool's metadata by its URL's bytes and its hash
+    case m: xyz.kd5ujc.scarab.ledger.state.PoolMetadata =>
+      s"PoolMetadata(${canonical(m.bytes)}, ${canonical(m.hash)})"
     case (a, b)       => s"(${canonical(a)}, ${canonical(b)})"
     case s: Option[?] => s.fold("None")(a => s"Some(${canonical(a)})")
     case p: Product =>
