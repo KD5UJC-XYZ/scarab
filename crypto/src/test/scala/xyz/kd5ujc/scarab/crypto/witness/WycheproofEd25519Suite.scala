@@ -29,7 +29,7 @@ class WycheproofEd25519Suite extends munit.FunSuite:
     val found =
       MessageDigest.getInstance("SHA-256").digest(bytes).map(b => f"${b & 0xff}%02x").mkString
     assertEquals(found, sha256, s"$file is not the pinned file")
-    new String(bytes, UTF_8)
+    Files.readString(root.resolve(file), UTF_8)
 
   private enum Expected:
     case Valid, Invalid, Acceptable

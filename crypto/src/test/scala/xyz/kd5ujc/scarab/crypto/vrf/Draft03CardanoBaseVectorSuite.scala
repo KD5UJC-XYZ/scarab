@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.crypto.vrf
 
+import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import scala.jdk.CollectionConverters.*
@@ -39,7 +40,7 @@ class Draft03CardanoBaseVectorSuite extends munit.FunSuite:
   private def read(name: String, sha256: String): Vector03 =
     val bytes = Files.readAllBytes(root.resolve(name))
     assertEquals(Bytes.wrap(MessageDigest.getInstance("SHA-256").digest(bytes)).hex, sha256, name)
-    val lines = new String(bytes, java.nio.charset.StandardCharsets.UTF_8).linesIterator.toVector
+    val lines = Files.readString(root.resolve(name), UTF_8).linesIterator.toVector
     val parsed = lines.map(_.split(":", 2).map(_.trim).toVector)
     assertEquals(parsed.map(_.head), fields, s"$name: its fields")
     val value = parsed.map(f => f(0) -> f(1)).toMap
