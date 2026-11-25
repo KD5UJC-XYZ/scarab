@@ -164,7 +164,9 @@
       "suites": [
         "StrictEd25519Suite",
         "StrictEd25519DifferentialSuite",
-        "WitnessGoldenSuite"
+        "WitnessGoldenSuite",
+        "VartimeEd25519Suite",
+        "VartimeEd25519DifferentialSuite"
       ],
       "docs": [
         "docs/adr/0001-haskell-node-as-reference.md"
@@ -1486,6 +1488,16 @@
       "responsibility": "Hand-run benchmarks for the `crypto.bls` package (its package, for its package-private access)",
       "entryPoints": [
         "BlsBenchmark"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "crypto/witness",
+      "responsibility": "Hand-run benchmarks for the `crypto.witness` package (its package, for its package-private access): the allocation and time of one Ed25519 verification, through `VartimeEd25519` and through the vendored objects",
+      "entryPoints": [
+        "VerifyAllocationBench"
       ],
       "suites": [],
       "docs": []

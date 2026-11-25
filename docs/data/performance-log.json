@@ -5516,6 +5516,148 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-72",
+   "section": "66",
+   "heading": "66. One Ed25519 verification in working storage of its own (#1418)",
+   "subject": "One Ed25519 verification in working storage of its own (#1418)",
+   "date": "2026-11-25",
+   "dateSource": "text",
+   "issues": [
+    "#1418"
+   ],
+   "commits": [],
+   "links": [],
+   "page": "mainnet-follower",
+   "results": [
+    {
+     "header": [
+      "`VerifyAllocationBench`, 64 signatures a workload",
+      "Verifier",
+      "Time a verification, median of the JVM medians",
+      "Range of the JVM medians",
+      "Allocated a verification, range of the JVM medians"
+     ],
+     "separator": "|---|---|---:|---:|---:|",
+     "rows": [
+      [
+       "valid, message 32 B",
+       "`StrictEd25519`, `VartimeEd25519`",
+       "170.8 µs",
+       "170.6 to 171.0 µs",
+       "6,112 to 6,136 B"
+      ],
+      [
+       "valid, message 32 B",
+       "`StrictEd25519` as it was, the vendored objects",
+       "235.8 µs",
+       "234.2 to 237.1 µs",
+       "479,982 to 480,628 B"
+      ],
+      [
+       "valid, message 1 KiB",
+       "`StrictEd25519`, `VartimeEd25519`",
+       "172.1 µs",
+       "172.1 to 172.1 µs",
+       "6,112 to 6,136 B"
+      ],
+      [
+       "valid, message 1 KiB",
+       "`StrictEd25519` as it was, the vendored objects",
+       "236.3 µs",
+       "236.1 to 237.2 µs",
+       "481,884 to 482,519 B"
+      ],
+      [
+       "refused: non-canonical key",
+       "`StrictEd25519`, `VartimeEd25519`",
+       "23 ns",
+       "20 to 23 ns",
+       "0 to 56 B"
+      ],
+      [
+       "refused: non-canonical key",
+       "`StrictEd25519` as it was, the vendored objects",
+       "80 ns",
+       "79 to 81 ns",
+       "312 B"
+      ],
+      [
+       "refused: non-canonical R",
+       "`StrictEd25519`, `VartimeEd25519`",
+       "12.7 µs",
+       "12.7 to 12.8 µs",
+       "5,544 B"
+      ],
+      [
+       "refused: non-canonical R",
+       "`StrictEd25519` as it was, the vendored objects",
+       "35.0 µs",
+       "35.0 to 35.1 µs",
+       "62,824 to 62,840 B"
+      ],
+      [
+       "refused: S + L",
+       "`StrictEd25519`, `VartimeEd25519`",
+       "24.9 µs",
+       "24.9 to 25.1 µs",
+       "5,544 B"
+      ],
+      [
+       "refused: S + L",
+       "`StrictEd25519` as it was, the vendored objects",
+       "72.7 µs",
+       "72.7 to 73.7 µs",
+       "127,216 to 127,280 B"
+      ],
+      [
+       "refused by the equation: another message",
+       "`StrictEd25519`, `VartimeEd25519`",
+       "169.8 µs",
+       "169.8 to 170.2 µs",
+       "6,168 to 6,192 B"
+      ],
+      [
+       "refused by the equation: another message",
+       "`StrictEd25519` as it was, the vendored objects",
+       "233.3 µs",
+       "232.3 to 235.1 µs",
+       "480,481 to 481,126 B"
+      ],
+      [
+       "valid, message 32 B",
+       "`ByronEd25519`, `VartimeEd25519`",
+       "157.0 µs",
+       "156.9 to 157.0 µs",
+       "6,368 to 6,392 B"
+      ],
+      [
+       "valid, message 32 B",
+       "`ByronEd25519` as it was, the vendored objects",
+       "175.9 µs",
+       "175.1 to 176.5 µs",
+       "375,526 to 376,204 B"
+      ],
+      [
+       "valid, message 1 KiB",
+       "`ByronEd25519`, `VartimeEd25519`",
+       "158.8 µs",
+       "158.7 to 158.8 µs",
+       "6,368 to 6,392 B"
+      ],
+      [
+       "valid, message 1 KiB",
+       "`ByronEd25519` as it was, the vendored objects",
+       "178.6 µs",
+       "178.1 to 179.9 µs",
+       "377,474 to 378,141 B"
+      ]
+     ],
+     "id": "perf-72.t1"
+    }
+   ],
+   "listings": []
   }
  ]
 }

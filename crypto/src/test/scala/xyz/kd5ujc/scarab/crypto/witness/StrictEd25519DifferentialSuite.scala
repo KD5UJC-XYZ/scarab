@@ -82,7 +82,7 @@ class StrictEd25519DifferentialSuite extends munit.FunSuite:
   test("an encoding is accepted as a point exactly when it was before: edges") {
     edges.foreach { e =>
       assertEquals(
-        StrictEd25519.point(e).isDefined,
+        StrictEd25519.acceptsKey(e),
         Reference.point(e).isDefined,
         Bytes.fromArray(e).hex
       )
@@ -100,7 +100,7 @@ class StrictEd25519DifferentialSuite extends munit.FunSuite:
     (0 until 100000).foreach { _ =>
       val e = new Array[Byte](32)
       random.nextBytes(e)
-      assertEquals(StrictEd25519.point(e).isDefined, Reference.point(e).isDefined)
+      assertEquals(StrictEd25519.acceptsKey(e), Reference.point(e).isDefined)
     }
   }
 
@@ -119,7 +119,7 @@ class StrictEd25519DifferentialSuite extends munit.FunSuite:
       Vector(pk, flipped).foreach { e =>
         val expected = Reference.point(e).isDefined
         if expected then onCurve += 1
-        assertEquals(StrictEd25519.point(e).isDefined, expected)
+        assertEquals(StrictEd25519.acceptsKey(e), expected)
       }
     }
     assert(onCurve > 5000, s"only $onCurve encodings were points")

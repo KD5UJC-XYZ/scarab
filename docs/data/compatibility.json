@@ -671,7 +671,8 @@
       "evidence": {
         "suites": [
           "StrictEd25519Suite",
-          "StrictEd25519DifferentialSuite"
+          "StrictEd25519DifferentialSuite",
+          "VartimeEd25519DifferentialSuite"
         ],
         "paths": [
           "fixtures/witness/README.md"
@@ -681,7 +682,8 @@
         ],
         "issues": [
           26,
-          147
+          147,
+          1418
         ]
       },
       "page": "docs/compatibility/strict-ed25519.md"
