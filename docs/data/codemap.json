@@ -1511,6 +1511,16 @@
     },
     {
       "module": "tools",
+      "path": "ledger/era/dijkstra",
+      "responsibility": "Hand-run benchmarks for the `ledger.era.dijkstra` package (its package, for its package-private access): an endorser block's closure read into Dijkstra's types in one pass against two",
+      "entryPoints": [
+        "DijkstraDecodeBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
       "path": "ledger/conformance",
       "responsibility": "Hand-run conformance checks of the ledger's decoders: the cardano-cbor-dataset of node-diversity-conformance's `cbor-decoding` scenario, each rule mapped to a production decoder and encoder, with the dataset's normal form and its version 2 report",
       "entryPoints": [
