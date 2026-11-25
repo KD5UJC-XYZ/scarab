@@ -36,8 +36,9 @@ with each verdict's flag. `ConwaySnapshotSuite` covers each build's reapplicatio
 [as-built entry](../design/era-typed-transactions.md#6-results) has the detail.
 
 A Dijkstra ranking block and the endorser block it announces are made of the era's transactions (#85), as the
-reference's are (`mkBody` and `forgeLeiosEb`), byte for byte what the flat path forged before: `DijkstraEraPathSuite`
-compares the two paths over every recorded Dijkstra transaction the build accepts, at each boundary of the capacities.
+reference's are (`mkBody` and `forgeLeiosEb`): `DijkstraEraPathSuite` forges the recorded block 64,853 and its endorser
+block again, byte for byte, and compares the era path with the bytes and partitions the reference's definitions derive
+from every recorded Dijkstra transaction the build accepts, at each boundary of the capacities.
 The design's [as-built entry](../design/era-typed-transactions.md#6-results) has the detail.
 
 A Dijkstra block's snapshot is the pool's own revalidated transactions, read as they are, when the pool is at the

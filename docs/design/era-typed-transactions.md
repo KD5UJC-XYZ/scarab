@@ -2873,16 +2873,19 @@ Conway's rules on the classes follow as the rest of stage 2.
     the era's transaction is read through it, and `RelayedTransactions` reads with it.
   - The era's `DijkstraBlockBody` stays decode-only: the forger writes `LeiosBlockBody`, whose bytes the decoded body's
     size and hash are of.
-  - Evidence: `DijkstraEraPathSuite` keeps the flat path of 0ea3528b8 as a test oracle and compares it with the era
-    path over every Dijkstra transaction the fixtures hold that the build accepts (the testnet's blocks and the 323 of
-    the endorser block of slot 1,455,869, the Leios corpus, the devnet chain and its submission, the script-context
-    and UTXOW cases, the crossing corpus's mempool forms, more than a thousand): each transaction's block form with
-    either flag, id, Leios key, measure and relayed form, and, at each boundary of the capacities, certifying or not,
-    the partition, the ranking block's body, header body and block, and the endorser block's point, body, closure and
-    announcement, byte for byte. Block 64,853 and its endorser block, forged on the era path, are the recorded ones.
-    `DijkstraTxSuite` compares the block form, size and units of the era's and the flat transaction on the same
-    corpus; `LeiosEncodingSuite` writes every recorded Dijkstra block again from the era's transactions. The private
-    Leios devnet forging run is in the pull request.
+  - Evidence: `DijkstraEraPathSuite` compares the era path with what the reference derives from the recorded bytes,
+    over every Dijkstra transaction the fixtures hold that the build accepts (the testnet's blocks and the 323 of the
+    endorser block of slot 1,455,869, the Leios corpus, the devnet chain and its submission, the script-context and
+    UTXOW cases, the crossing corpus's mempool forms, more than a thousand): each transaction's block form with either
+    flag (`Tx.hs:527-533`), id, Leios key, measure (`Tx.hs:297-320, 417-422`) and relayed form, a legacy submission's
+    relayed form (`Tx.hs:147-169`), and, at each boundary of the capacities, certifying or not and with reference-script
+    bytes binding, the partition as the longest prefix that fits (`splitAfterTxSize`), with its counts at each exact
+    fit, the ranking block's body, header body and block, and the endorser block's point, body, closure and
+    announcement (`forgeLeiosEb`, `LeiosDemoTypes.hs:1257-1279` at ouroboros-consensus d91b3557), byte for byte. Block
+    64,853 and its endorser block, forged on the era path, are the recorded ones. Until #85's stage 3 it compared the
+    era path with a copy of the flat path of 0ea3528b8 instead. `DijkstraTxSuite` compares the block form, size and
+    units of the era's and the flat transaction on the same corpus; `LeiosEncodingSuite` writes every recorded Dijkstra
+    block again from the era's transactions. The private Leios devnet forging run is in the pull request.
 - **Dijkstra's BBODY** (`era/EraBlock.scala`, `era/dijkstra/DijkstraBlock.scala`, `era/rules/BbodyFailures.scala`,
   `era/rules/DijkstraBbody.scala`; `Rules/Bbody.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c, with the predicates of Shelley's, Alonzo's and Conway's BBODY it runs):
