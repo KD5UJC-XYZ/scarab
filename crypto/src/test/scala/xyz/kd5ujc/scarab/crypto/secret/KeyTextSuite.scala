@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.crypto.secret
 
 import java.lang.foreign.{Arena, MemorySegment, ValueLayout}
 import java.nio.charset.{MalformedInputException, StandardCharsets}
-import java.nio.file.{Files, Path}
+import java.nio.file.{FileSystems, Files, Path}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 
@@ -31,7 +31,10 @@ class KeyTextSuite extends munit.FunSuite:
     KeyText.read(source(bytes), Type)(p => Sum6KesSigning.fromBytes(Bytes.fromArray(p)))
 
   /** The JDK's verdict on `bytes` as a file's text: its decoding, or the length its
-    * `MalformedInputException` reports.
+    * `MalformedInputException` reports. `Files.readString` decodes the bytes it read with the same
+    * decoder whatever file system they came from, so the file is an entry of an in-memory zip file
+    * system: the comparison is the real one, without the write and read of a disk file per case
+    * that made the test slow on a CI runner's disk.
     */
   private def jdk(file: Path, bytes: Array[Byte]): Either[Int, String] =
     Files.write(file, bytes)
@@ -47,7 +50,10 @@ class KeyTextSuite extends munit.FunSuite:
       case other                                               => fail(s"not read as text: $other")
 
   test("bytes are UTF-8 exactly when Files.readString takes them, and fail as it fails") {
-    val file = Files.createTempFile("key-text", ".skey")
+    // a zip file system that is never written out: its entries are held in memory
+    val zip = Files.createTempDirectory("key-text").resolve("texts.zip")
+    val memory = FileSystems.newFileSystem(zip, java.util.Map.of("create", "true"))
+    val file = memory.getPath("/kes.skey")
     try
       val follow =
         Vector(0x00, 0x41, 0x7f, 0x80, 0x8f, 0x90, 0x9f, 0xa0, 0xbf, 0xc0, 0xf4, 0xff).map(_.toByte)
@@ -75,7 +81,11 @@ class KeyTextSuite extends munit.FunSuite:
         )
       }
       assert(checked.sizeIs > 70000, s"${checked.size} cases")
-    finally Files.deleteIfExists(file)
+    finally
+      Files.deleteIfExists(file)
+      memory.close()
+      Files.deleteIfExists(zip)
+      Files.deleteIfExists(zip.getParent)
   }
 
   test("a flat envelope is read in place; others are handed back as text, or by their type") {

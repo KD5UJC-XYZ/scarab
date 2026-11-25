@@ -175,10 +175,13 @@ class Sum6KesSigningDifferentialSuite extends munit.ScalaCheckSuite:
         BigInt(1) << 64
       )
     )
+    // the two keys of one seed, generated once: each case evolves copies of its own
+    val first = generate(Bytes.fromArray(Array.fill(32)(7.toByte))).toOption.get
+    val firstLegacy =
+      LegacySum6KesSigning.generate(Bytes.fromArray(Array.fill(32)(7.toByte))).toOption.get
     forAllNoShrink(Gen.choose(0, Periods - 1), target) { (start, t) =>
-      val key = generate(Bytes.fromArray(Array.fill(32)(7.toByte))).toOption.get
-      val legacy =
-        LegacySum6KesSigning.generate(Bytes.fromArray(Array.fill(32)(7.toByte))).toOption.get
+      val key = first.copy
+      val legacy = firstLegacy.copy
       key.evolveTo(start)
       legacy.evolveTo(start)
       assertEquals(key.evolveTo(t), legacy.evolveTo(t).leftMap(legacyFailure), s"$start to $t")
