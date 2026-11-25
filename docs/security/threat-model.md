@@ -67,16 +67,22 @@ the bytes actually executed. Signed/reproducible releases and an SBOM remain
 ## Current cryptographic posture
 
 [Draft03Math][draft-math] and [Ed25519Point][point-math] are hand-adapted, variable-time
-implementations declared for public inputs only. [Draft03Prover][prover] uses
-`curve25519-elisabeth` scalar/point operations for secret multiplication and nonce arithmetic,
-while calling the Java helpers for hash-to-curve, challenges and public outputs. This describes the
-intended split; review must establish whether every input and intermediate respects it and whether
-library/JVM behavior meets the selected observer model. Package containment does not prove that split.
+implementations declared for public inputs only. [Draft03Prover][prover] calls them for the
+hash to curve of the public key and alpha alone; its secret steps (`secret.Draft03Key`) use the
+vendored curve25519-elisabeth constant-time scalar and point operations for the multiplications,
+the nonce and the response, and take the output and the challenge from the points and encodings
+they compute, decoding no secret-derived point. `scripts/check_crypto_guard.py` refuses a
+variable-time name on that path. This describes the structure of the code; review must establish
+whether library/JVM behavior meets the selected observer model, which a source-level guard and a
+timing test cannot.
 
 [Sum6KesSigning][kes] uses Bouncy Castle Ed25519 key/signing operations and explicitly overwrites
-its mutable key material. The VRF key's `forget` overwrites seed/nonce arrays; derived scalars,
-serialization copies and provider objects need a separate lifetime analysis. No claim of complete
-JVM erasure or constant-time node execution follows from those operations. The
+its mutable key material. The VRF signing key keeps only its seed, which `forget` zeroes; each
+proof or output copies the seed into working storage of its own (`secret.Scratch`), computes the
+scalar, the nonce and their encodings there, and zeroes all of it when it ends, on failure too. The
+curve arithmetic's own intermediates (immutable field elements and points) are not erased, nor are
+the key file's text and decoded bytes, or copies a garbage collector made before the zeroing. No
+claim of complete JVM erasure or constant-time node execution follows from those operations. The
 [file-backed KES policy](../adr/0015-kes-key-written-back-and-checked-reload.md) likewise qualifies
 what predecessor overwrite and crash tests establish.
 

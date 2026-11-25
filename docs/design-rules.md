@@ -1013,9 +1013,11 @@ only from package `xyz.kd5ujc.scarab.crypto.vrf`. Crypto code follows the rules 
 
 - **Scope:** main, tests; the containment part also `tools`.
 - **Exceptions:** none.
-- **Enforcement:** `scripts/check_crypto_guard.py` (containment) and semgrep, failing on a `WARNING`
-  finding, both in `.github/workflows/security.yml`; that secret scalars never reach the variable-time math
-  is review only (the guard's docstring).
+- **Enforcement:** `scripts/check_crypto_guard.py` (containment; and the secret path of VRF proving, package
+  `xyz.kd5ujc.scarab.crypto.vrf.secret` and `Draft03Prover`'s one call into `Draft03Math`, names no
+  variable-time routine) and semgrep, failing on a `WARNING` finding, both in
+  `.github/workflows/security.yml`; that secret scalars never reach the variable-time math by another way is
+  review only (the guard's docstring).
 - **Why:** [#219](https://github.com/KD5UJC-XYZ/scarab/issues/219).
 
 <a id="cmt"></a>
