@@ -48673,6 +48673,24 @@
    ],
    "note": "runClause's Predicate case: under ValidateNone the condition is not evaluated; a check by name here, which every recording helper of Sts goes through",
    "digest": "a68b39693f60af45"
+  },
+  "def ledger.Header#blockPoint": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/Block.hs",
+     "symbol": "blockPoint",
+     "lines": [
+      249,
+      252
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the header's point typed as a block point; computed once with point",
+   "digest": "42a2f8de72ad1bfc"
   }
  },
  "glue": [

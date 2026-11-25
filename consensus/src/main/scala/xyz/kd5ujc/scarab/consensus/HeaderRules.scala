@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.BlockRef
 import xyz.kd5ujc.scarab.ledger.Header
+import xyz.kd5ujc.scarab.consensus.genesis.GenesisDensity
 
 /** Header-only validation of a chain, the work upstream's ChainSync client does before a block is
   * wanted (`Ouroboros.Consensus.MiniProtocol.ChainSync.Client`): each header is checked against a
@@ -114,31 +115,111 @@ object HeaderRules:
 /** The candidate chain of one peer as header validation sees it: the point where it joined ours,
   * the header state there and every header announced since with the state after it (`None` where no
   * state could be derived: a base outside our retained chain).
+  *
+  * Its points ([[points]]: the local prefix, the base and the headers) are kept as the reference
+  * keeps a candidate, an [[AnchoredFragment]] anchored at the first of them, with the states beside
+  * it. So appending a header and looking up a point cost O(1), and rolling back or trimming costs
+  * what it drops, where they rebuilt or searched the whole candidate for each header (issue 810).
+  *
+  * A chain holds a block once, and Origin, which precedes every block, at most once: the lookups
+  * rely on its points being distinct. Two points with one hash would take a header whose hash is
+  * its own or an ancestor's. The gate builds every chain with Origin, if it is there, first; one
+  * built with Origin after other points keeps those points aside, and searches them in turn.
+  *
+  * @param leading
+  *   the points before an Origin that follows them: none on a chain the gate builds, where Origin,
+  *   if it is there, comes first
+  * @param fragment
+  *   the points from the first after `leading` on, anchored at it
   */
-final case class HeaderChain[H](
-    base: ChainSync.Point,
-    baseState: Option[H],
-    entries: Vector[HeaderChain.Entry[H]],
-    prefix: Vector[HeaderChain.Known[H]] = Vector.empty,
-    baseView: Option[HeaderChain.TipView] = None
+final class HeaderChain[H] private (
+    val base: ChainSync.Point,
+    val baseState: Option[H],
+    val entries: Vector[HeaderChain.Entry[H]],
+    val prefix: Vector[HeaderChain.Known[H]],
+    val baseView: Option[HeaderChain.TipView],
+    leading: Vector[ChainSync.Point],
+    fragment: AnchoredFragment[ChainSync.Point.Block]
 ):
   def map[J](f: H => J): HeaderChain[J] =
-    HeaderChain(
+    new HeaderChain(
       base,
       baseState.map(f),
       entries.map(e => HeaderChain.Entry(e.header, e.state.map(f))),
       prefix.map(p => HeaderChain.Known(p.point, p.state.map(f), p.view)),
-      baseView
+      baseView,
+      leading,
+      fragment
     )
+
+  /** The same chain with these fields; the points are indexed again only when they change. */
+  def copy(
+      base: ChainSync.Point = this.base,
+      baseState: Option[H] = this.baseState,
+      entries: Vector[HeaderChain.Entry[H]] = this.entries,
+      prefix: Vector[HeaderChain.Known[H]] = this.prefix,
+      baseView: Option[HeaderChain.TipView] = this.baseView
+  ): HeaderChain[H] =
+    if base == this.base && (entries eq this.entries) && (prefix eq this.prefix) then
+      new HeaderChain(base, baseState, entries, prefix, baseView, leading, fragment)
+    else HeaderChain(base, baseState, entries, prefix, baseView)
 
   /** The local immutable-to-intersection prefix needs points and validated states, never
     * synthesized headers. Accepted CSJ searches may rewind into this captured local prefix.
     */
-  def points: Vector[ChainSync.Point] = prefix.map(_.point) ++ (base +: entries.map(_.header.point))
+  def points: Vector[ChainSync.Point] =
+    val fromAnchor = fragment.anchorPoint +: fragment.toOldestFirst
+    if leading.isEmpty then fromAnchor else leading ++ fromAnchor
 
   /** [[points]], which are never empty: the base is always there. */
   def nonEmptyPoints: NonEmptyVector[ChainSync.Point] =
-    NonEmptyVector(base, entries.map(_.header.point)).prependVector(prefix.map(_.point))
+    leading.headOption.fold(NonEmptyVector(fragment.anchorPoint, fragment.toOldestFirst))(first =>
+      NonEmptyVector(first, leading.drop(1) ++ (fragment.anchorPoint +: fragment.toOldestFirst))
+    )
+
+  /** [[points]] after the first. On a chain the gate builds, the same vector while the chain's
+    * points are unchanged, so comparing two of them costs nothing then.
+    */
+  def pointsAfterFirst: Vector[ChainSync.Point] =
+    if leading.isEmpty then fragment.toOldestFirst
+    else leading.drop(1) ++ (fragment.anchorPoint +: fragment.toOldestFirst)
+
+  /** The newest of [[points]] on our chain `ours` (its anchor or a block), searched from our newest
+    * block, as `AF.intersectionPoint` finds it: both are chains, so the first of our points from
+    * the newest that is on this one is this chain's newest point on ours. A search from this
+    * chain's tip would visit every header the peer is ahead of us by, for each header. A tip on our
+    * chain is the answer at once, as a peer behind us or rolled back to our anchor has it. A chain
+    * with points before an Origin that follows them is no chain, and is searched from its tip.
+    */
+  def intersectionPoint(ours: ChainSelection.Local): Option[ChainSync.Point] =
+    if ours.contains(tipPoint) then Some(tipPoint)
+    else if leading.isEmpty then
+      (ours.blocks.reverseIterator.map(_.point) ++ Iterator.single(ours.anchor))
+        .find(withinFragmentBounds)
+    else pointsNewestFirst.find(ours.contains)
+
+  /** [[points]] from the newest. */
+  def pointsNewestFirst: Iterator[ChainSync.Point] =
+    fragment.pointsNewestFirst ++ leading.reverseIterator
+
+  /** [[points]] as the density rule's fragment: the first point, then every block after it. */
+  def densityFragment: GenesisDensity.Fragment =
+    leading.headOption.fold(GenesisDensity.Fragment(fragment.anchorPoint, fragment.toOldestFirst))(
+      first =>
+        GenesisDensity.Fragment(
+          first,
+          (leading.drop(1) ++ (fragment.anchorPoint +: fragment.toOldestFirst)).collect {
+            case point: ChainSync.Point.Block => point
+          }
+        )
+    )
+
+  /** The point is one of [[points]] (`withinFragmentBounds`). */
+  def withinFragmentBounds(point: ChainSync.Point): Boolean = offsetOf(point).isDefined
+
+  /** The point after `point` in [[points]], if `point` is one of them and not the last. */
+  def successorPoint(point: ChainSync.Point): Option[ChainSync.Point] =
+    offsetOf(point).flatMap(at => pointAt(at + 1))
 
   def tipHash: Option[Bytes] = entries.lastOption.map(_.header.hash).orElse(baseHash)
 
@@ -155,30 +236,13 @@ final case class HeaderChain[H](
     * is not known).
     */
   def stateAfter(hash: Bytes): Option[Option[H]] =
-    if baseHash.contains(hash) then Some(baseState)
-    else
-      entries
-        .findLast(_.header.hash == hash)
-        .map(_.state)
-        .orElse(
-          prefix
-            .findLast(_.point match
-              case ChainSync.Point.Block(_, h) => h == hash
-              case ChainSync.Point.Origin      => false)
-            .map(_.state)
-        )
-
-  // the hashes [[stateAfter]] finds (the base's, the headers' and the prefix's), built on the first
-  // lookup: the search for the newest of our blocks on this chain asks for each of them in turn,
-  // and a scan per question made header validation quadratic in the candidate's length (issue 1394)
-  private lazy val hashes: Set[Bytes] =
-    baseHash.toSet ++ entries.iterator.map(_.header.hash) ++ prefix.iterator.flatMap(
-      _.point match
-        case ChainSync.Point.Block(_, h) => Some(h)
-        case ChainSync.Point.Origin      => None
+    offsetOfHash(hash).flatMap(at =>
+      if at < prefix.size then prefix.lift(at).map(_.state)
+      else if at == prefix.size then Some(baseState)
+      else entries.lift(at - prefix.size - 1).map(_.state)
     )
 
-  def contains(hash: Bytes): Boolean = hashes(hash)
+  def contains(hash: Bytes): Boolean = offsetOfHash(hash).isDefined
 
   /** The header can follow the tip. The first header of a chain that starts at Origin names the
     * chain's origin (the Byron genesis hash on a chain with a Byron prefix) as its parent, which
@@ -191,27 +255,51 @@ final case class HeaderChain[H](
   def extend(header: Header, state: Option[H]): Either[HeaderChain.Error, HeaderChain[H]] =
     Either.cond(
       canExtend(header),
-      copy(entries = entries :+ HeaderChain.Entry(header, state)),
+      new HeaderChain(
+        base,
+        baseState,
+        entries :+ HeaderChain.Entry(header, state),
+        prefix,
+        baseView,
+        leading,
+        fragment.addBlock(header.blockPoint)
+      ),
       HeaderChain.Error.DoesNotExtend(header.hash, tipPoint)
     )
 
   /** The chain as it was at `point` (the base or one of the headers), if the chain passes there. */
   def rollback(point: ChainSync.Point): Option[HeaderChain[H]] =
-    if point == base then Some(copy(entries = Vector.empty))
-    else
-      val index = entries.indexWhere(_.header.point == point)
-      if index >= 0 then Some(copy(entries = entries.take(index + 1)))
-      else
-        val known = prefix.indexWhere(_.point == point)
-        Option.when(known >= 0)(
-          HeaderChain(
-            point,
-            prefix(known).state,
-            Vector.empty,
-            prefix.take(known),
-            prefix(known).view
+    offsetOf(point).flatMap { at =>
+      if at >= prefix.size then
+        Some(
+          new HeaderChain(
+            base,
+            baseState,
+            entries.take(at - prefix.size),
+            prefix,
+            baseView,
+            leading,
+            fragment.headAt(at - leading.size)
           )
         )
+      else
+        prefix
+          .lift(at)
+          .map(known =>
+            if at >= leading.size then
+              new HeaderChain(
+                known.point,
+                known.state,
+                Vector.empty,
+                prefix.take(at),
+                known.view,
+                leading,
+                fragment.headAt(at - leading.size)
+              )
+            // before an Origin that follows other points: indexed again
+            else HeaderChain(known.point, known.state, Vector.empty, prefix.take(at), known.view)
+          )
+    }
 
   /** The chain from `anchor` on, when it passes there: the reference trims its candidate to the
     * anchor of our current chain whenever our chain changes, as the headers before it can never be
@@ -223,48 +311,83 @@ final case class HeaderChain[H](
     * retention cap and every header's checks grew with it).
     */
   def trimmedTo(anchor: ChainSync.Point): HeaderChain[H] =
-    if anchor == base then if prefix.isEmpty then this else copy(prefix = Vector.empty)
-    // already the first point kept: nothing to drop, and no search of the headers
-    else if prefix.headOption.exists(_.point == anchor) then this
-    else
-      entries.indexWhere(_.header.point == anchor) match
-        case -1 =>
-          prefix.indexWhere(_.point == anchor) match
-            case at if at > 0 => copy(prefix = prefix.drop(at))
-            case _            => this
-        case at =>
-          val last = entries(at)
-          copy(
-            base = anchor,
-            baseState = last.state,
-            entries = entries.drop(at + 1),
-            prefix = Vector.empty,
-            baseView = Some(
-              HeaderChain.TipView(
-                SelectView.of(last.header),
-                ChainSelection.tiebreakerFor(last.header.era)
-              )
-            )
-          )
+    offsetOf(anchor).fold(this) { at =>
+      // already the first point kept: nothing to drop
+      if at == 0 then this
+      else if at < leading.size then
+        // before an Origin that follows other points: indexed again
+        HeaderChain(base, baseState, entries, prefix.drop(at), baseView)
+      else if at <= prefix.size then
+        new HeaderChain(
+          base,
+          baseState,
+          entries,
+          prefix.drop(at),
+          baseView,
+          Vector.empty,
+          fragment.anchoredAt(at - leading.size)
+        )
+      else
+        entries
+          .lift(at - prefix.size - 1)
+          .fold(this)(last => baseAt(last, at - prefix.size, at - leading.size))
+    }
 
   /** At most `max` of the newest headers: the oldest are folded into the base. */
   def pruned(max: Int): HeaderChain[H] =
-    val (dropped, kept) = entries.splitAt(entries.size - max)
+    val dropped = (entries.size - max).min(entries.size)
     // the newest dropped header, if any, becomes the base
-    dropped.lastOption.fold(this) { last =>
-      copy(
-        base = last.header.point,
-        baseState = last.state,
-        entries = kept,
-        prefix = Vector.empty,
-        baseView = Some(
-          HeaderChain.TipView(
-            SelectView.of(last.header),
-            ChainSelection.tiebreakerFor(last.header.era)
-          )
-        )
-      )
-    }
+    entries
+      .lift(dropped - 1)
+      .fold(this)(last => baseAt(last, dropped, prefix.size + dropped - leading.size))
+
+  /** The chain whose base is the header `last`, the newest of the `dropped` oldest entries, at
+    * `offset` from the fragment's anchor.
+    */
+  private def baseAt(last: HeaderChain.Entry[H], dropped: Int, offset: Int): HeaderChain[H] =
+    new HeaderChain(
+      last.header.point,
+      last.state,
+      entries.drop(dropped),
+      Vector.empty,
+      Some(
+        HeaderChain
+          .TipView(SelectView.of(last.header), ChainSelection.tiebreakerFor(last.header.era))
+      ),
+      Vector.empty,
+      fragment.anchoredAt(offset)
+    )
+
+  /** The position of `point` in [[points]]. */
+  private def offsetOf(point: ChainSync.Point): Option[Int] =
+    fragment
+      .offsetOf(point)
+      .map(leading.size + _)
+      .orElse(Some(leading.indexOf(point)).filter(_ >= 0))
+
+  /** The position in [[points]] of the point with this hash. */
+  private def offsetOfHash(hash: Bytes): Option[Int] =
+    fragment
+      .offsetOfHash(hash)
+      .map(leading.size + _)
+      .orElse(Some(leading.indexWhere {
+        case ChainSync.Point.Block(_, h) => h == hash
+        case ChainSync.Point.Origin      => false
+      }).filter(_ >= 0))
+
+  /** The point at this position of [[points]]. */
+  private def pointAt(at: Int): Option[ChainSync.Point] =
+    if at < leading.size then leading.lift(at) else fragment.pointAt(at - leading.size)
+
+  override def equals(other: Any): Boolean = other match
+    case that: HeaderChain[?] =>
+      (this eq that) || (base == that.base && baseState == that.baseState &&
+        entries == that.entries && prefix == that.prefix && baseView == that.baseView)
+    case _ => false
+
+  override def hashCode: Int = (base, baseState, entries, prefix, baseView).##
+
+  override def toString: String = s"HeaderChain($base, $baseState, $entries, $prefix, $baseView)"
 
 object HeaderChain:
   enum Error:
@@ -275,6 +398,34 @@ object HeaderChain:
   final case class Entry[H](header: Header, state: Option[H])
   final case class TipView(value: SelectView, tiebreaker: ChainSelection.Tiebreaker)
   final case class Known[+H](point: ChainSync.Point, state: Option[H], view: Option[TipView] = None)
+
+  /** The chain of these points and states, indexed. Origin comes before every block, so the
+    * fragment is anchored at the last Origin among the prefix and the base, if there is one, and
+    * the points before it are kept aside; otherwise at the first point.
+    */
+  def apply[H](
+      base: ChainSync.Point,
+      baseState: Option[H],
+      entries: Vector[Entry[H]],
+      prefix: Vector[Known[H]] = Vector.empty,
+      baseView: Option[TipView] = None
+  ): HeaderChain[H] =
+    val local = prefix.map(_.point) :+ base
+    val anchorIndex = local.lastIndexOf(ChainSync.Point.Origin).max(0)
+    new HeaderChain(
+      base,
+      baseState,
+      entries,
+      prefix,
+      baseView,
+      local.take(anchorIndex),
+      AnchoredFragment.fromOldestFirst(
+        local.lift(anchorIndex).getOrElse(base),
+        local.drop(anchorIndex + 1).collect { case point: ChainSync.Point.Block =>
+          point
+        } ++ entries.map(_.header.blockPoint)
+      )
+    )
 
   def at[H](base: ChainSync.Point, state: Option[H]): HeaderChain[H] =
     HeaderChain(base, state, Vector.empty)
