@@ -245,6 +245,23 @@ class Sum6KeySuite extends munit.FunSuite:
     assert(a.copy.sameMaterial(a))
   }
 
+  // A forget, an evolution, a copy and a read of the key all take its monitor: one that holds it
+  // while it computes excludes them for that time, by construction. Seen here where it computes.
+  test("a signature and an evolution hold the key's monitor while they compute") {
+    val key = generated()
+    var signing: Option[Boolean] = None
+    Scratch.within(s => key.signedIn(s, Bytes.empty, () => signing = Some(Thread.holdsLock(key))))
+    assertEquals(signing, Some(true), "the signature was computed without the key's monitor")
+    var evolving: List[Boolean] = Nil
+    Scratch.within(s => key.evolvedIn(s, 3, () => evolving = Thread.holdsLock(key) :: evolving))
+    assertEquals(
+      evolving,
+      List(true, true, true),
+      "an evolution step ran without the key's monitor"
+    )
+    assertEquals(key.period, 3)
+  }
+
   /** Signatures from `rounds` races of four signers against `race`, started together. */
   private def raced(rounds: Int)(make: () => Sum6Key)(race: Sum6Key => Unit)(
       message: Bytes

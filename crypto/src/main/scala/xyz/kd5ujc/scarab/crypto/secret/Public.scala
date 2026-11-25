@@ -5,12 +5,13 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 
-/** Evidence that a value may leave a [[Scratch]]: it is immutable and holds nothing of a scratch,
-  * only what the computation publishes (a proof, an output, a public key) or a plain answer. There
-  * is no instance for an array, a `Scratch#Buffer`, a scratch or a function, so none of them can be
-  * the result of [[Scratch.within]], and so none can be read after its buffers are erased. The
-  * trait is sealed and its one implementation private: the instances below are all there are, and a
-  * new one is added here, where review sees it.
+/** Evidence that a value may leave a [[Scratch]]: it holds nothing of a scratch, only what the
+  * computation publishes (a proof, an output, a public key), a plain answer, or a signing key,
+  * which owns the array it copied its material into. There is no instance for an array, a
+  * `Scratch#Buffer`, a scratch or a function, so none of them can be the result of
+  * [[Scratch.within]], and so none can be read after its buffers are erased. The trait is sealed
+  * and its one implementation private: the instances below are all there are, and a new one is
+  * added here, where review sees it.
   */
 private[scarab] sealed trait Public[A]
 

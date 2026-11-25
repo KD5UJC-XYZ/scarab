@@ -63,14 +63,23 @@ private[kes] final class Sum6Key private (material: Array[Byte], start: Int):
   def sign(message: Bytes): Either[Failure, Bytes] =
     Scratch.within(s => signedIn(s, message)).toRight(Failure.Forgotten)
 
-  /** [[sign]] in the scratch `s`; none once the key is forgotten. */
-  private[secret] def signedIn(s: Scratch, message: Bytes): Option[Bytes] = synchronized {
-    Option.unless(forgotten) {
-      val signature = s.buffer(SignatureBytes)
-      signAt(s)(material, 0, Depth, message.toArray, s.array(signature), 0)
-      s.publish(signature)
+  /** [[sign]] in the scratch `s`; none once the key is forgotten. `signed` runs once the signature
+    * is computed, before it is published: a suite of this package sees there what the computation
+    * holds.
+    */
+  private[secret] def signedIn(
+      s: Scratch,
+      message: Bytes,
+      signed: () => Unit = () => ()
+  ): Option[Bytes] =
+    synchronized {
+      Option.unless(forgotten) {
+        val signature = s.buffer(SignatureBytes)
+        signAt(s)(material, 0, Depth, message.toArray, s.array(signature), 0)
+        signed()
+        s.publish(signature)
+      }
     }
-  }
 
   /** Move to `target`, which is not before the current period and is one of the key's periods,
     * erasing what the periods after it cannot use.
@@ -83,15 +92,18 @@ private[kes] final class Sum6Key private (material: Array[Byte], start: Int):
       Evolution.Moved
   }
 
-  /** The steps of [[evolveTo]] to `target`, checked, in the scratch `s`. */
-  private[secret] def evolvedIn(s: Scratch, target: Int): Unit = synchronized {
-    @tailrec def step(): Unit =
-      if current < target then
-        update(s)(material, 0, Depth, current)
-        current += 1
-        step()
-    step()
-  }
+  /** The steps of [[evolveTo]] to `target`, checked, in the scratch `s`; `stepped` runs after each.
+    */
+  private[secret] def evolvedIn(s: Scratch, target: Int, stepped: () => Unit = () => ()): Unit =
+    synchronized {
+      @tailrec def step(): Unit =
+        if current < target then
+          update(s)(material, 0, Depth, current)
+          current += 1
+          stepped()
+          step()
+      step()
+    }
 
   /** [[evolveTo]] the period after the current one. */
   def evolve(): Evolution = synchronized(evolveTo(current + 1))
