@@ -426,10 +426,14 @@ object Cbor:
           write((major << 5) | ai)
           // the low 64 bits of n, which is at most 2^64 - 1
           bigEndian(n.toLong, (width - 1) * 8)
+      // the string's bytes in one write: the limit `write` checks byte by byte, that the output
+      // holds at most `maxInputBytes`, checked once for all of them
       def raw(major: Int, bytes: Array[Byte]): Unit =
         if bytes.length > limits.maxStringBytes then fail(Error.StringLimitExceeded)
         head(major, BigInt(bytes.length))
-        bytes.foreach(b => write(b & 255))
+        if out.size().toLong + bytes.length > limits.maxInputBytes then
+          fail(Error.OutputLimitExceeded)
+        out.write(bytes, 0, bytes.length)
       // the head of `v` (the whole of a leaf), then its children to write next, in order
       def emit(v: Value): List[Node] = v match
         case Value.UInt(n) =>
