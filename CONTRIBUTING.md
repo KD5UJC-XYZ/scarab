@@ -208,7 +208,7 @@ belong to nightly CI, not to a change.
 
 ### Nightly CI is the safety net
 
-`.github/workflows/e2e.yml` runs soak, e2e, relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job (a matrix), and on demand and on
+`.github/workflows/e2e.yml` runs every scenario `SCENARIOS` lists in `scripts/ci_e2e_matrix.py` every night, each scenario in its own job (a matrix), and on demand and on
 version tags; `fuzz.yml` runs the longer fuzzing (rotating daily seeds); `cuddle-crosscheck.yml` runs the CDDL cross-check on every pull request, every push to `main` and nightly; `fuzz-gate.yml` runs the fixed-seed `fuzz 100000 1 4` gate on pull requests that change decoder or fuzz inputs and passes without fuzzing on any other. `.github/workflows/ci.yml` runs `check` (built once, its tests in parallel shards), the script tests, actionlint, a gitleaks
 scan of the checked-out commit's full history, including merge parents (unrelated fetched branches
 are scanned in their own runs; `.gitleaks.toml`; a new false positive is allowlisted there by path or
