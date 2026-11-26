@@ -468,6 +468,41 @@ class SamePointTest(unittest.TestCase):
         self.assertEqual((point, results), (None, [(ntcqueries.LOST_ROUND, True, False, 0, 0)]))
         self.assertEqual((len(switched), pauses, tried), (attempts, attempts - 1, attempts))
 
+    def test_a_point_switched_while_the_spare_sessions_are_acquired_is_not_asked_again(self):
+        # only the reference's refusal of the point the round sampled is retried; one of a spare session, after the
+        # reference first acquired the point, loses the round as before
+        reference, scala = self.nodes(5)
+
+        class LateSwitch(FakeSession):
+            def acquire(self, point=None):
+                if self.node.name == "reference" and ("acquire", "reference", point) in self.node.events:
+                    raise ntcquery.AcquireRefused(1)
+                super().acquire(point)
+
+        FakeSession.nodes = {"reference": reference, "scala": scala}
+        switched = []
+        with mock.patch.object(ntcquery, "LocalStateQuery", LateSwitch), \
+                mock.patch.object(ntcqueries, "same_point", wraps=ntcqueries.same_point) as rounds, \
+                mock.patch.object(ntcqueries.time, "sleep") as pause, mock.patch("builtins.print"):
+            point, results = ntcqueries.compare_round("n", "ref.sock", "scala.sock", switched=switched)
+        self.assertEqual((point, results), (None, [(ntcqueries.LOST_ROUND, True, False, 0, 0)]))
+        self.assertEqual((switched, pause.call_count, rounds.call_count), ([], 0, 1))
+        self.assertEqual(sum(1 for e in reference.events if e[:2] == ("acquire", "reference")), 1)
+
+    def test_a_switched_point_is_tried_as_often_and_as_far_apart_as_an_era_walk_request(self):
+        self.assertEqual((ntcqueries.SWITCHED_ATTEMPTS, ntcqueries.SWITCHED_PAUSE),
+                         (ntceras.ATTEMPTS, ntceras.RETRY_PAUSE))
+
+    def test_the_scenario_collects_each_switched_point_of_its_rounds(self):
+        switched = []
+        clock = iter([0, 1])
+        args = type("Args", (), {"name": "n"})()
+        with mock.patch.object(ntc, "compare_round", return_value=(POINT, [])) as compare, \
+                mock.patch.object(ntc.time, "monotonic", side_effect=lambda: next(clock)), \
+                mock.patch.object(ntc.time, "sleep"), mock.patch("builtins.print"):
+            ntc.query_rounds(args, pathlib.Path("."), {}, 0.5, 0, switched=switched)
+        self.assertIs(compare.call_args.kwargs["switched"], switched)
+
     def test_a_point_too_old_is_not_asked_again(self):
         point, results, switched, pauses, tried = self.switching_round(1, failure=0)
         self.assertEqual((point, results), (None, [(ntcqueries.LOST_ROUND, True, False, 0, 0)]))

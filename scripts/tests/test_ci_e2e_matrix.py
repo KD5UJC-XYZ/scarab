@@ -94,11 +94,20 @@ class OutputCase(unittest.TestCase):
         self.assertEqual(self.run_main("ntc", "nct"), (2, ""))
         self.assertEqual(self.run_main("--repeat", "9", "ntc"), (2, ""))
 
+    def test_a_selection_that_starts_with_a_dash_is_a_name_after_the_separator(self):
+        # as the workflow passes it: an option's spelling is refused as an unknown name, never taken as an option
+        for selection in ("--repeat=3", "--help", "-h ntc"):
+            with self.subTest(selection=selection):
+                self.assertEqual(self.run_main("--repeat", "1", "--", selection), (2, ""))
+        code, written = self.run_main("--repeat", "", "--", "")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(written.strip().partition("=")[2]), m.matrix(m.SCENARIOS))
+
 
 class WorkflowCase(unittest.TestCase):
     def test_the_workflow_runs_the_selected_matrix(self):
         text = (ROOT / ".github" / "workflows" / "e2e.yml").read_text()
-        self.assertIn('python3 scripts/ci_e2e_matrix.py --repeat "$REPEAT" "$SCENARIOS"', text)
+        self.assertIn('python3 scripts/ci_e2e_matrix.py --repeat "$REPEAT" -- "$SCENARIOS"', text)
         self.assertIn("matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}", text)
         self.assertNotIn("include:", text)
 

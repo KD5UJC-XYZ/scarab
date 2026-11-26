@@ -218,7 +218,7 @@ per-change gates did not cover. Run the E2E scenarios on a branch with `python3 
 <branch>`, which waits until no E2E run is waiting before it dispatches: the workflow's concurrency group keeps one
 run going and one waiting, and a plain `gh workflow run` replaces, and so cancels, the waiting one. Add
 `--scenario <name>`, once per scenario, to run only those (the names are `SCENARIOS` in `scripts/ci_e2e_matrix.py`),
-and `--repeat <n>` to run each of them n times (at most 5), each on a devnet of its own; a run started from the
+and `--repeat <n>` to run each of them n times (at most `MAX_REPEAT` there), each on a devnet of its own; a run started from the
 Actions page takes the same in its `scenarios` and `repeat` inputs.
 `.github/workflows/flaky-tests.yml` reads the last day's CI runs every night: a test that failed and then passed on
 the same commit gets an issue of its own, or a comment on its existing one (`scripts/flaky_tests.py`).
