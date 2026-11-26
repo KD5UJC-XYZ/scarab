@@ -204,8 +204,8 @@ start of each slot ([metrics](../running/metrics.md)), folded in slot order. The
 gauges `scarab_forge_scheduled_leader_slots`, `scarab_forge_expected_leader_slots`, `scarab_forge_next_leader_slot`
 and `scarab_forge_schedule_complete` and the `leaderSchedule` line: whoever reads them learns when the pool leads. A `forgeEpoch` line carries an epoch's counters when
 the next epoch begins, and `GET /forging` on the query port serves the counters per epoch and in total (the
-`pool` scenario reads it and asserts it against the log and the metrics: forged and adopted counts equal, no
-block took more than five slots from its slot's start to adoption).
+`pool` scenario reads it and asserts it against the log and the metrics: forged and adopted counts equal; its
+bound on the time from a slot's start to adoption is in [the scenario's row](../running/devnet.md)).
 
 Tests: `ForgeSuite` forges with real keys against the real `MirrorRules` over a synthetic Conway ledger (blocks
 are accepted, consecutive, counted for the pool, transactions leave the mempool, the KES key crosses period

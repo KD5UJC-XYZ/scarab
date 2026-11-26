@@ -2169,6 +2169,29 @@ class SchedulingSummaryTest(unittest.TestCase):
         self.assertIn("--cpus=3", cluster.scala_container(args, root, "cp", "M", [], cpus=3))
 
 
+class AdoptionLatencyTest(unittest.TestCase):
+    def adopted(self, slot, latency):
+        return {"event": "adopted", "latencyMs": latency, "block": {"slot": slot, "hash": f"h{slot}"}}
+
+    def test_the_first_block_by_slot_is_set_apart_whatever_the_log_order(self):
+        events = [self.adopted(30, 12), {"event": "forged", "slot": 9, "hash": "h9"}, self.adopted(9, 1517),
+                  self.adopted(20, 72)]
+        self.assertEqual(pool.adoption_latency(events), {"first": 1517, "later": [72, 12]})
+        self.assertEqual(pool.adoption_latency([]), {"first": None, "later": []})
+
+    def test_a_cold_first_block_passes_and_the_same_latency_later_fails(self):
+        self.assertEqual(pool.adoption_failures({"first": 1589, "later": [72, 11]}, 1000), [])
+        self.assertEqual(pool.adoption_failures({"first": None, "later": []}, 1000), [])
+        late = pool.adoption_failures({"first": 50, "later": [11, 1589]}, 1000)
+        self.assertEqual(late, ["a block took 1589 ms from its slot's start to adoption (budget 1000 ms)"])
+
+    def test_the_first_block_has_a_bound_of_its_own(self):
+        over = pool.adoption_failures({"first": pool.COLD_FIRST_BLOCK_MS + 1, "later": [1001]}, 1000)
+        self.assertEqual(len(over), 2)
+        self.assertIn("first block", over[0])
+        self.assertEqual(pool.adoption_failures({"first": pool.COLD_FIRST_BLOCK_MS, "later": [1000]}, 1000), [])
+
+
 class SlotClockTest(unittest.TestCase):
     SHELLEY = {"systemStart": "2026-10-11T12:00:00Z", "slotLength": 0.1}
     START = 1791720000  # 2026-10-11T12:00:00Z
