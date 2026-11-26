@@ -2009,3 +2009,33 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
     }
   }
 
+  test(
+    "a key file back by the time the replacement reads it is not replaced, and its key is forgotten"
+  ) {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 5, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(9)
+        assertEquals(KesFiles.stage(f.kes, evolved), Right(()))
+        // the key file goes when the replacement starts, and a key is read from it again after
+        val goes = new Renaming:
+          override def exchange(next: Path, file: Path): KesFiles.Exchange =
+            Files.delete(file)
+            super.exchange(next, file)
+        val reads = new java.util.concurrent.atomic.AtomicInteger(0)
+        val appeared = f.onDisk
+        def readAgain(path: Path) =
+          if path == f.kes && reads.incrementAndGet() > 1 then Right(appeared)
+          else KeyFiles.kesSigningKey(path)
+        KesFiles.recoverWith(f.kes, goes, readAgain) match
+          case Left(
+                ForgeError.KeyFile(_, ForgeKeyProblem.Io(_: java.nio.file.NoSuchFileException))
+              ) =>
+            ()
+          case other => fail(s"expected the missing key file's failure, found $other")
+        assert(appeared.isForgotten, "the key read from the file that came back was kept")
+        assert(Files.exists(f.next), "the stage is kept, not taken as installed")
+      }
+    }
+  }

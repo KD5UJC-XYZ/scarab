@@ -539,10 +539,28 @@ object KesFiles:
     )
 
   /** Recovery's ending of a valid stage. A key file that is not there is not made from the stage:
-    * the read fails, as the reference's does on a missing key file, and the stage is kept.
+    * the read of it by `parsed` fails, as the reference's does on a missing key file, and the stage
+    * is kept. A key file there again by the time it is read was not replaced either: its key is
+    * forgotten, and the failure is the missing file's.
     */
-  private def finish(file: Path, ops: FileOps): Either[ForgeError, Unit] =
-    replace(file, ops).flatMap(_.fold(parse(file).void)(_ => Right(())))
+  private def finish(
+      file: Path,
+      ops: FileOps,
+      parsed: Path => Either[ForgeError, Sum6KesSigning.SigningKey]
+  ): Either[ForgeError, Unit] =
+    replace(file, ops).flatMap(
+      _.fold(
+        parsed(file).flatMap { appeared =>
+          appeared.forget()
+          Left(
+            ForgeError.KeyFile(
+              file.toString,
+              ForgeKeyProblem.Io(new NoSuchFileException(file.toString))
+            )
+          )
+        }
+      )(_ => Right(()))
+    )
 
   /** The write-back's ending of a stage it has just written. A key file that is not there is not
     * made again: the stage, the new key, is destroyed.
@@ -656,10 +674,10 @@ object KesFiles:
     else
       read(file) match
         case Read.Key(main) =>
-          KeyFiles.erasedUnless(main, recoveredFrom(file, read(next), main, ops))(_ eq main)
+          KeyFiles.erasedUnless(main, recoveredFrom(file, read(next), main, ops, parsed))(_ eq main)
         case Read.Refused(refused) =>
           read(next) match
-            case Read.Key(staged) => completed(file, staged, ops)
+            case Read.Key(staged) => completed(file, staged, ops, parsed)
             case Read.Refused(_)  => destroy(next, ops).flatMap(_ => Left(refused))
             case Read.Unjudged(e) => Left(e)
         case Read.Unjudged(error) => Left(error)
@@ -669,11 +687,12 @@ object KesFiles:
       file: Path,
       stage: => Read,
       main: Sum6KesSigning.SigningKey,
-      ops: FileOps
+      ops: FileOps,
+      parsed: Path => Either[ForgeError, Sum6KesSigning.SigningKey]
   ): Either[ForgeError, Sum6KesSigning.SigningKey] =
     stage match
       case Read.Key(staged) if same(main, staged) && main.period <= staged.period =>
-        completed(file, staged, ops)
+        completed(file, staged, ops, parsed)
       case Read.Key(staged) =>
         KeyFiles.erasedUnless(staged, destroy(nextOf(file), ops).map(_ => main))(_ eq staged)
       case Read.Refused(_)  => destroy(nextOf(file), ops).map(_ => main)
@@ -685,11 +704,12 @@ object KesFiles:
   private def completed(
       file: Path,
       staged: Sum6KesSigning.SigningKey,
-      ops: FileOps
+      ops: FileOps,
+      parsed: Path => Either[ForgeError, Sum6KesSigning.SigningKey]
   ): Either[ForgeError, Sum6KesSigning.SigningKey] =
     KeyFiles.erasedUnless(
       staged,
-      validateStage(file, staged, ops).flatMap(_ => finish(file, ops)).map(_ => staged)
+      validateStage(file, staged, ops).flatMap(_ => finish(file, ops, parsed)).map(_ => staged)
     )(_ eq staged)
 
   /** How the read of a key file or its stage ended, for the recovery: a stage is destroyed, and a
