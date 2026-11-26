@@ -95,11 +95,19 @@ object ConwayPlutusPurpose:
   private[conway] def asIx(
       tag: Int,
       index: Unsigned[Unsigned.Width.W32]
-  ): Option[ConwayPlutusPurpose[AsIx]] = tag match
-    case 0 => Some(ConwaySpending(AsIx(index)))
-    case 1 => Some(ConwayMinting(AsIx(index)))
-    case 2 => Some(ConwayCertifying(AsIx(index)))
-    case 3 => Some(ConwayWithdrawing(AsIx(index)))
-    case 4 => Some(ConwayVoting(AsIx(index)))
-    case 5 => Some(ConwayProposing(AsIx(index)))
+  ): Option[ConwayPlutusPurpose[AsIx]] = ofTag(tag).map(_(index))
+
+  /** The purpose that a redeemer's key's tag names, of its index, when the tag is one of Conway's
+    * (0 to 5, `decCBORGroup` of `ConwayPlutusPurpose AsIx`, `Conway/Scripts.hs:280-296`,
+    * cardano-ledger f649f975): a decoder reads the index only after the tag.
+    */
+  private[conway] def ofTag(
+      tag: Int
+  ): Option[Unsigned[Unsigned.Width.W32] => ConwayPlutusPurpose[AsIx]] = tag match
+    case 0 => Some(i => ConwaySpending(AsIx(i)))
+    case 1 => Some(i => ConwayMinting(AsIx(i)))
+    case 2 => Some(i => ConwayCertifying(AsIx(i)))
+    case 3 => Some(i => ConwayWithdrawing(AsIx(i)))
+    case 4 => Some(i => ConwayVoting(AsIx(i)))
+    case 5 => Some(i => ConwayProposing(AsIx(i)))
     case _ => None

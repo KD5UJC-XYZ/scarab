@@ -49302,6 +49302,166 @@
    ],
    "note": "the whole block's foldMap totExUnits compared point-wise with maxBlockExUnits, as validateExUnits; the units past the limit or none in place of a predicate failure, which the flat BBODY raises as BlockExUnitsTooBig; the era chosen by the PreConway evidence (the eras before Conway, which the flat BBODY keeps): from Alonzo, where the reference's BBODY instances call validateExUnits (Alonzo/Rules/Bbody.hs:212), and none in Shelley, Allegra and Mary, whose BBODY has no such check; the flat body's preparation reads it too (EraBlock.Body, #85)",
    "digest": "452a612c2ef1a0a9"
+  },
+  "def ledger.era.conway.ConwayTxOut.read": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+     "symbol": "decodeBabbageTxOut",
+     "lines": [
+      542,
+      579
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "an output of a Conway body read from its item in one pass, with the forms, keys and refusals and their order of the flat output decoder at Conway (TxOut.decode of PairDatumHashOrMap): the map form unless its length is written in eight bytes, the list of two or three; its inline datum read as data once (makeBinaryData, the flat decoder's Data.readBytes with its error) and its reference script once by Conway's script reader, whose refusals at Conway are the flat script reader's; the flat output read from the same item is kept beside it, and the body's second phase holds the output's stored form to it (ConwayTxOut.checked, StoredOutputDiffers) as the projection did. Held to the reference's verdicts and refusals on every Conway case of the recorded reference corpora (ConwayEraReferenceSuite: era-forms, map-heads, conway-decoding and the other output forms and keys), and to the two passes on every recorded transaction, on mutants of them and on written cases (ConwayOnePassSuite)",
+   "digest": "06469d6c1a5f5151"
+  },
+  "def ledger.era.conway.ConwayTxBody.decode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs",
+     "symbol": "DecCBOR (ConwayTxBodyRaw l ConwayEra)",
+     "lines": [
+      180,
+      265
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "a body read in one pass at decoder version 9: the bytes parsed once (again with the detached records a walk finds, where the plain parse is refused), the flat decoder's keys, leaf readers and refusals in its order, each output by ConwayTxOut.read, then the era's values in the projection's order (outputs held to their stored form, certificates, withdrawals, proposals, network). Held to the reference's verdicts, refusals, ids and relayed bytes on every Conway case of the recorded reference corpora (ConwayEraReferenceSuite), and to the two passes it replaced on every recorded transaction, on mutants and on written cases (ConwayOnePassSuite); the first refusal is the two passes', which reads the keys in the flat decoder's order where the reference reads them as written (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644)",
+   "digest": "0bb72b852857d871"
+  },
+  "def ledger.era.conway.ConwayTxWits.decode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "symbol": "DecCBOR (Annotator (AlonzoTxWitsRaw era))",
+     "lines": [
+      603,
+      703
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "a witness set read in one pass at version 9, below 12: the flat decoder's keys and refusals in its order (0, 1, 2, 3, 6, 7, 4, 5), each native script by Conway's reader with each level's bytes, each datum and redeemer's data decoded once from its item, each redeemer's purpose typed as it is read, the last of a purpose kept. Held to the reference's verdicts, refusals, ids and relayed bytes on every Conway case of the recorded reference corpora (ConwayEraReferenceSuite), and to the two passes it replaced on every recorded transaction, on mutants and on written cases (ConwayOnePassSuite); the first refusal is the two passes', which reads the keys in the flat decoder's order where the reference reads them as written (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644)",
+   "digest": "0a4a64bca00c073c"
+  },
+  "def ledger.era.conway.ConwayTxAuxData.decode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "DecCBOR (Annotator (AlonzoTxAuxDataRaw era))",
+     "lines": [
+      211,
+      312
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "auxiliary data read in one pass at version 9 in the form its token chooses (decodeTxAuxDataByTokenType): a metadata map, the RecD record, or the map tagged 259, its keys read and refused when repeated before its values are read as written; key 5 is refused as an unknown key where the reference refuses PlutusV4 by guardPlutus, a difference of the diagnostic only. Held to the reference's verdicts, refusals, ids and relayed bytes on every Conway case of the recorded reference corpora (ConwayEraReferenceSuite), and to the two passes it replaced on every recorded transaction, on mutants and on written cases (ConwayOnePassSuite); the first refusal is the two passes', which reads the keys in the flat decoder's order where the reference reads them as written (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644)",
+   "digest": "ceaa91bf4076c2b9"
+  },
+  "def ledger.era.conway.ConwayTx.decode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs",
+     "symbol": "DecCBOR (Annotator (AlonzoBlockBody era))",
+     "lines": [
+      212,
+      256
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "a transaction of a block body (alonzoSegwitTx of its segments), its parts each read in one pass, the body, the witness set and the auxiliary data in that order, the flag the block's; the node's pool reads a submitted transaction's parts with it too. Held to the reference's verdicts, refusals, ids and relayed bytes on every Conway case of the recorded reference corpora (ConwayEraReferenceSuite), and to the two passes it replaced on every recorded transaction, on mutants and on written cases (ConwayOnePassSuite); the first refusal is the two passes', which reads the keys in the flat decoder's order where the reference reads them as written (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644)",
+   "digest": "51fd7e5f542dbdba"
+  },
+  "def ledger.era.conway.ConwayTx.fromEnvelope": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "symbol": "DecCBOR (Annotator (AlonzoTx l era))",
+     "lines": [
+      526,
+      554
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "a whole transaction as submitted (decodeRecordNamed \"AlonzoTx\"), split as the flat decoder splits it, a boolean third item the flag; its parts read from its tree when its bytes hold no 9f ff, and otherwise split into bytes and each read with the records its own walk finds. Held to the reference's verdicts, refusals, ids and relayed bytes on every Conway case of the recorded reference corpora (ConwayEraReferenceSuite), and to the two passes it replaced on every recorded transaction, on mutants and on written cases (ConwayOnePassSuite); the first refusal is the two passes', which reads the keys in the flat decoder's order where the reference reads them as written (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644)",
+   "digest": "170226aecfd4c300"
+  },
+  "def ledger.era.conway.ConwayPlutusPurpose.ofTag": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs",
+     "symbol": "DecCBORGroup (ConwayPlutusPurpose f era)",
+     "lines": [
+      280,
+      296
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite"
+   ],
+   "note": "the purpose a redeemer key's tag names, a function of its index, so that the tag is checked before the index is read, as decCBORGroup's decodeWord8 case does; a tag past 5 none, which the witness reader refuses as UnknownTag",
+   "digest": "3cfce91f2397f461"
   }
  },
  "glue": [
@@ -50799,6 +50959,24 @@
     "def ledger.LeiosBlock#firstUnheld",
     "def ledger.LeiosBlock.Defect#error",
     "enum ledger.LeiosBlock.Defect"
+   ]
+  },
+  {
+   "reason": "Conway's one-pass decoders (#85): the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses), the output the first phase read with the flat output beside it and its second phase (ConwayTxOut.Read, ConwayTxOut.checked); the two passes they replaced, kept for the differential and the bench until the flat decoder goes at stage 6a (decodeByFlat, fromEnvelopeByFlat); and three readers of the flat decoder made visible to them, unchanged (TxBody.known, TxBody.networkId, Witnesses.exUnits). Scala containers and helpers of the decoders, with no counterpart of their own",
+   "definitions": [
+    "class ledger.era.conway.ConwayTxOut.Read",
+    "def ledger.TxBody.known",
+    "def ledger.TxBody.networkId",
+    "def ledger.Witnesses.exUnits",
+    "def ledger.era.conway.ConwayTx.decodeByFlat",
+    "def ledger.era.conway.ConwayTx.fromEnvelopeByFlat",
+    "def ledger.era.conway.ConwayTxAuxData.decodeByFlat",
+    "def ledger.era.conway.ConwayTxAuxData.fromItem",
+    "def ledger.era.conway.ConwayTxBody.decodeByFlat",
+    "def ledger.era.conway.ConwayTxBody.fromItem",
+    "def ledger.era.conway.ConwayTxOut.checked",
+    "def ledger.era.conway.ConwayTxWits.decodeByFlat",
+    "def ledger.era.conway.ConwayTxWits.fromItem"
    ]
   }
  ]

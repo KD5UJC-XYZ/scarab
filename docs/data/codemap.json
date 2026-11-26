@@ -810,7 +810,8 @@
         "EraTxSuite",
         "EraPParamsSuite",
         "ConwayPParamsStateSuite",
-        "ConwayBbodySuite"
+        "ConwayBbodySuite",
+        "ConwayOnePassSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"
@@ -1591,6 +1592,16 @@
       "responsibility": "Hand-run benchmarks for the `ledger.era.dijkstra` package (its package, for its package-private access): an endorser block's closure and the recorded ranking blocks read into Dijkstra's types in one pass",
       "entryPoints": [
         "DijkstraDecodeBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "ledger/era/conway",
+      "responsibility": "Hand-run benchmarks for the `ledger.era.conway` package (its package, for its package-private access): Conway's recorded transactions read into the era's types in one pass against two",
+      "entryPoints": [
+        "ConwayDecodeBench"
       ],
       "suites": [],
       "docs": []

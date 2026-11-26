@@ -429,7 +429,7 @@ object TxBody:
     * `eras/allegra/impl/src/Cardano/Ledger/Allegra/TxBody.hs`, shared by Mary, and in the Alonzo,
     * Babbage and Conway `TxBody.hs`, cardano-ledger f649f975).
     */
-  private def known(era: Era): Set[Int] =
+  private[ledger] def known(era: Era): Set[Int] =
     val shelley = (0 to 7).toSet
     val allegra = shelley + 8 + 9
     val alonzo = allegra ++ Set(11, 13, 14, 15)
@@ -458,7 +458,7 @@ object TxBody:
     * `word8ToNetwork` takes as `Testnet` (0) or `Mainnet` (1) and fails otherwise
     * (`libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:886-907`).
     */
-  private def networkId(n: Node): Either[LedgerDecodeError, BigInt] =
+  private[ledger] def networkId(n: Node): Either[LedgerDecodeError, BigInt] =
     Unsigned
       .read[Unsigned.Width.W8](n, DecodeField.NetworkId)
       .map(_.value)
@@ -925,7 +925,10 @@ object Witnesses:
     * (`Alonzo/TxWits.hs:550-597`, f649f975), the same reader as a parameter's
     * ([[ConwayParam.exUnits]]).
     */
-  private def exUnits(n: Node, version: DecoderVersion): Either[LedgerDecodeError, ExUnits] =
+  private[ledger] def exUnits(
+      n: Node,
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, ExUnits] =
     ConwayParam.exUnits(n, DecodeField.ExUnits, ConwayParam.Records.at(version))
 
   /** `[* [tag, index, data, ex_units]]`, or (Conway) `{[tag, index] => [data, ex_units]}`. The
