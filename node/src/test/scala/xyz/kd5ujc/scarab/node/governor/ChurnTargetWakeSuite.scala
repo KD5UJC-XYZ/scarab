@@ -30,7 +30,12 @@ class ChurnTargetWakeSuite extends FailsOnUncaught:
     TestControl.executeEmbed(Supervisor[IO](await = false).use { supervisor =>
       for
         state <- Ref.of[IO, GovernorState[Int]](
-          GovernorState.initial[Int](1L, LocalRoots.empty, Targets.zero, Sensitivity.initial(false))
+          GovernorState.initial[Int](
+            1L,
+            LocalRoots.empty,
+            Targets.zero,
+            Sensitivity.initial(BootstrapPeers.DontUse)
+          )
         )
         initial <- state.get
         proposals <- ChurnTargets
@@ -123,7 +128,12 @@ class ChurnTargetWakeSuite extends FailsOnUncaught:
     for
       state <- ChurnTargets.create[IO](
         GovernorState
-          .initial[Int](1L, LocalRoots.empty, Targets.zero, Sensitivity.initial(false))
+          .initial[Int](
+            1L,
+            LocalRoots.empty,
+            Targets.zero,
+            Sensitivity.initial(BootstrapPeers.DontUse)
+          )
           .view(Duration.Zero)
           .counters,
         Churn.Proposal.from(Targets.zero)

@@ -18,7 +18,12 @@ class InboundMaturitySuite extends FunSuite:
 
   private def state(honest: Int): GovernorState[Int] =
     GovernorState
-      .initial[Int](7L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
+      .initial[Int](
+        7L,
+        LocalRoots.empty,
+        Targets.relay,
+        Sensitivity.initial(BootstrapPeers.DontUse)
+      )
       .copy(
         targets = Targets.relay,
         peers = SortedMap.from((1 to honest).map(p => p -> PeerRecord.cold(Origin.Other))),

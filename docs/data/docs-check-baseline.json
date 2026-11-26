@@ -1160,12 +1160,6 @@
   {
    "kind": "missing-symbol",
    "path": "docs/design/peer-selection/before-g1-and-module-map.md",
-   "key": "Decide.bigLedger",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/design/peer-selection/before-g1-and-module-map.md",
    "key": "Decide.rootPeers",
    "count": 1
   },
@@ -1197,12 +1191,6 @@
    "kind": "missing-path",
    "path": "docs/design/peer-selection/g1-3-as-built.md",
    "key": "node/Topology.scala",
-   "count": 1
-  },
-  {
-   "kind": "missing-symbol",
-   "path": "docs/design/peer-selection/g1-3-as-built.md",
-   "key": "PublicRootPeers.toSet",
    "count": 1
   },
   {

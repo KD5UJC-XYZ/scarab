@@ -28,7 +28,7 @@ class ActivationTrustSuite extends FailsOnUncaught:
       val roots = LocalRoots.fromGroups(List(RootGroupSpec(1, 1, List(1 -> config))))
       val targets = Targets.validated(0, 1, 1, 1, 0, 0, 0).fold(e => fail(e.message), identity)
       val initial = GovernorState
-        .initial[Int](1L, roots, targets, Sensitivity.initial(false))
+        .initial[Int](1L, roots, targets, Sensitivity.initial(BootstrapPeers.DontUse))
         .copy(
           targets = targets,
           localRoots = roots,
@@ -84,8 +84,7 @@ class ActivationTrustSuite extends FailsOnUncaught:
                 events,
                 supervisor,
                 onEventApplied = Some {
-                  case Event.RootsConfigured(_, _, _, Some(generation))
-                      if generation == BigInt(1) =>
+                  case Event.RootsConfigured(_, _, Some(generation)) if generation == BigInt(1) =>
                     reloaded.complete(()).void
                   case _ => IO.unit
                 }
@@ -101,8 +100,7 @@ class ActivationTrustSuite extends FailsOnUncaught:
                 LocalRoots.fromGroups(
                   List(RootGroupSpec(1, 1, List(1 -> config.copy(trustable = false))))
                 ),
-                false,
-                Set.empty,
+                BootstrapPeers.DontUse,
                 Some(BigInt(1))
               )
             )

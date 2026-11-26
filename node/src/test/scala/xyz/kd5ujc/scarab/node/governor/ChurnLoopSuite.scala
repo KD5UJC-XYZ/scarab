@@ -19,7 +19,12 @@ import xyz.kd5ujc.scarab.node.{ChurnLoop, ChurnTargets, ChurnWorld}
 class ChurnLoopSuite extends CatsEffectSuite:
 
   private val empty: GovernorState.Counters = GovernorState
-    .initial[Int](1L, LocalRoots.empty[Int], Targets.zero, Sensitivity.initial(false))
+    .initial[Int](
+      1L,
+      LocalRoots.empty[Int],
+      Targets.zero,
+      Sensitivity.initial(BootstrapPeers.DontUse)
+    )
     .view(Duration.Zero)
     .counters
 

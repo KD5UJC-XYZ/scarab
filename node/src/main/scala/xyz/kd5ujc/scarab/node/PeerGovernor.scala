@@ -781,33 +781,33 @@ object PeerGovernor:
           case None => exempt(actions.exempt(peer))
           case Some(source) =>
             source.monitorPeerConnection(peer).flatMap(_.traverse_(handle => exempt(handle.exempt)))
-      case Job.RequestRoots(max, bootstrap, generation) =>
+      case Job.RequestRoots(max, bootstrap) =>
         // `jobReqPublicRootPeers`'s handler (`RootPeers.hs` 125-155 at c45735a5): a failed
         // request, one back-off step further, with its exception
-        def handler(cause: Throwable): Outcome[A] = Outcome.RootsFailed(generation, Some(cause))
+        def handler(cause: Throwable): Outcome[A] = Outcome.RootsFailed(Some(cause))
         complete(
           JobPool.Job.pure(
             roots
               .request(max, bootstrap)
               .map(
-                _.fold[Outcome[A]](Outcome.RootsFailed(generation))((found, ttl) =>
-                  Outcome.RootsFound(found, ttl, generation)
+                _.fold[Outcome[A]](Outcome.RootsFailed())((found, ttl) =>
+                  Outcome.RootsFound(found, ttl)
                 )
               ),
             handler
           )
         )
-      case Job.RequestBigLedger(max, generation) =>
+      case Job.RequestBigLedger(max) =>
         // `jobReqBigLedgerPeers`'s handler (`BigLedgerPeers.hs` 134-162 at c45735a5): the same
         // for big ledger peers
-        def handler(cause: Throwable): Outcome[A] = Outcome.BigLedgerFailed(generation, Some(cause))
+        def handler(cause: Throwable): Outcome[A] = Outcome.BigLedgerFailed(Some(cause))
         complete(
           JobPool.Job.pure(
             roots
               .requestBigLedger(max)
               .map(
-                _.fold[Outcome[A]](Outcome.BigLedgerFailed(generation))((found, ttl) =>
-                  Outcome.BigLedgerFound(found, ttl, generation)
+                _.fold[Outcome[A]](Outcome.BigLedgerFailed())((found, ttl) =>
+                  Outcome.BigLedgerFound(found, ttl)
                 )
               ),
             handler
@@ -875,8 +875,8 @@ object PeerGovernor:
         case Outcome.Connected(_, _, _) | Outcome.ConnectFailed(_, _, _) | Outcome.Activated(_) |
             Outcome.ActivateFailed(_, _) | Outcome.ActivateFailedLingering(_, _) |
             Outcome.Deactivated(_) | Outcome.DeactivateFailed(_) | Outcome.Closed(_) |
-            Outcome.CloseTimedOut(_) | Outcome.RootsFound(_, _, _) | Outcome.RootsFailed(_, _) |
-            Outcome.BigLedgerFound(_, _, _) | Outcome.BigLedgerFailed(_, _) =>
+            Outcome.CloseTimedOut(_) | Outcome.RootsFound(_, _) | Outcome.RootsFailed(_) |
+            Outcome.BigLedgerFound(_, _) | Outcome.BigLedgerFailed(_) =>
           F.unit)
 
     def apply(event: Event[A]): F[Unit] = event match

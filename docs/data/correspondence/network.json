@@ -2227,7 +2227,7 @@
    ],
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6880015076",
    "note": "the reference's guards, state, job and trace; before the retry time it skips with the retry time as its wake-up, where the reference's otherwise is GuardedSkip Nothing (BigLedgerPeers.hs 93), so after a request that leaves it below the known big ledger target the reference asks again only when an unrelated event wakes the governor; its public-root request names its retry time (GuardedSkip (Just publicRootRetryTime), RootPeers.hs 79-82); unchanged at 4646039f (11.2.1) and 2f1c154f (the Leios testnet build). An Improvement under REF-2 (a), shown by reading the pinned source, with I1 to I4 holding: the stored retry time is added to the times the governor wakes at, and the request is unchanged; BigLedgerSuite checks the wake-up",
-   "digest": "0872577c66b8558f"
+   "digest": "f98ba40101eba8c7"
   },
   "def network.selection.BigLedgerGuards#close": {
    "upstream": [
@@ -2290,35 +2290,6 @@
    ],
    "note": "the handler the client is given (k0), as two parts: prepare reads ahead of a reply's turn what changes nothing its turn relies on, with what to take where that reading has not ended by the reply's turn or failed, and handle takes the replies in order with it; with nothing read ahead (Handling.inOrder) it is k0 itself. LeiosVotesSuite shows that a vote checked ahead and committed in its turn counts as adding it in its turn counts it",
    "digest": "9d3b0130e9850772"
-  },
-  "def network.selection.Origin#configured": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs",
-     "symbol": "publicRootPeers'",
-     "lines": [
-      276,
-      282
-     ]
-    },
-    {
-     "repository": "IntersectMBO/ouroboros-network",
-     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
-     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSelection/Governor/BigLedgerPeers.hs",
-     "symbol": "publicRootPeers'",
-     "lines": [
-      164,
-      225
-     ]
-    }
-   ],
-   "class": "Gap",
-   "structure": "differs",
-   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7164317688",
-   "note": "the reference keeps its roots in sets (localRootPeers, and publicRootPeers with its ledger and big ledger peers) where Scarab gives each known peer one Origin; a reconfiguration of the local roots takes only the new local roots out of publicRootPeers (localRoots, Monitor.hs 276-282) and otherwise leaves its ledger and big ledger peers, which only their own requests add (BigLedgerPeers.hs 164-225) and forgetting removes. This predicate names the origins a reload may take away (local, public, bootstrap); a ledger or big ledger peer the reload makes an effective local root becomes a local root (configureLocalRoots). BigLedgerSuite, PeerSelectionSuite and PeerRootReloadSuite check Scarab alone, so the entry is a Gap until a differential test compares a reload with the reference (issue 810)",
-   "digest": "aa50e1a3980faa56"
   },
   "trait network.PeerSharingController": {
    "upstream": [
@@ -2443,6 +2414,24 @@
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1439#issuecomment-7161652843",
    "note": "the registration of a fresh controller for the client, which the warm connection holds for the life of the client (NodeToNode.warm)",
    "digest": "55ccc820c14653f1"
+  },
+  "enum network.selection.BootstrapPeers": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "cardano-diffusion/api/lib/Cardano/Network/PeerSelection/Bootstrap.hs",
+     "symbol": "UseBootstrapPeers",
+     "lines": [
+      20,
+      22
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "DontUseBootstrapPeers and UseBootstrapPeers; Use holds the node's identity of the configured relay list (BootstrapSources, one per list, in its order) where the reference holds the list, so the two values compare equal exactly when the reference's do (monitorBootstrapPeersFlag, cardano-diffusion Governor/Monitor.hs 429; issue 810)",
+   "digest": "4fefaa688dfd5a49"
   },
   "enum network.selection.ChainSyncJumping.Event": {
    "upstream": [
@@ -2926,6 +2915,15 @@
    "reason": "the companion of PeerSharingController, holding its result type and constructor",
    "definitions": [
     "object network.PeerSharingController"
+   ]
+  },
+  {
+   "reason": "the node's identity of a configured list of bootstrap relays, which BootstrapPeers.Use holds in place of the reference's [RelayAccessPoint], and the flag the decisions read from the value (issue 810)",
+   "definitions": [
+    "type network.selection.BootstrapSources",
+    "object network.selection.BootstrapSources",
+    "def network.selection.BootstrapSources.apply",
+    "def network.selection.Sensitivity#useBootstrapPeers"
    ]
   },
   {

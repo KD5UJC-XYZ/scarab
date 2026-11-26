@@ -64,7 +64,7 @@ private[selection] final class BigLedgerGuards[A](
         Go(
           Decision(
             st.copy(bigLedgerInFlight = true, rng = next),
-            List(Job.RequestBigLedger(missing, st.rootsGeneration)),
+            List(Job.RequestBigLedger(missing)),
             List(Trace.BigLedgerRequest(st.targets.knownBig, big.known.size))
           )
         )

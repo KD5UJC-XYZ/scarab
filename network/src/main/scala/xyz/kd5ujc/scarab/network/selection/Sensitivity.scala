@@ -15,6 +15,24 @@ enum LedgerStateJudgement:
 enum ConsensusMode:
   case PraosMode, GenesisMode
 
+/** The identity of one configuration of bootstrap peers, which the node gives: the same for the
+  * same configured relays in the same order, another for any other. The reference compares the
+  * relay list of its `UseBootstrapPeers` whole ([[BootstrapPeers]]).
+  */
+opaque type BootstrapSources = BigInt
+
+object BootstrapSources:
+  def apply(id: BigInt): BootstrapSources = id
+
+/** The reference's `UseBootstrapPeers` (ouroboros-network c45735a5,
+  * `cardano-diffusion/api/lib/Cardano/Network/PeerSelection/Bootstrap.hs` 20-22): no bootstrap
+  * peers, or the configured ones, which `monitorBootstrapPeersFlag` compares whole with the value
+  * it applied last.
+  */
+enum BootstrapPeers:
+  case DontUse
+  case Use(sources: BootstrapSources)
+
 /** The Cardano extension of the governor's state (`ExtraState`,
   * `Cardano/Network/PeerSelection/Governor/PeerSelectionState.hs` 33-61): the judgement, whether
   * bootstrap peers are in use, whether the governor has reached the clean state of the sensitive
@@ -31,7 +49,7 @@ enum ConsensusMode:
   */
 final case class Sensitivity(
     judgement: LedgerStateJudgement,
-    useBootstrapPeers: Boolean,
+    bootstrapPeers: BootstrapPeers,
     hasOnlyBootstrapPeers: Boolean,
     timeout: Option[Time],
     consensusMode: ConsensusMode = ConsensusMode.PraosMode,
@@ -39,6 +57,11 @@ final case class Sensitivity(
     deadlineTargets: Targets = Targets.relay,
     minBigLedgerPeersForTrustedState: Int = 5
 ):
+  /** Whether bootstrap peers are configured (`bootstrapPeersFlag`). */
+  def useBootstrapPeers: Boolean = bootstrapPeers match
+    case BootstrapPeers.DontUse => false
+    case BootstrapPeers.Use(_)  => true
+
   /** The sensitive state. */
   def sensitive: Boolean =
     useBootstrapPeers && judgement == LedgerStateJudgement.TooOld
@@ -56,7 +79,7 @@ object Sensitivity:
     * change. This is the state after the flag was read.
     */
   def initial(
-      useBootstrapPeers: Boolean,
+      bootstrapPeers: BootstrapPeers,
       consensusMode: ConsensusMode = ConsensusMode.PraosMode,
       syncTargets: Targets = Targets.sync,
       deadlineTargets: Targets = Targets.relay,
@@ -64,7 +87,7 @@ object Sensitivity:
   ): Sensitivity =
     Sensitivity(
       LedgerStateJudgement.YoungEnough,
-      useBootstrapPeers,
+      bootstrapPeers,
       false,
       None,
       consensusMode,

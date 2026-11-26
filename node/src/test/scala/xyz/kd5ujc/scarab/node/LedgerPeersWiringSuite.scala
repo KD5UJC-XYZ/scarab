@@ -599,6 +599,68 @@ class LedgerPeersWiringSuite extends FailsOnUncaught:
     )
   }
 
+  /** Issue 810: the reference reads the configured public roots only once the ledger has answered
+    * that it has no peers to give (`requestPublicRootPeersImpl`, ouroboros-network c45735a5,
+    * `ouroboros-network/lib/Ouroboros/Network/PeerSelection/PeerSelectionActions.hs` 155-184, and
+    * `RootPeersDNS/PublicRootPeers.hs` 82), so a reload while the ledger's worker is asked is seen
+    * by both requests: an answer completes into the governor's state whatever its roots generation.
+    */
+  test("the dynamic provider reads the public roots after the ledger's worker falls back") {
+    val removed: Addr = SocketAddress[Host](ip"192.0.2.51", port"3001")
+    val named: Addr = SocketAddress[Host](ip"192.0.2.52", port"3001")
+    def blocked(asked: Deferred[IO, Unit], answer: Deferred[IO, Unit]) =
+      new LedgerPeersSource[IO]:
+        def latestSlot = asked.complete(()) *> answer.get.as(WithOrigin.At(BigInt(10)))
+        def pools = IO.pure(Right(two))
+    def runtimeOf(public: Set[Addr], w: LedgerPeersWorker[IO], canceled: Deferred[IO, Unit]) =
+      PeerNetwork.Runtime(
+        generation = BigInt(0),
+        roots = PeerNetwork.Roots(Nil, public, None, UseLedgerPeers.Disabled),
+        resolvedLocalRoots = Nil,
+        localDnsCache = LocalRootDnsCache.empty[NodeRootProvider.LocalDnsKey, Addr],
+        worker = w,
+        association = AssociationMode.Unrestricted,
+        churn = ChurnLoop.Config(Targets.relay, Regime.kind(_, false)),
+        snapshotCheckCanceled = canceled
+      )
+    given Tell[IO, LedgerPeersTrace] = new Tell[IO, LedgerPeersTrace]:
+      def functor = cats.Functor[IO]
+      def tell(l: LedgerPeersTrace) = IO.unit
+    val dns = new PeerDns[IO]:
+      def addresses(name: DnsName) =
+        IO.raiseError(new AssertionError("literal roots must not resolve DNS"))
+      def services(name: DnsName) = IO.raiseError(new AssertionError("no SRV roots configured"))
+    def answered[R](ask: RootProvider[IO, Addr] => IO[R]): IO[R] =
+      for
+        asked <- Deferred[IO, Unit]
+        answer <- Deferred[IO, Unit]
+        w <- LedgerPeersWorker.create[IO](
+          UseLedgerPeers.Disabled,
+          blocked(asked, answer),
+          IO.pure(Versioned(BigInt(0), None)),
+          Rng(5L)
+        )
+        canceled <- Deferred[IO, Unit]
+        runtime <- Ref.of[IO, PeerNetwork.Runtime[IO]](runtimeOf(Set(removed), w, canceled))
+        rng <- Ref.of[IO, Rng](Rng(1L))
+        result <- ask(NodeRootProvider.dynamic(runtime, dns, rng)).start.flatMap { fiber =>
+          asked.get *>
+            runtime.update(r =>
+              runtimeOf(Set(named), w, canceled).copy(generation = r.generation + 1)
+            ) *> answer.complete(()) *> fiber.joinWithNever
+        }
+      yield result
+    for
+      ordinary <- answered(_.request(5, false))
+      big <- answered(_.requestBigLedger(5))
+    yield
+      assertEquals(ordinary.map(_._1), Some(PublicRoots(Set(named), Set.empty[Addr])))
+      assertEquals(
+        big.map(_._1),
+        Some(BigLedgerRoots.Fallback(PublicRoots(Set(named), Set.empty[Addr])))
+      )
+  }
+
   /** A dynamic provider over a topology of the given public roots, a worker that uses the ledger as
     * `use` says, and a resolver that answers every name with `answer` at `ttl`.
     */

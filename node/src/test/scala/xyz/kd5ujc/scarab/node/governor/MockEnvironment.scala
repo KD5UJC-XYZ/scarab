@@ -182,7 +182,10 @@ object MockEnvironment:
         env.seed,
         roots,
         env.targets.first,
-        Sensitivity.initial(env.useBootstrap)
+        Sensitivity.initial(
+          if env.useBootstrap then BootstrapPeers.Use(BootstrapSources(BigInt(0)))
+          else BootstrapPeers.DontUse
+        )
       )
       stateRef <- Ref.of[IO, GovernorState[Peer]](initial)
       result <- Supervisor[IO](await = false).use { supervisor =>

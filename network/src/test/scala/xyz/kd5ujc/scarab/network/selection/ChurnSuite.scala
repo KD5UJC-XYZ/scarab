@@ -207,7 +207,12 @@ class ChurnSuite extends ScalaCheckSuite:
   ) {
     val c = Targets.relay
     val empty = GovernorState
-      .initial[Int](1L, LocalRoots.empty[Int], Targets.zero, Sensitivity.initial(false))
+      .initial[Int](
+        1L,
+        LocalRoots.empty[Int],
+        Targets.zero,
+        Sensitivity.initial(BootstrapPeers.DontUse)
+      )
       .view(Duration.Zero)
       .counters
     def counters(known: Int, root: Int) = empty.copy(known = known, root = root)

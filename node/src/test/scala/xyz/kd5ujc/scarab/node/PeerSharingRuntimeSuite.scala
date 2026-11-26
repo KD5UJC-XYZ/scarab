@@ -23,7 +23,12 @@ class PeerSharingRuntimeSuite extends FailsOnUncaught:
       .cold(Origin.Other)
       .copy(advertise = Some(advertise), everConnected = ever, failCount = failures)
   private def state = GovernorState
-    .initial[PeerNetwork.Addr](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
+    .initial[PeerNetwork.Addr](
+      1L,
+      LocalRoots.empty,
+      Targets.relay,
+      Sensitivity.initial(BootstrapPeers.DontUse)
+    )
 
   test("published answers are exactly advertised successful zero-failure peers, bounded10") {
     for

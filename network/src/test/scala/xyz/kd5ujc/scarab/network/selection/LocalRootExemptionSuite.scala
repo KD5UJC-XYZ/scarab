@@ -44,7 +44,7 @@ class LocalRootExemptionSuite extends FailsOnUncaught:
 
   private def initial(peers: (Int, Origin)*): S =
     val st = GovernorState
-      .initial[Int](3L, LocalRoots.empty[Int], targets, Sensitivity.initial(false))
+      .initial[Int](3L, LocalRoots.empty[Int], targets, Sensitivity.initial(BootstrapPeers.DontUse))
       .copy(targets = targets)
     st.copy(peers = st.peers ++ peers.map((p, origin) => p -> PeerRecord.cold(origin)))
 
@@ -113,12 +113,12 @@ class LocalRootExemptionSuite extends FailsOnUncaught:
           .modify(m => (m - p, m.get(p)))
           .flatMap(_.traverse_((c, release) => c.releaseOutbound *> release))
           .as(Some(Outcome.Closed(p)))
-      case Job.RequestRoots(_, _, generation) => IO.pure(Some(Outcome.RootsFailed(generation)))
-      case Job.RequestBigLedger(_, generation) =>
+      case Job.RequestRoots(_, _) => IO.pure(Some(Outcome.RootsFailed()))
+      case Job.RequestBigLedger(_) =>
         bigLedger.get.map(found =>
           Some(
-            if found.isEmpty then Outcome.BigLedgerFailed(generation)
-            else Outcome.BigLedgerFound(BigLedgerRoots.Ledger(found), 1.hour, generation)
+            if found.isEmpty then Outcome.BigLedgerFailed()
+            else Outcome.BigLedgerFound(BigLedgerRoots.Ledger(found), 1.hour)
           )
         )
       case Job.Share(id, _, peers) =>
@@ -188,7 +188,7 @@ class LocalRootExemptionSuite extends FailsOnUncaught:
     )
 
   private def reload(members: Int*): Event[Int] =
-    Event.RootsConfigured(roots(members*), false, Set.empty, Some(BigInt(1)))
+    Event.RootsConfigured(roots(members*), BootstrapPeers.DontUse, Some(BigInt(1)))
 
   /** Two big ledger peers dialled and counted, then made the local roots of a reload, whose big
     * ledger replacements are dialled: the places held at the end, the peers refused, and the
@@ -204,7 +204,9 @@ class LocalRootExemptionSuite extends FailsOnUncaught:
       _ <- w.drive(None, Nil, Nil, _ => false)
       connected <- w.state.get
       _ <- IO(assertEquals(List(1, 2).map(connected.peers(_).status.established), List(true, true)))
-      // the reload makes both local roots; its big ledger request then finds two others
+      // the reload makes both local roots; the big ledger request, due again (a reload keeps
+      // its retry time, issue 810), then finds two others
+      _ <- w.state.update(_.copy(bigLedgerRetryAt = t0))
       _ <- w.setBigLedger(Set(3, 4))
       _ <- w.drive(Some(reload(1, 2)), Nil, Nil, _ => false)
       after <- w.state.get
@@ -252,7 +254,9 @@ class LocalRootExemptionSuite extends FailsOnUncaught:
           List(Job.Connect(p, DiffusionMode.InitiatorAndResponder, Provenance.Outbound))
         )
       )
-      // the reload: P, still connecting, becomes a local root; the big ledger request finds R
+      // the reload: P, still connecting, becomes a local root; the big ledger request, due
+      // again (a reload keeps its retry time, issue 810), finds R
+      _ <- w.state.update(_.copy(bigLedgerRetryAt = t0))
       _ <- w.setBigLedger(Set(r))
       closes <- w.drive(
         Some(reload(p)),

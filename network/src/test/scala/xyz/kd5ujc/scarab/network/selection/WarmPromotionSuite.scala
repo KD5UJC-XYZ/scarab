@@ -44,7 +44,8 @@ class WarmPromotionSuite extends FunSuite:
         else LocalRoots.empty[Int]
       val origin = if local then Origin.Local else if big then Origin.BigLedger else Origin.Other
       val ts = targets(big)
-      val initial = GovernorState.initial[Int](1L, roots, ts, Sensitivity.initial(false))
+      val initial =
+        GovernorState.initial[Int](1L, roots, ts, Sensitivity.initial(BootstrapPeers.DontUse))
       val st = initial.copy(
         targets = ts,
         localRoots = roots,
@@ -82,7 +83,8 @@ class WarmPromotionSuite extends FunSuite:
   test("completed churn demotion makes the old hot peer tepid before the next activation") {
     val ts = targets(false)
     val initial =
-      GovernorState.initial[Int](1L, LocalRoots.empty[Int], ts, Sensitivity.initial(false))
+      GovernorState
+        .initial[Int](1L, LocalRoots.empty[Int], ts, Sensitivity.initial(BootstrapPeers.DontUse))
     val st = initial.copy(
       targets = ts,
       peers = initial.peers
@@ -104,7 +106,8 @@ class WarmPromotionSuite extends FunSuite:
         List(RootGroupSpec(1, 1, List(1 -> config.copy(trustable = trustable))))
       )
       val ts = targets(false)
-      val initial = GovernorState.initial[Int](1L, roots, ts, Sensitivity.initial(false))
+      val initial =
+        GovernorState.initial[Int](1L, roots, ts, Sensitivity.initial(BootstrapPeers.DontUse))
       val state = initial.copy(
         targets = ts,
         localRoots = roots,

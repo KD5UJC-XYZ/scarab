@@ -343,7 +343,7 @@ Bugs of the linked packages, not reproduced:
     publishing them, so the new topology's IP roots wait for the next DNS answer, and a topology with no
     DNS names is not applied: read from the source, not observed.
   - **What Scarab does.** A reload publishes the configured IP roots and the kept DNS answers before it
-    starts new lookups (`PeerNetwork.retainedPublicRoots` and the reload in `PeerNetwork`).
+    starts new lookups (`reloadRoots` in `PeerNetwork`).
   - **Decision.** Not reproduced: fixed upstream by ouroboros-network pull request
     [#5455](https://github.com/IntersectMBO/ouroboros-network/pull/5455), the change D7 follows. Found
     after the decision and recorded in #956 under the rule above.

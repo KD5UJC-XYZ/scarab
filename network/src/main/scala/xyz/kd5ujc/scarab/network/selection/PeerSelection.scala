@@ -186,6 +186,35 @@ object PeerSelection:
       List(Trace.LocalRootsChanged(st.localRoots.size, wanted.size))
     )
 
+  /** `monitorBootstrapPeersFlag` (ouroboros-network c45735a5,
+    * `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 390-455): bootstrap
+    * peers configured otherwise than the value applied last, compared whole, forget the bootstrap
+    * peers that are neither established nor being connected, and set the judgement to
+    * `YoungEnough`, so that the judgement's monitor reads the real one as a change, with no clean
+    * state and no deadline. Nothing in Genesis mode, nor for the same value.
+    */
+  private def bootstrapFlag[A](
+      st: GovernorState[A],
+      bootstrapPeers: BootstrapPeers,
+      now: Time
+  ): Option[GovernorState[A]] =
+    val s = st.sensitivity
+    Option.when(
+      s.consensusMode != ConsensusMode.GenesisMode && bootstrapPeers != s.bootstrapPeers
+    ) {
+      val view = st.view(now)
+      val forgotten = view.bootstrap -- view.established -- view.connecting
+      st.copy(
+        peers = st.peers -- forgotten,
+        sensitivity = s.copy(
+          bootstrapPeers = bootstrapPeers,
+          judgement = LedgerStateJudgement.YoungEnough,
+          hasOnlyBootstrapPeers = false,
+          timeout = None
+        )
+      )
+    }
+
   private[selection] enum Guard[A]:
     case Go(decision: Decision[A])
     case Skip(wakeAt: Option[Time])
@@ -396,7 +425,7 @@ object PeerSelection:
           val (_, next) = st.rng.split
           go(
             st.copy(publicRootsInFlight = true, rng = next),
-            List(Job.RequestRoots(missing, st.sensitivity.sensitive, st.rootsGeneration)),
+            List(Job.RequestRoots(missing, st.sensitivity.sensitive)),
             List(Trace.RootsRequest(st.targets.root, view.roots.size))
           )
         else Skip(Some(st.publicRootRetryAt))
@@ -691,7 +720,6 @@ object PeerSelection:
       now: Time,
       policy: Policy = Policy()
   ): Decision[A] =
-    given Ordering[A] = st0.peers.ordering
     val st = tick(st0, now)
     event match
       case Event.ChurnTargetsChanged(_) => Decision(st, Nil, Nil)
@@ -700,42 +728,36 @@ object PeerSelection:
         else Decision(st.copy(requested = t), Nil, Nil)
       case Event.JudgementReported(j)                => Decision(st.copy(reported = j), Nil, Nil)
       case Event.SnapshotVerificationCompleted(_, _) => Decision(st, Nil, Nil)
-      case Event.RootsConfigured(roots, bootstrap, configuredPublic, configuredGeneration) =>
+      case Event.RootsConfigured(roots, bootstrap, configuredGeneration) =>
         val generation = configuredGeneration.getOrElse(st.rootsGeneration + 1)
         if generation <= st.rootsGeneration then Decision(st, Nil, Nil)
         else
-          val stillConfigured = roots.keys ++ configuredPublic
-          // a connect in progress is left to complete: the reference's reconfiguration of the
-          // roots does not touch `inProgressPromoteCold` (cardano-diffusion `c5117705`,
-          // `Cardano/Network/PeerSelection/Governor/Monitor.hs` 197-353), and its completion is
-          // applied whatever changed meanwhile (`Events.completed`). Only a root the topology
-          // names is taken away; a ledger or big ledger peer keeps its population
-          // ([[Origin.configured]], issue 810)
-          val peers = st.peers.map { (peer, record) =>
-            val current =
-              if record.origin.configured && !stillConfigured(peer) then
-                record.copy(origin = Origin.Other)
-              else record
-            peer -> current
-          }
-          val sensitivity = st.sensitivity.copy(useBootstrapPeers = bootstrap)
-          val effective =
-            (if sensitivity.sensitive then roots.clampToTrustable else roots)
-              .clampToLimit(st.targets.known)
-          val base = st.copy(
-            peers = peers,
-            configuredRoots = roots,
-            publicRootBackoffs = 0,
-            publicRootRetryAt = now,
-            bigLedgerBackoffs = 0,
-            bigLedgerRetryAt = now,
-            publicRootsInFlight = false,
-            bigLedgerInFlight = false,
-            rootsGeneration = generation,
-            sensitivity = sensitivity
-          )
-          if effective == st.localRoots then Decision(base, Nil, Nil)
-          else configureLocalRoots(base, effective, now)
+          // The reference's reconfiguration writes its variables and leaves the governor's state
+          // to its monitors (ouroboros-network c45735a5,
+          // `cardano-diffusion/lib/Cardano/Network/PeerSelection/Governor/Monitor.hs` 197-353 and
+          // 390-455): the public, bootstrap, ledger and big ledger roots are kept but for the new
+          // local roots, which `configureLocalRoots` takes out of them (276-282); a connect in
+          // progress and a root request in flight are left to complete, with the requests'
+          // backoffs and retry times, and their completions are applied whatever changed
+          // meanwhile (`Events.completed`, issue 810). The bootstrap peers' monitor runs before
+          // the judgement's and the local roots' (`preBlocking`, `Governor/Types.hs` 162-169 of
+          // cardano-diffusion, and `Governor.hs` 673-691 of ouroboros-network): when it acts, the
+          // local roots are left to the `localRoots` guard, which `decide` runs after the
+          // judgement's.
+          bootstrapFlag(st, bootstrap, now) match
+            case Some(flagged) =>
+              Decision(
+                flagged.copy(configuredRoots = roots, rootsGeneration = generation),
+                Nil,
+                Nil
+              )
+            case None =>
+              val effective =
+                (if st.sensitivity.sensitive then roots.clampToTrustable else roots)
+                  .clampToLimit(st.targets.known)
+              val base = st.copy(configuredRoots = roots, rootsGeneration = generation)
+              if effective == st.localRoots then Decision(base, Nil, Nil)
+              else configureLocalRoots(base, effective, now)
       // only the connection the governor keeps reports it, whatever roots generation its connect
       // was started under: a reload keeps the connect in progress
       case Event.SharingNegotiated(peer, enabled, _) =>

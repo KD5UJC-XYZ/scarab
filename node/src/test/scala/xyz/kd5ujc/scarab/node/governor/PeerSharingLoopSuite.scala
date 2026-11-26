@@ -40,7 +40,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
     val targets =
       Targets.validated(0, knownTarget, 2, 2, 0, 0, 0).toOption.getOrElse(fail("targets"))
     val initial = GovernorState
-      .initial[Int](1L, LocalRoots.empty, targets, Sensitivity.initial(false))
+      .initial[Int](1L, LocalRoots.empty, targets, Sensitivity.initial(BootstrapPeers.DontUse))
       .copy(
         targets = targets,
         peers = SortedMap.from(
@@ -123,7 +123,12 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
   test("the roots installation callback runs after the owner state reaches its generation") {
     Supervisor[IO](await = false).use { supervisor =>
       val initial =
-        GovernorState.initial[Int](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
+        GovernorState.initial[Int](
+          1L,
+          LocalRoots.empty,
+          Targets.relay,
+          Sensitivity.initial(BootstrapPeers.DontUse)
+        )
       for
         events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         state <- Ref.of[IO, GovernorState[Int]](initial)
@@ -164,7 +169,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
         onEventApplied = (
             (event: Event[Int]) =>
               event match {
-                case Event.RootsConfigured(_, _, _, Some(generation)) =>
+                case Event.RootsConfigured(_, _, Some(generation)) =>
                   state.get.flatMap { current =>
                     if current.rootsGeneration >= generation then
                       applied.complete(current.rootsGeneration).void
@@ -189,7 +194,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
           .rescue(error => IO.raiseError(new AssertionError(error.toString)))
         fiber <- runner.start
         _ <- events.offer(
-          Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(3)))
+          Event.RootsConfigured(LocalRoots.empty, BootstrapPeers.DontUse, Some(BigInt(3)))
         )
         generation <- applied.get.timeout(1.second)
         current <- state.get
@@ -203,7 +208,12 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
   test("a delayed install applies only the newest queued roots generation") {
     Supervisor[IO](await = false).use { supervisor =>
       val initial =
-        GovernorState.initial[Int](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
+        GovernorState.initial[Int](
+          1L,
+          LocalRoots.empty,
+          Targets.relay,
+          Sensitivity.initial(BootstrapPeers.DontUse)
+        )
       for
         events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         state <- Ref.of[IO, GovernorState[Int]](initial)
@@ -246,14 +256,14 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
         before = (
             (event: Event[Int]) =>
               event match
-                case Event.RootsConfigured(_, _, _, Some(generation)) if generation == 1 =>
+                case Event.RootsConfigured(_, _, Some(generation)) if generation == 1 =>
                   entered.complete(()).void *> release.get
                 case _ => IO.unit
         )
         after = (
             (event: Event[Int]) =>
               event match
-                case Event.RootsConfigured(_, _, _, Some(generation)) if generation == 2 =>
+                case Event.RootsConfigured(_, _, Some(generation)) if generation == 2 =>
                   installed.complete(generation).void
                 case _ => IO.unit
         )
@@ -271,11 +281,11 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
           .rescue(error => IO.raiseError(new AssertionError(error.toString)))
         fiber <- runner.start
         _ <- events.offer(
-          Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(1)))
+          Event.RootsConfigured(LocalRoots.empty, BootstrapPeers.DontUse, Some(BigInt(1)))
         )
         _ <- entered.get.timeout(1.second)
         _ <- events.offer(
-          Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(2)))
+          Event.RootsConfigured(LocalRoots.empty, BootstrapPeers.DontUse, Some(BigInt(2)))
         )
         _ <- release.complete(())
         generation <- installed.get.timeout(1.second)
@@ -290,7 +300,12 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
   test("cancelling a blocked roots install leaves owner state unchanged") {
     Supervisor[IO](await = false).use { supervisor =>
       val initial =
-        GovernorState.initial[Int](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
+        GovernorState.initial[Int](
+          1L,
+          LocalRoots.empty,
+          Targets.relay,
+          Sensitivity.initial(BootstrapPeers.DontUse)
+        )
       for
         events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
         state <- Ref.of[IO, GovernorState[Int]](initial)
@@ -331,7 +346,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
         before = (
             (event: Event[Int]) =>
               event match
-                case Event.RootsConfigured(_, _, _, Some(_)) =>
+                case Event.RootsConfigured(_, _, Some(_)) =>
                   entered.complete(()).void *> IO.never
                 case _ => IO.unit
         )
@@ -342,7 +357,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
           .rescue(error => IO.raiseError(new AssertionError(error.toString)))
         fiber <- runner.start
         _ <- events.offer(
-          Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(1)))
+          Event.RootsConfigured(LocalRoots.empty, BootstrapPeers.DontUse, Some(BigInt(1)))
         )
         _ <- entered.get.timeout(1.second)
         _ <- fiber.cancel
@@ -370,7 +385,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
       _ <- oldCheck.joinWithNever
       _ <- oldResult.complete(true)
       _ <- events.offer(
-        Event.RootsConfigured(LocalRoots.empty, false, Set.empty, Some(BigInt(2)))
+        Event.RootsConfigured(LocalRoots.empty, BootstrapPeers.DontUse, Some(BigInt(2)))
       )
       newResult <- Deferred[IO, Boolean]
       newCanceled <- Deferred[IO, Unit]
@@ -382,7 +397,7 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
       installed <- events.take
       _ <- IO {
         installed match
-          case Event.RootsConfigured(_, _, _, Some(generation)) =>
+          case Event.RootsConfigured(_, _, Some(generation)) =>
             assertEquals(generation, BigInt(2))
           case _ => fail("expected the queued roots reload before the delayed snapshot verdict")
       }
@@ -413,7 +428,12 @@ class PeerSharingLoopSuite extends FailsOnUncaught:
   test("a stale close for an address leaves its newer-generation link open") {
     Supervisor[IO](await = false).use { supervisor =>
       val initial = GovernorState
-        .initial[Int](1L, LocalRoots.empty, Targets.relay, Sensitivity.initial(false))
+        .initial[Int](
+          1L,
+          LocalRoots.empty,
+          Targets.relay,
+          Sensitivity.initial(BootstrapPeers.DontUse)
+        )
         .copy(rootsGeneration = BigInt(1))
       for
         events <- xyz.kd5ujc.scarab.node.JobPool.Unbounded[IO, Event[Int]]
