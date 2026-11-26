@@ -146,6 +146,34 @@ class GuardTest(unittest.TestCase):
         self.write(MAIN, 'class A { String s = "\\\\ u0041 \\\\n"; }\n')
         self.assertEqual(self.run_check()[0], 0, 'a backslash before no escape is text')
 
+    def test_a_character_javac_ignores_in_a_token_fails_wherever_it_is(self):
+        self.write(MAIN, 'class A {}\n')
+        self.record(MAIN)
+        self.assertEqual(self.run_check('--write-baseline')[0], 0)
+        spellings = [
+            ('a zero-width space that splits throw', 'class A {\n  void f() { thr\u200bow new X(); }\n}\n', 2),
+            ('a byte order mark', '\ufeffclass A {}\n', 1),
+            ('a control character in a comment', 'class A {}\n\n// a \x01 note\n', 3),
+            ('a C1 control character in a string', 'class A { String s = "\x9f"; }\n', 1),
+        ]
+        for what, text, line in spellings:
+            with self.subTest(what):
+                self.write(MAIN, text)
+                code, out = self.run_check()
+                self.assertEqual(code, 1, f'{what} passed')
+                self.assertIn('ignores inside a token', out)
+                self.assertIn(f'{MAIN}:{line}', out)
+        self.write(MAIN, 'class A {\r\n\tString s = "\u00e9";\f\n}\n')
+        self.assertEqual(self.run_check()[0], 0, 'tab, carriage return, form feed and letters are text')
+
+    def test_names_that_differ_only_by_a_carriage_return_stay_apart(self):
+        carriage, line = 'mod/src/main/java/a/A\r.java', 'mod/src/main/java/a/A\n.java'
+        self.write(carriage, 'class A {}\n')
+        self.write(line, 'class A {}\n')
+        self.assertEqual(java.java_main_sources(self.root), sorted([carriage, line]))
+        self.record(carriage, line)
+        self.assertEqual(self.run_check('--write-baseline')[0], 0)
+
     def test_a_new_throw_fails_and_the_baseline_only_shrinks(self):
         self.write(MAIN, 'class A { void f() { throw new X(); } }\n')
         self.write(OTHER, 'class B {}\n')

@@ -14,6 +14,11 @@ The Java main sources of `crypto` are an exception to the functional-style rules
     escape can spell `throw`, or end a comment with an escaped line break, where this guard's reading sees
     neither. It refuses every such sequence, also one whose backslash is itself escaped (`"\\u0041"`), which
     javac would not translate: the rule of the backslashes before it is not applied.
+  * No Java main source holds a character that javac ignores inside a token
+    (`Character.isIdentifierIgnorable`: U+0000 to U+0008, U+000E to U+001B, U+007F to U+009F, and the format
+    characters, category Cf, a byte order mark among them), anywhere: javac reads `thr`, U+200B, `ow` as
+    `throw`, which this guard's reading would not. The category is Python's `unicodedata`, whose Unicode
+    version may differ from the JDK's by a few characters.
   * The `throw` statements of each are counted, with comments, string and character literals and text blocks
     removed, and compared with the committed baseline `docs/data/java-throw-baseline.json` (`shrinking_baseline`):
     a file may not go up, a file not in the baseline must have none, and a count that went down fails until the
@@ -37,9 +42,11 @@ from __future__ import annotations
 from pathlib import Path
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
+import unicodedata
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import shrinking_baseline  # noqa: E402
@@ -118,6 +125,18 @@ def escapes(source: str) -> list[int]:
     return [source.count('\n', 0, match.start()) + 1 for match in UNICODE_ESCAPE.finditer(source)]
 
 
+def ignorable(character: str) -> bool:
+    """Whether javac ignores `character` inside a token (`Character.isIdentifierIgnorable`)."""
+    point = ord(character)
+    return (point <= 0x08 or 0x0e <= point <= 0x1b or 0x7f <= point <= 0x9f
+            or unicodedata.category(character) == 'Cf')
+
+
+def ignored(source: str) -> list[int]:
+    """The line of each character javac ignores inside a token."""
+    return [source.count('\n', 0, at) + 1 for at, character in enumerate(source) if ignorable(character)]
+
+
 def under_main(path: str) -> bool:
     """Whether the repository-relative `path` lies under a `src/main/` directory, at any depth."""
     parts = path.split('/')
@@ -125,9 +144,11 @@ def under_main(path: str) -> bool:
 
 
 def java_main_sources(root: Path) -> list[str]:
+    # the listing is read as bytes, each path decoded on its own: as text, a carriage return in a name would
+    # be read as a line feed
     listed = subprocess.run(['git', '-C', str(root), 'ls-files', '-z', '*.java'], check=True,
-                            capture_output=True, text=True).stdout.split('\0')
-    return sorted(p for p in listed if p and under_main(p))
+                            capture_output=True).stdout.split(b'\0')
+    return sorted(path for path in map(os.fsdecode, listed) if path and under_main(path))
 
 
 def recorded(root: Path) -> list[str] | None:
@@ -167,10 +188,16 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
     print(f'Java main sources: {len(present)}, each listed in {SOURCES}')
     texts = {path: (root / path).read_text(encoding='utf-8') for path in present}
     escaped = [f'  {path}:{line}' for path, text in texts.items() for line in escapes(text)]
+    hidden = [f'  {path}:{line}' for path, text in texts.items() for line in ignored(text)]
     if escaped:
         print('Unicode escapes in Java main sources, which javac reads before this guard can count throw '
               f'statements in them: write the character itself, or name it another way ({RULE} (f)):')
         print('\n'.join(escaped))
+    if hidden:
+        print('characters in Java main sources that javac ignores inside a token, so that this guard cannot '
+              f'count the throw statements they split: remove them ({RULE} (f)):')
+        print('\n'.join(hidden))
+    if escaped or hidden:
         return 1
     found = {path: sites(text) for path, text in texts.items()}
     return shrinking_baseline.check(root, BASELINE, {p: lines for p, lines in found.items() if lines},
