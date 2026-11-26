@@ -42,6 +42,27 @@ class SelectionCase(unittest.TestCase):
                 self.assertEqual(done.returncode, 0, done.stderr[-500:])
 
 
+class RepeatCase(unittest.TestCase):
+    def test_one_run_names_each_job_by_its_scenario(self):
+        self.assertEqual(m.matrix(m.select("ntc relay")),
+                         {"include": [{"job": "relay", "scenario": "relay", "args": "relay --seconds 300"},
+                                      {"job": "ntc", "scenario": "ntc", "args": "ntc"}]})
+
+    def test_copies_are_jobs_of_their_own_kept_together(self):
+        jobs = m.matrix(m.select("ntc relay"), 2)["include"]
+        self.assertEqual([(j["job"], j["scenario"]) for j in jobs],
+                         [("relay-1", "relay"), ("relay-2", "relay"), ("ntc-1", "ntc"), ("ntc-2", "ntc")])
+        self.assertEqual(len({j["job"] for j in m.matrix(m.SCENARIOS, m.MAX_REPEAT)["include"]}),
+                         len(m.SCENARIOS) * m.MAX_REPEAT)
+
+    def test_a_repeat_is_a_whole_number_from_1_to_the_maximum(self):
+        self.assertEqual([m.repeat_of(t) for t in ("", " ", "1", "3", str(m.MAX_REPEAT))], [1, 1, 1, 3, m.MAX_REPEAT])
+        for text in ("0", str(m.MAX_REPEAT + 1), "-1", "2.0", "two", "\u00b2"):
+            with self.subTest(text=text):
+                with self.assertRaises(m.BadRepeat):
+                    m.repeat_of(text)
+
+
 class OutputCase(unittest.TestCase):
     def run_main(self, *argv):
         with tempfile.TemporaryDirectory() as d:
@@ -56,18 +77,37 @@ class OutputCase(unittest.TestCase):
         self.assertEqual(code, 0)
         key, _, value = written.strip().partition("=")
         self.assertEqual(key, "matrix")
-        self.assertEqual(json.loads(value), {"include": [{"scenario": "ntc", "args": "ntc"}]})
+        self.assertEqual(json.loads(value), {"include": [{"job": "ntc", "scenario": "ntc", "args": "ntc"}]})
 
-    def test_an_unknown_name_writes_nothing_and_exits_2(self):
+    def test_the_workflow_s_arguments_on_a_run_not_started_by_hand_select_every_scenario_once(self):
+        code, written = self.run_main("--repeat", "", "")
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(written.strip().partition("=")[2]), m.matrix(m.SCENARIOS))
+
+    def test_a_repeat_is_written_as_copies(self):
+        code, written = self.run_main("--repeat", "3", "ntc")
+        self.assertEqual(code, 0)
+        self.assertEqual([j["job"] for j in json.loads(written.strip().partition("=")[2])["include"]],
+                         ["ntc-1", "ntc-2", "ntc-3"])
+
+    def test_an_unknown_name_or_a_repeat_out_of_range_writes_nothing_and_exits_2(self):
         self.assertEqual(self.run_main("ntc", "nct"), (2, ""))
+        self.assertEqual(self.run_main("--repeat", "9", "ntc"), (2, ""))
 
 
 class WorkflowCase(unittest.TestCase):
     def test_the_workflow_runs_the_selected_matrix(self):
         text = (ROOT / ".github" / "workflows" / "e2e.yml").read_text()
-        self.assertIn('python3 scripts/ci_e2e_matrix.py "$SCENARIOS"', text)
+        self.assertIn('python3 scripts/ci_e2e_matrix.py --repeat "$REPEAT" "$SCENARIOS"', text)
         self.assertIn("matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}", text)
         self.assertNotIn("include:", text)
+
+    def test_the_jobs_names_their_devnet_log_and_artifact_by_the_job(self):
+        # copies of one scenario differ only by `job`: anything named by the scenario would collide
+        text = (ROOT / ".github" / "workflows" / "e2e.yml").read_text()
+        self.assertNotIn("matrix.scenario", text)
+        self.assertIn("name: devnet-${{ matrix.job }}-${{ github.run_id }}", text)
+        self.assertIn("DEVNET_NAME: scarab-ci-${{ matrix.job }}", text)
 
 
 if __name__ == "__main__":

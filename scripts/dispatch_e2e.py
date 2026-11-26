@@ -5,13 +5,15 @@
     python3 scripts/dispatch_e2e.py --ref claude/603-jump-session-state
     python3 scripts/dispatch_e2e.py --ref main --timeout 7200 --interval 60
     python3 scripts/dispatch_e2e.py --ref claude/603-jump-session-state --scenario ntc --scenario relay
+    python3 scripts/dispatch_e2e.py --ref claude/603-jump-session-state --scenario ntc --repeat 3
 
 The workflow's concurrency group (`e2e`, `cancel-in-progress: false`) keeps one run going and one waiting; a new
 dispatch replaces the waiting run, which GitHub cancels. This script waits until no E2E run is queued, waiting,
 pending or requested, then dispatches on `--ref` and prints the new run's URL. A running run does not hold it back:
 the new one waits behind it in the group. `--scenario`, given once per scenario, runs only those
 (`ci_e2e_matrix.SCENARIOS` lists them; a name that is not one is refused before anything waits); without it every
-scenario runs. Exit 0 on dispatch, 1 on `--timeout`, 2 when `gh` fails or a scenario is unknown.
+scenario runs. `--repeat N` (1 to `ci_e2e_matrix.MAX_REPEAT`, default 1) runs each of them N times, each on a devnet
+of its own. Exit 0 on dispatch, 1 on `--timeout`, 2 when `gh` fails, a scenario is unknown or a repeat out of range.
 
 Pure standard library; the network use is `gh api` GETs and one `gh workflow run`.
 """
@@ -51,10 +53,11 @@ def waiting_runs(run: Run) -> list[int]:
 
 def dispatch_when_free(ref: str, timeout: float, interval: float, run: Run = gh,
                        sleep: Callable[[float], None] = time.sleep, clock: Callable[[], float] = time.monotonic,
-                       scenarios: Sequence[ci_e2e_matrix.Scenario] = ()) -> bool:
-    """Wait until no run is waiting, then dispatch `scenarios` (every one when empty); False when `timeout` seconds
-    pass first."""
+                       scenarios: Sequence[ci_e2e_matrix.Scenario] = (), repeat: int = 1) -> bool:
+    """Wait until no run is waiting, then dispatch `scenarios` (every one when empty), each `repeat` times; False when
+    `timeout` seconds pass first."""
     selection = ["-f", f"scenarios={' '.join(s.name for s in scenarios)}"] if scenarios else []
+    selection += ["-f", f"repeat={repeat}"] if repeat > 1 else []
     deadline = clock() + timeout
     while True:
         blocking = waiting_runs(run)
@@ -74,14 +77,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--interval", type=float, default=60, help="seconds between checks (default 60)")
     parser.add_argument("--scenario", action="append", default=[],
                         help="a scenario to run, once per scenario (default: every scenario)")
+    parser.add_argument("--repeat", default="1",
+                        help=f"runs of each scenario, 1 to {ci_e2e_matrix.MAX_REPEAT} (default 1)")
     args = parser.parse_args(argv)
     try:
         scenarios = ci_e2e_matrix.select(" ".join(args.scenario)) if args.scenario else []
-    except ci_e2e_matrix.UnknownScenarios as error:
+        repeat = ci_e2e_matrix.repeat_of(args.repeat)
+    except (ci_e2e_matrix.UnknownScenarios, ci_e2e_matrix.BadRepeat) as error:
         print(f"e2e: {error}", file=sys.stderr)
         return 2
     try:
-        if not dispatch_when_free(args.ref, args.timeout, args.interval, scenarios=scenarios):
+        if not dispatch_when_free(args.ref, args.timeout, args.interval, scenarios=scenarios, repeat=repeat):
             print("e2e: timed out; nothing dispatched", file=sys.stderr)
             return 1
         time.sleep(5)
