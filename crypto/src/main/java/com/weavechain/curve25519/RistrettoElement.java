@@ -7,20 +7,12 @@
 
 package com.weavechain.curve25519;
 
-import java.io.IOException;
-import java.io.InvalidObjectException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.ObjectStreamException;
-import java.io.Serializable;
 import java.util.Arrays;
 
 /**
  * An element of the prime-order ristretto255 group.
  */
-public class RistrettoElement implements Serializable {
-    private static final long serialVersionUID = 1L;
-
+public class RistrettoElement {
     public static final RistrettoElement IDENTITY = new RistrettoElement(EdwardsPoint.IDENTITY);
 
     public static final RistrettoElement BASEPOINT = new RistrettoElement(Constants.ED25519_BASEPOINT);
@@ -28,40 +20,13 @@ public class RistrettoElement implements Serializable {
     /**
      * The internal representation. Not canonical.
      */
-    transient EdwardsPoint repr;
+    final EdwardsPoint repr;
 
     /**
      * Only for internal use.
      */
     RistrettoElement(EdwardsPoint repr) {
         this.repr = repr;
-    }
-
-    /**
-     * Overrides class serialization to use the canonical encoded format.
-     */
-    private void writeObject(ObjectOutputStream out) throws IOException {
-        out.write(this.compress().toByteArray());
-    }
-
-    /**
-     * Overrides class serialization to use the canonical encoded format.
-     */
-    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
-        byte[] encoded = new byte[32];
-        in.readFully(encoded);
-
-        try {
-            RistrettoElement elem = new CompressedRistretto(encoded).decompress();
-            this.repr = elem.repr;
-        } catch (InvalidEncodingException iee) {
-            throw new InvalidObjectException(iee.getMessage());
-        }
-    }
-
-    @SuppressWarnings("unused")
-    private void readObjectNoData() throws ObjectStreamException {
-        throw new InvalidObjectException("Cannot deserialize RistrettoElement from no data");
     }
 
     /**

@@ -9,12 +9,7 @@
  *   <li>FUN-2 (a), a performance-critical path: the limb arithmetic of {@link FieldElement}, {@link Scalar} and
  *       {@link UnpackedScalar} and the point formulas loop over, and assign, arrays and locals made for the
  *       computation. They are the inner loop of every Ed25519 verification and VRF proof, the largest cost the
- *       profiles show (performance sections 1 and 13). Outside the hooks below, a value's fields are assigned only
- *       by its constructor.</li>
- *   <li>FUN-2 (c), a callback whose contract keeps its state by mutation and signals failure by exception: the
- *       {@code java.io.Serializable} hooks ({@code writeObject}, {@code readObject}, {@code readObjectNoData}) of
- *       {@link EdwardsPoint}, {@link RistrettoElement}, {@link CompressedEdwardsY}, {@link CompressedRistretto} and
- *       {@link Scalar}, the only code that assigns their {@code transient} fields after construction.</li>
+ *       profiles show (performance sections 1 and 13). A value's fields are assigned only by its constructor.</li>
  *   <li>FUN-2 (d), secret material erased in place: {@code Scalar.reduceWide}, {@code Scalar.multiplyAndAdd} and
  *       {@code Scalar.toRadix16} over byte arrays, and {@code multiplyRadix16} of {@link EdwardsBasepointTable} and
  *       {@link EdwardsPoint}, read and write arrays their caller owns and allocate none of their own, so that the VRF
