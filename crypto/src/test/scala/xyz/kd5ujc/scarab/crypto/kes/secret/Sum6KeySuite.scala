@@ -27,7 +27,7 @@ import xyz.kd5ujc.scarab.crypto.secret.{Public, Scratch, Sha512}
   */
 class Sum6KeySuite extends munit.FunSuite:
   // the JDK's SHA-512, which the leaves hash with
-  private given Sha512.Provider = Sha512.Provider.found.toOption.get
+  private given Sha512.Digests = Sha512.Digests.found.toOption.get
 
   private val L = BigInt(2).pow(252) + BigInt("27742317777372353535851937790883648493")
 

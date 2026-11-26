@@ -23,7 +23,7 @@ class Sum6KesSigningDifferentialSuite extends munit.ScalaCheckSuite:
   import Sum6KesSigning.*
 
   // the JDK's SHA-512, which the leaves hash with
-  private given Sha512.Provider = Sha512.Provider.found.toOption.get
+  private given Sha512.Digests = Sha512.Digests.found.toOption.get
 
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters.withMinSuccessfulTests(200)

@@ -25,7 +25,7 @@ import xyz.kd5ujc.scarab.crypto.secret.{Scratch, Sha512}
   */
 class KnownAnswerSuite extends munit.FunSuite:
   // the JDK's SHA-512, which the leaves hash with
-  private given Sha512.Provider = Sha512.Provider.found.toOption.get
+  private given Sha512.Digests = Sha512.Digests.found.toOption.get
 
   private def hex(s: String): Array[Byte] = s.grouped(2).map(Integer.parseInt(_, 16).toByte).toArray
   private def show(a: Array[Byte]): String = Bytes.fromArray(a).hex

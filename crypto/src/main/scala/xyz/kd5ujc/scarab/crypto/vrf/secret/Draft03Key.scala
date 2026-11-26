@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.crypto.vrf.secret
 
 import cats.syntax.either.*
 import com.weavechain.curve25519.{CompressedEdwardsY, Constants, EdwardsPoint, Scalar}
-import java.security.{MessageDigest, NoSuchAlgorithmException}
+import java.security.MessageDigest
 import java.util.Arrays
 import scala.jdk.OptionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -40,8 +40,8 @@ import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover.{Failure, Proved}
   * an operation copies the whole seed or, once the key is forgotten, refuses
   * ([[Failure.MissingSigningKey]]). A forgotten key proves nothing more.
   *
-  * The key keeps the [[Sha512.Provider]] its maker found, which every hash it computes takes its
-  * digest from: a JDK without SHA-512 refuses the key when it is made
+  * The key keeps the SHA-512 digest its maker found ([[Sha512.Digests]]), a copy of which every
+  * hash it computes works on: a JDK without one refuses the key when it is made
   * ([[Failure.InternalFailure]]), and a key that exists proves with no failure of that kind.
   * Nothing else an operation calls throws: the curve arithmetic is handed buffers of the sizes it
   * takes, made in the operation, and decodes without throwing.
@@ -49,11 +49,11 @@ import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover.{Failure, Proved}
 private[vrf] final class Draft03Key private (
     private val material: Array[Byte],
     val publicKey: Bytes,
-    digests: Sha512.Provider
+    digests: Sha512.Digests
 ):
   import Draft03Key.*
 
-  private given Sha512.Provider = digests
+  private given Sha512.Digests = digests
 
   // FUN-2 (d): the seed is zeroed in place by forget; reads and the erasure hold this monitor
   @SuppressWarnings(Array("org.wartremover.warts.Var"))
@@ -147,11 +147,11 @@ private[vrf] object Draft03Key:
   private val ChallengeDomain: Byte = 2
   private val OutputDomain: Byte = 3
 
-  def fromSeed(seed: Bytes): Either[Failure, Draft03Key] = fromSeedWith(Sha512.Provider.found)(seed)
+  def fromSeed(seed: Bytes): Either[Failure, Draft03Key] = fromSeedWith(Sha512.Digests.found)(seed)
 
   /** [[fromSeed]] with the JDK's SHA-512 as `found` finds it, a seam for the suites. */
   private[secret] def fromSeedWith(
-      found: => Either[NoSuchAlgorithmException, Sha512.Provider]
+      found: => Either[Exception, Sha512.Digests]
   )(seed: Bytes): Either[Failure, Draft03Key] =
     if seed == null then Left(Failure.MissingSeed)
     else if seed.size != SeedBytes then Left(Failure.SeedLength(seed.size))
@@ -163,7 +163,7 @@ private[vrf] object Draft03Key:
     if bytes == null then Left(Failure.MissingSigningKey)
     else if bytes.size != SeedBytes + 32 then Left(Failure.SigningKeyLength(bytes.size))
     else
-      made(bytes.take(SeedBytes).copyTo, Sha512.Provider.found).flatMap { key =>
+      made(bytes.take(SeedBytes).copyTo, Sha512.Digests.found).flatMap { key =>
         if key.publicKey == bytes.drop(SeedBytes) then Right(key)
         else
           key.forget()
@@ -179,7 +179,7 @@ private[vrf] object Draft03Key:
     else
       made(
         (into, at) => System.arraycopy(payload, 0, into, at, SeedBytes),
-        Sha512.Provider.found
+        Sha512.Digests.found
       ).flatMap { key =>
         val stored = new Array[Byte](32)
         System.arraycopy(payload, SeedBytes, stored, 0, 32)
@@ -196,10 +196,10 @@ private[vrf] object Draft03Key:
     */
   private def made(
       copySeed: (Array[Byte], Int) => Unit,
-      found: => Either[NoSuchAlgorithmException, Sha512.Provider]
+      found: => Either[Exception, Sha512.Digests]
   ): Either[Failure, Draft03Key] =
     found.leftMap(Failure.InternalFailure(_)).map { digests =>
-      given Sha512.Provider = digests
+      given Sha512.Digests = digests
       val publicKey = Scratch.within { s =>
         val copy = s.buffer(SeedBytes)
         copySeed(s.array(copy), 0)
@@ -218,7 +218,7 @@ private[vrf] object Draft03Key:
     * it is below 2^255, the range the radix-16 recoding and the response take, and B and H have
     * order L, so `[x]B` and `[x]H` are those of x mod L.
     */
-  private def expanded(s: Scratch)(seed: s.Buffer)(using Sha512.Provider): (s.Buffer, s.Buffer) =
+  private def expanded(s: Scratch)(seed: s.Buffer)(using Sha512.Digests): (s.Buffer, s.Buffer) =
     val az = s.buffer(64)
     sha512(s.array(az), s.array(seed))
     val x = s.buffer(32)
@@ -238,7 +238,7 @@ private[vrf] object Draft03Key:
       nonceKey: s.Buffer,
       hString: Array[Byte],
       hPoint: EdwardsPoint
-  )(using Sha512.Provider): Proved =
+  )(using Sha512.Digests): Proved =
     val gamma = gammaOf(s)(x, hPoint)
     val gammaString = encoded(s)(gamma)
     // k = SHA-512(nonce key || H) mod L, the deterministic nonce of draft-03 (RFC 8032 style)
@@ -285,7 +285,7 @@ private[vrf] object Draft03Key:
   /** The output of `gamma`: SHA-512 of the suite, the domain byte and the encoding of `[8]Gamma`,
     * what the verifier computes from the proof's Gamma.
     */
-  private def outputOf(s: Scratch)(gamma: EdwardsPoint)(using Sha512.Provider): Bytes =
+  private def outputOf(s: Scratch)(gamma: EdwardsPoint)(using Sha512.Digests): Bytes =
     val out = s.buffer(64)
     sha512(
       s.array(out),
@@ -304,5 +304,5 @@ private[vrf] object Draft03Key:
       .toRight(Failure.HashToCurveEncoding)
 
   /** SHA-512 of `pieces` into `into`, with a digest reset on the way out ([[Sha512]]). */
-  private def sha512(into: Array[Byte], pieces: Array[Byte]*)(using Sha512.Provider): Unit =
+  private def sha512(into: Array[Byte], pieces: Array[Byte]*)(using Sha512.Digests): Unit =
     Sha512.into(into, pieces*)
