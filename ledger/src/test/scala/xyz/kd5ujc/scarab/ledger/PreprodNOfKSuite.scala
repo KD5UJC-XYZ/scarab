@@ -8,7 +8,7 @@ import org.scalacheck.Gen
 import org.scalacheck.Prop.forAll
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as C}
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.ledger.rules.NativeRules
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
 import xyz.kd5ujc.scarab.ledger.state.{Build, Coin, Conway, ConwayNewEpochState, NewEpochState}
 
 import TestLedger.*
@@ -86,7 +86,9 @@ class PreprodNOfKSuite extends ScalaCheckSuite:
   }
 
   test("the transaction validates: n = -1 holds with no signature at all") {
-    NativeRules.txIn[Conway](world, tx, conwayEnv).fold(f => fail(f.message), _ => ())
+    ConwayTestKit
+      .ledger(world, ConwayTestKit.built(tx), conwayEnv)
+      .fold(f => fail(s"refused: $f"), _ => ())
   }
 
   // --- CBOR by hand, so any integer can be put on the wire ------------------------------------

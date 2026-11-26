@@ -117,46 +117,44 @@ class PoolMetadataPredicateSuite extends FunSuite:
   }
 
   test("signed LEDGER admission enforces metadata before spending inputs or paying pool deposits") {
+    // Conway's LEDGER on the era types, on transactions with true bytes
+    // ([[era.conway.ConwayTestKit.ledger]])
+    import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
     val pp = TestLedger.params(10)
-    val empty = Empty.ledgerState[Conway](pp)
     val input = TestLedger.txIn(89)
     val funds = BigInt(1000000000)
-    val funded = empty.copy[Conway](utxo =
-      empty.utxo.copy[Conway](
-        utxo = UtxoTables(Utxo.fromMap(Map(input -> TestLedger.out(owner.address(), funds))))
-      )
-    )
-    def transaction(size: Int) = TestLedger.tx(
-      TestLedger.body(
-        s"pool-metadata-$size",
+    val funded =
+      NativeRules.stateUnder[Conway](pp, Vector(input -> ConwayTestKit.out(owner.address(), funds)))
+    val fee = ConwayTestKit.maxFee(pp)
+    def transaction(size: Int) = ConwayTestKit.tx(
+      ConwayTestKit.Body(
         Vector(input),
-        Vector(TestLedger.out(owner.address(), funds - pp.poolDeposit - 200)),
-        200,
+        Vector(ConwayTestKit.out(owner.address(), funds - pp.poolDeposit - fee)),
+        fee,
         certificates = Vector(Certificate.RegisterPool(params(size)))
       ),
       Vector(owner)
     )
-    def admit(tx: Tx) = JudgedSts(Ledger)(LedgerFailure.Rejected(tx.body.id, _))(
-      TestLedger.globals,
-      LedgerEnv(TestLedger.env, Coin.zero),
-      Counted(funded, PlutusStats.zero),
-      tx
-    )
+    def admit(tx: ConwayTestKit.Built) = ConwayTestKit.ledger(funded, tx, TestLedger.env)
     val bad = transaction(33)
-    val original = bad.body.raw
+    val original = bad.parts
     assertEquals(
       admit(bad),
       Left(
-        LedgerFailure.Rejected(
-          bad.body.id,
-          PredicateFailure.pool(PoolFailure.PoolMedataHashTooBig(owner.hash, 33))
+        Vector(
+          ConwayTestKit.Fails.pool(
+            era.rules.ShelleyPoolPredFailure.PoolMedataHashTooBig(
+              Convert.keyHash[StakePool](owner.hash).fold(e => fail(s"$e"), identity),
+              33
+            )
+          )
         )
       )
     )
-    assertEquals(bad.body.raw, original)
-    val accepted = admit(transaction(32)).fold(e => fail(e.toString), _.state)
+    assertEquals(bad.parts, original)
+    val accepted = admit(transaction(32)).fold(e => fail(s"refused: $e"), _.es.ls)
     assertEquals(accepted.utxo.deposited.value, pp.poolDeposit)
-    assertEquals(accepted.utxo.fees.value, BigInt(200))
+    assertEquals(accepted.utxo.fees.value, fee)
     assert(!accepted.utxo.utxo.utxo.contains(input))
     assertEquals(accepted.cert.pState.stakePools.size, 1)
   }

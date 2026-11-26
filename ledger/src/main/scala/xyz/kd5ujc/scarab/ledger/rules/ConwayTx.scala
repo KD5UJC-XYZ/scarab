@@ -18,14 +18,13 @@ import xyz.kd5ujc.scarab.ledger.{
   Tx,
   TxIn,
   TxOut,
-  TxEnv,
   Utxo as NodeUtxo
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 
 // What the rules of the Conway LEDGER share: the node's counters beside the Haskell state, the
-// environments (Haskell's `LedgerEnv`, `UtxoEnv`, `CertEnv` ...), the transaction annotated with the
+// environments (Haskell's `UtxoEnv`, `CertEnv` ...), the transaction annotated with the
 // outputs it resolves (`StAnnTx`), the lenses into the state, and the raising of a refusal.
 
 /** A state with the node's phase-2 counters beside it. The counters are the node's bookkeeping of
@@ -50,13 +49,6 @@ object Counted:
     Lens[Counted[LedgerState[Conway]], Counted[UTxOState[Conway]]](c =>
       Counted(c.state.utxo, c.plutus)
     )(u => c => Counted(c.state.copy[Conway](utxo = u.state), u.plutus))
-
-/** `LedgerEnv` (`Shelley/Rules/Ledger.hs`): the block-level context of a transaction (slot, epoch,
-  * the position in the block, the evaluator and the clock, `TxEnv`) and the treasury of the chain
-  * account (`esChainAccountState`), which `currentTreasuryValue` of a transaction is checked
-  * against. The parameters are the ones in force, read from the governance state.
-  */
-final case class LedgerEnv(ctx: TxEnv, treasury: Coin)
 
 /** A transaction with what its rules resolve from the UTxO set before it (`StAnnTx`, the
   * transaction `AnnotatedTx` of `Alonzo/UTxO.hs`): the outputs of its inputs, reference inputs and

@@ -32556,7 +32556,7 @@
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "note": "its constructors in the order of their tags (:231-240); ConwayMempoolFailure holds the node's typed cause (MempoolProblem) where the reference holds its Text; the withdrawals are the reference's Withdrawals and NonEmptyMap AccountAddress; no encoder of its own yet: its refusals are compared with the reference's bytes through ConwayLedgerPredFailure.toStored and the node's encoder",
+   "note": "its constructors in the order of their tags (:231-240); ConwayMempoolFailure holds the node's typed cause (MempoolProblem) where the reference holds its Text; the withdrawals are the reference's Withdrawals and NonEmptyMap AccountAddress; its refusals are compared with the reference's bytes through the node's encoder of the era's failures (ConwayFailureCbor)",
    "digest": "6663316e5f4949db"
   },
   "enum ledger.era.rules.ShelleyLedgerPredFailure": {
@@ -50340,12 +50340,10 @@
    ]
   },
   {
-   "reason": "the era-typed LEDGER failures' adapter to the node's flat failure type (ConwayLedgerPredFailure.toStored, with what it cannot give, LedgerUnprojected), which the comparisons with the flat rules and the node's encoder read until the era's failures have their encoders (§3.4 of docs/design/era-typed-transactions.md); the companions of LEDGER's and LEDGERS's failures, injection, embeddings and proposals record, with each failure's equality with itself only; the objects that stand for the reference's Rules/Ledger and Rules/Ledgers modules; and a sub-rule's events wrapped into the rule's (toldIn) and a vocabulary refusal raised as a defect (vocabDefect), which the reference's trans and its total types do",
+   "reason": "the companions of LEDGER's and LEDGERS's failures, injection, embeddings and proposals record, with each failure's equality with itself only; the objects that stand for the reference's Rules/Ledger and Rules/Ledgers modules; and a sub-rule's events wrapped into the rule's (toldIn) and a vocabulary refusal raised as a defect (vocabDefect), which the reference's trans and its total types do",
    "definitions": [
-    "def ledger.era.rules.ConwayLedgerPredFailure.toStored",
     "def ledger.era.rules.toldIn",
     "def ledger.era.rules.vocabDefect",
-    "enum ledger.era.rules.LedgerUnprojected",
     "given ledger.era.rules.ConwayLedgerPredFailure.given_CanEqual_ConwayLedgerPredFailure_E_ConwayLedgerPredFailure_E",
     "given ledger.era.rules.ShelleyLedgerPredFailure.given_CanEqual_ShelleyLedgerPredFailure_E_ShelleyLedgerPredFailure_E",
     "given ledger.era.rules.ShelleyLedgersPredFailure.given_CanEqual_ShelleyLedgersPredFailure_E_ShelleyLedgersPredFailure_E",

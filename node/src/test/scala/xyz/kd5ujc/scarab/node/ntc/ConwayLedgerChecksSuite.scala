@@ -5,14 +5,13 @@ import cats.syntax.all.*
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.ledger.{Horizon, PlutusStats, PredicateFailure, Tx, TxEnv, TxIn, TxOut}
+import xyz.kd5ujc.scarab.ledger.{Horizon, Tx, TxEnv, TxIn, TxOut}
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoStAnnTx,
   EraLedgerRun,
   EraTx,
   EraTxBody,
   EraUTxO,
-  EraUtxoRun,
   Network,
   PParams,
   TxLevel,
@@ -23,20 +22,13 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayGovPredFailure,
   ConwayLedgerPredFailure,
   ConwayUtxo,
-  ConwayUtxowPredFailure,
   LedgerEnv,
   LedgerPredFailure,
   LedgersEnv,
   ShelleyLedgersPredFailure,
   UtxoContext
 }
-import xyz.kd5ujc.scarab.ledger.rules.{
-  Counted,
-  Globals,
-  Judgment,
-  Ledger as FlatLedger,
-  LedgerEnv as FlatLedgerEnv
-}
+import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.ledger.state.{
   ChainAccountState,
   Coin,
@@ -54,16 +46,17 @@ import xyz.kd5ujc.scarab.node.mempool.{ConwayTicked, LocalSubmission, MempoolEnv
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
 
-/** Conway's LEDGER on the era types (`ConwayLedger.conwayLedgerTransition`) against the flat LEDGER
-  * (`rules.Ledger`), and LEDGERS (`ShelleyLedgers.ledgersTransition`) over it, on every transaction
-  * of the recorded Conway refusal corpora, from the state the mempool judges it in, at the recorded
-  * protocol version and at 9, 10 and 11, under each build and validation policy: the same failures
-  * in the same order, or the same ledger state. Where the reference refused a transaction for
-  * LEDGER, the era rule's failures, one level below MEMPOOL, encode to the reference's refusal byte
-  * for byte. The corpora recorded for the era rules alone
-  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out of the flat
-  * comparisons, which stage 3 retires; the era rules' own assertions keep them, and
-  * `ReferenceRefusalSuite` binds the era rules to them.
+/** Conway's LEDGER on the era types (`ConwayLedger.conwayLedgerTransition`), and LEDGERS
+  * (`ShelleyLedgers.ledgersTransition`) over it, on every transaction of the recorded Conway
+  * refusal corpora, from the state the mempool judges it in, at the recorded protocol version and
+  * at 9, 10 and 11, under each build and validation policy: the flat LEDGER's failures in the same
+  * order, or the same ledger state and counters, as recorded before the flat LEDGER was deleted
+  * (`fixtures/conway-flat-refusals`), on the corpora it judged. Where the reference refused a
+  * transaction for LEDGER, the era rule's failures, one level below MEMPOOL, encode to the
+  * reference's refusal byte for byte. The corpora recorded for the era rules alone
+  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) have no recording of the flat
+  * rules; the era rules' own assertions keep them, and `ReferenceRefusalSuite` binds the era rules
+  * to them.
   */
 class ConwayLedgerChecksSuite extends FunSuite:
   import ReferenceRefusalSuite.*
@@ -175,38 +168,6 @@ class ConwayLedgerChecksSuite extends FunSuite:
   private def globalsOf(s: Seen, build: ReferenceBuild): Globals =
     s.globals.copy(ledger = s.globals.ledger.copy(referenceBuild = build))
 
-  /** The purposes of `s`'s scripts needed in their flat form, for a missing redeemer's failure. */
-  private def purposes(s: Seen) =
-    val u = EraUTxO.conway
-    val t = EraTx.conway
-    ConwayUtxowPredFailure.storedPurposes(
-      u.getScriptsNeeded[TxLevel.Top](s.utxo, t.body[TxLevel.Top](s.typed)(using t.bodyOf.top))(
-        using u.txOf.bodyOf.top
-      ),
-      s.utxo
-    )
-
-  /** An action of a GOV failure as `s`'s proposals read it. */
-  private def readOf(s: Seen) =
-    val t = EraTx.conway
-    val b = EraTxBody.conway
-    ConwayGovPredFailure.readOf(
-      b.proposalProcedures[TxLevel.Top](t.body[TxLevel.Top](s.typed)(using t.bodyOf.top))(using
-        b.top
-      ).toVector
-    )
-
-  /** An era failure in the node's flat form. */
-  private def stored(s: Seen)(f: LedgerPredFailure[Conway]): PredicateFailure =
-    right(s"${s.label}: flat form")(ConwayLedgerPredFailure.toStored(f, purposes(s), readOf(s)))
-
-  /** An era failure in the comparison's form ([[EraUtxoRun.Failure]]). */
-  private def eraForm(s: Seen)(f: LedgerPredFailure[Conway]): EraUtxoRun.Failure = f match
-    case ConwayLedgerPredFailure.ConwayUtxowFailure(u) =>
-      EraUtxoRun.Utxow.eraForm(u, purposes(s)).getOrElse(fail(s"${s.label}: $u"))
-    case other =>
-      EraUtxoRun.form(stored(s)(other)).getOrElse(fail(s"${s.label}: $other"))
-
   private def stAnnTx(s: Seen): AlonzoStAnnTx[Conway] =
     AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, s.pp, s.utxo, Map.empty, s.typed)
 
@@ -251,133 +212,113 @@ class ConwayLedgerChecksSuite extends FunSuite:
       depth
     )
 
-  /** What a whole rule made of a case: its failures in the reference's order, in the comparison's
-    * form, or the state after with the counters of the scripts it ran (the flat rule's
-    * `Counted.plutus`, the era rule's from its events through LEDGER's embedding,
-    * `EraLedgerRun.counters`).
-    */
-  private enum Whole:
-    case Refused(failures: List[EraUtxoRun.Failure])
-    case Admitted(state: LedgerState[Conway], scripts: (Long, Long, Long))
-
-  /** The era-typed LEDGER and the flat one on `s` from the same state. */
-  private def both(s: Seen, build: ReferenceBuild, validation: TxEnv.Validation): (Whole, Whole) =
-    val what = s"${s.label} under ${build.name}, $validation"
-    val era = eraLedger(s, build, validation) match
-      case Left(defect)    => fail(s"$what: era defect $defect")
-      case Right(Left(fs)) => Whole.Refused(fs.toChain.toList.map(eraForm(s)))
-      case Right(Right((state, events))) =>
-        Whole.Admitted(
-          state,
-          EraLedgerRun
-            .counters(
-              EraTx.conway
-                .isValid(s.typed) == xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid.Phase2Valid,
-              events
-            )
-            .getOrElse(fail(s"$what: events $events"))
-        )
-    val env = TxEnv(
-      slot = s.slot,
-      epoch = s.ledger.epoch,
-      network = s.network,
-      evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
-      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
-      validation = validation,
-      referenceBuild = build,
-      clock = Some(clock)
-    )
-    val flat = Judgment.run(FlatLedger, Judgment.Policy.Accumulate)(
-      globalsOf(s, build),
-      FlatLedgerEnv(env, s.ledger.treasury),
-      Counted(s.ledger.ls, PlutusStats.zero),
-      s.flat
-    ) match
-      case Left(defect) => fail(s"$what: flat defect $defect")
-      case Right(Left(fs)) =>
-        Whole.Refused(fs.toChain.toList.map(f => EraUtxoRun.form(f).getOrElse(fail(s"$what: $f"))))
-      case Right(Right(counted)) =>
-        Whole.Admitted(
-          counted.state,
-          (counted.plutus.succeeded, counted.plutus.failed, counted.plutus.scripts)
-        )
-    (era, flat)
-
-  /** The 11.2 and Leios builds check the withdrawals in LEDGER at every version, the flat rules in
-    * CERTS below 11 under every build: the named difference
-    * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484), where a withdrawal
-    * fails.
-    */
-  private def movedWithdrawals(s: Seen, build: ReferenceBuild, flat: Whole): Boolean =
-    build != ReferenceBuild.Release11_1 && s.ledger.params.protocolMajor < 11 && (flat match
-      case Whole.Refused(fs) =>
-        fs.exists {
-          case EraUtxoRun.Failure.Utxo(
-                PredicateFailure.Certs(
-                  xyz.kd5ujc.scarab.ledger.CertsFailure.WithdrawalsNotInRewards(_)
-                )
-              ) =>
-            true
-          case _ => false
-        }
-      case Whole.Admitted(_, _) => false)
-
   test("the corpus has Conway cases, each read by both paths"):
     assert(clue(seen.size) > 40)
 
-  /** The cases the flat comparisons and the flat encoder's recorded bytes judge: the corpora
+  /** The cases the flat rules judged before they were deleted, which the recordings of their
+    * judgments and of their encoder's bytes hold (`fixtures/conway-flat-refusals`): the corpora
     * recorded for the era rules alone aside.
     */
   private lazy val flatSeen: Vector[Seen] = seen.filterNot(s => eraOnly(s.label))
 
-  test("conwayLedgerTransition gives the flat LEDGER's failures, in order, on every Conway case"):
-    val outcomes = for
-      s0 <- flatSeen
-      s <- versions(s0)
-      build <- ReferenceBuild.values.toVector
-      validation <- TxEnv.Validation.values.toVector
-    yield
-      val base = s0.label
-      val what = s"${s.label} under ${build.name}, $validation"
-      both(s, build, validation) match
-        case (era @ Whole.Admitted(ours, counted), Whole.Admitted(theirs, flatCounted)) =>
-          assert(cats.Eq[LedgerState[Conway]].eqv(ours, theirs), what)
-          assertEquals(counted, flatCounted, s"$what: the counters")
-          (era, Option.empty[String])
-        case (era, flat) if movedWithdrawals(s, build, flat) =>
-          // the reference's form: the withdrawal refused in LEDGER, not in CERTS, with its
-          // account and amount, where the flat CERTS refuses it; every other failure the same,
-          // in the same order
-          (era, flat) match
-            case (Whole.Refused(ours), Whole.Refused(theirs)) =>
-              assertEquals(
-                ours,
-                MovedWithdrawals.expected(s.label, base, s.flat, s.ledger.ls, theirs),
-                what
-              )
-            case _ => fail(s"$what: $era against $flat")
-          (era, Some(base))
-        case (era, flat) =>
-          assertEquals(era, flat, what)
-          (era, Option.empty[String])
+  /** The judgment's cell of the recording (`ledger-judgments.jsonl`) of the era-typed LEDGER on `s`
+    * at the root: its refusal's bytes, or the state it leaves, in the Haskell state's encoding of
+    * the case's layout, with the counters of the scripts it ran (`EraLedgerRun.counters`).
+    */
+  private def rootCell(s: Seen, build: ReferenceBuild, validation: TxEnv.Validation): String =
+    val what = s"${s.label} under ${build.name}, $validation"
+    eraLedger(s, build, validation) match
+      case Left(defect)    => fail(s"$what: era defect $defect")
+      case Right(Left(fs)) => FlatRecordings.refused(fs.toChain.toVector)
+      case Right(Right((state, events))) =>
+        val (succeeded, failed, scripts) = EraLedgerRun
+          .counters(
+            EraTx.conway.isValid(s.typed) == xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid.Phase2Valid,
+            events
+          )
+          .getOrElse(fail(s"$what: events $events"))
+        FlatRecordings.admitted(state, succeeded, failed, scripts, FlatRecordings.layoutOf(s.build))
+
+  test("conwayLedgerTransition gives the flat LEDGER's recorded judgments on every Conway case"):
+    // the flat LEDGER, before it was deleted, judged each case at the root at its recorded protocol
+    // version and at 9, 10 and 11, under each build and policy, and the era LEDGER gave the same
+    // failures in the same order, or the same ledger state and counters (where the 11.2 and Leios
+    // builds refuse a withdrawal in LEDGER below version 11, the flat failures with CERTS's refusal
+    // of it replaced by LEDGER's, `MovedWithdrawals.expected`); the era LEDGER's judgments were
+    // recorded (`fixtures/conway-flat-refusals`): 1,872 refusals and 144 admissions
+    val recording = FlatRecordings.judgments("ledger-checks/")
+    val judged = flatSeen.map { s0 =>
+      val cells = for
+        s <- versions(s0)
+        build <- ReferenceBuild.values.toVector
+        validation <- TxEnv.Validation.values.toVector
+      yield rootCell(s, build, validation)
+      val id = s"ledger-checks/${s0.label}"
+      assertEquals(cells, recording.getOrElse(id, fail(s"no recording of $id")), s0.label)
+      cells
+    }
+    assertEquals(
+      recording.keySet,
+      flatSeen.map(s => s"ledger-checks/${s.label}").toSet,
+      "the cases"
+    )
+    val cells = judged.flatten
+    assertEquals(cells.count(_.startsWith("R:")), 1872, "the refusals compared")
+    assertEquals(cells.count(_.startsWith("A:")), 144, "the admissions compared")
+    // a case with three failures among them
     assert(
-      outcomes.exists {
-        case (Whole.Refused(fs), _) => fs.size >= 3
-        case _                      => false
-      },
+      seen.exists(s =>
+        eraLedger(s, s.build, TxEnv.Validation.All) match
+          case Right(Left(fs)) => fs.length >= 3
+          case _               => false
+      ),
       "no case with three failures"
     )
-    assert(outcomes.exists(_._1.isInstanceOf[Whole.Admitted]), "no admitted case")
-    // every case of the moved withdrawals, at the versions below 11 under the 11.2 and Leios
-    // builds and each policy, and only those
-    val moved = outcomes.collect { case (_, Some(label)) => label }
-    assertEquals(moved.toSet, MovedWithdrawals.Cases.keySet, "the cases of the moved withdrawals")
+
+  test(
+    "below version 11 the 11.2 and Leios builds refuse a withdrawal in LEDGER, on the moved withdrawals' cases alone"
+  ):
+    // `hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule` at those builds' pins; the flat
+    // rules refused these in CERTS (`MovedWithdrawals`)
+    def ledgersOwn(fs: Vector[LedgerPredFailure[Conway]]): Option[MovedWithdrawals.Kind] =
+      fs.collectFirst {
+        case ConwayLedgerPredFailure.ConwayWithdrawalsMissingAccounts(_) =>
+          MovedWithdrawals.Kind.Missing
+        case ConwayLedgerPredFailure.ConwayIncompleteWithdrawals(_) =>
+          MovedWithdrawals.Kind.Incomplete
+      }
+    // of the corpora the flat rules judged, the difference being theirs
+    def moved(builds: Vector[ReferenceBuild]) =
+      for
+        s0 <- flatSeen
+        s <- versions(s0)
+        if s.ledger.params.protocolMajor < 11
+        build <- builds
+        validation <- TxEnv.Validation.values.toVector
+        kind <- eraLedger(s, build, validation) match
+          case Right(Left(fs)) => ledgersOwn(fs.toChain.toVector)
+          case _               => None
+      yield s0.label -> kind
+    val found = moved(Vector(ReferenceBuild.Release11_2, ReferenceBuild.Leios))
+    assertEquals(found.toMap, MovedWithdrawals.Cases, "the cases of the moved withdrawals")
     // each at its recorded version (below 11), 9 and 10, under two builds and two policies
-    assertEquals(
-      moved.size,
-      MovedWithdrawals.Cases.size * 3 * 2 * 2,
-      "the judgments of the moved withdrawals"
+    assertEquals(found.size, MovedWithdrawals.Cases.size * 3 * 2 * 2, "their judgments")
+    assertEquals(moved(Vector(ReferenceBuild.Release11_1)), Vector.empty, "under 11.1")
+
+  test("the recording of the flat LEDGER's judgments holds those of its five suites alone"):
+    // each suite holds its own prefix to the judgments it makes; no other id is there
+    val prefixes = Map(
+      "ledger-checks/" -> 84,
+      "gov-after-certs/" -> 1,
+      "era-utxo-ledger/" -> 140,
+      "preview-blocks/" -> 10,
+      "preview-rules/" -> 22
     )
+    assertEquals(
+      prefixes.keys.toVector.map(p => p -> FlatRecordings.judgments(p).size).toMap,
+      prefixes
+    )
+    assertEquals(FlatRecordings.ledgerJudgments.size, prefixes.values.sum, "every id")
 
   /** The cases the mempool refuses before or beside LEDGER: its measure's (`txMeasureAlonzo`,
     * `Shelley/Ledger/Mempool.hs:590-612`, ouroboros-consensus 82ecba32) and MEMPOOL's own
@@ -515,12 +456,14 @@ class ConwayLedgerChecksSuite extends FunSuite:
       val alone = eraLedger(s, s.build, TxEnv.Validation.All, depth = 1)
       (ours, alone) match
         case (Right(Left(fs)), Right(Left(gs))) =>
-          // in the comparison's form: a script's failure holds terms, equal only as one object
+          // by their bytes: a script's failure holds terms, equal only as one object
           assertEquals(
-            fs.toChain.toList.map { case ShelleyLedgersPredFailure.LedgerFailure(f) =>
-              eraForm(s)(f)
-            },
-            gs.toChain.toList.map(eraForm(s)),
+            ConwayFailureCborCheck
+              .direct(fs.toChain.toVector.map { case ShelleyLedgersPredFailure.LedgerFailure(f) =>
+                f
+              })
+              .hex,
+            ConwayFailureCborCheck.direct(gs.toChain.toVector).hex,
             s.label
           )
         case (Right(Right((a, _))), Right(Right((b, _)))) =>
@@ -561,7 +504,8 @@ class ConwayLedgerChecksSuite extends FunSuite:
     // a registered DRep unregisters and votes in one transaction: GOV, given the state after the
     // certificates (`Conway/Rules/Ledger.hs:409-421`, cardano-ledger f649f975), finds no such
     // voter, where the state before the transaction holds it
-    val base = seen
+    // the first such state of the corpora the flat rules judged, the one the recording is of
+    val base = flatSeen
       .find(s =>
         s.ledger.ls.cert.vState.dreps.nonEmpty && s.ledger.ls.utxo.gov.proposals.actions.nonEmpty
       )
@@ -591,19 +535,25 @@ class ConwayLedgerChecksSuite extends FunSuite:
         )
       )
     )
-    val flatVoter = xyz.kd5ujc.scarab.ledger.Voter.DRepVoter(
+    val voterOf = xyz.kd5ujc.scarab.ledger.Voter.DRepVoter(
       xyz.kd5ujc.scarab.ledger.rules.Convert.back(drep)
     )
-    val notThere = EraUtxoRun.Failure.Utxo(
-      PredicateFailure.Gov(xyz.kd5ujc.scarab.ledger.GovFailure.VotersDoNotExist(Vector(flatVoter)))
+    val notThere: LedgerPredFailure[Conway] = ConwayLedgerPredFailure.ConwayGovFailure[Conway](
+      ConwayGovPredFailure.VotersDoNotExist[Conway](cats.data.NonEmptyList.one(voterOf))
     )
-    ReferenceBuild.values.foreach { build =>
-      both(s, build, TxEnv.Validation.All) match
-        case (era @ Whole.Refused(fs), flat) =>
-          assertEquals(era, flat, build.name)
-          assert(fs.contains(notThere), s"${build.name}: $fs")
+    // the flat LEDGER refused it with the same failures in the same order under each build,
+    // recorded in the order of the builds
+    val recording = FlatRecordings.judgments("gov-after-certs/")
+    val id = "gov-after-certs/drep-unregisters-and-votes"
+    assertEquals(recording.keySet, Set(id), "the recording")
+    val cells = ReferenceBuild.values.toVector.map { build =>
+      eraLedger(s, build, TxEnv.Validation.All) match
+        case Right(Left(fs)) =>
+          assert(fs.toChain.toVector.contains(notThere), s"${build.name}: $fs")
+          FlatRecordings.refused(fs.toChain.toVector)
         case other => fail(s"${build.name}: $other")
     }
+    assertEquals(cells, recording(id), "the builds' refusals")
     // the contrast: GOV alone, given the state before the certificates, finds the voter
     val tb = EraTx.conway.body[TxLevel.Top](s.typed)(using EraTx.conway.bodyOf.top)
     val b = EraTxBody.conway

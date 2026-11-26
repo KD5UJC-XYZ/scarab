@@ -18,7 +18,15 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   NativeRules,
   StakeDistribution
 }
+import cats.data.NonEmptyList
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit.Fails
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  ConwayGovPredFailure,
+  ConwayLedgerPredFailure,
+  LedgerPredFailure,
+  ShelleyPoolPredFailure
+}
 import xyz.kd5ujc.scarab.ledger.state as native
 import xyz.kd5ujc.scarab.ledger.state.{
   Build,
@@ -54,6 +62,7 @@ import TestLedger.*
   * boundary, and the state the rules leave is the next step's.
   */
 class ConwayGovernanceSuite extends ScalaCheckSuite:
+  private type Failure = LedgerPredFailure[Conway]
   private val ada = BigInt(1000000)
   private val half = Rational(1, 2)
   private val globals = LedgerGlobals(
@@ -271,7 +280,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       deposits: BigInt = 0,
       refunds: BigInt = 0,
       withdrawals: Map[RewardAccount, BigInt] = Map.empty
-  ): Either[LedgerFailure, Step] =
+  ): Either[Vector[Failure], Step] =
     val fee = ConwayTestKit.maxFee(st.params)
     val change = st.fundCoin - fee - deposits + refunds - donation + withdrawals.map(_._2).sum
     val built = ConwayTestKit.tx(
@@ -290,22 +299,31 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     judge(st.nes, built, env(st, st.nonce))
       .map(next => Step(next, TxIn(built.id, 0), change, st.nonce + 1))
 
-  /** Conway's LEDGER on the era types on a transaction built with true bytes, its refusal in the
-    * node's flat form; the flat LEDGER agrees on the same bytes ([[ConwayTestKit.ledger]]).
+  /** Conway's LEDGER on the era types on a transaction built with true bytes: its failures in the
+    * reference's order, or the state after it ([[ConwayTestKit.ledger]]).
     */
   private def judge(
       nes: NewEpochState[Conway],
       built: ConwayTestKit.Built,
       ctx: TxEnv
-  ): Either[LedgerFailure, NewEpochState[Conway]] = ConwayTestKit.ledger(nes, built, ctx)
+  ): Either[Vector[Failure], NewEpochState[Conway]] = ConwayTestKit.ledger(nes, built, ctx)
 
-  private def ok[A](r: Either[LedgerFailure, A]): A = r.fold(f => fail(f.message), identity)
+  private def ok[A](r: Either[Vector[Failure], A]): A = r.fold(f => fail(s"refused: $f"), identity)
 
   /** The rule's refusal of a transaction, or `None` if it is accepted. */
-  private def refusal[A](r: Either[LedgerFailure, A]): Option[PredicateFailure] = r match
-    case Left(LedgerFailure.Rejected.Single(_, f)) => Some(f)
-    case Left(other) => fail(s"not a rule's refusal: ${other.message}")
-    case Right(_)    => None
+  private def refusal[A](r: Either[Vector[Failure], A]): Option[Failure] = r match
+    case Left(Vector(f)) => Some(f)
+    case Left(other)     => fail(s"not a refusal of one failure: $other")
+    case Right(_)        => None
+
+  /** POOL's refusal of the VRF key hash `vrf` another pool holds, for the pool of `op`. */
+  private def vrfTaken(op: Key, vrf: Bytes): Failure =
+    Fails.pool(
+      ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(
+        poolId(op),
+        must(VRFVerKeyHash.fromBytes(vrf))
+      )
+    )
 
   /** The state one epoch later: the tick into the next epoch, on the state the rules left. */
   private def boundary(st: Step): Step = boundaryUnder(globals)(st)
@@ -510,9 +528,9 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     assertEquals(
       refusal(denied),
       Some(
-        PredicateFailure.gov(
-          GovFailure.DisallowedVotesDuringBootstrap(
-            Vector(Voter.DRepVoter(w.dreps(0).credential) -> pid)
+        Fails.gov(
+          ConwayGovPredFailure.DisallowedVotesDuringBootstrap(
+            NonEmptyList.one(Voter.DRepVoter(w.dreps(0).credential) -> pid)
           )
         )
       )
@@ -523,7 +541,13 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       submit(w, s1, Vector.empty, proposals = Vector(proposal(w, tw)), deposits = 1000 * ada)
     assertEquals(
       refusal(refused),
-      Some(PredicateFailure.gov(GovFailure.DisallowedProposalDuringBootstrap(proposal(w, tw))))
+      Some(
+        Fails.gov(
+          ConwayGovPredFailure.DisallowedProposalDuringBootstrap(
+            ConwayTestKit.proposalProcedure(proposal(w, tw))
+          )
+        )
+      )
     )
     // the zero DRep threshold lets a parameter change nobody voted for through (the committee and
     // pools do not stand in the way: the pools may not vote on a non-security parameter)
@@ -735,7 +759,11 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       )
     assertEquals(
       refusal(judge(s0.nes, naming(5), env(s0, 0))),
-      Some(PredicateFailure.TreasuryValueMismatch(Mismatch(BigInt(5), s0.treasury)))
+      Some(
+        ConwayLedgerPredFailure.ConwayTreasuryValueMismatch(
+          era.Mismatch(native.Coin(5), native.Coin(s0.treasury))
+        )
+      )
     )
     assert(judge(s0.nes, naming(s0.treasury), env(s0, 0)).isRight)
   }
@@ -962,7 +990,9 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       (early11, late11),
       (
         Some(
-          PredicateFailure.gov(GovFailure.UnelectedCommitteeVoters(Vector(hot11.credential)))
+          Fails.gov(
+            ConwayGovPredFailure.UnelectedCommitteeVoters(NonEmptyList.one(hot11.credential))
+          )
         ),
         None
       )
@@ -1000,7 +1030,9 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     )
     assertEquals(
       refusal(refused),
-      Some(PredicateFailure.gov(GovFailure.UnelectedCommitteeVoters(Vector(hot.credential))))
+      Some(
+        Fails.gov(ConwayGovPredFailure.UnelectedCommitteeVoters(NonEmptyList.one(hot.credential)))
+      )
     )
   }
 
@@ -1015,7 +1047,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
         deposits = if fresh then w.params.poolDeposit else 0
       )
     def taken(op: Key, vrf: Bytes) =
-      Some(PredicateFailure.pool(PoolFailure.VRFKeyHashAlreadyRegistered(op.hash, vrf)))
+      Some(vrfTaken(op, vrf))
     def vrfOf(i: Int, w: World) = w.poolParams(w.pools(i)).vrfKeyHash
     def fresh(n: Int) = Blake2b.hash256.hash(Bytes(Vector(0x56, n.toByte)))
     def keys(st: Step) = st.pState.vrfKeyHashes.keysIterator.map(_.bytes).toSet
@@ -1062,7 +1094,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     def countOf(st: Step): Option[Long] =
       st.pState.vrfKeyHashes.get(must(VRFVerKeyHash.fromBytes(reused))).map(_.value.bits)
     def taken(op: Key) =
-      Some(PredicateFailure.pool(PoolFailure.VRFKeyHashAlreadyRegistered(op.hash, reused)))
+      Some(vrfTaken(op, reused))
 
     /** Pool B registers with `reused` at 11.0, a hard fork to 11.1 is enacted, B retires and is
       * reaped; then B registers again with its keys, and a new pool C registers with B's key, each
@@ -1071,7 +1103,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     def scenario(build: ReferenceBuild)(
         afterFork: Option[Long],
         afterReap: Option[Long],
-        verdict: Key => Option[PredicateFailure]
+        verdict: Key => Option[Failure]
     ): Unit =
       val g = globals.copy(referenceBuild = build)
       val w = World(11)
@@ -1185,7 +1217,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     def scenario(
         build: ReferenceBuild,
         start: Step
-    ): (Option[Long], Option[Long], Option[PredicateFailure]) =
+    ): (Option[Long], Option[Long], Option[Failure]) =
       val g = globals.copy(referenceBuild = build)
       val s1 = ok(
         submit(
@@ -1236,9 +1268,7 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
       assertEquals(scenario(build, registered), (Some(1L), None, None), s"${build.name}: empty map")
     )
     // from the derived map 11.1 counts B twice, and its key outlives it: C is refused
-    val taken = PredicateFailure.pool(
-      PoolFailure.VRFKeyHashAlreadyRegistered(c.hash, w.poolParams(b).vrfKeyHash)
-    )
+    val taken = vrfTaken(c, w.poolParams(b).vrfKeyHash)
     assertEquals(scenario(ReferenceBuild.Release11_1, derived), (Some(2L), Some(1L), Some(taken)))
     // 11.2 and the Leios build count afresh and reach the reference's from it too
     assertEquals(scenario(ReferenceBuild.Release11_2, derived), (Some(1L), None, None))
