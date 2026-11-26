@@ -49302,6 +49302,28 @@
    ],
    "note": "the whole block's foldMap totExUnits compared point-wise with maxBlockExUnits, as validateExUnits; the units past the limit or none in place of a predicate failure, which the flat BBODY raises as BlockExUnitsTooBig; the era chosen by the PreConway evidence (the eras before Conway, which the flat BBODY keeps): from Alonzo, where the reference's BBODY instances call validateExUnits (Alonzo/Rules/Bbody.hs:212), and none in Shelley, Allegra and Mary, whose BBODY has no such check; the flat body's preparation reads it too (EraBlock.Body, #85)",
    "digest": "452a612c2ef1a0a9"
+  },
+  "def ledger.era.conway.ConwayTxOut.read": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+     "symbol": "decodeBabbageTxOut",
+     "lines": [
+      542,
+      579
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "an output of a Conway body read from its item in one pass, with the forms, keys and refusals and their order of the flat output decoder at Conway (TxOut.decode of PairDatumHashOrMap): the map form unless its length is written in eight bytes, the list of two or three; its inline datum read as data once (makeBinaryData, the flat decoder's Data.readBytes with its error) and its reference script once by Conway's script reader, whose refusals at Conway are the flat script reader's; the flat output read from the same item is kept beside it, and the body's second phase holds the output's stored form to it (ConwayTxOut.checked, StoredOutputDiffers) as the projection did. The same value or refusal as the two passes on every recorded transaction, on mutants of them and on written cases",
+   "digest": "06469d6c1a5f5151"
   }
  },
  "glue": [
@@ -50799,6 +50821,24 @@
     "def ledger.LeiosBlock#firstUnheld",
     "def ledger.LeiosBlock.Defect#error",
     "enum ledger.LeiosBlock.Defect"
+   ]
+  },
+  {
+   "reason": "Conway's one-pass decoders (#85): the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses), the output the first phase read with the flat output beside it and its second phase (ConwayTxOut.Read, ConwayTxOut.checked); the two passes they replaced, kept for the differential and the bench until the flat decoder goes at stage 6a (decodeByFlat, fromEnvelopeByFlat); and three readers of the flat decoder made visible to them, unchanged (TxBody.known, TxBody.networkId, Witnesses.exUnits). Scala containers and helpers of the decoders, with no counterpart of their own",
+   "definitions": [
+    "class ledger.era.conway.ConwayTxOut.Read",
+    "def ledger.TxBody.known",
+    "def ledger.TxBody.networkId",
+    "def ledger.Witnesses.exUnits",
+    "def ledger.era.conway.ConwayTx.decodeByFlat",
+    "def ledger.era.conway.ConwayTx.fromEnvelopeByFlat",
+    "def ledger.era.conway.ConwayTxAuxData.decodeByFlat",
+    "def ledger.era.conway.ConwayTxAuxData.fromItem",
+    "def ledger.era.conway.ConwayTxBody.decodeByFlat",
+    "def ledger.era.conway.ConwayTxBody.fromItem",
+    "def ledger.era.conway.ConwayTxOut.checked",
+    "def ledger.era.conway.ConwayTxWits.decodeByFlat",
+    "def ledger.era.conway.ConwayTxWits.fromItem"
    ]
   }
  ]
