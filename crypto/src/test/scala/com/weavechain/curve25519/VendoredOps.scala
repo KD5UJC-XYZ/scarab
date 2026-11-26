@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 package com.weavechain.curve25519
 
+import scala.jdk.OptionConverters.*
+
 /** The vendored field and point operations on raw limbs, for the suites of other packages that
   * compare an arithmetic with them limb for limb (the verifiers' arithmetic). Every argument is
   * copied before the vendored object is made, and every result read out as a fresh array, so
@@ -86,7 +88,7 @@ object VendoredOps:
       .map(three)
 
   def decompress(encoding: Array[Byte]): Option[Four] =
-    scala.util.Try(new CompressedEdwardsY(encoding.clone()).decompress()).toOption.map(four)
+    new CompressedEdwardsY(encoding.clone()).decompress().toScala.map(four)
 
   def compress(e: Four): Array[Byte] = edwards(e).compress().toByteArray
 
@@ -133,4 +135,4 @@ object VendoredOps:
 
   /** Whether `Scalar.fromCanonicalBytes` accepts the 32 bytes. */
   def canonicalScalar(s: Array[Byte]): Boolean =
-    scala.util.Try(Scalar.fromCanonicalBytes(s.clone())).isSuccess
+    Scalar.fromCanonicalBytes(s.clone()).isPresent

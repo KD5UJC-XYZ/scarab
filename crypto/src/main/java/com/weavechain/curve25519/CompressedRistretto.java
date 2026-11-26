@@ -8,6 +8,7 @@
 package com.weavechain.curve25519;
 
 import java.util.Arrays;
+import java.util.Optional;
 
 import com.weavechain.subtle.ConstantTime;
 
@@ -35,11 +36,10 @@ public class CompressedRistretto {
      * <p>
      * This is the ristretto255 DECODE function.
      *
-     * @return a RistrettoElement, if this is the canonical encoding of an element
-     *         of the ristretto255 group.
-     * @throws InvalidEncodingException if this is an invalid encoding.
+     * @return the RistrettoElement, if this is the canonical encoding of an element
+     *         of the ristretto255 group, and none if it is not.
      */
-    public RistrettoElement decompress() throws InvalidEncodingException {
+    public Optional<RistrettoElement> decompress() {
         // 1. First, interpret the string as an integer s in little-endian
         // representation. If the resulting value is >= p, decoding fails.
         // 2. If IS_NEGATIVE(s) returns TRUE, decoding fails.
@@ -47,7 +47,7 @@ public class CompressedRistretto {
         final byte[] sBytes = s.toByteArray();
         final int sIsCanonical = ConstantTime.equal(this.data, sBytes);
         if (sIsCanonical == 0 || s.isNegative() == 1) {
-            throw new InvalidEncodingException("Invalid ristretto255 encoding");
+            return Optional.empty();
         }
 
         // 3. Process s as follows:
@@ -71,9 +71,9 @@ public class CompressedRistretto {
         // fails. Otherwise, return the internal representation in extended coordinates
         // (x, y, 1, t).
         if (invsqrt.wasSquare == 0 || t.isNegative() == 1 || y.isZero() == 1) {
-            throw new InvalidEncodingException("Invalid ristretto255 encoding");
+            return Optional.empty();
         } else {
-            return new RistrettoElement(new EdwardsPoint(x, y, FieldElement.ONE, t));
+            return Optional.of(new RistrettoElement(new EdwardsPoint(x, y, FieldElement.ONE, t)));
         }
     }
 

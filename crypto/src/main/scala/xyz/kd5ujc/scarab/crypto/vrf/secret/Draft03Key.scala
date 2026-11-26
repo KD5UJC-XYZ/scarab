@@ -5,6 +5,7 @@ import cats.syntax.either.*
 import com.weavechain.curve25519.{CompressedEdwardsY, Constants, EdwardsPoint, Scalar}
 import java.security.MessageDigest
 import java.util.Arrays
+import scala.jdk.OptionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.secret.{Scratch, Sha512}
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover.{Failure, Proved}
@@ -94,14 +95,16 @@ private[vrf] final class Draft03Key private (
     */
   def prove(h: Bytes): Either[Failure, Proved] = run(Scratch.within(s => provingIn(s, h)))
 
-  /** [[output]] in the scratch `s`; none once the key is forgotten. */
-  private[secret] def outputIn(s: Scratch, h: Bytes): Option[Bytes] =
-    seedIn(s).map { seed =>
+  /** [[output]] in the scratch `s`; [[Failure.MissingSigningKey]] once the key is forgotten, and
+    * [[Failure.HashToCurveEncoding]] if `h` encodes no point.
+    */
+  private[secret] def outputIn(s: Scratch, h: Bytes): Either[Failure, Bytes] =
+    seedIn(s).toRight(Failure.MissingSigningKey).flatMap { seed =>
       val (x, _) = expanded(s)(seed)
-      outputOf(s)(gammaOf(s)(x, decoded(h)))
+      decoded(h).map(hPoint => outputOf(s)(gammaOf(s)(x, hPoint)))
     }
 
-  /** [[prove]] in the scratch `s`; none once the key is forgotten. `copied` runs once the seed is
+  /** [[prove]] in the scratch `s`, refused as [[outputIn]] refuses. `copied` runs once the seed is
     * copied and the monitor released, before anything is computed from the copy: the point at which
     * a suite of this package parks a proof to race it with [[forget]].
     */
@@ -109,41 +112,11 @@ private[vrf] final class Draft03Key private (
       s: Scratch,
       h: Bytes,
       copied: () => Unit = () => ()
-  ): Option[Proved] =
-    seedIn(s).map { seed =>
+  ): Either[Failure, Proved] =
+    seedIn(s).toRight(Failure.MissingSigningKey).flatMap { seed =>
       copied()
       val (x, nonceKey) = expanded(s)(seed)
-      val hString = h.toArray
-      val hPoint = decoded(h)
-      val gamma = gammaOf(s)(x, hPoint)
-      val gammaString = encoded(s)(gamma)
-      // k = SHA-512(nonce key || H) mod L, the deterministic nonce of draft-03 (RFC 8032 style)
-      val nonce = s.buffer(64)
-      sha512(s.array(nonce), s.array(nonceKey), hString)
-      val k = s.buffer(32)
-      Scalar.reduceWide(s.array(nonce), s.array(k))
-      val kDigits = digits(s)(k)
-      val u = encoded(s)(Constants.ED25519_BASEPOINT_TABLE.multiplyRadix16(s.array(kDigits)))
-      val v = encoded(s)(hPoint.multiplyRadix16(s.array(kDigits)))
-      // c, the first 16 bytes of the hash of H, Gamma, U and V, each as encoded
-      val hashed = s.buffer(64)
-      sha512(
-        s.array(hashed),
-        Array(Suite, ChallengeDomain),
-        hString,
-        s.array(gammaString),
-        s.array(u),
-        s.array(v)
-      )
-      val c = s.buffer(32)
-      System.arraycopy(s.array(hashed), 0, s.array(c), 0, ChallengeBytes)
-      val response = s.buffer(32)
-      Scalar.multiplyAndAdd(s.array(c), s.array(x), s.array(k), s.array(response))
-      val proof = s.buffer(80)
-      System.arraycopy(s.array(gammaString), 0, s.array(proof), 0, 32)
-      System.arraycopy(s.array(c), 0, s.array(proof), 32, ChallengeBytes)
-      System.arraycopy(s.array(response), 0, s.array(proof), 32 + ChallengeBytes, 32)
-      Proved(s.publish(proof), outputOf(s)(gamma))
+      decoded(h).map(hPoint => provedWith(s)(x, nonceKey, h.toArray, hPoint))
     }
 
   /** The seed, copied into a buffer of `s`; none once the key is forgotten. */
@@ -202,7 +175,7 @@ private[vrf] object Draft03Key:
   /** The key of the 32 bytes `seed`: its public key `[x]B`, computed from a copy in a scratch,
     * which zeroes it however the computation ends; then the key, made with an array of zeros, and
     * the seed copied into that array, which nothing between the copy and the key that owns it can
-    * fail.
+    * fail. What can throw is the JDK's SHA-512, as in [[run]].
     */
   private def made(copySeed: (Array[Byte], Int) => Unit): Either[Failure, Draft03Key] =
     Either
@@ -223,14 +196,16 @@ private[vrf] object Draft03Key:
         }
       )
 
-  /** What an operation computed, a failure of the library as [[Failure.InternalFailure]], or the
-    * refusal of a forgotten key.
+  /** What an operation computed or refused, or a failure of the library as
+    * [[Failure.InternalFailure]]. What can throw is the JDK's SHA-512 ([[Sha512]]), when no
+    * provider of the JDK supplies it; the curve arithmetic is handed buffers of the sizes it takes,
+    * made in the operation, and decodes without throwing.
     */
-  private def run[A](computed: => Option[A]): Either[Failure, A] =
+  private def run[A](computed: => Either[Failure, A]): Either[Failure, A] =
     Either
       .catchNonFatal(computed)
       .leftMap(Failure.InternalFailure(_))
-      .flatMap(_.toRight(Failure.MissingSigningKey))
+      .flatMap(identity)
 
   /** The scalar x and the nonce key of `seed`, in `s`: SHA-512 of the seed, its first half clamped
     * (bit 255 clear, bit 254 set, the low three bits clear) and its second half. x stays unreduced:
@@ -248,6 +223,45 @@ private[vrf] object Draft03Key:
     scalar(0) = (scalar(0) & 248).toByte
     scalar(31) = ((scalar(31) & 127) | 64).toByte
     (x, nonceKey)
+
+  /** The proof and output of the scalar `x` and the nonce key, both in `s`, over H, which `hString`
+    * encodes and `hPoint` is.
+    */
+  private def provedWith(s: Scratch)(
+      x: s.Buffer,
+      nonceKey: s.Buffer,
+      hString: Array[Byte],
+      hPoint: EdwardsPoint
+  ): Proved =
+    val gamma = gammaOf(s)(x, hPoint)
+    val gammaString = encoded(s)(gamma)
+    // k = SHA-512(nonce key || H) mod L, the deterministic nonce of draft-03 (RFC 8032 style)
+    val nonce = s.buffer(64)
+    sha512(s.array(nonce), s.array(nonceKey), hString)
+    val k = s.buffer(32)
+    Scalar.reduceWide(s.array(nonce), s.array(k))
+    val kDigits = digits(s)(k)
+    val u = encoded(s)(Constants.ED25519_BASEPOINT_TABLE.multiplyRadix16(s.array(kDigits)))
+    val v = encoded(s)(hPoint.multiplyRadix16(s.array(kDigits)))
+    // c, the first 16 bytes of the hash of H, Gamma, U and V, each as encoded
+    val hashed = s.buffer(64)
+    sha512(
+      s.array(hashed),
+      Array(Suite, ChallengeDomain),
+      hString,
+      s.array(gammaString),
+      s.array(u),
+      s.array(v)
+    )
+    val c = s.buffer(32)
+    System.arraycopy(s.array(hashed), 0, s.array(c), 0, ChallengeBytes)
+    val response = s.buffer(32)
+    Scalar.multiplyAndAdd(s.array(c), s.array(x), s.array(k), s.array(response))
+    val proof = s.buffer(80)
+    System.arraycopy(s.array(gammaString), 0, s.array(proof), 0, 32)
+    System.arraycopy(s.array(c), 0, s.array(proof), 32, ChallengeBytes)
+    System.arraycopy(s.array(response), 0, s.array(proof), 32 + ChallengeBytes, 32)
+    Proved(s.publish(proof), outputOf(s)(gamma))
 
   /** The 64 radix-16 digits of the 32-byte scalar `k`, below 2^255, in `s`. */
   private def digits(s: Scratch)(k: s.Buffer): s.Buffer =
@@ -274,9 +288,14 @@ private[vrf] object Draft03Key:
     )
     s.publish(out)
 
-  /** H, from its encoding: a public point, decoded by the constant-time decoder. */
-  private def decoded(h: Bytes): EdwardsPoint = new CompressedEdwardsY(h.toArray).decompress()
+  /** H, from its encoding: a public point, decoded by the constant-time decoder;
+    * [[Failure.HashToCurveEncoding]] if its 32 bytes encode no point, or there are not 32 of them.
+    */
+  private def decoded(h: Bytes): Either[Failure, EdwardsPoint] =
+    Option
+      .when(h.size == 32)(h.toArray)
+      .flatMap(encoding => new CompressedEdwardsY(encoding).decompress().toScala)
+      .toRight(Failure.HashToCurveEncoding)
 
-  /** SHA-512 of `pieces` into the 64 bytes of `into`, with a digest made for the call. */
   /** SHA-512 of `pieces` into `into`, with a digest reset on the way out ([[Sha512]]). */
   private def sha512(into: Array[Byte], pieces: Array[Byte]*): Unit = Sha512.into(into, pieces*)

@@ -149,4 +149,4 @@ object LegacyDraft03Prover:
     d.digest()
 
   private def toEdwards(encoded: Array[Byte]): EdwardsPoint =
-    new CompressedEdwardsY(encoded).decompress()
+    new CompressedEdwardsY(encoded).decompress().get

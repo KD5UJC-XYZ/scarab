@@ -30,20 +30,19 @@ object WarmBenchMain:
     */
   private def before(key: Bytes, signature: Bytes, message: Bytes): Boolean =
     import com.weavechain.curve25519.{CompressedEdwardsY, EdwardsPoint, Scalar}
+    import scala.jdk.OptionConverters.*
     def point(bytes: Array[Byte]) =
-      try
-        val q = new CompressedEdwardsY(bytes.clone()).decompress()
-        Option(q).filter(r =>
-          java.util.Arrays.equals(r.compress().toByteArray, bytes) && !r.isSmallOrder
-        )
-      catch case _: com.weavechain.curve25519.InvalidEncodingException => None
+      new CompressedEdwardsY(bytes.clone())
+        .decompress()
+        .toScala
+        .filter(r => java.util.Arrays.equals(r.compress().toByteArray, bytes) && !r.isSmallOrder)
     val k = key.toArray
     val sig = signature.toArray
     val r = sig.take(32)
     (for
       a <- point(k)
       _ <- point(r)
-      sc <- scala.util.Try(Scalar.fromCanonicalBytes(sig.drop(32))).toOption
+      sc <- Scalar.fromCanonicalBytes(sig.drop(32)).toScala
     yield
       val digest = java.security.MessageDigest.getInstance("SHA-512")
       digest.update(r)

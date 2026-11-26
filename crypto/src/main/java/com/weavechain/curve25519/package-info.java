@@ -18,10 +18,12 @@
  *       {@code toRadix16()}, {@code multiply(Scalar)}) compute through them.</li>
  * </ul>
  *
- * <p>The decoders throw on a malformed encoding ({@link InvalidEncodingException} from {@code decompress},
- * {@link IllegalArgumentException} from {@code Scalar.fromCanonicalBytes}), as their upstream does: ERR-4 lists
- * these sources among its exceptions, and the interfaces of {@code xyz.kd5ujc.scarab.crypto} that pass them
- * outside input catch where they call. No wart or guard of FUN-1, FUN-3 or ERR-4 reads these sources: they are
- * FUN-2 (f), review only. A typed result from the decoders is an open item of #1418.
+ * <p>The decoders return a result and throw on no input: {@link CompressedEdwardsY#decompress()} and
+ * {@link CompressedRistretto#decompress()} give an empty {@code Optional} for bytes that encode no point, and
+ * {@link Scalar#fromCanonicalBytes(byte[])} for bytes that are not the 32-byte encoding of a scalar below the
+ * group order. The {@code throw} statements left check the caller's arguments, which the callers in
+ * {@code xyz.kd5ujc.scarab.crypto} never fail: an array of another length than a constructor or a method takes,
+ * a radix-16 digit outside [-8, 8], a NAF digit that is even or above 15, an exponent below 1, and the high bit of
+ * a 32-byte {@link Scalar}.
  */
 package com.weavechain.curve25519;

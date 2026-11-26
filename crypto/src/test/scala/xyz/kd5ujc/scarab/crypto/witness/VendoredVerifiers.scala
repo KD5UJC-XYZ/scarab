@@ -3,14 +3,10 @@ package xyz.kd5ujc.scarab.crypto.witness
 
 import cats.syntax.bifunctor.*
 import cats.syntax.either.*
-import com.weavechain.curve25519.{
-  CompressedEdwardsY,
-  EdwardsPoint,
-  InvalidEncodingException,
-  Scalar
-}
+import com.weavechain.curve25519.{CompressedEdwardsY, EdwardsPoint, Scalar}
 import java.security.MessageDigest
 import java.util.Arrays
+import scala.jdk.OptionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 
 /** `StrictEd25519` and `ByronEd25519` as they computed before `VartimeEd25519`, over the vendored
@@ -30,14 +26,10 @@ object VendoredVerifiers:
   /** The point of a canonical encoding that is on the curve and not of small order. */
   def strictPoint(bytes: Array[Byte]): Option[EdwardsPoint] =
     if !canonicalY(bytes) then None
-    else
-      Either
-        .catchOnly[InvalidEncodingException](new CompressedEdwardsY(bytes.clone()).decompress())
-        .toOption
-        .filter(p => !p.isSmallOrder)
+    else new CompressedEdwardsY(bytes.clone()).decompress().toScala.filter(p => !p.isSmallOrder)
 
   private def strictScalar(bytes: Array[Byte]): Option[Scalar] =
-    Either.catchOnly[IllegalArgumentException](Scalar.fromCanonicalBytes(bytes)).toOption
+    Scalar.fromCanonicalBytes(bytes).toScala
 
   def strictVerify(
       publicKey: Bytes,
@@ -105,9 +97,7 @@ object VendoredVerifiers:
       .leftMap(VerificationError.ImplementationFailure(_))
 
   private def byronPoint(bytes: Array[Byte]): Option[EdwardsPoint] =
-    Either
-      .catchOnly[InvalidEncodingException](new CompressedEdwardsY(bytes.clone()).decompress())
-      .toOption
+    new CompressedEdwardsY(bytes.clone()).decompress().toScala
 
   private def byronEvaluate(
       publicKey: PublicKey32,

@@ -8,6 +8,7 @@
 package com.weavechain.curve25519;
 
 import java.util.Arrays;
+import java.util.Optional;
 
 import com.weavechain.subtle.ConstantTime;
 
@@ -335,14 +336,18 @@ public class Scalar {
     /**
      * Attempt to construct a Scalar from a canonical byte representation.
      *
-     * @return the Scalar if the input was its canonical representation.
+     * @return the Scalar if the input was its canonical representation (32 bytes, the integer below the group
+     *         order), and none if it was not.
      */
-    public static Scalar fromCanonicalBytes(byte[] input) {
+    public static Optional<Scalar> fromCanonicalBytes(byte[] input) {
+        if (input.length != 32 || ((input[31] >> 7) & 0x01) != 0) {
+            return Optional.empty();
+        }
         Scalar s = new Scalar(input);
         if (!s.isCanonical()) {
-            throw new IllegalArgumentException("Non-canonical scalar representation");
+            return Optional.empty();
         }
-        return s;
+        return Optional.of(s);
     }
 
     /**

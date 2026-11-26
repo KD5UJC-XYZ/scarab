@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.crypto.witness
 
-import com.weavechain.curve25519.{
-  CompressedEdwardsY,
-  EdwardsPoint,
-  InvalidEncodingException,
-  Scalar
-}
+import com.weavechain.curve25519.{CompressedEdwardsY, EdwardsPoint, Scalar}
 import java.security.MessageDigest
 import java.util.Arrays
 import org.bouncycastle.math.ec.rfc8032.Ed25519
+import scala.jdk.OptionConverters.*
 import scala.util.Random
 import xyz.kd5ujc.scarab.codec.Bytes
 
@@ -23,17 +19,13 @@ class StrictEd25519DifferentialSuite extends munit.FunSuite:
 
   private object Reference:
     def point(bytes: Array[Byte]): Option[EdwardsPoint] =
-      val decoded =
-        try Some(new CompressedEdwardsY(bytes.clone()).decompress())
-        catch case _: InvalidEncodingException => None
+      val decoded = new CompressedEdwardsY(bytes.clone()).decompress().toScala
       decoded.filter(p => Arrays.equals(p.compress().toByteArray, bytes) && !p.isSmallOrder)
 
     def verify(key: Array[Byte], signature: Array[Byte], message: Array[Byte]): Boolean =
       val rBytes = Arrays.copyOfRange(signature, 0, 32)
       val sBytes = Arrays.copyOfRange(signature, 32, 64)
-      val s =
-        try Some(Scalar.fromCanonicalBytes(sBytes))
-        catch case _: IllegalArgumentException => None
+      val s = Scalar.fromCanonicalBytes(sBytes).toScala
       (for
         a <- point(key)
         _ <- point(rBytes)

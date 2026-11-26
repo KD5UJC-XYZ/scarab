@@ -8,6 +8,7 @@
 package com.weavechain.curve25519;
 
 import java.util.Arrays;
+import java.util.Optional;
 
 import com.weavechain.subtle.ConstantTime;
 
@@ -36,10 +37,9 @@ public class CompressedEdwardsY {
     /**
      * Attempts to decompress to an EdwardsPoint.
      *
-     * @return an EdwardsPoint, if this is a valid encoding.
-     * @throws InvalidEncodingException if this is an invalid encoding.
+     * @return the EdwardsPoint, if this is a valid encoding, and none if it is not (no x for its y).
      */
-    public EdwardsPoint decompress() throws InvalidEncodingException {
+    public Optional<EdwardsPoint> decompress() {
         FieldElement Y = FieldElement.fromByteArray(data);
         FieldElement YY = Y.square();
 
@@ -51,13 +51,13 @@ public class CompressedEdwardsY {
 
         FieldElement.SqrtRatioM1Result sqrt = FieldElement.sqrtRatioM1(u, v);
         if (sqrt.wasSquare != 1) {
-            throw new InvalidEncodingException("not a valid EdwardsPoint");
+            return Optional.empty();
         }
 
         FieldElement X = sqrt.result.negate().ctSelect(sqrt.result,
                 ConstantTime.equal(sqrt.result.isNegative(), ConstantTime.bit(data, 255)));
 
-        return new EdwardsPoint(X, Y, FieldElement.ONE, X.multiply(Y));
+        return Optional.of(new EdwardsPoint(X, Y, FieldElement.ONE, X.multiply(Y)));
     }
 
     /**

@@ -179,18 +179,15 @@ class StrictEd25519Suite extends munit.FunSuite:
     */
   private def separate(key: Array[Byte], signature: Array[Byte], message: Array[Byte]): Boolean =
     import com.weavechain.curve25519.{CompressedEdwardsY, Constants, Scalar}
+    import scala.jdk.OptionConverters.*
     def point(bytes: Array[Byte]) =
-      try
-        val p = new CompressedEdwardsY(bytes.clone()).decompress()
-        Option(p).filter(q =>
-          java.util.Arrays.equals(q.compress().toByteArray, bytes) && !q.isSmallOrder
-        )
-      catch case _: com.weavechain.curve25519.InvalidEncodingException => None
+      new CompressedEdwardsY(bytes.clone())
+        .decompress()
+        .toScala
+        .filter(q => java.util.Arrays.equals(q.compress().toByteArray, bytes) && !q.isSmallOrder)
     val r = signature.take(32)
     val sb = signature.drop(32)
-    val s =
-      try Some(Scalar.fromCanonicalBytes(sb))
-      catch case _: IllegalArgumentException => None
+    val s = Scalar.fromCanonicalBytes(sb).toScala
     (for
       a <- point(key)
       _ <- point(r)

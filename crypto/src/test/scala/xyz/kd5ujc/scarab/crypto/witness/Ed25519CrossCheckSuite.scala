@@ -285,7 +285,8 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
     largeOrderAliases.foreach { e =>
       val point = M.decode(e, M.Reading.Lenient).get
       assert(!point.isSmallOrder, s"${hex(e)} is not of small order")
-      val decompressed = new com.weavechain.curve25519.CompressedEdwardsY(e.clone()).decompress()
+      val decompressed =
+        new com.weavechain.curve25519.CompressedEdwardsY(e.clone()).decompress().get
       assertEquals(
         hex(decompressed.compress().toByteArray),
         hex(point.encode),

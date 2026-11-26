@@ -83,7 +83,7 @@ class Draft03KeySuite extends munit.FunSuite:
   ) {
     val k0 = key()
     val (result, before, after) = observedRun(s => k0.provingIn(s, h))
-    assert(result.exists(_.isDefined), s"no proof: $result")
+    assert(result.exists(_.isRight), s"no proof: $result")
     val named = List(
       "the seed" -> seed,
       "SHA-512 of the seed" -> expected.az,
@@ -106,7 +106,7 @@ class Draft03KeySuite extends munit.FunSuite:
   test("an output's every buffer is zero once it is computed") {
     val k0 = key()
     val (result, before, after) = observedRun(s => k0.outputIn(s, h))
-    assert(result.exists(_.isDefined), s"no output: $result")
+    assert(result.exists(_.isRight), s"no output: $result")
     assert(holds(before, expected.x), "the clamped scalar was not held by the scratch")
     assert(holds(before, digitsOf(expected.x)), "the scalar's digits were not held by the scratch")
     assert(after.forall(_.forall(_ == 0)), "a buffer kept its bytes")
@@ -118,12 +118,11 @@ class Draft03KeySuite extends munit.FunSuite:
     // has been expanded
     val undecodable = Bytes.fromArray(le(2, 32))
     val (result, before, after) = observedRun(s => k0.provingIn(s, undecodable))
-    assert(result.isLeft, s"an undecodable H gave $result")
+    assertEquals(result, Right(Left(Failure.HashToCurveEncoding)), "an undecodable H")
     assert(holds(before, expected.x), "the failure came before the key was expanded")
     assert(after.forall(_.forall(_ == 0)), "a buffer kept its bytes after the failure")
-    assert(k0.prove(undecodable) match
-      case Left(Failure.InternalFailure(_)) => true
-      case _                                => false)
+    assertEquals(k0.prove(undecodable), Left(Failure.HashToCurveEncoding))
+    assertEquals(k0.output(undecodable), Left(Failure.HashToCurveEncoding))
   }
 
   test("forget zeroes the seed, and the key then refuses") {
@@ -174,7 +173,7 @@ class Draft03KeySuite extends munit.FunSuite:
       assert(parked, "the proof did not reach the point after its copy of the seed")
       assert(erased, "forget did not zero the seed while the proof was parked")
       assert(parkedFor.get(), "the proof was not released by the suite")
-      assertEquals(outcome, Some(expectedProof), "the parked proof is not the key's")
+      assertEquals(outcome, Right(expectedProof), "the parked proof is not the key's")
       assertEquals(k0.prove(h), Left(Failure.MissingSigningKey), "a proof after the forget")
     finally
       released.countDown()
@@ -188,7 +187,7 @@ class Draft03KeySuite extends munit.FunSuite:
     k0.forget()
     val copies = new AtomicInteger(0)
     val outcome = Scratch.within(s => k0.provingIn(s, h, () => copies.incrementAndGet(): Unit))
-    assertEquals(outcome, None)
+    assertEquals(outcome, Left(Failure.MissingSigningKey))
     assertEquals(copies.get(), 0, "the proof copied a seed after the forget")
   }
 
