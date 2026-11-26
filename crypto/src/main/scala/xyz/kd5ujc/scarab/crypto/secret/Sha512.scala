@@ -21,16 +21,22 @@ import scala.util.Using.Releasable
   * The digests come from one the JDK supplied, found once, when a key is made or read
   * ([[Digests.found]]), where the key's constructor returns its absence as a typed failure. Every
   * hash then works on a copy of it ([[Digests]]), made without asking the JDK again, so a hash has
-  * no failure of its own.
+  * no failure of its own, for a digest whose copy depends on its class only ([[Digests]] says when
+  * that holds, and what happens otherwise).
   */
 private[crypto] object Sha512:
   private given Releasable[MessageDigest] = _.reset()
 
   /** The JDK's SHA-512 digest, found once and never updated, which every hash copies: holding one
     * is the evidence that a digest can be had without a lookup. A copy is a `clone` of it, which
-    * [[Digests.found]] has made once already: whether a digest clones is a property of its class,
-    * so every later copy of the same digest succeeds. The prototype holds nothing secret, since no
-    * hash updates it, and copies of it read it only, so keys and threads may share it.
+    * [[Digests.found]] has made once already. For a digest whose `clone` depends on its class only,
+    * every later copy succeeds as the first did; the JDK's do (its `MessageDigest` delegates clone
+    * the provider's digest, `sun.security.provider.SHA5` for SUN, whose clone copies its arrays). A
+    * provider whose clone could fail later, one that needs a resource for each copy, would throw
+    * here; the node types that where it calls the key, as a defect that stops it (`HotKeys`'
+    * `Fibers.scoped` when it signs, evolves or proves, `KeyGuard.loaded` when it starts). The
+    * prototype holds nothing secret, since no hash updates it, and copies of it read it only, so
+    * keys and threads may share it.
     */
   final class Digests private[Sha512] (prototype: MessageDigest):
     /** A digest of its own for one hash. */

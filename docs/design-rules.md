@@ -78,7 +78,7 @@ account, and not the person an agent works for unless that person holds the role
 | Python guards | `scripts/check_*.py`, run by `scripts/preflight` and the CI `scripts` job | as each rule says | as each rule says; each script's docstring has its detail |
 | Documentation check | `scripts/check_docs.py`, a guard like the others | `docs/**/*.md`, `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `changes/README.md`, outside fenced code; the other `changes/*.md` for relative links only | a new broken link or anchor, missing path or symbol, unregistered pin or stale "current" version. A finding listed in `docs/data/docs-check-baseline.json` passes, and one fixed must leave it; accepting a new one means rewriting the baseline, a diff a reviewer sees |
 | Crypto guards | `.github/workflows/security.yml`: semgrep with `.semgrep/scarab-crypto.yaml`, and `scripts/check_crypto_guard.py` | semgrep: every Scala and Java source but `tools`, `target` and `fixtures`; the containment guard: every Scala and Java source but `target`, `.git`, `.cache` and `fixtures`, so that it sees a reference that escapes its package | [CRY-1](#cry-1) |
-| Java sources guard | `scripts/check_java_sources.py`, a guard like the others, against `docs/data/java-sources.json` and `docs/data/java-throw-baseline.json` | every tracked `.java` file under a `src/main/` directory, `tools` included | a Java main source that is not on the list or a listed one that is gone ([FUN-2](#fun-2) (f)); a Unicode escape in one; and a count of `throw` in one, comments and literals aside, above the baseline ([ERR-4](#err-4)), which only shrinks, so a count cannot rise unless the change rewrites the baseline, a diff a reviewer sees |
+| Java sources guard | `scripts/check_java_sources.py`, a guard like the others, against `docs/data/java-sources.json` and `docs/data/java-throw-baseline.json` | every tracked `.java` file under a `src/main/` directory, `tools` included | a Java main source that is not on the list or a listed one that is gone ([FUN-2](#fun-2) (f)); a Unicode escape in one, or a character javac ignores inside a token; and a count of `throw` in one, comments and literals aside, above the baseline ([ERR-4](#err-4)), which only shrinks, so a count cannot rise unless the change rewrites the baseline, a diff a reviewer sees |
 | Secret scan | gitleaks with `.gitleaks.toml`, in CI and `scripts/preflight` | full history | committed secrets ([FMT-3](#fmt-3)) |
 | SPDX step | `.github/workflows/ci.yml`, "SPDX header on every script and workflow" | `.py`, `.yml` and `sbtw` under `scripts/` and `.github/workflows/` | a file without the header ([CMT-4](#cmt-4)) |
 | PR policy | `scripts/pr_policy.py`, on every pull request event | pull request title, body and changed paths; when the storage format guard changes, its `ONE_OFF_PATHS` as the pull request leaves it and the states of the pull requests it names | a missing level, a level below its floor, or a missing or malformed "Deviations from the reference" or "Gaps" section ([REF-7](#ref-7)); a storage format change whose title, paths or "Storage format change" section do not follow [FMT-1](#fmt-1); a change of the guard whose one-off exceptions name a merged pull request ([FMT-1](#fmt-1)) |
@@ -241,9 +241,14 @@ unavailable".
   boundary, typed as a defect, for what the JDK can throw there (no provider of SHA-512) and a null
   argument. The KES and VRF signing keys find the JDK's SHA-512 digest once, where they are made or read,
   and refuse with a typed case when none is supplied or it cannot be copied
-  (`Sum6KesSigning.Failure.Sha512Unavailable`, `Draft03Prover.Failure.InternalFailure`); every hash after
-  that works on a copy of the digest found, made without asking the JDK again (`Sha512.Digests`), so a key
-  that exists signs, proves and evolves with no failure of that kind, and with no catch. A start types what
+  (`Sum6KesSigning.Failure.Sha512Unavailable`, `Draft03Prover.Failure.InternalFailure`); every hash of
+  their secrets after that works on a copy of the digest found, made without asking the JDK again
+  (`Sha512.Digests`), so a key that exists signs, proves and evolves with no failure of that kind, and with
+  no catch. That holds for a digest whose copy depends on its class only, as the JDK's does; a provider
+  whose copy could fail later would throw beneath them, and the node types that as a defect where it calls
+  the key (`HotKeys`' `Fibers.scoped` when it signs, evolves or proves, `KeyGuard.loaded` when it starts).
+  The VRF prover's hash to curve, of public inputs, asks the JDK for SHA-512 on each proof
+  (`Draft03Math.hash`), and its catch types the JDK's refusal as `InternalFailure`. A start types what
   reading the key files throws (`ForgeError.KeyFilesDefect`).
 - **Enforcement:** `Wart.Throw`, and `SystemTimeAndUnsafeRun` in main: `sys.error`, `require`, `assume`,
   `assert`, and `raiseError`, `raiseWhen`, `raiseUnless`, `fromOption` and `fromEither` of a `Throwable` made
@@ -254,8 +259,8 @@ unavailable".
   reason. In the Java sources of [FUN-2](#fun-2) (f), `scripts/check_java_sources.py` refuses a source whose
   count of `throw` is above its baseline, `docs/data/java-throw-baseline.json`, which only shrinks, so a
   count cannot rise unless the change rewrites the baseline as well, a diff a reviewer sees; a `throw`
-  replaced by another in the same file is not seen. It refuses a Unicode escape in them too, which could
-  hide one. `EntryPointTotalitySuite` (crypto tests) feeds every entry point that reaches them bytes of every
+  replaced by another in the same file is not seen. It refuses a Unicode escape in them too, and a
+  character javac ignores inside a token, either of which could hide one. `EntryPointTotalitySuite` (crypto tests) feeds every entry point that reaches them bytes of every
   length and content, one input past each size limit they check, and inputs one bit from accepted ones,
   and fails on an exception. That no remaining `throw` is reached from outside input is review only, and so
   is the rest.
