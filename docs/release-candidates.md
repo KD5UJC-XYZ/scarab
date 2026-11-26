@@ -60,10 +60,17 @@ incomplete name, never as a verified candidate.
    every other bundled JNI resource is inventoried with its actual owner and hash, not advertised
    as another tested platform.
 5. The image is built once from the verified JAR and the digest-pinned Temurin 25.0.4.1+1 JRE.
-   It runs as numeric user `10001:10001`, with entrypoint
-   `java --sun-misc-unsafe-memory-access=allow -jar /opt/scarab/scarab.jar` (the flag allows Scala 3's lazy vals, still in 3.9, their
-   `sun.misc.Unsafe` calls without Java 25's warning). Read-only runtime smoke checks need executable JNI scratch:
-   `--tmpfs /tmp:rw,exec,nosuid,size=256m`; Docker's default `--tmpfs /tmp` is `noexec`.
+   It runs as numeric user `10001:10001`, and its entrypoint starts the node through the launcher
+   `scripts/scarab-jvm` ([Starting the node's JVM](running/launcher.md) describes it). Its last two layers are the JAR
+   (0444) and the launcher (0555), with `/opt/scarab` (0755), all owned by root. OCI export validation refuses an
+   entrypoint other than `candidate_oci.ENTRYPOINT`, any other owner or mode, and a launcher other than the source
+   commit's `scripts/scarab-jvm`, byte for byte. It reads that launcher from git at the commit its caller authenticated
+   (the release commit the publication flow checked against the server's tag, or the commit built), not from the
+   candidate or the verifier's own revision, so a launcher changed on `main` since the cut still lets the cut's
+   candidate verify (`candidate_oci.launcher_at`); the verifying checkout needs that commit. It accepts no image of the
+   entrypoint before the launcher, which started `java` directly; [#1461](https://github.com/KD5UJC-XYZ/scarab/pull/1461)
+   records that none had been published or retained when the check became strict. Read-only runtime smoke checks need
+   executable JNI scratch: `--tmpfs /tmp:rw,exec,nosuid,size=256m`; Docker's default `--tmpfs /tmp` is `noexec`.
    CLI and portable native/Plutus smoke checks run in the actual image. The existing resource,
    service, multi-release, BuildInfo, BouncyCastle and RocksDB verifier is compiled once in the
    pinned JDK and executed against the actual JRE image's JAR, with no product changes or host Java.

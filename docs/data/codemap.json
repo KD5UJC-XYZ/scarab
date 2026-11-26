@@ -144,12 +144,30 @@
       ],
       "suites": [
         "Draft03ProverSuite",
+        "Draft03ProverDifferentialSuite",
         "StrictDraft03Suite",
         "PraosVrfCertificateSuite",
         "PraosLeaderThresholdSuite"
       ],
       "docs": [
         "docs/adr/0001-haskell-node-as-reference.md"
+      ]
+    },
+    {
+      "module": "crypto",
+      "path": "crypto/vrf/secret",
+      "responsibility": "The secret steps of VRF proving: the key's seed, and the working storage erased after each operation",
+      "entryPoints": [
+        "Draft03Key",
+        "Scratch",
+        "Public"
+      ],
+      "suites": [
+        "Draft03KeySuite",
+        "ScratchSuite"
+      ],
+      "docs": [
+        "docs/security/threat-model.md"
       ]
     },
     {
@@ -838,6 +856,7 @@
         "PreviewConwayBlockLedgersSuite",
         "ConwayBbodySuite",
         "ConwayBbodyImpSuite",
+        "ConwayBlockRunSuite",
         "DijkstraBbodyImpSuite"
       ],
       "docs": [
@@ -879,11 +898,12 @@
     {
       "module": "ledger",
       "path": "ledger/rules",
-      "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY, epoch, tick, rewards (with `MuslMath`, the release node's musl `log`, `pow` and `exp`), governance; Dijkstra's BBODY, LEDGER, UTXOW, UTXO, CERT, POOL and GOV, reached from tests only",
+      "responsibility": "Shelley to Conway rule interpreter: LEDGER, UTXO, BBODY of the eras before Conway (Conway's blocks are the era run's, `era/rules`), epoch, tick, rewards (with `MuslMath`, the release node's musl `log`, `pow` and `exp`), governance; Dijkstra's BBODY, LEDGER, UTXOW, UTXO, CERT, POOL and GOV, reached from tests only",
       "entryPoints": [
         "Ledger",
         "Utxo",
-        "Bbody",
+        "ShelleyBbody",
+        "EraBlock",
         "NewEpoch",
         "Tick",
         "RuleT",
@@ -896,7 +916,7 @@
         "DijkstraSnap"
       ],
       "suites": [
-        "BbodySuite",
+        "ShelleyBbodySuite",
         "StsSuite",
         "TickRulesSuite",
         "EpochBoundarySuite",
@@ -1282,7 +1302,8 @@
         "PlutusBackendBlockProbeSuite",
         "LeaderScheduleSuite",
         "ScheduledForgerSuite",
-        "ForgeInterleavingSuite"
+        "ForgeInterleavingSuite",
+        "HotKeysLeaseSuite"
       ],
       "docs": [
         "docs/adr/0015-kes-key-written-back-and-checked-reload.md",
@@ -1498,6 +1519,16 @@
       "responsibility": "Hand-run benchmarks for the `crypto.witness` package (its package, for its package-private access): the allocation and time of one Ed25519 verification, through `VartimeEd25519` and through the vendored objects",
       "entryPoints": [
         "VerifyAllocationBench"
+      ],
+      "suites": [],
+      "docs": []
+    },
+    {
+      "module": "tools",
+      "path": "crypto/vrf",
+      "responsibility": "Hand-run timing test of the `crypto.vrf` package's secret path (its package, for its package-private access): a dudect-style fixed-against-random comparison of proving, the output and the constant-time multiplications",
+      "entryPoints": [
+        "SecretPathTiming"
       ],
       "suites": [],
       "docs": []

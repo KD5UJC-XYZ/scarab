@@ -857,3 +857,42 @@ object LogSamples:
         )
       )
     )
+
+  /** One of each Genesis trace ([[xyz.kd5ujc.scarab.node.GenesisTrace]]), each kind of ChainSync
+    * jumping event among them, with peers on IPv4 and IPv6 connections.
+    */
+  val genesis: List[xyz.kd5ujc.scarab.node.GenesisTrace] =
+    import cats.data.NonEmptyVector
+    import com.comcast.ip4s.IpAddress
+    import xyz.kd5ujc.scarab.network.ConnectionId
+    import xyz.kd5ujc.scarab.network.selection.ChainSyncJumping.{Event, Reason, RotatedDynamo}
+    import xyz.kd5ujc.scarab.node.{GenesisTrace, PeerOrder}
+    def connection(local: SocketAddress[IpAddress], remote: SocketAddress[IpAddress]) =
+      ConnectionId
+        .fromSocketAddresses(local, remote)
+        .fold(e => sys.error(e.toString), PeerOrder.Tcp(_))
+    val v4 =
+      connection(SocketAddress(ip"10.0.0.2", port"3001"), SocketAddress(ip"192.0.2.7", port"3001"))
+    val v6 =
+      connection(SocketAddress(ip"::1", port"40123"), SocketAddress(ip"2001:db8::7", port"6000"))
+    val at: ChainSync.Point.Block = ChainSync.Point.Block(ChainSync.UInt64.saturating(4200), hash)
+    List(
+      GenesisTrace.GddDebug(Vector(v6), at, BigInt(36000)),
+      GenesisTrace.GddDebug(Vector.empty, ChainSync.Point.Origin, BigInt(36000)),
+      GenesisTrace.GddDisconnected(NonEmptyVector.of(v6, v4)),
+      GenesisTrace.Csj(v4, Event.BecomingObjector(Some(v6))),
+      GenesisTrace.Csj(v6, Event.BecomingObjector(None)),
+      GenesisTrace.Csj(v4, Event.BlockedOnJump),
+      GenesisTrace.Csj(v4, Event.InitializedAsDynamo),
+      GenesisTrace.Csj(PeerOrder.Model(3), Event.InitializedAsDynamo),
+      GenesisTrace.Csj(v4, Event.NoLongerDynamo(Some(v6), Reason.Disengage)),
+      GenesisTrace.Csj(v4, Event.NoLongerDynamo(None, Reason.Disconnect)),
+      GenesisTrace.Csj(v6, Event.NoLongerObjector(Some(v4), Reason.Disconnect)),
+      GenesisTrace.Csj(v4, Event.SentJumpInstruction(at)),
+      GenesisTrace.Csj(v4, Event.SentJumpInstruction(ChainSync.Point.Origin)),
+      GenesisTrace.Dbf(RotatedDynamo(v4, v6)),
+      GenesisTrace.PeerStarvedUs(v4),
+      GenesisTrace.PeerStarvedUs(v6),
+      GenesisTrace.ChainSelStarvation(GenesisTrace.Edge.Rising),
+      GenesisTrace.ChainSelStarvation(GenesisTrace.Edge.FallingWith(at))
+    )

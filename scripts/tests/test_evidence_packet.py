@@ -13,6 +13,7 @@ import unittest
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import candidate_fixture
 import check_test_coverage
@@ -374,7 +375,7 @@ class PacketTest(unittest.TestCase):
         real = packet.candidate
         root = self.base / "candidate"
         candidate_fixture.make_candidate(root, release=False)
-        with mock.patch.object(packet, "candidate", lambda directory, commit: real(directory, "a" * 40)):
+        with mock.patch.object(packet, "candidate", lambda directory, commit, tree: real(directory, "a" * 40, REPO)):
             _, _, complete = self.build("with-candidate", candidate=root, allow_incomplete=False)
         self.assertTrue(complete)
         out = self.base / "with-candidate/packet"
@@ -552,17 +553,17 @@ class CandidateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / "candidate"
             candidate_fixture.make_candidate(root, release=False)
-            outcome, summary, copies = packet.candidate(root, "a" * 40)
+            outcome, summary, copies = packet.candidate(root, "a" * 40, REPO)
             self.assertIs(outcome, packet.Outcome.PASSED)
             self.assertEqual(sorted(copies), ["sbom/candidate.json", "sbom/image.cdx.json", "sbom/jvm.cdx.json"])
             self.assertEqual(copies["sbom/candidate.json"], (root / "candidate.json").read_bytes())
             self.assertEqual(sorted(s["kind"] for s in summary["subjects"]), ["jar", "oci-archive"])
             self.assertEqual(summary["jdkImage"]["id"], "sha256:" + "e" * 64)
             with self.assertRaises(packet.CandidateMismatch):
-                packet.candidate(root, "b" * 40)
+                packet.candidate(root, "b" * 40, REPO)
             (root / "sbom/jvm.cdx.json").write_text("{}\n")
             with self.assertRaises(packet.CandidateMismatch):
-                packet.candidate(root, "a" * 40)
+                packet.candidate(root, "a" * 40, REPO)
 
     def test_mutable_jdk_image_name_is_refused(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -574,10 +575,10 @@ class CandidateTest(unittest.TestCase):
             toolchain.write_text(json.dumps(value))
             with mock.patch.object(packet.candidate_manifest, "validate", return_value=manifest), \
                     self.assertRaises(packet.CandidateMismatch):
-                packet.candidate(root, "a" * 40)
+                packet.candidate(root, "a" * 40, REPO)
 
     def test_absent_candidate_is_not_supplied(self):
-        self.assertEqual(packet.candidate(None, "a" * 40), (packet.Outcome.NOT_SUPPLIED, {"status": "not-supplied"}, {}))
+        self.assertEqual(packet.candidate(None, "a" * 40, REPO), (packet.Outcome.NOT_SUPPLIED, {"status": "not-supplied"}, {}))
 
 
 if __name__ == "__main__":

@@ -199,3 +199,39 @@ class KeyFilesSuite extends munit.FunSuite:
       }
     )
   }
+
+  test("a VRF key read for credentials that are not taken is erased; one that is taken is kept") {
+    def key() = Draft03Prover.SigningKey.fromSeed(hex("07" * 32)).toOption.get
+    val alpha = hex("01")
+    val failure: Either[ForgeError, Int] =
+      Left(ForgeError.KeyFile("kes.skey", ForgeKeyProblem.OtherPermissions(0x1ff)))
+    val refused = key()
+    assertEquals(KeyFiles.erasedUnless(refused, failure)(_ => true), failure)
+    assertEquals(refused.prove(alpha), Left(Draft03Prover.Failure.MissingSigningKey))
+    assertEquals(refused.toBytes.take(32), hex("00" * 32), "the seed after a failure")
+    val notKept = key()
+    assertEquals(KeyFiles.erasedUnless(notKept, Right(2))(_ == 1), Right(2))
+    assertEquals(notKept.output(alpha), Left(Draft03Prover.Failure.MissingSigningKey))
+    val kept = key()
+    assertEquals(KeyFiles.erasedUnless(kept, Right(1))(_ == 1), Right(1))
+    assert(kept.prove(alpha).isRight, "the key the credentials keep was erased")
+  }
+
+  test("a VRF key read for credentials whose read throws is erased, and the throw passes on") {
+    def key() = Draft03Prover.SigningKey.fromSeed(hex("07" * 32)).toOption.get
+    val alpha = hex("01")
+    val thrown = key()
+    def failing: Either[ForgeError, Int] = throw new IllegalStateException("the read failed")
+    intercept[IllegalStateException](KeyFiles.erasedUnless(thrown, failing)(_ => true))
+    assertEquals(thrown.prove(alpha), Left(Draft03Prover.Failure.MissingSigningKey))
+    val fatal = key()
+    def overflowing: Either[ForgeError, Int] = throw new StackOverflowError()
+    // munit's intercept does not catch a fatal error, so the suite catches it here
+    val caught =
+      try
+        KeyFiles.erasedUnless(fatal, overflowing)(_ => true)
+        None
+      catch case e: StackOverflowError => Some(e)
+    assert(caught.isDefined, "the fatal error did not pass through")
+    assertEquals(fatal.prove(alpha), Left(Draft03Prover.Failure.MissingSigningKey))
+  }

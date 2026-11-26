@@ -45,10 +45,16 @@ A new general rule, and a change to one, comes here, with a sweep of the tree fo
 Where a rule needs the owner's approval ([REF-4](#ref-4), [REF-5](#ref-5), [REF-8](#ref-8), [FMT-1](#fmt-1)), the
 approval is the owner's explicit answer, given in the chat session doing the work, to an explicit question asked
 there before the work is written. That is the chat session the work is being done in, not one persistent session:
-sessions end, and each asks for the work it does.
+sessions end, and each asks for the work it does. The owner is the owner of this repository: a role, not a GitHub
+account, and not the person an agent works for unless that person holds the role (owner's decision, 2026-11-25,
+[decisions register](decisions.md#process)).
 
 - A subagent cannot obtain approval. It stops and reports to its lead, and the lead asks the owner in the chat
   session doing the work.
+- An outside contributor's own session cannot obtain approval either: nothing said there is approval. The
+  contributor's agent writes the question into its pull request and does not do that part of the work. The question
+  is asked again, explicitly, in the chat session in which the owner reviews or lands the pull request, which becomes
+  the chat session doing the work; that part waits for the owner's answer there.
 - The work records the question as it was asked and the owner's decision in neutral words, never the owner's exact
   answer, with the UTC times the question was asked and the decision given (in the pull request, and where a rule
   says, in a register). That record is evidence of an approval given in the chat session doing the work, never an
@@ -1013,9 +1019,13 @@ only from package `xyz.kd5ujc.scarab.crypto.vrf`. Crypto code follows the rules 
 
 - **Scope:** main, tests; the containment part also `tools`.
 - **Exceptions:** none.
-- **Enforcement:** `scripts/check_crypto_guard.py` (containment) and semgrep, failing on a `WARNING`
-  finding, both in `.github/workflows/security.yml`; that secret scalars never reach the variable-time math
-  is review only (the guard's docstring).
+- **Enforcement:** `scripts/check_crypto_guard.py` and semgrep, failing on a `WARNING` finding, both in
+  `.github/workflows/security.yml`. The guard checks containment, and reads the names in the main sources of
+  package `xyz.kd5ujc.scarab.crypto.vrf.secret` (VRF proving's secret steps) and in `Draft03Prover`, outside
+  comments and string literals: the package names none of its list of variable-time routines, early-exit
+  comparisons and array-sharing calls, and renames nothing on import; `Draft03Prover` calls `Draft03Math.h2c`
+  alone. It reads names, not calls: that secret scalars never reach the variable-time math through another
+  package, by reflection or under an unlisted name is review only (the guard's docstring).
 - **Why:** [#219](https://github.com/KD5UJC-XYZ/scarab/issues/219).
 
 <a id="cmt"></a>

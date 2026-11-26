@@ -84,3 +84,26 @@ violations. Body replies have 10 s; blocking ID waits remain indefinite. The exi
 limits each reply to eight items/524,400bytes and each original transaction to 65,536 bytes. The
 [network-limit matrix](../design/network-limits.md) gives every protocol state, the reference pin, queue
 budgets and the remaining explicit local limits.
+
+## The JVM does not take an option
+
+On the release image and the Nix apps the node's JVM starts through a launcher, which reads its settings from
+environment variables of its own ([launcher.md](launcher.md)). Its lines on standard error, which begin
+`scarab-jvm:`, say what it did; the launcher page lists them exactly
+([exit statuses](launcher.md#exit-statuses)).
+
+- **The node ignores my `-Xmx` or `JAVA_TOOL_OPTIONS`.** Look for the line that begins
+  `scarab-jvm: dropped`, which names every variable the launcher removed (`JAVA_TOOL_OPTIONS`, `JDK_JAVA_OPTIONS`,
+  `_JAVA_OPTIONS`, `JDK_ALTERNATE_VM`). The heap is then what `SCARAB_HEAP_SIZE` or an `-Xmx` on the launcher's
+  command line sets, the Nix apps' 3g without either, else the JVM's own. Set the heap with `SCARAB_HEAP_SIZE`, the
+  processors with `SCARAB_RUN_PROCESSORS`, and collector options on the launcher's command line
+  ([upgrading](launcher.md#upgrading-from-an-image-before-the-launcher)).
+- **`jcmd`, `jmap`, `jstack`, `jps` or `jstat` do not reach the node.** The launcher starts the JVM without the attach
+  mechanism and without its performance data file, so the tools find nothing or fail; an
+  `AttachNotSupportedException` such as `Unable to open socket file ...` is one form of it. Diagnostics turn both back
+  on, on a separate node that has never loaded keys only, and their start prints the line that begins
+  `scarab-jvm: memory diagnostics enabled` ([diagnostics](launcher.md#diagnostics)). The release image has no `jcmd`
+  of its own: run it from a JDK image.
+- **The container stops at once with exit status 2** and a `scarab-jvm:` line that names `SCARAB_HEAP_SIZE`,
+  `SCARAB_RUN_PROCESSORS` or `SCARAB_JVM_DIAGNOSTICS`: the value is not one the launcher accepts
+  ([environment variables](launcher.md#environment-variables)).

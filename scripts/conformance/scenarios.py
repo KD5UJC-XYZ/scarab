@@ -8,6 +8,7 @@ scenarios report Scarab's Plutus evaluator, its own (`uplc`).
 from __future__ import annotations
 
 import gzip
+import io
 import json
 import re
 from collections import Counter
@@ -25,6 +26,12 @@ TOOL_JVM = ("-Xss8m", "-Xmx4g", *JDK_FLAGS)
 TURBO_JVM = ("-Xms4g", "-Xmx4g", *JDK_FLAGS)
 # The first major protocol version of each era, as the site reads a CBOR report's era from it.
 PROTOCOL_ERAS = ((10, "conway"), (12, "dijkstra"))
+# The CPU uplc-turbo's published reports are measured on, as run.py's probe reads its model from /proc/cpuinfo: that
+# of the GitHub-hosted runners it is written on. A runner cannot be chosen by CPU, and the score moves with it
+# (docs/performance/rewards-and-evaluation.md, section 68), so a runner of another CPU skips the scenario and
+# publish.py refuses a report of another CPU. Change it deliberately, in a commit of its own with a measurement,
+# when GitHub retires this hardware.
+TURBO_REFERENCE_CPU = "Intel(R) Xeon(R) 6975P-C"
 FIXTURE_ID = re.compile(r"^(\d{5})-")
 
 
@@ -49,7 +56,8 @@ class Scenario:
     arguments: Callable[[Context, str | None, str], list[str]]
     entries: Callable[[dict], int]
     checks: Callable[[dict, Context, str | None], list[str]]
-    in_ci: bool = True
+    # For a report of timings, the one CPU its published reports are measured on; None for a report of none.
+    reference_cpu: str | None = None
 
     @property
     def schema(self) -> str:
@@ -194,7 +202,7 @@ SCENARIOS: dict[str, Scenario] = {scenario.id: scenario for scenario in (
              "tools/src/main/scala/xyz/kd5ujc/scarab/plutus/ndc/UplcTurboMain.scala",
              ("site", "uplc-turbo-corpus"), (None,), TURBO_JVM,
              _turbo_arguments, lambda report: len(report.get("benchmarks", [])), lambda report, context, era: [],
-             in_ci=False),
+             reference_cpu=TURBO_REFERENCE_CPU),
     Scenario("cbor-decoding", "xyz.kd5ujc.scarab.ledger.conformance.CborDatasetMain",
              "tools/src/main/scala/xyz/kd5ujc/scarab/ledger/conformance/CborDatasetMain.scala",
              ("site", "cbor-dataset"), ("conway", "dijkstra"), TOOL_JVM,
@@ -237,8 +245,14 @@ def report_date(generated_at: Any, fallback: datetime) -> str:
     return moment.astimezone(timezone.utc).strftime("%Y%m%d")
 
 
+def compressed_bytes(data: bytes) -> bytes:
+    """`data` gzipped without a file name or time in the header, so the same report gives the same bytes."""
+    with io.BytesIO() as raw:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=9) as out:
+            out.write(data)
+        return raw.getvalue()
+
+
 def compress(data: bytes, target: Path) -> None:
-    """Gzip `data` into `target` without a file name or time in the header, so the same report gives the same
-    bytes."""
-    with target.open("wb") as raw, gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0, compresslevel=9) as out:
-        out.write(data)
+    """`compressed_bytes` of `data`, written to `target`."""
+    target.write_bytes(compressed_bytes(data))

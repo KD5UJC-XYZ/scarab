@@ -40,9 +40,12 @@ def release_checksums(root, manifest):
 def checked_candidate(root, expected_source, expected_tag, expected_channel, expected_hash):
     # This module is supplied by the candidate-building stage; no replacement permissive parser exists.
     import candidate_manifest
+    import candidate_oci
     candidate = Path(root) / "candidate.json"
     require(file_digest(candidate) == sha256(expected_hash), "candidate differs from the approved workflow artifact")
-    manifest = candidate_manifest.validate(Path(root), require_release=True)
+    # the launcher the image must carry, from the authenticated source commit, not from the candidate it checks
+    manifest = candidate_manifest.validate(Path(root), require_release=True,
+                                           launcher=candidate_oci.launcher_at(expected_source))
     identity = manifest["source"]["buildIdentity"]
     require(identity["gitCommit"] == expected_source and identity["gitTag"] == expected_tag
             and identity["channel"] == expected_channel, "candidate does not match the server/event source identity")

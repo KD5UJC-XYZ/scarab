@@ -247,10 +247,10 @@ class DijkstraCertifySuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   private def inputsOf(state: MirrorState, tip: BlockRef): EpochInputs =
     val view = Forger.leaderView(ledgerAt(state, tip, tip.slot + 1), state.protocol, epoch)
-    Forger.inputsOf(geometry, epoch, view, poolId, setup.praos.activeSlotsCoeff, vrf)
+    Forger.inputsOf(geometry, epoch, view, poolId, setup.praos.activeSlotsCoeff, vrf.publicKey)
 
   private def led(inputs: EpochInputs, slot: BigInt): Option[VrfCert] =
-    Leadership.check(slot, inputs).toOption
+    LentKeys.check(slot, inputs, vrf).toOption
 
   /** The announcing slot `a`: the first after block 36 the test pool leads whose slot `a + gap` it
     * leads too, in the same epoch.

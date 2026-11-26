@@ -6,6 +6,10 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.ledger.rules.EraBlock
 import xyz.kd5ujc.scarab.plutus.*
 
+/** The flat body's preparation (`EraBlock.Body`, the eras before Conway) on Babbage blocks of
+  * [[PreparedBlockFixture]]: the prepared plan lands the serial run's state, counters and
+  * observations. Conway's era run is prepared in `ConwayBbodySuite` and `ConwayBbodyImpSuite`.
+  */
 class PreparedBlockSuite extends FunSuite:
   private val passing = TestLedger.scripted(true)
   private val failure: ScriptEvaluator[Id] = _ =>
@@ -141,10 +145,10 @@ class PreparedBlockSuite extends FunSuite:
     check(failure, PreparedBlockFixture.collectionFailure)
   }
 
-  test("the pre-Conway BBODY path also retains full state and counters") {
-    val body = PreparedBlockFixture.babbage(passing)
-    val plan = body.prepare
-    assertEquals(plan.jobs.size, 3)
-    assertEquals(plan.resolve(plan.jobs.reverse.map(plan.execute)), Right(body.serial))
-    assert(body.serial.isInstanceOf[EraBlock.Outcome.Applied])
+  test("the flat body takes no Conway or Dijkstra state: they have no PreConway evidence (#85)") {
+    // a Conway block's body is the era run's (`ConwayBlockRun`); the flat body cannot be given one
+    assertEquals(compileErrors("EraBlock.program[state.Babbage](???)(???, ???, ???, ???, ???)"), "")
+    assert(compileErrors("EraBlock.program[state.Conway](???)(???, ???, ???, ???, ???)").nonEmpty)
+    assert(compileErrors("EraBlock.program[state.Dijkstra](???)(???, ???, ???, ???, ???)").nonEmpty)
+    assert(compileErrors("EraBlock.body[state.Conway](???)(???, ???, ???, ???, ???)").nonEmpty)
   }

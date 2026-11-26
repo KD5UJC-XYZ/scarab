@@ -248,6 +248,10 @@ java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.nod
   --db "${SCARAB_DATA_DIR:-/tmp/scarab}/preview-db"
 ```
 
+The `java ... -cp` commands of this page start the node from a class path in the JDK image, a developer's path that
+takes JVM options such as `-Xmx3g` on its command line. The release image and the Nix apps take the heap and other
+JVM settings as [launcher.md](launcher.md) describes.
+
 (`--genesis-dir <preview config dir> --peer preview-node.play.dev.cardano.org:3001` still works, with a
 flat `config.json`; an envelope is refused, see [Configuration and topology files](#configuration-and-topology-files).)
 The Preview genesis files (Byron, Shelley, Alonzo, Conway), `config.json`, `topology.json` and the
@@ -303,11 +307,11 @@ transition (restart once after the Byron era); a node that starts from Origin an
 the transition validates correctly but would serve its mempool with the Byron-era history.
 The recorded run is in [performance.md](../performance.md).
 
-**With one or two CPUs** (`docker run --cpus 1`, a small VM) start the JVM with
-`-Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20`. A JVM that finds one CPU picks the serial
-collector, whose pauses stop every thread: on Preview it made 7,595 collections in 420 s (11 full, the
-longest 396 ms) and the node's timers fired late (cats-effect starvation warnings, worst 674 ms); with
-the flags above a 31 min sync had none, at the same blocks per second as the base build
+**With one or two CPUs** (`docker run --cpus 1`, a small VM) start the JVM with a fixed 3 GiB heap, the G1 collector
+and a 20 ms pause goal ([launcher.md](launcher.md#other-jvm-options) has the options and the command lines). A JVM that
+finds one CPU picks the serial collector, whose pauses stop every thread: on Preview it made 7,595 collections in
+420 s (11 full, the longest 396 ms) and the node's timers fired late (cats-effect starvation warnings, worst 674 ms);
+with those settings a 31 min sync had none, at the same blocks per second as the base build
 ([performance.md](../performance.md) section 6). A fixed heap avoids the full collections that come from
 growing it. The node keeps its follower on its own pool (`--cpu-threads`, default one worker per CPU)
 and reports the worst timer lateness and the longest CPU-bound step of every epoch in the log.

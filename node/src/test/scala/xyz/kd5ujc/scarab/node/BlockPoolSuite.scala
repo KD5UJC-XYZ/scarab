@@ -433,7 +433,8 @@ class BlockPoolSuite extends FailsOnUncaught:
             FetchCoordinator
               .GenesisContext(Gsm.Phase.Syncing, 0, GenesisBlockFetch.Starvation.Ongoing)
           ),
-          _ => IO.unit
+          _ => IO.unit,
+          GenesisEvents.none[IO]
         )
       )
       _ <- (pool.session, pool.fetchCoordinator.session(0)).tupled.use { (claims, fetcher) =>

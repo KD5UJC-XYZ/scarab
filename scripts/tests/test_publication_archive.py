@@ -14,7 +14,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import candidate_manifest
-from candidate_fixture import make_candidate
+from candidate_fixture import LAUNCHER, make_candidate
 import publication_archive as transport
 from publication_download import download
 
@@ -47,7 +47,7 @@ class PublicationArchiveTest(unittest.TestCase):
                 worker.join()
         restored = self.root / 'restored'
         transport.unpack(received, restored)
-        self.assertEqual(candidate_manifest.validate(restored, require_release=True), self.manifest)
+        self.assertEqual(candidate_manifest.validate(restored, require_release=True, launcher=LAUNCHER), self.manifest)
         self.assertEqual({p.relative_to(self.candidate): p.read_bytes() for p in self.candidate.rglob('*') if p.is_file()},
                          {p.relative_to(restored): p.read_bytes() for p in restored.rglob('*') if p.is_file()})
         second = self.root / 'second.tar'
@@ -62,7 +62,7 @@ class PublicationArchiveTest(unittest.TestCase):
         restored = self.root / 'plus-restored'
         transport.unpack(self.archive, restored)
         self.assertEqual((restored / relative).read_bytes(), original.read_bytes())
-        self.assertEqual(candidate_manifest.validate(restored, require_release=True), self.manifest)
+        self.assertEqual(candidate_manifest.validate(restored, require_release=True, launcher=LAUNCHER), self.manifest)
 
     def test_plus_does_not_allow_traversal_absolute_backslash_or_empty_components(self):
         for index, name in enumerate(['libstdc++6/../escape', '../libstdc++6/copyright', '/libstdc++6',
@@ -85,7 +85,7 @@ class PublicationArchiveTest(unittest.TestCase):
                 transport.unpack(self.archive, restored)
                 (restored / missing).unlink()
                 with self.assertRaises((ValueError, OSError)):
-                    candidate_manifest.validate(restored, require_release=True)
+                    candidate_manifest.validate(restored, require_release=True, launcher=LAUNCHER)
 
     def write_tar(self, entries):
         with tarfile.open(self.archive, 'w', format=tarfile.USTAR_FORMAT) as archive:

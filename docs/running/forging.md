@@ -279,3 +279,57 @@ certificate. The devnet scenario `dynamic-forging` runs the off-and-on cycle bes
 
 The devnet scenario `kes-rotate` (below) runs all of this unattended: a short KES period, a small
 `maxKESEvolutions`, the driver on a loop, several rotations while the node forges beside two Haskell pools.
+
+### Keys in memory
+
+A forging node holds its VRF signing key and its current KES key in the JVM heap for as long as it runs; so does a
+node started with `--start-as-non-producing-node`, which reads its key files at start. Whatever writes the process's
+memory to disk can write the keys with it: a core file or a heap dump holds the whole heap, and a crash report, a
+swapped-out page or a hibernation image holds whatever was in the memory it covers. (The KES key file is on disk by
+design, see "Rotating the KES key" above; this section is about the copies in memory.) The node does not lock the heap
+in memory, and cannot erase every copy of a key in it: the collector moves objects and leaves the earlier copies in
+memory it has not reused yet, which no program can address, and locking the whole process would pin a heap of
+gigabytes and the stores' native memory. [ADR 0024](../adr/0024-adopt-the-upstream-kes-agent.md) accepts that copy;
+what follows keeps it off disk.
+
+**The launcher.** The release image and the Nix network apps start the node through `scripts/scarab-jvm`, which sets
+the core file limit to 0, removes the variables that add JVM options from the JVM's environment, and starts the JVM
+with no crash report, no core file of its own on a crash (the host's `kernel.core_pattern` can still take one, see
+below), no heap dump and no attach. [launcher.md](launcher.md) lists what it sets and what each option stops, the
+variables it reads and removes, and which JVM options may be added on a forging node. A JVM started without it, by a
+command of your own or an entry point that does not go through it, gets none of this.
+
+**Never diagnostics on a forging node.** Diagnostics ([launcher.md](launcher.md#diagnostics)) turn all of it off. A
+crash report, a core file or a heap dump of a node that has loaded keys can then hold them: keep such a file as you
+keep the key files, never attach it to a bug report, and delete it. Run diagnostics only on a separate node that has
+never loaded keys, such as a relay with no key files. A node started with `--start-as-non-producing-node` has read its
+key files at start and is not such a node. A KES key that may have leaked is replaced by a new KES key and certificate
+("Rotating the KES key" above); a VRF key only by a new pool registration.
+
+**What stays with the operator.** The launcher cannot set the rest: where the host puts core files, swap and
+hibernation, who can read the process, and the account it runs as.
+
+- **Core files.** `kernel.core_pattern` is the host's, for containers too. When it pipes cores to a program
+  (`|/usr/lib/systemd/systemd-coredump ...`), the kernel hands the program the dump whatever the core file limit, and
+  the program decides: systemd-coredump stores no core for a limit of 0, and with `Storage=none` and
+  `ProcessSizeMax=0` in `coredump.conf` it stores none at all. A JVM started without the launcher, or in diagnostics,
+  needs the limit where it starts: `docker run --ulimit core=0`, `ulimits: {core: 0}` in a compose file,
+  `LimitCORE=0` in a systemd unit, `ulimit -c 0` in a shell.
+- **Swap and hibernation.** A page of the heap can be swapped out, and stays on the swap device until it is
+  overwritten; hibernation writes all of memory to disk. Run the producer with no swap, or with swap encrypted under a
+  key made at each boot, and with hibernation off. `--memory-swap` equal to `--memory` keeps a container out of swap
+  where the kernel accounts for swap; `MemorySwapMax=0` does it in a systemd unit, with cgroup v2's memory controller.
+- **Reading the process.** A process of the node's user, or root, can read the node's whole memory through
+  `/proc/<pid>/mem` or `ptrace`, attach or no attach, unless `kernel.yama.ptrace_scope` limits it: 1 allows it only
+  to the node's ancestors, to a tracer the node declares (it declares none) and to root, 2 only to root
+  (`CAP_SYS_PTRACE`), 3 to nobody until the next boot. The setting is the host's, and holds in containers: a
+  `docker exec` into the node's container runs as its user, so at 0 it can read the node's memory, and whoever can
+  use a rootful Docker daemon's socket is root on the host. Do not checkpoint a producing container
+  (`docker checkpoint`): that writes its memory to disk.
+- **A user of its own.** Run the node as a dedicated user that runs nothing else, and owns the key directory. The
+  image runs as `10001:10001`; on a host, make an account for the node rather than sharing one.
+- **Where files land.** When a crash report or a heap dump is turned on, point `-XX:ErrorFile` or
+  `-XX:HeapDumpPath` at a directory only the node's user can read, on an encrypted file system, and delete the files
+  once they have been read.
+
+The [threat model](../security/threat-model.md) reviews key material in the running node under boundary B7.

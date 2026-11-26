@@ -31,7 +31,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
         FetchCoordinator
           .GenesisContext(Gsm.Phase.Syncing, time, GenesisBlockFetch.Starvation.Ongoing)
       ),
-      _ => IO.unit
+      _ => IO.unit,
+      GenesisEvents.none[IO]
     )
 
   /** The request's blocks have all arrived, into `cache`, and its ranges have ended. */
@@ -196,7 +197,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
                   )
                 )
             },
-            _ => IO.unit
+            _ => IO.unit,
+            GenesisEvents.none[IO]
           )
         )
         times <- coordinator.session(1).use { peer =>
@@ -236,7 +238,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
                   )
                 )
             },
-            _ => IO.unit
+            _ => IO.unit,
+            GenesisEvents.none[IO]
           )
         )
         observed <- coordinator.watchDecisions(0).background.use { _ =>
@@ -345,7 +348,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
               FetchCoordinator
                 .GenesisContext(Gsm.Phase.CaughtUp, 0, GenesisBlockFetch.Starvation.Ongoing)
             ),
-          _ => IO.unit
+          _ => IO.unit,
+          GenesisEvents.none[IO]
         )
       )
       result <- coordinator.session(0).use { session =>
@@ -459,7 +463,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
             ),
             _ =>
               events.update(_ :+ Event.Demoting) *> entered.complete(()).void *>
-                release.get *> events.update(_ :+ Event.Demoted)
+                release.get *> events.update(_ :+ Event.Demoted),
+            GenesisEvents.none[IO]
           )
         )
         _ <- coordinator.session(0).use { session =>
@@ -609,6 +614,35 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
           yield assert(after > before)
         }
       yield ()
+    }
+  }
+
+  test("an announcement of an older candidate state never replaces a newer one of its writer") {
+    // a trimmed candidate's announcement (revision 2) lands before the batch's it trimmed (1)
+    val headers = Vector(FetchTesting.header(1), FetchTesting.header(2), FetchTesting.header(3))
+    val whole = ChainSelection.Candidate(Point.Origin, headers)
+    val trimmed = ChainSelection.Candidate(headers(0).point, headers.drop(1))
+    def index(candidate: ChainSelection.Candidate) = FetchCandidates.Announced.of(candidate)
+    def sizes(coordinator: FetchCoordinator[IO]) =
+      coordinator.diagnostics.map(_.map(_.candidateHeaders))
+    (FetchCoordinator.create[IO](), IO.unique, IO.unique).flatMapN { (coordinator, one, other) =>
+      coordinator.session(0).use { session =>
+        def announce(candidate: ChainSelection.Candidate, revision: FetchCoordinator.Revision) =
+          session.announce(headers.lastOption, FetchGsv.default, index(candidate), revision)
+        for
+          _ <- announce(trimmed, FetchCoordinator.Revision(one, 2))
+          _ <- announce(whole, FetchCoordinator.Revision(one, 1))
+          late <- sizes(coordinator)
+          _ <- announce(whole, FetchCoordinator.Revision(one, 3))
+          newer <- sizes(coordinator)
+          // the session's next writer counts its own revisions
+          _ <- announce(trimmed, FetchCoordinator.Revision(other, 0))
+          next <- sizes(coordinator)
+        yield
+          assertEquals(late, Vector(Some(2)), "the late batch replaced it")
+          assertEquals(newer, Vector(Some(3)))
+          assertEquals(next, Vector(Some(2)), "another writer's first state was not taken")
+      }
     }
   }
 

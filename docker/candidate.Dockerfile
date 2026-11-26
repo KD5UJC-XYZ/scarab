@@ -12,7 +12,10 @@ LABEL org.opencontainers.image.title="Scarab" \
 ENV MALLOC_ARENA_MAX=2
 WORKDIR /opt/scarab
 COPY --chmod=0444 app.jar /opt/scarab/scarab.jar
+COPY --chmod=0555 scarab-jvm /opt/scarab/scarab-jvm
 USER 10001:10001
-# Scala 3's lazy vals (scala.runtime.LazyVals, still in 3.9) use sun.misc.Unsafe, on which Java 25 warns once
-# per process (JEP 498); the flag allows it without the warning.
-ENTRYPOINT ["java", "--sun-misc-unsafe-memory-access=allow", "-jar", "/opt/scarab/scarab.jar"]
+# scripts/scarab-jvm starts the JVM so that a forging node's keys stay off disk (docs/running/forging.md, "Keys in
+# memory"), then execs the base image's java, named by its path, with these arguments; the container's arguments
+# follow the JAR, so they reach the node, not the JVM. Scala 3's lazy vals (scala.runtime.LazyVals, still in 3.9) use
+# sun.misc.Unsafe, on which Java 25 warns once per process (JEP 498); the flag allows it without the warning.
+ENTRYPOINT ["/opt/scarab/scarab-jvm", "/opt/java/openjdk/bin/java", "--sun-misc-unsafe-memory-access=allow", "-jar", "/opt/scarab/scarab.jar"]

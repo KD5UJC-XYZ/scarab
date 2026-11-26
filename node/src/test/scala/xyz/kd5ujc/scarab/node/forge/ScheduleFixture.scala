@@ -27,11 +27,12 @@ trait ScheduleFixture extends ForgeFixture:
   val everySlot: PraosConfig =
     config.copy(activeSlotsCoeff = Leader.Fraction.checked(1, 1).toOption.get)
 
-  /** The same pool twice, each with a KES key of its own, since forging evolves the key in place.
+  /** The same pool twice, each with keys of its own, since forging evolves the KES key in place and
+    * each forger erases the keys it supersedes (#1418).
     */
   def twins(kesStart: Int, seed: Int): (Pool, Pool) =
     val p = pool(kesStart, seed)
-    (p, p.copy(creds = p.creds.copy(kes = kesOf(seed))))
+    (p, p.copy(creds = p.creds.copy(vrf = p.vrfRead, kes = kesOf(seed))))
 
   def kesOf(seed: Int): Sum6KesSigning.SigningKey =
     Sum6KesSigning.generate(hex(Array.fill(32)(seed.toByte))).toOption.get
@@ -91,32 +92,32 @@ trait ScheduleFixture extends ForgeFixture:
     */
   final case class Side(
       h: Harness,
-      reading: Ref[IO, HotKeySource.Reading[IO]],
+      reading: Ref[IO, HotKeySource.Read[IO]],
       pool: Pool,
       way: Way,
       rewind: FiniteDuration => IO[Unit]
   )
 
-  /** A key source whose reading the test sets; the evolved key is not written anywhere. */
-  def keysFrom(reading: Ref[IO, HotKeySource.Reading[IO]]): HotKeySource[IO] =
+  /** A key source whose files the test sets, each read finding keys of its own ([[afresh]]); the
+    * evolved key is not written anywhere.
+    */
+  def keysFrom(reading: Ref[IO, HotKeySource.Read[IO]]): HotKeySource[IO] =
     new HotKeySource[IO]:
-      def read = reading.get.map(Right(_))
+      def read = HotKeySource.reading(reading.get.map(files => Right(afresh(files))))
       def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
 
   /** What a reload finds: the pool's own credentials, with a KES key of their own. */
-  def found(p: Pool, seed: Int): HotKeySource.Reading[IO] =
-    HotKeySource.Reading.Found(
-      HotKeySource.Candidate(
-        HotCredentials(kesOf(seed), p.creds.opCert, p.creds.coldVkey),
-        p.creds.vrf,
-        IO.unit
-      )
+  def found(p: Pool, seed: Int): HotKeySource.Read[IO] =
+    HotKeySource.Read.Found(
+      HotCredentials(kesOf(seed), p.creds.opCert, p.creds.coldVkey),
+      p.vrfRead,
+      IO.unit
     )
 
   /** What each change of a differential run does to a side. */
   type Change = Side => IO[Unit]
 
-  def reloaded(reading: Side => HotKeySource.Reading[IO]): Change =
+  def reloaded(reading: Side => HotKeySource.Read[IO]): Change =
     side =>
       side.reading.set(reading(side)) *> side.h.forger.reload.flatMap(
         _.fold(f => IO.raiseError(new AssertionError(f.message)), IO.pure)
@@ -125,27 +126,23 @@ trait ScheduleFixture extends ForgeFixture:
   /** A SIGHUP that installs another VRF key for the pool. */
   def otherVrf(seed: Int, kesSeed: Int): Change =
     reloaded(side =>
-      HotKeySource.Reading.Found(
-        HotKeySource.Candidate(
-          HotCredentials(kesOf(kesSeed), side.pool.creds.opCert, side.pool.creds.coldVkey),
-          vrfOf(seed),
-          IO.unit
-        )
+      HotKeySource.Read.Found(
+        HotCredentials(kesOf(kesSeed), side.pool.creds.opCert, side.pool.creds.coldVkey),
+        vrfOf(seed),
+        IO.unit
       )
     )
 
   /** A SIGHUP that installs another KES key, under a certificate issued for it (`counter`). */
   def otherKes(kesSeed: Int, start: Int, counter: Int = 1): Change =
-    reloaded(side =>
-      HotKeySource.Reading.Found(certified(side.pool, kesOf(kesSeed), start, counter))
-    )
+    reloaded(side => certified(side.pool, kesOf(kesSeed), start, counter))
 
   /** A SIGHUP that installs the same KES key under a certificate issued again (counter 1). */
   def otherCertificate(kesSeed: Int, start: Int): Change =
-    reloaded(side => HotKeySource.Reading.Found(certified(side.pool, kesOf(kesSeed), start, 1)))
+    reloaded(side => certified(side.pool, kesOf(kesSeed), start, 1))
 
   /** The pool's credentials with another KES key, under a certificate issued for it (counter 1). */
-  def certifiedFor(p: Pool, kesSeed: Int, counter: Int = 1): HotKeySource.Candidate[IO] =
+  def certifiedFor(p: Pool, kesSeed: Int, counter: Int = 1): HotKeySource.Read[IO] =
     certified(p, kesOf(kesSeed), p.creds.opCert.kesPeriod.toInt, counter)
 
   private def certified(
@@ -153,23 +150,23 @@ trait ScheduleFixture extends ForgeFixture:
       kes: Sum6KesSigning.SigningKey,
       start: Int,
       sequence: Int
-  ): HotKeySource.Candidate[IO] =
+  ): HotKeySource.Read[IO] =
     def be8(n: Long) = Array.tabulate[Byte](8)(i => (n >> (8 * (7 - i))).toByte)
     val signable =
       Bytes.fromArray(kes.verificationKey.toArray ++ be8(sequence.toLong) ++ be8(start.toLong))
-    HotKeySource.Candidate(
+    HotKeySource.Read.Found(
       HotCredentials(
         kes,
         Header.OpCert(kes.verificationKey, sequence, start, p.cold.sign(signable)),
         p.creds.coldVkey
       ),
-      p.creds.vrf,
+      p.vrfRead,
       IO.unit
     )
 
   /** A SIGHUP that finds the KES key file absent: forging off. */
   def forgingOff: Change =
-    reloaded(_ => HotKeySource.Reading.Absent(Path.of("kes.skey")))
+    reloaded(_ => HotKeySource.Read.Absent(Path.of("kes.skey")))
 
   /** A SIGHUP that finds the files again: forging on with the pool's own credentials. */
   def forgingOn(kesSeed: Int): Change =
@@ -322,7 +319,7 @@ trait ScheduleFixture extends ForgeFixture:
         hooks <- Ref.of[IO, Map[Forger.Point, Change]](
           (sc.at.map((point, _, change) => point -> change) ++ sc.within).toMap
         )
-        reading <- Ref.of[IO, HotKeySource.Reading[IO]](found(p, p.creds.opCert.kesPeriod.toInt))
+        reading <- Ref.of[IO, HotKeySource.Read[IO]](found(p, p.creds.opCert.kesPeriod.toInt))
         side <- Deferred[IO, Side]
         stalled = (point: Forger.Point) =>
           point match
@@ -390,7 +387,7 @@ trait ScheduleFixture extends ForgeFixture:
   def perSlotRun(sc: Scenario, p: Pool)(using Handle[IO, NodeError]): IO[Outcome] =
     for
       at <- Ref.of[IO, Instant](geometry.slotStart(sc.from))
-      reading <- Ref.of[IO, HotKeySource.Reading[IO]](found(p, p.creds.opCert.kesPeriod.toInt))
+      reading <- Ref.of[IO, HotKeySource.Read[IO]](found(p, p.creds.opCert.kesPeriod.toInt))
       hooks <- Ref.of[IO, Map[Forger.Point, Change]](
         (sc.within ++ sc.timed.map((_, point, change) => point -> change)).toMap
       )

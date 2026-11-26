@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
+import cats.data.NonEmptyVector
 import cats.effect.{Async, Deferred, Ref, Resource}
 import cats.effect.std.Mutex
 import cats.syntax.all.*
@@ -27,7 +28,8 @@ final class GenesisGovernor[F[_]: Async] private (
     state: Ref[F, GenesisGovernor.State[F]],
     phaseLock: Mutex[F],
     config: GenesisGovernor.Config,
-    observe: Option[GenesisGovernor.Observation => F[Unit]]
+    observe: Option[GenesisGovernor.Observation => F[Unit]],
+    events: GenesisEvents[F]
 ):
   import GenesisGovernor.*
   private val F = Async[F]
@@ -256,19 +258,32 @@ final class GenesisGovernor[F[_]: Async] private (
     * before it swaps; a disconnect here completes asynchronously, and storing first is the order in
     * which the replayed upstream Genesis cases end their peers in the reference's order
     * (`UpstreamGenesisReplaySuite`).
+    *
+    * An evaluation whose Genesis window is known is traced (`TraceGDDDebug`) before the losers are
+    * told, and the losers (`TraceGDDDisconnected`) once they are (Governor.hs:261-283, consensus
+    * 82ecba329).
     */
   private def evaluate(snapshot: Snapshot[F]): F[Unit] = snapshot match
     case Snapshot.Idle(_, _) => F.unit
     case Snapshot.Syncing(taken, _) =>
+      def label(id: Long): PeerOrder = taken.peers.get(id).fold(PeerOrder(id))(_.orderKey)
       for
         began <- F.monotonic
         observation = decide(taken.peers, taken.view)
+        losing = observation.result.toVector.flatMap(_.losingPeers)
         _ <- observe.traverse_(_(observation))
+        _ <- observation.genesisWindow.traverse_(window =>
+          events.emit(
+            GenesisTrace.GddDebug(losing.map(label), observation.shared.prefix.tip, window)
+          )
+        )
         _ <- change(s => (s.copy(limit = Some(observation.shared.prefix)), ()))
-        _ <- observation.result.toVector
-          .flatMap(_.losingPeers)
+        _ <- losing
           .flatMap(id => taken.peers.get(id).map(peer => id -> peer.kill))
           .traverse_(deliver)
+        _ <- NonEmptyVector
+          .fromVector(losing)
+          .traverse_(peers => events.emit(GenesisTrace.GddDisconnected(peers.map(label))))
         ended <- F.monotonic
         _ <- F.sleep((config.interval - (ended - began)).max(Duration.Zero))
       yield ()
@@ -382,7 +397,8 @@ object GenesisGovernor:
   def create[F[_]: Async](
       view: View,
       config: Config = Config(),
-      observe: Option[Observation => F[Unit]] = None
+      observe: Option[Observation => F[Unit]] = None,
+      events: Option[GenesisEvents[F]] = None
   ): F[GenesisGovernor[F]] =
     for
       signal <- Deferred[F, Unit]
@@ -391,4 +407,4 @@ object GenesisGovernor:
         State(Gsm.Phase.PreSyncing, 0L, SortedMap.empty, None, view, 0L, signal, 0L, selection)
       )
       lock <- Mutex[F]
-    yield new GenesisGovernor(state, lock, config, observe)
+    yield new GenesisGovernor(state, lock, config, observe, events.getOrElse(GenesisEvents.none[F]))

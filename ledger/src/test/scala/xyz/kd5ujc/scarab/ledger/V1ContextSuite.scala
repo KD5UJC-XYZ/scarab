@@ -287,24 +287,23 @@ class V1ContextSuite extends FunSuite:
       BbodySignal(Vector(c.tx), issuer, commitment, commitment)
     )
 
-  private def conwayBlock(c: PlutusCase): Either[BlockFailure, ?] =
-    val nes = Build.funded(Build.nes[Conway](5, c.params), utxoOf(c))
-    Sts(Bbody)(
-      globals,
-      BbodyEnv(TestLedger.env, c.params, Coin.zero),
-      BbodyState(Build.counted(nes), BlocksMade.empty),
-      BbodySignal(Vector(c.tx), issuer, commitment, commitment)
-    )
-
   recorded.foreach { r =>
     val c = r.plutus
     test(
       s"${r.file}: ${c.name}: a block of the transaction is accepted or refused as the reference did"
     ) {
-      val result =
-        if c.protocolMajor >= 9 then conwayBlock(c)
-        else if c.protocolMajor >= 7 then eraBlock[Babbage](c)
-        else eraBlock[Alonzo](c)
-      assertEquals(result.isRight, r.verdict.accepted, result.toString.take(400))
+      if c.protocolMajor >= 9 then
+        // a block of the transaction on Conway's era run, as the node applies Conway blocks, its
+        // refusal the reference's, as the era LEDGER gives it
+        val nes = Build.funded(Build.nes[Conway](5, c.params), utxoOf(c))
+        era.conway.ConwayTestKit.eraBbody(nes, c.tx, TestLedger.env) match
+          case Right(_) => assert(r.verdict.accepted, "accepted a block the reference refused")
+          case Left(failures) =>
+            assert(!r.verdict.accepted, s"refused a block the reference accepted: $failures")
+            eraRefusalOf(c, r.verdict, era.conway.ConwayTestKit.ledgersFailures(failures))
+      else
+        val result =
+          if c.protocolMajor >= 7 then eraBlock[Babbage](c) else eraBlock[Alonzo](c)
+        assertEquals(result.isRight, r.verdict.accepted, result.toString.take(400))
     }
   }

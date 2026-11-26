@@ -185,3 +185,23 @@ class EdwardsPointSuite extends munit.ScalaCheckSuite:
       )
     }
   }
+
+  property("multiplyRadix16 of a scalar's digits is [s]P and, from the table, [s]B") {
+    forAllNoShrink(modelPoint, scalar255) { (m, s) =>
+      val digits = new Array[Byte](64)
+      Scalar.toRadix16(le(s, 32), digits)
+      val got = point(m).multiplyRadix16(digits)
+      assertEquals(encoding(got), encoding(m * s), s"[${s.toString(16)}]P")
+      extended(got, "multiplyRadix16")
+      val base = Constants.ED25519_BASEPOINT_TABLE.multiplyRadix16(digits)
+      assertEquals(encoding(base), encoding(M.basepoint * s), s"[${s.toString(16)}]B")
+      assertEquals(digits.toVector, Scalar.fromBits(le(s, 32)).toRadix16().toVector, "digits left")
+    }
+  }
+
+  test("multiplyRadix16 refuses other than 64 digits") {
+    intercept[IllegalArgumentException](
+      Constants.ED25519_BASEPOINT_TABLE.multiplyRadix16(new Array[Byte](32))
+    )
+    intercept[IllegalArgumentException](EdwardsPoint.IDENTITY.multiplyRadix16(new Array[Byte](65)))
+  }

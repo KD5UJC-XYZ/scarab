@@ -352,7 +352,7 @@ object Main extends IOApp:
       preverify: Peer.Prepare[IO],
       fatal: Fatal => IO[Unit],
       origin: Option[xyz.kd5ujc.scarab.codec.Bytes]
-  )(using Raise[IO, NodeError]): Resource[IO, Unit] =
+  )(using Raise[IO, NodeError], Log[IO]): Resource[IO, Unit] =
     given BlockSelection.Before[IO] with
       def prepare(header: Header, raw: xyz.kd5ujc.scarab.codec.Bytes)(using
           Raise[IO, NodeError]
@@ -367,7 +367,12 @@ object Main extends IOApp:
           )
         )
     Resource
-      .eval(work.fold(SelectionWork.create[IO](pool.fetchCoordinator.refreshGenesis))(IO.pure))
+      .eval(
+        work.fold(
+          SelectionWork
+            .create[IO](pool.fetchCoordinator.refreshGenesis, events = Some(Log.genesis[IO]))
+        )(IO.pure)
+      )
       .flatMap(shared => follower.blockSelection(pool, shared, fatal, origin))
 
   private def createGenesisRuntime(
@@ -376,7 +381,7 @@ object Main extends IOApp:
       blockPool: BlockPool[IO],
       geometry: IO[xyz.kd5ujc.scarab.ledger.EpochGeometry],
       headers: HeaderCheck.Grafting[IO]
-  ): IO[Option[GenesisRuntime[IO]]] =
+  )(using Log[IO]): IO[Option[GenesisRuntime[IO]]] =
     val windowAt =
       (state: MirrorState, tip: BigInt, slot: BigInt) =>
         GenesisHistory.window(state, tip, slot, setup)
@@ -397,7 +402,8 @@ object Main extends IOApp:
                     .min(BigInt(Long.MaxValue))
                     .toLong
                     .nanos
-                )
+                ),
+                events = Some(Log.genesis[IO])
               )
             )
         )
@@ -415,7 +421,8 @@ object Main extends IOApp:
                 BigInt(setup.geometry.systemStart.getNano) * 1000)
           ),
           blockPool.fetchCoordinator.refreshGenesis,
-          headers
+          headers,
+          events = Some(Log.genesis[IO])
         )
       )
       _ <- runtime.traverse_ { runtime =>
@@ -431,7 +438,8 @@ object Main extends IOApp:
                     setup.config.settings.genesis.blockFetchGracePicos
                   )
               },
-              runtime.demoteDynamo
+              runtime.demoteDynamo,
+              Log.genesis[IO]
             )
           )
       }

@@ -265,6 +265,7 @@ class LogGoldenSuite extends CatsEffectSuite:
             xyz.kd5ujc.scarab.ledger.era.rules.LeiosClosureDefect
           ]](e)
         )
+        _ <- genesis.traverse_(Log.genesis[IO].emit)
         all <- lines.get
       yield all
     }
@@ -308,6 +309,13 @@ class LogGoldenSuite extends CatsEffectSuite:
     covered(ledgerPeers, cases[LedgerPeersTrace])
     covered(localRoots, cases[LocalRootsTrace])
     covered(leiosNotify, cases[xyz.kd5ujc.scarab.node.LeiosNotifyEvent])
+    covered(genesis, cases[xyz.kd5ujc.scarab.node.GenesisTrace])
+    covered(
+      genesis.collect { case xyz.kd5ujc.scarab.node.GenesisTrace.Csj(_, event) => event },
+      cases[xyz.kd5ujc.scarab.network.selection.ChainSyncJumping.Event[
+        xyz.kd5ujc.scarab.node.PeerOrder
+      ]]
+    )
     covered(
       leios,
       cases[xyz.kd5ujc.scarab.node.LeiosKernelEvent[

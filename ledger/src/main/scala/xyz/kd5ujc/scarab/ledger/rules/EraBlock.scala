@@ -18,11 +18,15 @@ import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.plutus.{ExUnits, ScriptDecoder, ScriptEvaluator}
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** A block of any Shelley-based era applied to the ledger state, on the era-indexed rules: the
-  * hard-fork combinator's tick of the state to the block's slot ([[Hfc]]), then BBODY on the ticked
-  * state ([[Bbody]] of Conway, [[ShelleyBbody]] of the eras before, one instance over the witness).
-  * The node's `MirrorRules` performs the header checks (the envelope, TPraos, Praos) around these
-  * ledger transitions.
+/** A block of a Shelley-based era applied to the ledger state, on the era-indexed rules: the
+  * hard-fork combinator's tick of the state to the block's slot ([[Hfc]], every era's), then BBODY
+  * on the ticked state of an era before Conway ([[ShelleyBbody]], one instance over the witness).
+  * The body takes only a state of such an era `E`, with its evidence (`PreConway[E]`, which Conway
+  * and Dijkstra have none of), so a Conway or Dijkstra state cannot reach these rules; a Conway
+  * block's body is Conway's era run's (`era.rules.ConwayBlockRun`). The block's own era is not in
+  * the type: that it is its state's is checked before ([[ticked]], `Outcome.NotInEra`). The node's
+  * `MirrorRules` performs the header checks (the envelope, TPraos, Praos) around these ledger
+  * transitions.
   *
   * The block is applied as a pure function of the state before it, the decoded block and what the
   * rules read of the network, so serial and prepared execution can be compared directly.
@@ -79,14 +83,15 @@ object EraBlock:
     * needs to pay (`Phase2.pays`, #85): it is not [[worthwhile]] and runs serially, though it may
     * be prepared ([[preparable]]), to the same result.
     */
-  final class Body private[EraBlock] (
+  final class Body[E <: EraTag] private[EraBlock] (
       ctx: Context,
-      ticked: EraNes,
+      ticked: NewEpochState[E],
       header: Header.Shelley,
       block: Block.Shelley,
       txs: Vector[Either[LedgerDecodeError, Tx]],
       before: PlutusStats
-  ) extends Phase2.Program[Outcome]:
+  )(using PreConway[E])
+      extends Phase2.Program[Outcome]:
     // a body with a transaction that does not decode is refused before any script
     private val within = txs.sequence.forall(withinUnits(ticked, _))
     def serial: Outcome = body(ctx)(ticked, header, block, txs, before)
@@ -119,22 +124,13 @@ object EraBlock:
       )
 
   /** BBODY's own check of the execution units of the block's transactions `txs` against the limit
-    * of the parameters of `ticked`, the state at the block's slot, by its era as [[body]] runs it:
-    * Conway's ([[Bbody.exUnitsExceeded]]) or an earlier era's ([[ShelleyBbody.exUnitsExceeded]]). A
-    * state of no era the rules take on has no limit here: [[body]] refuses it before any script.
+    * of the parameters of `ticked`, the state at the block's slot, by its era as [[body]] runs it
+    * ([[ShelleyBbody.exUnitsExceeded]]).
     */
-  private def withinUnits(ticked: EraNes, txs: Vector[Tx]): Boolean =
-    ticked match
-      case i: EraNes.InEra[e] =>
-        i.era match
-          case ShelleyBasedEra.SConway =>
-            Bbody.exUnitsExceeded(i.nes.es.ls.utxo.gov.curPParams, txs).isEmpty
-          case other =>
-            PreConway.of(other) match
-              case Some(pre) =>
-                given PreConway[e] = pre
-                ShelleyBbody.exUnitsExceeded[e](pre.curPParams.get(i.nes.es.ls.utxo), txs).isEmpty
-              case None => true
+  private def withinUnits[E <: EraTag](ticked: NewEpochState[E], txs: Vector[Tx])(using
+      pre: PreConway[E]
+  ): Boolean =
+    ShelleyBbody.exUnitsExceeded[E](pre.curPParams.get(ticked.es.ls.utxo), txs).isEmpty
 
   /** What a plan lands: the jobs an ordered preparation deferred, beside its tentative outcome; or,
     * for a body never prepared, the serial run's outcome itself, with no job.
@@ -143,13 +139,13 @@ object EraBlock:
     case Deferred(tentative: Either[Phase2.Defect, Outcome], jobs: Vector[Phase2.Job])
     case Serial(outcome: Either[Phase2.Defect, Outcome])
 
-  def program(ctx: Context)(
-      ticked: EraNes,
+  def program[E <: EraTag](ctx: Context)(
+      ticked: NewEpochState[E],
       header: Header.Shelley,
       block: Block.Shelley,
       txs: Vector[Either[LedgerDecodeError, Tx]],
       before: PlutusStats
-  ): Body =
+  )(using PreConway[E]): Body[E] =
     new Body(ctx, ticked, header, block, txs, before)
 
   /** The only route from tentative state to a body result checks every reached phase-2 verdict.
@@ -248,47 +244,25 @@ object EraBlock:
         .leftMap(BlockFailure.Tick(_))
     yield ticked
 
-  /** The block `block` (the decoded `raw`, whose header is `header`) applied to `from`. */
-  def apply(ctx: Context)(
-      from: EraNes,
-      header: Header.Shelley,
-      block: Block.Shelley,
-      txs: Vector[Either[LedgerDecodeError, Tx]],
-      plutus: PlutusStats
-  ): Outcome =
-    ticked(ctx)(from, header, block) match
-      case Left(failure) => Outcome.Refused(failure)
-      case Right(t)      => body(ctx)(t, header, block, txs, plutus)
-
-  /** BBODY on `ticked`, the state at the block's slot in the era of the block: the transactions of
-    * the block, its commitment and the blocks made. A state of another era than the block's is
-    * [[Outcome.NotInEra]].
+  /** BBODY on `ticked`, the state at the block's slot, of an era `E` before Conway: the
+    * transactions of the block, its commitment and the blocks made. A state of another era than the
+    * block's is [[Outcome.NotInEra]].
     */
-  def body(ctx: Context)(
-      ticked: EraNes,
+  def body[E <: EraTag](ctx: Context)(
+      ticked: NewEpochState[E],
       header: Header.Shelley,
       block: Block.Shelley,
       txs: Vector[Either[LedgerDecodeError, Tx]],
       plutus: PlutusStats
-  ): Outcome =
+  )(using pre: PreConway[E]): Outcome =
     block.transactions
       .zip(txs)
       .traverse((t, tx) => tx.leftMap(BlockFailure.TxDecode(t.id, _))) match
       case Left(failure) => Outcome.Refused(failure)
       case Right(decoded) =>
-        ticked match
-          case i: EraNes.InEra[e] =>
-            if EraNes.eraOf(i.era) != header.era then Outcome.NotInEra(EraNes.eraOf(i.era))
-            else
-              i.era match
-                case ShelleyBasedEra.SConway =>
-                  conway(ctx, i.nes, header, block, decoded, plutus)
-                case other =>
-                  PreConway.of(other) match
-                    case Some(pre) =>
-                      given PreConway[e] = pre
-                      shelley[e](ctx, i.nes, header, block, decoded, plutus)
-                    case None => Outcome.NotInEra(EraNes.eraOf(other))
+        val era = EraNes.eraOf(pre.era)
+        if era != header.era then Outcome.NotInEra(era)
+        else shelley[E](ctx, ticked, header, block, decoded, plutus)
 
   /** The environment of the transactions of a block (and of BBODY's). */
   private def environment(ctx: Context, header: Header.Shelley): TxEnv =
@@ -331,7 +305,10 @@ object EraBlock:
       BodyCommitment(BigInt(block.bodySize), block.bodyHash)
     )
 
-  /** BBODY on the ticked state of an era before Conway. */
+  /** BBODY on the ticked state of an era before Conway (`bbodyTransition`,
+    * `Shelley/Rules/Bbody.hs:207-238`, and Alonzo's, `Alonzo/Rules/Bbody.hs:169-214`,
+    * cardano-ledger f649f975).
+    */
   private def shelley[E <: EraTag](
       ctx: Context,
       ticked: NewEpochState[E],
@@ -366,52 +343,6 @@ object EraBlock:
           ),
           after.ledger.plutus
         )
-
-  private def conway(
-      ctx: Context,
-      ticked: NewEpochState[Conway],
-      header: Header.Shelley,
-      block: Block.Shelley,
-      txs: Vector[Tx],
-      plutus: PlutusStats
-  ): Outcome = conwayBody(ctx, ticked, header, block, txs, plutus) match
-    case Left(failure) => Outcome.Refused(failure)
-    case Right((nes, counters)) =>
-      Outcome.Applied(EraNes.InEra(ShelleyBasedEra.SConway, nes), counters)
-
-  /** BBODY on the ticked state of Conway. */
-  private def conwayBody(
-      ctx: Context,
-      ticked: NewEpochState[Conway],
-      header: Header.Shelley,
-      block: Block.Shelley,
-      txs: Vector[Tx],
-      plutus: PlutusStats
-  ): Either[BlockFailure, (NewEpochState[Conway], PlutusStats)] =
-    val ls = ticked.es.ls
-    val pp = ls.utxo.gov.curPParams
-    // the changes the block makes to the UTxO set carry its number
-    val stamped = ls.copy[Conway](utxo =
-      ls.utxo.copy(utxo = UtxoTables(ls.utxo.utxo.utxo.at(header.blockNo.toLong)))
-    )
-    issuer(header)
-      .flatMap { pool =>
-        Sts(Bbody)(
-          ctx.globals,
-          BbodyEnv(environment(ctx, header), pp, ticked.es.chainAccount.treasury),
-          BbodyState(Counted(stamped, plutus), ticked.bcur),
-          signal(header, block, txs, pool)
-        )
-      }
-      .map { after =>
-        (
-          ticked.copy(
-            bcur = after.blocksMade,
-            es = ticked.es.copy(ls = after.ledger.state)
-          ),
-          after.ledger.plutus
-        )
-      }
 
   /** The transactions of a block, decoded as the node decodes them. */
   def decode(block: Block.Shelley): Vector[Either[LedgerDecodeError, Tx]] =

@@ -18,12 +18,27 @@ check_native_identity.analyse_library = lambda path, member=None: SYNTHETIC_ISA
 import release_identity
 
 
-def tar_bytes(files):
+LAUNCHER = candidate_oci.LAUNCHER.read_bytes()
+
+
+def application_layer(files):
+    """A layer as the image recipe writes it: `opt` and `opt/scarab` root's and 0755, then the files."""
+    return tar_bytes(files, ['opt', 'opt/scarab'])
+
+
+def tar_bytes(files, directories=()):
     output = io.BytesIO()
     with tarfile.open(fileobj=output, mode='w') as archive:
+        for name in directories:
+            item = tarfile.TarInfo(name)
+            item.type = tarfile.DIRTYPE
+            item.mode = 0o755
+            archive.addfile(item)
         for name, raw in files.items():
+            raw, mode = raw if isinstance(raw, tuple) else (raw, 0o644)
             item = tarfile.TarInfo(name)
             item.size = len(raw)
+            item.mode = mode
             archive.addfile(item, io.BytesIO(raw))
     return output.getvalue()
 
@@ -72,15 +87,17 @@ def make_candidate(root: Path, release=True) -> dict:
                                                  source_files['project/Dependencies.scala'].decode())
     native_library = {k: receipt[k] for k in ('library', 'version', 'blstCommit')}
     write('evidence/native/receipt.json', receipt)
-    layer = tar_bytes({'opt/scarab/scarab.jar': jar.read_bytes()})
-    config = dict(architecture='amd64', os='linux', rootfs=dict(type='layers', diff_ids=['sha256:' + hashlib.sha256(layer).hexdigest()]),
-                  config=dict(User='10001:10001', Entrypoint=['java', '--sun-misc-unsafe-memory-access=allow', '-jar', '/opt/scarab/scarab.jar'],
+    layer = application_layer({'opt/scarab/scarab.jar': (jar.read_bytes(), 0o444)})
+    launcher = application_layer({candidate_oci.LAUNCHER_PATH: (LAUNCHER, 0o555)})
+    config = dict(architecture='amd64', os='linux',
+                  rootfs=dict(type='layers', diff_ids=['sha256:' + hashlib.sha256(raw).hexdigest() for raw in (layer, launcher)]),
+                  config=dict(User='10001:10001', Entrypoint=candidate_oci.ENTRYPOINT,
                               Labels={'org.opencontainers.image.revision': identity['gitCommit'], 'org.opencontainers.image.version': identity['version']}))
-    docker_archive = put('docker.tar', tar_bytes({'manifest.json': json.dumps([dict(Config='config.json', Layers=['layer.tar'])]).encode(),
-                                                'config.json': json.dumps(config).encode(), 'layer.tar': layer}))
+    docker_archive = put('docker.tar', tar_bytes({'manifest.json': json.dumps([dict(Config='config.json', Layers=['layer.tar', 'launcher.tar'])]).encode(),
+                                                'config.json': json.dumps(config).encode(), 'layer.tar': layer, 'launcher.tar': launcher}))
     oci = root / 'artifacts/image.oci.tar'
     candidate_oci.convert(docker_archive, oci)
-    inspected = candidate_oci.verify(oci, jar, identity)
+    inspected = candidate_oci.verify(oci, jar, identity, launcher=LAUNCHER)
     live = dict(Id=inspected['configDigest'], Architecture='amd64', Os='linux', Config=config['config'],
                 RootFS=dict(Type='layers', Layers=inspected['diffIds']))
     binding = candidate_oci.bind_docker_image(docker_archive, live, inspected)
@@ -135,4 +152,4 @@ def make_candidate(root: Path, release=True) -> dict:
              'toolchain': 'evidence/toolchain.json', 'licence-review': 'evidence/licence-review.json'}
     manifest['evidence'] = [dict(kind=kind, file=record(path)) for kind, path in paths.items()]
     write('candidate.json', manifest)
-    return contract.validate(root, require_release=release)
+    return contract.validate(root, require_release=release, launcher=LAUNCHER)

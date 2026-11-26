@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node
 
-import cats.effect.{Async, Deferred, Ref, Resource}
+import cats.effect.{Async, Deferred, Ref, Resource, Unique}
 import cats.effect.std.Mutex
 import cats.syntax.all.*
 import scala.concurrent.duration.FiniteDuration
@@ -164,7 +164,9 @@ final class FetchCoordinator[F[_]: Async] private (
           val peer = PeerState[F](identity ^ salt, order.getOrElse(PeerOrder(id)))
           (s.copy(next = id + 1, peers = s.peers.updated(id, peer)), id)
         }
-      )(id => change(s => s.copy(peers = s.peers - id)))
+      )(id =>
+        change(s => departed(s.copy(peers = s.peers - id), s.peers.get(id).map(id -> _.order)))
+      )
       .map(id => new Session(this, id))
 
   private def change(f: State[F] => State[F]): F[Unit] =
@@ -227,8 +229,16 @@ final class FetchCoordinator[F[_]: Async] private (
             )
           }
           .flatMap { (previous, demotions, result) =>
+            // Decision/Genesis.hs:288-291 (ouroboros-network c45735a5): `PeerStarvedUs`, then the
+            // demotion of the CSJ dynamo
             previous.traverse_(_.complete(()).void) *>
-              control.traverse_((owner, _) => demotions.traverse_(owner.demoteDynamo)).as(result)
+              control
+                .traverse_((owner, _) =>
+                  demotions.traverse_((id, peer) =>
+                    owner.events.emit(GenesisTrace.PeerStarvedUs(peer)) *> owner.demoteDynamo(id)
+                  )
+                )
+                .as(result)
           }
       }
     }
@@ -406,17 +416,25 @@ final class FetchCoordinator[F[_]: Async] private (
         .map(_.toMap)
     )
 
+  /** Session `id` 's tip and candidate, and its GSV `sample` ([[newer]]). A candidate announced at
+    * a [[Revision]] replaces one its writer announced at an older revision only, so that of two
+    * announcements of one writer that race, the later state's stays, whichever lands last; one of
+    * another writer, or without a revision, replaces it.
+    */
   private def announce(
       id: Long,
       tip: Option[Header],
       performance: FetchGsv.PeerGsv,
-      announced: Option[FetchCandidates.Announced]
+      announced: Option[FetchCandidates.Announced],
+      revision: Option[Revision]
   ): F[Unit] =
     change { s =>
       s.copy(
-        peers = s.peers.updatedWith(id)(
-          _.map(peer => newer(peer, performance).copy(tip = tip, announced = announced))
-        )
+        peers = s.peers.updatedWith(id)(_.map { peer =>
+          val sampled = newer(peer, performance)
+          if revision.exists(r => peer.revision.exists(_.supersedes(r))) then sampled
+          else sampled.copy(tip = tip, announced = announced, revision = revision)
+        })
       )
     }
 
@@ -503,11 +521,17 @@ final class FetchCoordinator[F[_]: Async] private (
             }
           then r.state
           else weighed.genesisState,
-        demotions = r.demoteDynamo.toVector
+        demotions = r.demoteDynamo.toVector.map(id =>
+          id -> weighed.peers
+            .get(id)
+            .map(_.order)
+            .orElse(weighed.departed.get(id))
+            .getOrElse(PeerOrder(id))
+        )
       )
     )
     // State.hs:298–304: only a request is acted on; a declined peer is left as it is.
-    val (after, requested) = decided.foldLeft((dispatched, Vector.empty[Long])) {
+    val (after, requested) = decided.foldLeft((departed(dispatched, None), Vector.empty[Long])) {
       case ((current, requested), BlockFetchPolicy.Decision.Request(id, fragments))
           if fragments.exists(_.headers.nonEmpty) =>
         current.peers.get(id).fold((current, requested)) { peer =>
@@ -578,7 +602,15 @@ object FetchCoordinator:
       starvation: GenesisBlockFetch.Starvation,
       gracePicos: BigInt = GenesisBlockFetch.DefaultGracePicos
   )
-  final case class GenesisControl[F[_]](context: F[GenesisContext], demoteDynamo: Long => F[Unit])
+
+  /** @param events
+    *   where the decision traces `PeerStarvedUs`
+    */
+  final case class GenesisControl[F[_]](
+      context: F[GenesisContext],
+      demoteDynamo: Long => F[Unit],
+      events: GenesisEvents[F]
+  )
 
   /** `PeerFetchStatus` as the trigger fingerprint compares it (ClientState.hs:145–188). */
   private[node] enum FetchStatus:
@@ -618,6 +650,13 @@ object FetchCoordinator:
 
   /** The decision lock is held by `by` for `running`. */
   private[node] final case class LockHolder(by: DecisionHolder, running: FiniteDuration)
+
+  /** The `number` th state of a session's candidate as its `writer`, one session's ChainSync, made
+    * it: a writer's states are numbered in the order it made them.
+    */
+  private[node] final case class Revision(writer: Unique.Token, number: Long):
+    /** Whether this revision is of the same writer as `other` and not older. */
+    def supersedes(other: Revision): Boolean = writer == other.writer && number >= other.number
 
   /** What takes the decision lock. */
   private[node] enum DecisionHolder:
@@ -691,6 +730,7 @@ object FetchCoordinator:
       order: PeerOrder,
       tip: Option[Header] = None,
       announced: Option[FetchCandidates.Announced] = None,
+      revision: Option[Revision] = None,
       weighing: Option[Weighing] = None,
       performance: FetchGsv.PeerGsv = FetchGsv.default,
       control: Control = Control.Continue,
@@ -718,8 +758,19 @@ object FetchCoordinator:
       fetched: Fetched = Fetched.none,
       genesisContext: Option[GenesisContext] = None,
       genesisState: GenesisBlockFetch.State[Long] = GenesisBlockFetch.State[Long](),
-      demotions: Vector[Long] = Vector.empty
+      demotions: Vector[(Long, PeerOrder)] = Vector.empty,
+      departed: Map[Long, PeerOrder] = Map.empty
   )
+
+  /** `s` keeping the name of a session that has ended while the Genesis peers order still holds it:
+    * the reference checks the starvation of the current peer before it aligns that order with the
+    * peers it has (Decision/Genesis.hs:194-200, ouroboros-network c45735a5), so it may name a peer
+    * that is gone in `PeerStarvedUs`. Only the names the order holds are kept.
+    */
+  private def departed[F[_]](s: State[F], ended: Option[(Long, PeerOrder)]): State[F] =
+    val held = (id: Long) =>
+      s.genesisState.current.contains(id) || s.genesisState.order.contains(id)
+    s.copy(departed = (s.departed ++ ended).filter((id, _) => held(id)))
 
   /** A request the decisions added for a session: `headers` in `requests` contiguous ranges. */
   private[node] final case class Allocation(
@@ -736,17 +787,19 @@ object FetchCoordinator:
         performance: FetchGsv.PeerGsv,
         candidate: Option[ChainSelection.Candidate] = None
     ): F[Unit] =
-      owner.announce(id, tip, performance, candidate.map(FetchCandidates.Announced.of))
+      owner.announce(id, tip, performance, candidate.map(FetchCandidates.Announced.of), None)
 
     /** Report the session's candidate with the index its session carried to it, so that nothing of
-      * it is scanned again.
+      * it is scanned again, as of `revision` of the session's candidate state: it replaces only the
+      * candidate of an older revision of the same writer.
       */
     private[node] def announce(
         tip: Option[Header],
         performance: FetchGsv.PeerGsv,
-        announced: FetchCandidates.Announced
+        announced: FetchCandidates.Announced,
+        revision: Revision
     ): F[Unit] =
-      owner.announce(id, tip, performance, Some(announced))
+      owner.announce(id, tip, performance, Some(announced), Some(revision))
     def identity: Long = id
 
     /** Let [[diagnostics]] read this session's pipeline through `probe`, which must not block. */

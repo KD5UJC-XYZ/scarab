@@ -468,12 +468,13 @@ accept the in-process copy and document it. An off-heap buffer with a JNI `mlock
 What lands with the implementation, in place of a guarantee:
 
 - the node holds the current evolution only, replaces it on every push, and forgets it on a drop;
-- the JVMs run with `-XX:+DisableAttachMechanism` (no `jmap`/`jcmd` heap dump from another process) and
-  `-XX:-CreateCoredumpOnCrash`; `-XX:+HeapDumpOnOutOfMemoryError` is already off by default, so there is
-  nothing to disable there;
+- the JVMs run with no attach (no `jmap`/`jcmd` heap dump from another process), no core file on a crash and no heap
+  dump on running out of memory: this landed ahead of agent mode, in the launcher of the release image and the Nix
+  apps, whose options [the launcher page](../running/launcher.md#what-it-sets) lists
+  ([#1418](https://github.com/KD5UJC-XYZ/scarab/issues/1418));
 - swap, hibernation and core dumps are **host** settings, not image settings: the operator documentation
   ships a compose/run example with `ulimit -c 0`, no swap and no hibernation, repeating the upstream guide's
-  own list;
+  own list (the forging guide states the host settings for the file path already);
 - in agent mode no KES material is on disk at all, which removes the at-rest exposure the file path has by
   design;
 - the operator documentation states the limitation in one sentence rather than implying the key is protected

@@ -19,7 +19,7 @@ import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 final class GenesisRuntime[F[_]: Async] private (
     val governor: GenesisGovernor[F],
     val work: SelectionWork[F],
-    jumping: ChainSyncJumpingRuntime[F, Long, GenesisPeer.Checkpoint],
+    jumping: ChainSyncJumpingRuntime[F, GenesisRuntime.Jumper, GenesisPeer.Checkpoint],
     settings: GenesisSettings,
     selection: F[ChainSelection.Local],
     geometry: F[EpochGeometry],
@@ -32,7 +32,9 @@ final class GenesisRuntime[F[_]: Async] private (
   private val F = Async[F]
   import ChainSyncJumping.{Instruction, JumpInfo}
 
-  def demoteDynamo(id: Long): F[Unit] = jumping.rotate(id)
+  /** `demoteCSJDynamo` of the session `id`, if it is still registered. */
+  def demoteDynamo(id: Long): F[Unit] =
+    jumping.snapshot.flatMap(_.peers.find(_.id.session == id).traverse_(p => jumping.rotate(p.id)))
 
   def gsmReadings(
       versus: HeaderChain[NodeHeaderState] => F[Gsm.Candidate]
@@ -92,6 +94,7 @@ final class GenesisRuntime[F[_]: Async] private (
         cause => fatal(GenesisInternalProblem.PatienceWatcherFailed(cause)),
         clock
       )
+      label = densityOrder.getOrElse(PeerOrder(identity))
       peer <- governor.session(
         phase =>
           patience.configure(
@@ -99,11 +102,11 @@ final class GenesisRuntime[F[_]: Async] private (
             else LeakyBucket.Config.disabled
           ),
         disconnect(PeerError.Genesis(PeerError.GenesisProblem.DensityTooLow)),
-        densityOrder.orElse(Some(PeerOrder(identity)))
+        Some(label)
       )
       phase <- Resource.eval(governor.phase)
       jumper <- jumping.session(
-        identity,
+        GenesisRuntime.Jumper(identity, label),
         anchor,
         phase == Gsm.Phase.CaughtUp || !settings.enableCSJ
       )
@@ -431,12 +434,17 @@ object GenesisRuntime:
       elapsed: F[BigInt],
       changed: F[Unit],
       headers: HeaderCheck.Grafting[F],
-      clock: Option[PicosClock[F]] = None
+      clock: Option[PicosClock[F]] = None,
+      events: Option[GenesisEvents[F]] = None
   ): F[GenesisRuntime[F]] =
+    val traced = events.getOrElse(GenesisEvents.none[F])
     for
-      work <- SelectionWork.create[F](changed, clock)
+      work <- SelectionWork.create[F](changed, clock, Some(traced))
       readings <- Ref.of[F, Map[Long, (Option[HeaderChain[NodeHeaderState]], Boolean)]](Map.empty)
-      jumping <- ChainSyncJumpingRuntime.create[F, Long, GenesisPeer.Checkpoint](settings.jumpSlots)
+      jumping <- ChainSyncJumpingRuntime.create[F, Jumper, GenesisPeer.Checkpoint](
+        settings.jumpSlots,
+        traces = Some(jumpingTraces(traced))
+      )
     yield new GenesisRuntime(
       governor,
       work,
@@ -450,3 +458,19 @@ object GenesisRuntime:
       readings,
       headers
     )
+
+  /** A session's key in ChainSync jumping: its number, and its connection, which names it in the
+    * traces, as the reference's handles are keyed by the peer its traces name (consensus 82ecba329,
+    * `MiniProtocol/ChainSync/Client/Jumping.hs:842-866`). Every peer an event names is named by the
+    * key the transition read, so a peer that disconnects meanwhile keeps its name.
+    */
+  final case class Jumper(session: Long, connection: PeerOrder)
+
+  /** The CSJ and Devoted BlockFetch traces with each session named by its connection. */
+  private def jumpingTraces[F[_]](
+      events: GenesisEvents[F]
+  ): ChainSyncJumpingRuntime.Traces[F, Jumper] = new ChainSyncJumpingRuntime.Traces[F, Jumper]:
+    def csj(peer: Jumper, event: ChainSyncJumping.Event[Jumper]) =
+      events.emit(GenesisTrace.Csj(peer.connection, event.map(_.connection)))
+    def dbf(event: ChainSyncJumping.RotatedDynamo[Jumper]) =
+      events.emit(GenesisTrace.Dbf(event.map(_.connection)))

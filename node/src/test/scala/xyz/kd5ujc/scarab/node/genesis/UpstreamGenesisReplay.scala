@@ -406,7 +406,8 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                   (phase, now, starvation) =>
                                     fetchContext(settings, phase, now, starvation)
                                 ),
-                                runtime.demoteDynamo
+                                runtime.demoteDynamo,
+                                GenesisEvents.none[IO]
                               )
                             )
                           yield {

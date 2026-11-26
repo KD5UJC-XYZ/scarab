@@ -72,7 +72,10 @@ java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -c
   (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> | --topology <topology.json>) [options]
 ```
 
-(Inside the JDK image with the checkout mounted, or on a host with JDK 25.) The sbt form is
+(Inside the JDK image with the checkout mounted, or on a host with JDK 25: a developer's path, with JVM options on its
+command line.) The release image and the Nix apps start the node through their launcher instead, which takes the heap,
+the processor count and diagnostics from environment variables and, unless diagnostics are on, drops
+`JAVA_TOOL_OPTIONS` ([Starting the node's JVM](running/launcher.md)). The sbt form is
 `sbt "node/runMain xyz.kd5ujc.scarab.node.Main follow ..."`. The node logs one JSON object per line on stdout
 (`started`, `extended`, `eraTransition`, `epochValidated`, `ledgerEpoch`, `snapshotWritten`,
 `volatileResumed`, `shutdownSnapshot`, `forged`, ...). The epoch lines carry a `scheduling` object
@@ -87,6 +90,7 @@ Each topic of this guide has a page of its own; the section names below are the 
 | Page | Sections |
 |---|---|
 | [A tester's runbook](running/tester-runbook.md) | Before you start; The images; A devnet: Scarab forging beside two Haskell pools; Mainnet from a Mithril snapshot to the tip; A preprod node; `cardano-cli` against the node-to-client socket; A pool on preprod; Cleaning up (each step with its commands and what success looks like) |
+| [Starting the node's JVM](running/launcher.md) | the launcher of the release image and the Nix apps: its calling form, the variables it reads and removes, the options it sets, diagnostics, other JVM options, exit statuses, upgrading from an image before it |
 | [Flags of `follow`](running/flags.md) | the table of every `follow` flag |
 | [Databases, snapshots and imports](running/snapshots.md) | `import-haskell-db`: start from a Haskell node's blocks; `import-mithril`: certified bootstrap into a fresh database; `import-ledger-snapshot`: start from a reference ledger snapshot; `export-ledger-snapshot`: write a reference ledger directory; `export-scls` and `import-scls`: canonical ledger-state interchange |
 | [Configuration, topology, peers and networks](running/configuration.md) | Configuration and topology files; Choosing the consensus mode; Peer selection; Preview; Preprod |
@@ -95,7 +99,7 @@ Each topic of this guide has a page of its own; the section names below are the 
 | [Node-to-client and the query server](running/node-to-client.md) | Node-to-client; Query server |
 | [Logging](running/logging.md) | Logging |
 | [Metrics](running/metrics.md) | Metrics |
-| [Stalls and failures that stop the node](running/troubleshooting.md) | Stall watchdog; Failures that stop the node (#154) |
+| [Stalls and failures that stop the node](running/troubleshooting.md) | Stall watchdog; Failures that stop the node (#154); The JVM does not take an option |
 | [Monitoring long runs](running/monitoring.md) | Monitoring long runs |
 | [Fuzzing the decoders](running/fuzzing.md) | Fuzzing the decoders (roadmap K3) |
 | [Capture and the devnet scenarios](running/devnet.md) | `capture`: recording blocks; Devnet scenarios (`scripts/devnet.py`) |

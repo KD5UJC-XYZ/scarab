@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.rules
 import cats.Monad
 import cats.mtl.{Ask, Raise, Stateful}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Rational
+import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.ledger.{
   BlockFailure,
   Certificate,
@@ -131,13 +131,27 @@ object ShelleyLedgers:
             )
         }
 
-/** `BbodyEnv` (`Shelley/Rules/Bbody.hs`): the parameters in force, the chain account, and the
-  * block-level context of its transactions.
+/** `BbodyEnv` (`Shelley/Rules/Bbody.hs:90-93`, cardano-ledger f649f975): the parameters in force,
+  * the chain account, and the block-level context of its transactions.
   */
 final case class ShelleyBbodyEnv(ctx: TxEnv, pp: ProtocolParams, account: ChainAccountState)
 
-/** `ShelleyBbodyState` (`Shelley/Rules/Bbody.hs`): the ledger state, and the blocks the pools have
-  * made in the epoch (`nesBcur`).
+/** What a block header commits to of the body: its size and its hash. */
+final case class BodyCommitment(size: BigInt, hash: Bytes)
+
+/** `BbodySignal` (`Shelley/Rules/Bbody.hs:194`, cardano-ledger f649f975, the block itself): the
+  * transactions of the block, the pool that made it (the hash of the issuer's key), and what its
+  * header commits to of the body, with what the body is.
+  */
+final case class BbodySignal(
+    txs: Vector[Tx],
+    issuer: KeyHash[StakePool],
+    declared: BodyCommitment,
+    actual: BodyCommitment
+)
+
+/** `ShelleyBbodyState` (`Shelley/Rules/Bbody.hs:82-84`, cardano-ledger f649f975): the ledger state,
+  * and the blocks the pools have made in the epoch (`nesBcur`).
   */
 final case class ShelleyBbodyState[E <: EraTag](
     ledger: Counted[LedgerState[E]],
@@ -152,8 +166,9 @@ final case class ShelleyBbodyState[E <: EraTag](
   * genesis delegate, whose count the pool performance does not use). Babbage has no
   * decentralisation parameter (`ppDG` is zero), so its slots have no overlay.
   *
-  * The signal is Conway's ([[BbodySignal]]); LEDGERS runs on the ledger part of the state, its
-  * failures wrapped as the block's (`BlockFailure.Tx`).
+  * The signal is [[BbodySignal]]; LEDGERS runs on the ledger part of the state, its failures
+  * wrapped as the block's (`BlockFailure.Tx`). Conway's blocks are not these rules': the node
+  * applies them with Conway's era run (`era.rules.ConwayBlockRun`).
   */
 object ShelleyBbody:
   /** `isOverlaySlot` (`Slot.hs:117-130`, cardano-ledger f649f975): the slot is reserved for the
@@ -164,14 +179,18 @@ object ShelleyBbody:
     (Rational(s) * d).ceil < (Rational(s + 1) * d).ceil
 
   /** The execution units of the block's transactions when they exceed the limit of `pp`: Alonzo's
-    * BBODY, which Babbage's is, checks them at any version (`validateExUnits`,
-    * `Alonzo/Rules/Bbody.hs:212` (cardano-ledger f649f975), after LEDGERS,
-    * [[Bbody.exUnitsExceeded]]); Shelley's has no such check.
+    * BBODY, which Babbage's is, checks them at any version, after LEDGERS (`validateExUnits`,
+    * `Alonzo/Rules/Bbody.hs:149-167`, called at `:212`, cardano-ledger f649f975: `foldMap
+    * totExUnits txs`, the whole block's, compared point-wise); Shelley's has no such check.
     */
   def exUnitsExceeded[E <: EraTag](pp: ProtocolParams, txs: Vector[Tx])(using
       pre: PreConway[E]
   ): Option[ExUnits] =
-    if pre.atLeast(ShelleyBasedEra.SAlonzo) then Bbody.exUnitsExceeded(pp, txs) else None
+    Option
+      .when(pre.atLeast(ShelleyBasedEra.SAlonzo))(
+        txs.foldLeft(ExUnits.zero)(_ + _.witnesses.totalExUnits)
+      )
+      .filterNot(_.fits(pp.maxBlockExUnits))
 
   def sts[E <: EraTag](using
       pre: PreConway[E]
