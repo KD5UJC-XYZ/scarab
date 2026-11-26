@@ -252,8 +252,8 @@ class ConwayOnePassSuite extends ScalaCheckSuite:
       .sorted
       .map(p => hex(Files.readString(Path.of(p)).trim))
 
-  /** The transactions of the reference's refusal corpora: `[era, #6.24(bytes .cbor tx)]`. */
-  private lazy val refusalTxs: Vector[Bytes] =
+  /** The Conway corpora of `fixtures/reference/refusals`, every one there now. */
+  private lazy val refusalCorpora: Vector[String] =
     Files
       .list(Path.of("fixtures/reference/refusals"))
       .iterator()
@@ -262,6 +262,27 @@ class ConwayOnePassSuite extends ScalaCheckSuite:
       .filter(_.startsWith("conway"))
       .toVector
       .sorted
+
+  /** The Conway refusal corpora there were when the fixed mutants' refusals were recorded
+    * (`ConwayOnePassExpected`): the mutants are drawn from their transactions, so a corpus added
+    * later, which the differential above reads, does not move them.
+    */
+  private val seedCorpora: Vector[String] = Vector(
+    "conway-bootstrap-attributes",
+    "conway-bootstrap-attributes-leios-b004fe0c",
+    "conway-deleg-collateral",
+    "conway-devnet",
+    "conway-gov-proposals",
+    "conway-governance",
+    "conway-three-certificates",
+    "conway-v11-coverage"
+  )
+
+  /** The transactions of the reference's refusal corpora: `[era, #6.24(bytes .cbor tx)]`. */
+  private lazy val refusalTxs: Vector[Bytes] = refusalTxsOf(refusalCorpora)
+
+  private def refusalTxsOf(corpora: Vector[String]): Vector[Bytes] =
+    corpora
       .flatMap(d => jsonLines(s"fixtures/reference/refusals/$d/cases/cases.jsonl"))
       .map(j =>
         node(hex(str(j, "item"))).map(_.value) match
@@ -548,7 +569,11 @@ class ConwayOnePassSuite extends ScalaCheckSuite:
 
   // the seeds: every whole transaction above, the larger ones but a few, so that a run stays short
   private lazy val seeds: Vector[Bytes] =
-    val all = wholeSources.flatMap(_._2).distinct
+    assert(seedCorpora.forall(refusalCorpora.contains), s"seed corpora missing: $seedCorpora")
+    val all = wholeSources
+      .map((name, txs) => if name == "refusal corpora" then refusalTxsOf(seedCorpora) else txs)
+      .flatMap(identity)
+      .distinct
     val (small, large) = all.partition(_.size <= 4096)
     small ++ large.take(8)
 
