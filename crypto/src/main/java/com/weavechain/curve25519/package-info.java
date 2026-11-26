@@ -24,6 +24,6 @@
  * group order. The {@code throw} statements left check the caller's arguments, which the callers in
  * {@code xyz.kd5ujc.scarab.crypto} never fail: an array of another length than a constructor or a method takes,
  * a radix-16 digit outside [-8, 8], a NAF digit that is even or above 15, an exponent below 1, and the high bit of
- * a 32-byte {@link Scalar}.
+ * a 32-byte {@link Scalar}. Their count may only go down ({@code scripts/check_java_sources.py}).
  */
 package com.weavechain.curve25519;

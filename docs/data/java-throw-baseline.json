@@ -1,0 +1,16 @@
+{
+ "_comment": "throw statements per Java main source, comments and literals aside; written by scripts/check_java_sources.py --write-baseline, which refuses an increase. It only shrinks (#1418).",
+ "files": {
+  "crypto/src/main/java/com/weavechain/curve25519/AffineNielsPoint.java": 2,
+  "crypto/src/main/java/com/weavechain/curve25519/CompressedEdwardsY.java": 1,
+  "crypto/src/main/java/com/weavechain/curve25519/CompressedRistretto.java": 1,
+  "crypto/src/main/java/com/weavechain/curve25519/EdwardsBasepointTable.java": 1,
+  "crypto/src/main/java/com/weavechain/curve25519/EdwardsPoint.java": 2,
+  "crypto/src/main/java/com/weavechain/curve25519/FieldElement.java": 1,
+  "crypto/src/main/java/com/weavechain/curve25519/ProjectiveNielsPoint.java": 2,
+  "crypto/src/main/java/com/weavechain/curve25519/Scalar.java": 5,
+  "crypto/src/main/java/com/weavechain/curve25519/UnpackedScalar.java": 2,
+  "crypto/src/main/java/xyz/kd5ujc/scarab/crypto/vrf/Draft03Math.java": 4,
+  "crypto/src/main/java/xyz/kd5ujc/scarab/crypto/vrf/Ed25519Point.java": 1
+ }
+}
