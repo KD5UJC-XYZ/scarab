@@ -582,9 +582,11 @@ object ConwayTxBody:
   /** A Conway body from its bytes, read in one pass (#85): `DecCBOR (ConwayTxBodyRaw l ConwayEra)`
     * (`SparseKeyed "TxBodyRaw"` of `bodyFields` and `requiredFields`,
     * `eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs:180-265`, cardano-ledger f649f975) at
-    * decoder version 9, the bytes parsed once (with its detached records, [[DetachedRecords]]) and
-    * each field read once into Conway's types. A pool's parameters are read in `layout`, the layout
-    * of the build that reads it ([[ConwayTxCert.fromFlat]]).
+    * decoder version 9, the bytes parsed once and each field read once into Conway's types; an
+    * input that holds an empty indefinite list and that the plain parse refuses is parsed again
+    * with the detached records a walk finds, as the flat decoder parses it
+    * ([[DetachedRecords.read]]). A pool's parameters are read in `layout`, the layout of the build
+    * that reads it ([[ConwayTxCert.fromFlat]]).
     *
     * It refuses what the two passes it replaced refuse ([[decodeByFlat]]: the flat decoder at
     * Conway, then the projection of what it read), with the same first refusal: the first phase
@@ -592,7 +594,8 @@ object ConwayTxBody:
     * the second ([[project]]) makes the era's values in the projection's order, so a refusal only
     * the projection makes still comes after every refusal of the flat decoder. That order is not
     * always the reference's, whose `SparseKeyed` reads the keys as written and refuses an unknown
-    * key at its turn; it is kept here, and left to the decoder's order item of #85.
+    * key at its turn; it is kept here, and left to the decoder's order item of #85
+    * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644).
     */
   def decode(raw: Bytes, layout: StateLayout): Either[EraTxError, ConwayTxBody] =
     DetachedRecords

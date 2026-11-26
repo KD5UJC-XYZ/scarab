@@ -13,7 +13,6 @@ import xyz.kd5ujc.scarab.ledger.{
   DecoderVersion,
   DetachedRecords,
   LedgerDecodeError,
-  Redeemer,
   ScriptKind,
   Unsigned,
   Witnesses
@@ -52,40 +51,42 @@ object ConwayTxWits
   /** A Conway witness set from its bytes, read in one pass (#85): `DecCBOR (Annotator
     * (AlonzoTxWitsRaw era))` below decoder version 12 (`SparseKeyed "AlonzoTxWits"` of
     * `txWitnessField`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs:603-703`,
-    * cardano-ledger f649f975) at version 9, the bytes parsed once (with its detached records,
-    * [[DetachedRecords]]) and each field read once into Conway's types: a native script by Conway's
-    * reader, each of its levels with its own bytes, and each datum and redeemer's data decoded
-    * once, from its item ([[Data.read]]).
+    * cardano-ledger f649f975) at version 9, the bytes parsed once and each field read once into
+    * Conway's types (an input that holds an empty indefinite list and that the plain parse refuses
+    * is parsed again with the detached records a walk finds, as the flat decoder parses it
+    * ([[DetachedRecords.read]])): a native script by Conway's reader, each of its levels with its
+    * own bytes, and each datum and redeemer's data decoded once, from its item ([[Data.read]]).
     *
     * It refuses what the two passes it replaced refuse ([[decodeByFlat]]), with the same first
     * refusal: the keys are read in the flat decoder's order (the keys a witness set has, then 0, 1,
     * 2, 3, 6, 7, 4 and 5), each with its leaf reader and refusal; Conway's native-script reader is
     * the flat one's (`NativeScript.decode` of the time locks, its refusal the same), and the data
-    * reader the flat one's (`PlutusData.fromNode`). The purposes of the redeemers are made last, as
-    * the projection made them. That order is not always the reference's, which reads the keys as
-    * written; it is kept here, and left to the decoder's order item of #85.
+    * reader the flat one's (`PlutusData.fromNode`). That order is not always the reference's, which
+    * reads the keys as written; it is kept here, and left to the decoder's order item of #85
+    * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644).
     */
   def decode(raw: Bytes): Either[EraTxError, ConwayTxWits] =
     DetachedRecords
       .read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.witnesses(Era.Conway, version))(
         LedgerDecodeError.Syntax(_)
       )(read(raw, _))
-      .leftMap(EraTxError.Decode(_))
-      .flatMap(project)
+      .bimap(EraTxError.Decode(_), project)
 
   /** [[decode]] of a witness set's item, parsed already with no detached record in it
     * ([[ConwayTx.fromEnvelope]]).
     */
   private[conway] def fromItem(n: Node): Either[EraTxError, ConwayTxWits] =
-    read(n.original, n).leftMap(EraTxError.Decode(_)).flatMap(project)
+    read(n.original, n).bimap(EraTxError.Decode(_), project)
 
   // The keys of a witness set (`txWitnessField`), made once.
   private val keys: Set[Int] = (0 to 7).toSet
 
-  /** A redeemer as the first phase read it: its tag (one of Conway's, 0 to 5) and its index (a
-    * `Word32`), its data and units.
-    */
-  private final case class ReadRedeemer(tag: Int, index: BigInt, data: Data, units: ExUnits)
+  /** A redeemer as the first phase read it: its purpose, its data and its units. */
+  private final case class ReadRedeemer(
+      purpose: ConwayPlutusPurpose[AsIx],
+      data: Data,
+      units: ExUnits
+  )
 
   /** What the first phase read. */
   private final case class Read(
@@ -209,7 +210,8 @@ object ConwayTxWits
   /** The redeemers (`DecCBOR (Annotator (RedeemersRaw era))`, `Alonzo/TxWits.hs:549-597`,
     * cardano-ledger f649f975) as the flat decoder reads them at version 9: the map form, chosen by
     * `peekTokenType` for a map whose length is not written in eight bytes, or the list form, not
-    * empty either way; of the entries of one purpose the last read counts.
+    * empty either way; of the entries of one purpose the last read counts, in the order of the last
+    * ones.
     */
   private def redeemerList(n: Node): Either[LedgerDecodeError, Vector[ReadRedeemer]] =
     def data(x: Node) = Data.read(x).leftMap(LedgerDecodeError.PlutusData(DecodeField.Redeemer, _))
@@ -219,12 +221,12 @@ object ConwayTxWits
         kvs.traverse { case (k, v) =>
           for
             key <- CborRead.arrayN(k, 2, DecodeField.RedeemerKey)
-            purpose <- Redeemer.purpose(key(0), key(1), Era.Conway)
+            p <- purpose(key(0), key(1))
             value <- CborRead.definite(v, DecodeField.RedeemerValue) *>
               CborRead.arrayN(v, 2, DecodeField.RedeemerValue)
             d <- data(value(0))
             u <- units(value(1))
-          yield ReadRedeemer(purpose._1, purpose._2, d, u)
+          yield ReadRedeemer(p, d, u)
         }
       case _ =>
         CborRead
@@ -232,48 +234,47 @@ object ConwayTxWits
           .flatMap(_.traverse { r =>
             for
               xs <- CborRead.arrayN(r, 4, DecodeField.Redeemer)
-              purpose <- Redeemer.purpose(xs(0), xs(1), Era.Conway)
+              p <- purpose(xs(0), xs(1))
               d <- data(xs(2))
               u <- units(xs(3))
-            yield ReadRedeemer(purpose._1, purpose._2, d, u)
+            yield ReadRedeemer(p, d, u)
           })
-    all.flatMap(CborRead.nonEmpty(_, DecodeField.Redeemers, true)).map { rs =>
-      val last = rs.zipWithIndex.map((r, i) => (r.tag, r.index) -> i).toMap
-      rs.zipWithIndex.collect { case (r, i) if last((r.tag, r.index)) == i => r }
-    }
+    all
+      .flatMap(CborRead.nonEmpty(_, DecodeField.Redeemers, true))
+      .map(_.reverse.distinctBy(_.purpose).reverse)
 
-  /** The second phase: the redeemers' purposes, a tag of Conway's and a `Word32` index, as the
-    * projection made them; the first phase read both so, so neither refusal is reached.
+  /** A redeemer's purpose, as the flat decoder's `Redeemer.purpose` reads it at Conway: the tag a
+    * `Word8` that names one of Conway's purposes, any other refused before the index is read, and
+    * the index a `Word32` (`decCBORGroup` of `ConwayPlutusPurpose AsIx`,
+    * `Conway/Scripts.hs:280-296`, cardano-ledger f649f975).
     */
-  private def project(r: Read): Either[EraTxError, ConwayTxWits] =
-    r.redeemerList
-      .traverse(x =>
-        for
-          index <- Unsigned
-            .from[Unsigned.Width.W32](x.index)
-            .toRight(
-              EraTxError.Decode(
-                LedgerDecodeError.NumberOutOfRange(DecodeField.RedeemerIndex, x.index, 0, Word32Max)
-              )
-            )
-          purpose <- ConwayPlutusPurpose
-            .asIx(x.tag, index)
-            .toRight(
-              EraTxError.Decode(LedgerDecodeError.UnknownTag(DecodeField.RedeemerTag, x.tag))
-            )
-        yield purpose -> (x.data, x.units)
+  private def purpose(
+      tag: Node,
+      index: Node
+  ): Either[LedgerDecodeError, ConwayPlutusPurpose[AsIx]] =
+    for
+      t <- Unsigned.read[Unsigned.Width.W8](tag, DecodeField.RedeemerTag).map(_.value)
+      of <- Option
+        .when(t.isValidInt)(t.toInt)
+        .flatMap(ConwayPlutusPurpose.ofTag)
+        .toRight(LedgerDecodeError.UnknownTag(DecodeField.RedeemerTag, t))
+      i <- Unsigned.read[Unsigned.Width.W32](index, DecodeField.RedeemerIndex)
+    yield of(i)
+
+  /** The witness set the first phase read, in its representation. */
+  private def project(r: Read): ConwayTxWits =
+    AlonzoTxWitsRep(
+      r.raw,
+      SortedSet.from(r.vkeys.map(WitVKey(_, _))),
+      r.bootstrap,
+      SortedMap.from(r.scripts),
+      r.scripts.map(_._1),
+      TxDats(r.datums.map(_.original), SortedMap.from(r.datumSet.map(d => d.hashData -> d))),
+      Redeemers(
+        r.redeemers.map(_.original),
+        SortedMap.from(r.redeemerList.map(x => x.purpose -> (x.data, x.units)))
       )
-      .map(redeemers =>
-        AlonzoTxWitsRep(
-          r.raw,
-          SortedSet.from(r.vkeys.map(WitVKey(_, _))),
-          r.bootstrap,
-          SortedMap.from(r.scripts),
-          r.scripts.map(_._1),
-          TxDats(r.datums.map(_.original), SortedMap.from(r.datumSet.map(d => d.hashData -> d))),
-          Redeemers(r.redeemers.map(_.original), SortedMap.from(redeemers))
-        )
-      )
+    )
 
   /** The two passes [[decode]] replaced (#85): Conway's decoder (the flat decoder at Conway) reads
     * it and refuses what Conway refuses; its scripts are then read from the same bytes into

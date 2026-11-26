@@ -45,16 +45,18 @@ object ConwayTxAuxData extends AlonzoTxAuxDataRep.Fields[ConwayTxAuxData, Conway
     * chosen by the token (`decodeTxAuxDataByTokenType`,
     * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs:215-312`, cardano-ledger f649f975): a
     * metadata map, the `[metadata, native scripts]` record (`RecD` below version 12), or the map
-    * tagged 259 (`SparseKeyed "AlonzoTxAuxData"` of `auxDataField`). The bytes are parsed once
-    * (with their detached records, [[DetachedRecords]]) and each metadatum and native script read
-    * once into Conway's types.
+    * tagged 259 (`SparseKeyed "AlonzoTxAuxData"` of `auxDataField`). The bytes are parsed once and
+    * each metadatum and native script read once into Conway's types; an input that holds an empty
+    * indefinite list and that the plain parse refuses is parsed again with the detached records a
+    * walk finds, as the flat decoder parses it ([[DetachedRecords.read]]).
     *
     * It refuses what the two passes it replaced refuse ([[decodeByFlat]]), with the same first
     * refusal, the flat reader's ([[xyz.kd5ujc.scarab.ledger.AuxiliaryScripts.read]] at version 9):
     * the tagged map's keys are each read as a `Word` and refused when one is repeated before any
     * value is read, then the values in the order written; Conway's native-script reader is the flat
     * one's. The labels become `Word64` values last, as the projection made them. That order is not
-    * always the reference's; it is kept here, and left to the decoder's order item of #85.
+    * always the reference's; it is kept here, and left to the decoder's order item of #85
+    * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644).
     */
   def decode(raw: Bytes): Either[EraTxError, ConwayTxAuxData] =
     DetachedRecords
@@ -118,8 +120,13 @@ object ConwayTxAuxData extends AlonzoTxAuxDataRep.Fields[ConwayTxAuxData, Conway
                       else if key == 1 then readNative(value).map(n => r.copy(native = n))
                       else
                         // Plutus V1 to V3 are all allowed at version 9 (`guardPlutus`,
-                        // `Plutus/Language.hs:639-647`, cardano-ledger f649f975); V4's key is not read
-                        // below 12
+                        // `Plutus/Language.hs:639-647`, cardano-ledger f649f975). Key 5 is refused
+                        // as an unknown key (`UnknownTag(AuxiliaryField, 5)`), as the flat reader
+                        // refuses it below version 12, where the reference's `auxDataField 5`
+                        // (`Alonzo/TxAuxData.hs:299`) knows the key and refuses PlutusV4 by
+                        // `guardPlutus` at version 9: an inherited difference of the diagnostic, not
+                        // of the verdict, left to the decoder's order item of #85
+                        // (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644)
                         languages
                           .get(key)
                           .toRight(LedgerDecodeError.UnknownTag(DecodeField.AuxiliaryField, key))
