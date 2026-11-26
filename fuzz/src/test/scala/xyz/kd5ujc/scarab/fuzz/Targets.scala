@@ -1050,6 +1050,44 @@ object Targets:
           }
       ),
       Target(
+        "conway-tx-one-pass",
+        () =>
+          Corpus.transactionsOf(Era.Conway) ++ Corpus.sampled("conway:transaction", 40) ++
+            Corpus.tricky,
+        in =>
+          Probe.run(
+            "conway-tx-one-pass",
+            in,
+            perByte = 2500L * 4 * StateLayout.values.length
+          ) {
+            // Conway's era decoders read a transaction in one pass as the two passes they replaced
+            // did (#85): the same transaction or the same refusal, in its mempool form and, when
+            // its bytes split into parts, in its block form, at every layout. Four decodes of the
+            // transaction at each layout, the two passes allocating most
+            import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx
+            val b = raw(in)
+            val parts = DetachedRecords
+              .read(b, Cbor.Limits.Unbounded, DetachedRecords.Shapes.transaction(Era.Conway))(
+                LedgerDecodeError.Syntax(_)
+              )(Tx.envelopeParts(_, Era.Conway))
+              .toOption
+            StateLayout.values.foreach { layout =>
+              val submitted = ConwayTx.fromEnvelope(b, layout)
+              req(
+                submitted == ConwayTx.fromEnvelopeByFlat(b, layout),
+                "a mempool form reads otherwise in one pass"
+              )
+              parts.foreach(t =>
+                req(
+                  ConwayTx.decode(t, layout) == ConwayTx.decodeByFlat(t, layout),
+                  "a block form reads otherwise in one pass"
+                )
+              )
+              seen("conway-tx-one-pass", submitted.isRight)
+            }
+          }
+      ),
+      Target(
         "dijkstra-tx-body",
         () =>
           Corpus.dijkstraParts(0) ++ Corpus.sampled("dijkstra:transaction_body", 60) ++
