@@ -5865,7 +5865,7 @@
     "#85"
    ],
    "commits": [
-    "e049b1f33"
+    "d49a32255"
    ],
    "links": [],
    "page": "era-rules",
@@ -5882,27 +5882,39 @@
      "rows": [
       [
        "block form, two passes: `ConwayTx.decodeByFlat`",
-       "35.91 ms",
-       "35.01 to 37.73 ms",
-       "208.9 to 219.0 MB"
+       "36.69 ms",
+       "35.04 to 38.10 ms",
+       "208.9 to 218.9 MB"
       ],
       [
        "block form, one pass: `ConwayTx.decode`",
-       "24.30 ms",
-       "23.67 to 25.29 ms",
-       "146.3 to 149.6 MB"
+       "24.97 ms",
+       "23.61 to 25.86 ms",
+       "145.9 to 149.0 MB"
       ],
       [
        "mempool form, two passes: `ConwayTx.fromEnvelopeByFlat`",
-       "38.12 ms",
-       "37.14 to 39.72 ms",
-       "217.6 to 227.7 MB"
+       "38.56 ms",
+       "36.99 to 40.54 ms",
+       "217.6 to 227.6 MB"
       ],
       [
        "mempool form, one pass: `ConwayTx.fromEnvelope`",
-       "24.99 ms",
-       "24.53 to 26.57 ms",
-       "146.3 to 149.5 MB"
+       "25.25 ms",
+       "23.88 to 26.22 ms",
+       "145.8 to 149.0 MB"
+      ],
+      [
+       "the pool's route, two passes: split, the flat decoder, `ConwayTx.decodeByFlat`",
+       "56.94 ms",
+       "55.67 to 58.84 ms",
+       "305.4 to 322.7 MB"
+      ],
+      [
+       "the pool's route, one pass: split, the flat decoder, `ConwayTx.decode`",
+       "46.65 ms",
+       "44.90 to 48.00 ms",
+       "242.5 to 252.7 MB"
       ]
      ]
     }

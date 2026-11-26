@@ -4,8 +4,8 @@ package xyz.kd5ujc.scarab.ledger.era.conway
 import java.lang.management.ManagementFactory
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Block, Tx}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor}
+import xyz.kd5ujc.scarab.ledger.{Block, DetachedRecords, LedgerDecodeError, Tx}
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** Development tool: what reading Conway transactions into the era's types costs, in one pass
@@ -15,11 +15,13 @@ import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
   * recorded blocks (`fixtures/eras/blocks.hex`, `fixtures/preview/conway.hex`,
   * `fixtures/preview/conway-governance.hex` and `fixtures/preview/duplicate-redeemer-conway.hex`)
   * and the preprod transactions (`fixtures/preprod/tx-*.hex`), repeated to `copies` times their
-  * number. Each is read in its block form, its parts apart as a block body holds them, and in its
-  * mempool form, its whole bytes. After `warm-up` rounds that are not kept, each round times the
-  * four workloads once, the one pass and the two passes alternated in their order round by round,
-  * with the thread's allocation counted; the medians and ranges are printed, and the ratio of the
-  * two passes to the one in each round.
+  * number. Each is read in its block form, its parts apart as a block body holds them; in its
+  * mempool form, its whole bytes ([[ConwayTx.fromEnvelope]]); and on the node's pool's route, its
+  * bytes split and read by the flat decoder before its parts are read by Conway's decoder in their
+  * block form (`MempoolState.parseIn`, then `ConwayRead.of`). After `warm-up` rounds that are not
+  * kept, each round times the six workloads once, the one pass and the two passes alternated in
+  * their order round by round, with the thread's allocation counted; the medians and ranges are
+  * printed, and the ratio of the two passes to the one in each round.
   *
   * `tools/runMain xyz.kd5ujc.scarab.ledger.era.conway.ConwayDecodeBench [rounds] [warm-up]
   * [copies]` from the checkout's root (40 rounds, 20 warm-up rounds and 8 copies when not given).
@@ -83,6 +85,23 @@ object ConwayDecodeBench:
   private val onePassMempool: Bytes => AnyRef = ConwayTx.fromEnvelope(_, layout)
   private val twoPassesMempool: Bytes => AnyRef = ConwayTx.fromEnvelopeByFlat(_, layout)
 
+  /** A submitted transaction as the node's pool reads it (`MempoolState.parseIn`, then
+    * `ConwayRead.of`): its bytes split into parts and read by the flat decoder, then its parts read
+    * by Conway's decoder `decode`, one pass or two.
+    */
+  private def pool(
+      decode: (Block.Transaction, StateLayout) => AnyRef
+  ): Bytes => AnyRef = raw =>
+    DetachedRecords
+      .read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.transaction(Era.Conway))(
+        LedgerDecodeError.Syntax(_)
+      )(root =>
+        Tx.envelopeParts(root, Era.Conway).flatMap(t => Tx.fromBlock(t, Era.Conway).map(_ => t))
+      )
+      .map(decode(_, layout))
+  private val onePassPool: Bytes => AnyRef = pool(ConwayTx.decode)
+  private val twoPassesPool: Bytes => AnyRef = pool(ConwayTx.decodeByFlat)
+
   private def run[A](inputs: Vector[A])(f: A => AnyRef): Sample =
     val before = bean.getCurrentThreadAllocatedBytes
     val t0 = System.nanoTime()
@@ -100,13 +119,13 @@ object ConwayDecodeBench:
   private def report(name: String, samples: Seq[Sample]): Unit =
     val ms = samples.map(_.ns / 1e6)
     println(
-      f"RESULT $name%-18s median ${median(ms)}%8.2f ms  range ${ms.min}%8.2f to ${ms.max}%8.2f ms  allocated ${median(samples.map(_.bytes.toDouble)) / 1e6}%8.1f MB"
+      f"RESULT $name%-22s median ${median(ms)}%8.2f ms  range ${ms.min}%8.2f to ${ms.max}%8.2f ms  allocated ${median(samples.map(_.bytes.toDouble)) / 1e6}%8.1f MB"
     )
 
   private def ratio(name: String, two: Seq[Sample], one: Seq[Sample]): Unit =
     val rs = two.zip(one).map((t, o) => t.ns.toDouble / o.ns.toDouble)
     println(
-      f"RATIO  $name%-18s two passes / one pass: median ${median(rs)}%5.3f  range ${rs.min}%5.3f to ${rs.max}%5.3f"
+      f"RATIO  $name%-22s two passes / one pass: median ${median(rs)}%5.3f  range ${rs.min}%5.3f to ${rs.max}%5.3f"
     )
 
   def main(args: Array[String]): Unit =
@@ -128,23 +147,37 @@ object ConwayDecodeBench:
     println(
       s"jvm ${System.getProperty("java.vm.version")}, processors ${Runtime.getRuntime.availableProcessors}, rounds $rounds, warm-up $warmUp"
     )
-    def round(r: Int): (Sample, Sample, Sample, Sample) =
+    // each pair, the one pass and the two passes, in one order on even rounds and the other on odd
+    def pair(f: Bytes => AnyRef, g: Bytes => AnyRef)(inputs: Vector[Bytes], r: Int) =
       if r % 2 == 0 then
-        val a = run(parts)(onePass)
-        val b = run(parts)(twoPasses)
-        val c = run(wholes)(onePassMempool)
-        (a, b, c, run(wholes)(twoPassesMempool))
+        val a = run(inputs)(f)
+        (a, run(inputs)(g))
       else
-        val b = run(parts)(twoPasses)
-        val a = run(parts)(onePass)
-        val d = run(wholes)(twoPassesMempool)
-        (a, b, run(wholes)(onePassMempool), d)
+        val b = run(inputs)(g)
+        (run(inputs)(f), b)
+    def round(r: Int) =
+      val block =
+        if r % 2 == 0 then
+          val a = run(parts)(onePass)
+          (a, run(parts)(twoPasses))
+        else
+          val b = run(parts)(twoPasses)
+          (run(parts)(onePass), b)
+      (
+        block,
+        pair(onePassMempool, twoPassesMempool)(wholes, r),
+        pair(onePassPool, twoPassesPool)(wholes, r)
+      )
     (0 until warmUp).foreach(round)
     val samples = (0 until rounds).map(round)
-    report("block one pass", samples.map(_._1))
-    report("block two passes", samples.map(_._2))
-    report("mempool one pass", samples.map(_._3))
-    report("mempool two passes", samples.map(_._4))
-    ratio("block form", samples.map(_._2), samples.map(_._1))
-    ratio("mempool form", samples.map(_._4), samples.map(_._3))
+    val forms = Vector(
+      "block" -> samples.map(_._1),
+      "mempool" -> samples.map(_._2),
+      "pool route" -> samples.map(_._3)
+    )
+    forms.foreach { (name, s) =>
+      report(s"$name one pass", s.map(_._1))
+      report(s"$name two passes", s.map(_._2))
+    }
+    forms.foreach((name, s) => ratio(name, s.map(_._2), s.map(_._1)))
     if sink == null then println("no result")

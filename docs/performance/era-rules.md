@@ -355,34 +355,43 @@ its reference script twice, read each native script twice, and decoded each datu
 its bytes. Every Conway transaction the node decodes, on mainnet and preprod, took that path.
 
 **What changed.** `ConwayTxBody.decode`, `ConwayTxWits.decode` and `ConwayTxAuxData.decode` parse a part's bytes once
-(with its detached records) and read its fields once into Conway's types, the outputs by a Conway output reader
+(again, with the detached records a walk finds, only where the plain parse is refused) and read its fields once into
+Conway's types, the outputs by a Conway output reader
 (`ConwayTxOut.read`); `ConwayTx.fromEnvelope` reads the parts from the transaction's tree when its bytes hold no empty
 indefinite list. Each decoder reads in two phases, the flat decoder's keys, leaf readers and refusals in its order first
 and the era's values in the projection's order after, so that the first refusal is the two passes' own. The flat decoder
 is unchanged, and the two passes stay callable (`…ByFlat`) for the differential and this bench. `ConwayOnePassSuite`
-and the fuzz target `conway-tx-one-pass` hold the one pass to the two.
+and the fuzz target `conway-tx-one-pass` hold the one pass to the two, and `ConwayEraReferenceSuite` holds it to the
+reference's verdicts on the recorded reference corpora.
 
 **Measured offline** (`ConwayDecodeBench`: the 72 recorded Conway transactions, the 65 of the recorded blocks and the 7
-preprod ones, 132,238 bytes, eight times a round, each read in its block form from its parts and in its mempool form
-from its bytes; Docker, four pinned cores; five JVMs of the change's build over `e049b1f33`, 30 rounds after 20
-warm-up rounds each, the one pass and the two passes alternated round by round in each JVM, the median of each JVM's
-rounds):
+preprod ones, 132,238 bytes, eight times a round, each read in three ways: in its block form from its parts
+(`ConwayTx.decode`, as a block's transactions are read); in its mempool form from its bytes (`ConwayTx.fromEnvelope`);
+and on the route the node's pool takes for a submitted transaction (`MempoolState.parseIn`, then `ConwayRead.of`): its
+bytes split into parts and read by the flat decoder, then its parts read by `ConwayTx.decode`. Docker, four pinned
+cores; five JVMs of the change's build over `d49a32255`, 30 rounds after 20 warm-up rounds each, the one pass and the
+two passes alternated round by round in each JVM, the median of each JVM's rounds):
 
 <!-- register:table perf-75.t1 -->
 | `ConwayDecodeBench`, 576 transactions a round (the 72 recorded eight times) | Median of the run medians | Range of the run medians | Allocated a round |
 |---|---:|---:|---:|
-| block form, two passes: `ConwayTx.decodeByFlat` | 35.91 ms | 35.01 to 37.73 ms | 208.9 to 219.0 MB |
-| block form, one pass: `ConwayTx.decode` | 24.30 ms | 23.67 to 25.29 ms | 146.3 to 149.6 MB |
-| mempool form, two passes: `ConwayTx.fromEnvelopeByFlat` | 38.12 ms | 37.14 to 39.72 ms | 217.6 to 227.7 MB |
-| mempool form, one pass: `ConwayTx.fromEnvelope` | 24.99 ms | 24.53 to 26.57 ms | 146.3 to 149.5 MB |
+| block form, two passes: `ConwayTx.decodeByFlat` | 36.69 ms | 35.04 to 38.10 ms | 208.9 to 218.9 MB |
+| block form, one pass: `ConwayTx.decode` | 24.97 ms | 23.61 to 25.86 ms | 145.9 to 149.0 MB |
+| mempool form, two passes: `ConwayTx.fromEnvelopeByFlat` | 38.56 ms | 36.99 to 40.54 ms | 217.6 to 227.6 MB |
+| mempool form, one pass: `ConwayTx.fromEnvelope` | 25.25 ms | 23.88 to 26.22 ms | 145.8 to 149.0 MB |
+| the pool's route, two passes: split, the flat decoder, `ConwayTx.decodeByFlat` | 56.94 ms | 55.67 to 58.84 ms | 305.4 to 322.7 MB |
+| the pool's route, one pass: split, the flat decoder, `ConwayTx.decode` | 46.65 ms | 44.90 to 48.00 ms | 242.5 to 252.7 MB |
 <!-- /register -->
 
-In the same JVM the two passes took 1.47 to 1.51 times the one pass in the block form (the median of each JVM's
-rounds) and 1.51 to 1.54 times in the mempool form: the one pass takes about 0.67 of the time and 0.68 to 0.70 of the
-allocation of the two. Less than Dijkstra's 0.6 (section 64): Conway's blocks hold their transactions' parts as bytes
-(`Block.Transaction`), so each part's CBOR is still parsed apart from the block's, and the certificates, proposals and
-votes are read by the flat decoder's readers and then converted into the era's types, which reads nothing again but
-allocates both.
+In the same JVM the two passes took 1.47 to 1.51 times the one pass in the block form and 1.52 to 1.56 times in the
+mempool form (the median of each JVM's rounds): there the one pass takes about 0.67 of the time and 0.68 to 0.70 of the
+allocation of the two. On the pool's route the two passes took 1.21 to 1.23 times the one pass, the one pass about 0.82
+of the time and 0.79 of the allocation: that route still reads each transaction with the flat decoder first, whose cost
+the one pass does not touch. These are the decoders alone; a submission's whole path through the node (its protocol,
+its rules, its pool) was not measured. The one pass gains less than Dijkstra's 0.6 (section 64): Conway's blocks hold
+their transactions' parts as bytes (`Block.Transaction`), so each part's CBOR is still parsed apart from the block's,
+and the certificates, proposals and votes are read by the flat decoder's readers and then converted into the era's
+types, which reads nothing again but allocates both.
 
 **Repeat.** `tools/runMain xyz.kd5ujc.scarab.ledger.era.conway.ConwayDecodeBench 30 20 8` from the checkout's root;
 the two passes are timed in the same build until the flat decoder goes (stage 6a).
