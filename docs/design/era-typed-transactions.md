@@ -1201,7 +1201,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     predicates' failures are each one's bytes, as often as it is reported.
   - `UpstreamGovernanceFunctionalSuite` runs it on the upstream GOV cases: the 15 lawful seeds, the empty vote maps
     of a named committee voter and the registered DRep's vote leave the reference's proposals, as the flat rule
-    does, and the changed deposit is refused with the reference's failure. Five seeds (510102, 510103, 510109,
+    did, and the changed deposit is refused with the reference's failure. Five seeds (510102, 510103, 510109,
     510113 and 510114) hold a zero registration count in their pools' VRF key hashes, which the node's decoder
     refuses; GOV never reads them, so those seeds run on their original environment with that field left out.
     Cast again on the proposals after, the DRep's vote replaces the one cast, and the event names it.
