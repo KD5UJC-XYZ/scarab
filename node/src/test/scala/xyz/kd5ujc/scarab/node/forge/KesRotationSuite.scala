@@ -714,7 +714,7 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
     for
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
       src = new HotKeySource[IO]:
-        def read = IO.pure(Left(ForgeError.KesUpdateInterrupted))
+        def read = HotKeySource.reading(IO.pure(Left(ForgeError.KesUpdateInterrupted)))
         def persist(key: Sum6KesSigning.SigningKey) =
           IO.pure(Persisted.Written(WriteProtocol.Renamed(NoExchange.Refused(22))))
       keys <- HotKeys.create[IO](p.creds, Some(src), config, e => seen.update(_ :+ e))
@@ -1202,7 +1202,7 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
             reload <- h.forger.reload
             reloaded <- h.seen
             enabled <- h.forger.hot.enabled
-            inUse <- Forger.scoped(h.forger.hot.current)
+            inUse <- Forger.scoped(h.forger.hot.locked(IO.pure))
             // the slots of KES periods 51 and 52: a forging node would lead, evolve and write back
             _ <- (5060 until 5260).toList.traverse_(s => h.forger.step(s))
             events <- h.seen
@@ -1263,7 +1263,7 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
             Vector(ForgeEvent.KesReloaded(1, 50, 62, 51))
           )
           assertEquals(current.opCert.sequence, BigInt(1))
-          assertEquals(current.vrf.publicKey, p.creds.vrf.publicKey)
+          assertEquals(current.vrf, p.creds.vrf.publicKey)
           assert(blocks.nonEmpty)
           assertEquals(blocks.values.map(sequenceOf).toSet, Set(BigInt(1)))
           // the period-0 key put back in period 51 is brought to the present and written back
@@ -1298,7 +1298,7 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
           after <- h.raws.get
         yield
           val since = after.removedAll(before.keys)
-          assertEquals(current.vrf.publicKey, other.publicKey)
+          assertEquals(current.vrf, other.publicKey)
           assert(before.values.forall(vrfKeyOf(_) == p.creds.vrf.publicKey), before.toString)
           assert(since.nonEmpty, "the pool leads and forges with the new key")
           assertEquals(since.values.map(vrfKeyOf).toSet, Set(other.publicKey))
@@ -1570,7 +1570,7 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
     s"""{"type": "${KeyFiles.BlsSigningKeyType}", "description": "", "cborHex": "${bstr(
         blsKey(n).toBytes
       )}"}"""
-  private def votingOf(c: PoolCredentials): Vector[Bytes] = c.voting.map(_.verification.bytes)
+  private def votingOf(c: HotKeys.Signer): Vector[Bytes] = c.voting.map(_.verification.bytes)
   private def verificationOf(n: Int): Bytes =
     BlsFixtures
       .right(BlsVerification.derive(blsKey(n)))
@@ -1615,7 +1615,7 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
   private def blsCase(
       seed: Int
   )(change: (Files3, Path) => Unit)(
-      check: (Vector[ForgeEvent], Boolean, Option[PoolCredentials]) => Unit
+      check: (Vector[ForgeEvent], Boolean, Option[HotKeys.Signer]) => Unit
   ) =
     val p = pool(kesStart = 50, seed = seed)
     withDir { f =>
@@ -1630,7 +1630,7 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
           _ <- h.forger.reload
           events <- h.seen
           enabled <- h.forger.hot.enabled
-          inUse <- Forger.scoped(h.forger.hot.current)
+          inUse <- Forger.scoped(h.forger.hot.locked(IO.pure))
         yield check(events, enabled, inUse.toOption.flatten)
       }
     }
@@ -1732,17 +1732,15 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
       HotKeys.validate(p.creds.poolId, Some(p.creds.kes), candidate, 50, Some(0), config),
       Left(expected)
     )
+    // the VRF key the refused read found, the read's own
+    val vrf = p.vrfRead
     for
       seen <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
       adopted <- Ref.of[IO, Boolean](false)
       src = new HotKeySource[IO]:
         def read =
-          IO.pure(
-            Right(
-              HotKeySource.Reading.Found(
-                HotKeySource.Candidate(candidate, p.creds.vrf, adopted.set(true))
-              )
-            )
+          HotKeySource.reading(
+            IO.pure(Right(HotKeySource.Read.Found(candidate, vrf, adopted.set(true))))
           )
         def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
       keys <- HotKeys.create[IO](p.creds, Some(src), config, e => seen.update(_ :+ e))
@@ -1751,11 +1749,17 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
       events <- seen.get
       switched <- adopted.get
     yield
-      assertEquals(current, p.creds)
+      assertEquals(current, HotKeys.Signer.of(p.creds))
       assertEquals(events, Vector(ForgeEvent.KesReloadRefused(expected)))
       assert(!switched)
       assert(!current.kes.isForgotten)
       assert(candidate.kes.isForgotten)
+      assertEquals(
+        vrf.toBytes.take(32),
+        hex(Array.fill(32)(0.toByte)),
+        "the refused read's VRF key"
+      )
+      assert(p.creds.vrf.prove(Bytes.empty).isRight, "the VRF key in force was erased")
   }
 
   private val wideWindow = config.copy(maxKesEvolutions = (BigInt(1) << 64) - 1)
@@ -1793,8 +1797,8 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
       val p = pool(kesStart = 0, seed = 3)
       val next = hotFor(p.cold, seed = 21, start = 0, sequence = 1)
       val src = new HotKeySource[IO]:
-        def read = IO.pure(
-          Right(HotKeySource.Reading.Found(HotKeySource.Candidate(next, p.creds.vrf, IO.unit)))
+        def read = HotKeySource.reading(
+          IO(Right(HotKeySource.Read.Found(next, p.vrfRead, IO.unit)))
         )
         def persist(key: Sum6KesSigning.SigningKey) =
           IO.pure(Persisted.Written(WriteProtocol.Exchanged))
@@ -1862,10 +1866,9 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
     val candidate = hotFor(p.cold, seed = 3, start = 0, sequence = 0)
     val target = BigInt(1) << 32
     val src = new HotKeySource[IO]:
-      def read =
-        IO.pure(
-          Right(HotKeySource.Reading.Found(HotKeySource.Candidate(candidate, p.creds.vrf, IO.unit)))
-        )
+      def read = HotKeySource.reading(
+        IO(Right(HotKeySource.Read.Found(candidate, p.vrfRead, IO.unit)))
+      )
       def persist(key: Sum6KesSigning.SigningKey) =
         IO.pure(Persisted.Written(WriteProtocol.Exchanged))
     for

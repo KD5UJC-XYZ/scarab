@@ -76,9 +76,32 @@ trait ForgeFixture:
 
   def hex(b: Array[Byte]) = Bytes.fromArray(b)
 
-  /** A pool with all the stake, its keys and an operational certificate starting at `kesStart`. */
+  /** A pool with all the stake, its keys and an operational certificate starting at `kesStart`. The
+    * forger it is given to owns `creds` 's keys and erases them when they are superseded (#1418);
+    * what its VRF key file holds is kept apart, as the file is.
+    */
   final case class Pool(creds: PoolCredentials, cold: Key, stake: Key):
     def id: Bytes = creds.poolId
+
+    // `vrf.skey`'s payload, taken while the key is still the test's
+    private val vrfFile: Bytes = creds.vrf.toBytes
+
+    /** The pool's VRF key read from its file: a key of the read's own, each time. */
+    def vrfRead: Draft03Prover.SigningKey =
+      Draft03Prover.SigningKey.fromBytes(vrfFile).toOption.get
+
+  /** `vrf` read again from its file: another key of the same seed, the read's own (#1418). */
+  def reread(vrf: Draft03Prover.SigningKey): Draft03Prover.SigningKey =
+    Draft03Prover.SigningKey.fromBytes(vrf.toBytes).toOption.get
+
+  /** What a read of files that hold `files` finds: keys of the read's own, made anew at each read
+    * as a reload reads them (#1418), so that a key the read erases is never one the test or the
+    * forger holds.
+    */
+  def afresh(files: HotKeySource.Read[IO]): HotKeySource.Read[IO] = files match
+    case HotKeySource.Read.Found(hot, vrf, adopt, voting) =>
+      HotKeySource.Read.Found(hot.copy(kes = hot.kes.copy), reread(vrf), adopt, voting)
+    case absent: HotKeySource.Read.Absent[IO] => absent
 
   def pool(kesStart: Int, seed: Int = 1): Pool =
     val cold = TestLedger.key()
@@ -351,10 +374,10 @@ trait ForgeFixture:
   ): IO[Option[Either[NotAdmitted, HotKeys.KesUpdate]]] =
     keys.update(period * slotsPerKes, Admitted.at(period * slotsPerKes))
 
-  /** The credentials in use; fails while forging is disabled. */
-  def currentHot(keys: HotKeys[IO]): IO[PoolCredentials] =
+  /** The credentials in use as the key's lock lends them; fails while forging is disabled. */
+  def currentHot(keys: HotKeys[IO]): IO[HotKeys.Signer] =
     Forger
-      .scoped(keys.current)
+      .scoped(keys.locked(IO.pure))
       .flatMap(
         _.fold(
           fatal => IO.raiseError(new AssertionError(fatal.message)),

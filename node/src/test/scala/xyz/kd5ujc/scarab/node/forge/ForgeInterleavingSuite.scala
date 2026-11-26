@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.node.forge
 
-import cats.effect.{Deferred, IO, Ref}
+import cats.effect.{Deferred, IO, Ref, Resource}
 import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import java.time.Instant
@@ -45,10 +45,10 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       h: Harness,
       ended: IO[Either[Fatal, Unit]],
       pool: Pool,
-      reading: Ref[IO, HotKeySource.Reading[IO]]
+      reading: Ref[IO, HotKeySource.Read[IO]]
   ):
     /** A SIGHUP that finds `found`. */
-    def reload(found: HotKeySource.Reading[IO]): IO[Unit] =
+    def reload(found: HotKeySource.Read[IO]): IO[Unit] =
       reading.set(found) *> h.forger.reload.flatMap(
         _.fold(f => IO.raiseError(new AssertionError(f.message)), IO.pure)
       )
@@ -107,7 +107,7 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
         for
           self <- Deferred[IO, Harness]
           p = pool(kesStart, seed)
-          reading <- Ref.of[IO, HotKeySource.Reading[IO]](found(p, seed))
+          reading <- Ref.of[IO, HotKeySource.Read[IO]](found(p, seed))
           offset = ((from - 5000) * 1000).toLong
           h <- harness(
             p,
@@ -157,7 +157,10 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     for
       written <- Ref.of[IO, Vector[Int]](Vector.empty)
       counting = new HotKeySource[IO]:
-        def read = IO.pure(Left(xyz.kd5ujc.scarab.ledger.ForgeError.KesUpdateInterrupted))
+        def read =
+          HotKeySource.reading(
+            IO.pure(Left(xyz.kd5ujc.scarab.ledger.ForgeError.KesUpdateInterrupted))
+          )
         def persist(key: Sum6KesSigning.SigningKey) =
           written.update(_ :+ key.period).as(Persisted.Written(WriteProtocol.Exchanged))
       held <- holds(Forger.Point.Signing(s))
@@ -724,11 +727,11 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
             .drain
           _ <- shift.set(-120000L)
           _ <- r.h.forger.clockSlot.discrete.find(_.exists(_ < s)).compile.drain
-          _ <- r.reload(HotKeySource.Reading.Found(certifiedFor(r.pool, other, counter = 0)))
+          _ <- r.reload(certifiedFor(r.pool, other, counter = 0))
           _ <- held(Forger.Point.Context(s)).free
           back <- r.h.forger.clockSlot.get
           _ <- r.h.clocked(back.getOrElse(s) + 1)
-          _ <- r.reload(HotKeySource.Reading.Found(certifiedFor(r.pool, other)))
+          _ <- r.reload(certifiedFor(r.pool, other))
           _ <- r.h.settled(s)
         yield ()
       }
@@ -786,11 +789,11 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
             .drain
           _ <- shift.set(-120000L)
           _ <- r.h.forger.clockSlot.discrete.find(_.exists(_ < s - 1)).compile.drain
-          _ <- r.reload(HotKeySource.Reading.Found(certifiedFor(r.pool, other, counter = 0)))
+          _ <- r.reload(certifiedFor(r.pool, other, counter = 0))
           _ <- held(Forger.Point.Context(s)).free
           back <- r.h.forger.clockSlot.get
           _ <- r.h.clocked(back.getOrElse(s) + 1)
-          _ <- r.reload(HotKeySource.Reading.Found(certifiedFor(r.pool, other)))
+          _ <- r.reload(certifiedFor(r.pool, other))
           _ <- r.h.settled(s)
           _ <- r.h.forger.clockSlot.get.flatMap(settledAt.set)
         yield ()
@@ -815,7 +818,7 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
       ran <- runningIn(seed, s - 2, held) { r =>
         for
           _ <- held(Forger.Point.Handing(s)).reached.get
-          _ <- r.reload(HotKeySource.Reading.Absent(java.nio.file.Path.of("kes.skey")))
+          _ <- r.reload(HotKeySource.Read.Absent(java.nio.file.Path.of("kes.skey")))
           _ <- held(Forger.Point.Handing(s)).free
           _ <- r.h.settled(s)
         yield ()
@@ -835,7 +838,7 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
           _ <- r.h.clocked(s)
           _ <- held(Forger.Point.Waking(s)).free
           _ <- held(Forger.Point.Handing(s)).reached.get
-          _ <- r.reload(HotKeySource.Reading.Found(certifiedFor(r.pool, seed + 100)))
+          _ <- r.reload(certifiedFor(r.pool, seed + 100))
           _ <- held(Forger.Point.Handing(s)).free
           _ <- r.h.settled(s)
         yield ()
@@ -861,10 +864,10 @@ class ForgeInterleavingSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught w
     */
   private def gated(reached: Deferred[IO, Unit], go: Deferred[IO, Unit]): HotKeySource[IO] =
     new HotKeySource[IO]:
-      def read: IO[Either[ForgeError, HotKeySource.Reading[IO]]] =
-        reached.complete(()) *> go.get.as(
-          Right(HotKeySource.Reading.Absent(java.nio.file.Path.of("kes.skey")))
-        )
+      def read: Resource[IO, Either[ForgeError, HotKeySource.Reading[IO]]] =
+        Resource
+          .eval(reached.complete(()) *> go.get)
+          .as(Right(HotKeySource.Reading.Absent(java.nio.file.Path.of("kes.skey"))))
       def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
 
   test(

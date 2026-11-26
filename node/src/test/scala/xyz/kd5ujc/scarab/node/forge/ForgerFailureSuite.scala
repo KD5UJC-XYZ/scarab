@@ -16,9 +16,9 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
   private def unreadable =
     ForgeError.KeyFile("kes", ForgeKeyProblem.Io(new java.nio.file.NoSuchFileException("kes")))
 
-  private def source(readKeys: => IO[Either[ForgeError, HotKeySource.Reading[IO]]]) =
+  private def source(readKeys: => IO[Either[ForgeError, HotKeySource.Read[IO]]]) =
     new HotKeySource[IO]:
-      def read = readKeys
+      def read = HotKeySource.reading(readKeys)
       def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Unchanged)
 
   private def leaderSlot(p: Pool): BigInt =
@@ -338,7 +338,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
   /** A key source whose write-back fails with a defect, counting its calls. */
   private def defective(cause: Throwable, calls: Ref[IO, Int]) =
     new HotKeySource[IO]:
-      def read = IO.pure(Left(unreadable))
+      def read = HotKeySource.reading(IO.pure(Left(unreadable)))
       def persist(key: Sum6KesSigning.SigningKey) =
         calls.update(_ + 1) *> IO.raiseError[Persisted](cause)
 
@@ -394,7 +394,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       yield
         assertEquals(first, Right(()))
         assertEquals(second, Right(()))
-        assertEquals(current, p.creds)
+        assertEquals(current, HotKeys.Signer.of(p.creds))
         assertEquals(
           events.collect { case ForgeEvent.KesReloadRefused(reason) => reason },
           Vector.fill(2)(ReloadRefusal.Unreadable(refusal))
@@ -461,7 +461,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         invariant -> Fatal.Internal(invariant)
       ).traverse_ { case (error, expected) =>
         val keys = new HotKeySource[IO]:
-          def read = IO.pure(Left(unreadable))
+          def read = HotKeySource.reading(IO.pure(Left(unreadable)))
           def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Failed(error))
         for
           fresh <- IO(pool(kesStart = 50))
@@ -512,12 +512,12 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       for
         writes <- Ref.of[IO, Int](0)
         keys = new HotKeySource[IO]:
-          def read = IO.pure(
-            Right(
-              HotKeySource.Reading.Found(
-                HotKeySource.Candidate(
+          def read = HotKeySource.reading(
+            IO(
+              Right(
+                HotKeySource.Read.Found(
                   p.creds.hot.copy(kes = p.creds.kes.copy),
-                  p.creds.vrf,
+                  p.vrfRead,
                   IO.unit
                 )
               )
@@ -570,7 +570,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         signed <- Ref.of[IO, Int](0)
         events <- Ref.of[IO, Vector[ForgeEvent]](Vector.empty)
         source = new HotKeySource[IO]:
-          def read = IO.pure(Left(unreadable))
+          def read = HotKeySource.reading(IO.pure(Left(unreadable)))
           def persist(key: Sum6KesSigning.SigningKey) = IO.pure(Persisted.Failed(error))
         keys <- HotKeys.create[IO](
           p.creds,
@@ -599,7 +599,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         _ <- release.complete(())
         result <- failing.joinWithNever.timeout(3.seconds)
         attempted <- signer.joinWithNever.timeout(3.seconds)
-        read <- Forger.scoped(keys.current)
+        read <- Forger.scoped(keys.certificate)
         count <- signed.get
         emitted <- events.get
       yield
@@ -723,7 +723,7 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         entered <- Deferred[IO, Unit]
         released <- Deferred[IO, Unit]
         keys = new HotKeySource[IO]:
-          def read = IO.pure(Left(unreadable))
+          def read = HotKeySource.reading(IO.pure(Left(unreadable)))
           def persist(key: Sum6KesSigning.SigningKey) =
             (entered.complete(()) *> IO.never[Persisted]).guarantee(released.complete(()).void)
         h <- harness(p, ledgerWith(p, 1), source = Some(keys))

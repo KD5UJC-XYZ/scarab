@@ -24,6 +24,12 @@ import xyz.kd5ujc.scarab.ledger.{EpochGeometry, ForgeError, VrfCert}
   * computation). A new value of the signal cancels the computation under way and starts again from
   * the new inputs; an epoch whose inputs did not change goes on from where its schedule got.
   *
+  * Each chunk is one evaluation of the VRF key the inputs name, borrowed from the credentials in
+  * force for the chunk alone (`keys`, [[Leadership.Keys]], #1418), never across a pause: a reload
+  * that installs the same key under other credentials leaves the walk going with theirs, and one
+  * that installs another key, or disables forging, ends the walk of inputs that name the key no
+  * longer in force (the signal's next value names the key in force, or none).
+  *
   * The schedules are held in memory only: a restart computes them again. Time comes only from `now`
   * and `sleep`.
   */
@@ -31,7 +37,7 @@ final class LeaderSchedule[F[_]: Async] private (
     geometry: EpochGeometry,
     now: F[Instant],
     sleep: FiniteDuration => F[Unit],
-    evaluator: EpochInputs => Leadership.Evaluator,
+    keys: Leadership.Keys[F],
     state: SignallingRef[F, LeaderSchedule.Schedules]
 ):
   import LeaderSchedule.*
@@ -104,7 +110,8 @@ final class LeaderSchedule[F[_]: Async] private (
     }
 
   /** The next chunk of the epoch of `inputs`, decided and added to its schedule, if the schedule
-    * has these inputs and has slots left, with the time its decisions took.
+    * has these inputs and has slots left and the VRF key they name is in force, with the time its
+    * decisions took.
     */
   private def step(inputs: EpochInputs): F[Step] =
     for
@@ -114,22 +121,25 @@ final class LeaderSchedule[F[_]: Async] private (
       result <- current.of(inputs).flatMap(_.next(clock)) match
         case None => F.pure(Step.Ended)
         case Some((from, until)) =>
-          for
-            chunk <- F.blocking(decided(inputs, from, until, evaluator(inputs)))
-            done <- now
-            took = Pacing.elapsed(at, done)
-            next <- state.modify { s =>
-              s.pruned(clock).added(chunk) match
-                case None => (s, Step.Ended)
-                case Some((updated, schedule)) =>
-                  val added = Added(schedule, done, took)
-                  val next = chunk.failure match
-                    case Some(_) => Step.Last(added)
-                    case None =>
-                      if schedule.complete then Step.Last(added) else Step.Paced(added)
-                  (updated, next)
-            }
-          yield next
+          keys.evaluating(inputs.vrf)(decided(inputs, from, until, _)).flatMap {
+            case None => F.pure(Step.Ended)
+            case Some(chunk) =>
+              for
+                done <- now
+                took = Pacing.elapsed(at, done)
+                next <- state.modify { s =>
+                  s.pruned(clock).added(chunk) match
+                    case None => (s, Step.Ended)
+                    case Some((updated, schedule)) =>
+                      val added = Added(schedule, done, took)
+                      val next = chunk.failure match
+                        case Some(_) => Step.Last(added)
+                        case None =>
+                          if schedule.complete then Step.Last(added) else Step.Paced(added)
+                      (updated, next)
+                }
+              yield next
+          }
     yield result
 
   private def pause(target: Pacing.Target, added: Added): F[Unit] =
@@ -155,14 +165,23 @@ object LeaderSchedule:
 
   /** The inputs of the epochs the pool can still lead in, by epoch: the epoch the clock is in and,
     * once its inputs are known, the next. None while forging is disabled.
+    *
+    * `credentials` is the generation of the credentials in force they were derived under
+    * ([[HotKeys.Installed]]), and part of the value: every reload makes a new value, even where it
+    * leaves each epoch's inputs as they were. So a walk that a reload ended, the VRF key its inputs
+    * name no longer in force when its next chunk began, is always taken up again by a later value,
+    * which keeps the schedule it had computed and goes on from where it got; the reload may have
+    * been undone before the stream read the value it made, and the inputs be equal again (#1418).
+    * The inputs themselves, and so the schedules computed from them, do not name the generation.
     */
-  final case class InForce private (byEpoch: SortedMap[BigInt, EpochInputs]):
+  final case class InForce private (byEpoch: SortedMap[BigInt, EpochInputs], credentials: Long):
     def epochs: Vector[EpochInputs] = byEpoch.values.toVector
 
   object InForce:
-    val none: InForce = InForce(SortedMap.empty)
+    val none: InForce = InForce(SortedMap.empty, 0)
 
-    def of(inputs: EpochInputs*): InForce = InForce(SortedMap.from(inputs.map(i => i.epoch -> i)))
+    def of(credentials: Long, inputs: EpochInputs*): InForce =
+      InForce(SortedMap.from(inputs.map(i => i.epoch -> i)), credentials)
 
     given Eq[InForce] = Eq.fromUniversalEquals
 
@@ -290,7 +309,9 @@ object LeaderSchedule:
 
   /** What a step of an epoch's walk did. */
   private enum Step:
-    /** Nothing: the epoch is covered or passed, or its inputs were replaced. */
+    /** Nothing: the epoch is covered or passed, its inputs were replaced, or the VRF key they name
+      * is no longer in force.
+      */
     case Ended
 
     /** A chunk was added, and the walk ends: the epoch is covered, or a slot's check failed. */
@@ -383,22 +404,14 @@ object LeaderSchedule:
     private def bounded(n: BigInt): FiniteDuration =
       n.min(BigInt(Forger.LongestWait.toNanos)).toLong.nanos
 
-  /** A schedule over `geometry` 's slots, empty. `now` and `sleep` default to `Clock` and `sleep`
-    * of `F`.
+  /** A schedule over `geometry` 's slots, empty, whose chunks evaluate the VRF key `keys` lends.
+    * `now` and `sleep` default to `Clock` and `sleep` of `F`.
     */
-  def create[F[_]: Async](
+  private[forge] def create[F[_]: Async](
       geometry: EpochGeometry,
+      keys: Leadership.Keys[F],
       now: Option[F[Instant]] = None,
       sleep: Option[FiniteDuration => F[Unit]] = None
-  ): F[LeaderSchedule[F]] =
-    evaluatedWith(geometry, now, sleep, inputs => Leadership.Evaluator.of(inputs.key))
-
-  /** [[create]] with the evaluations of each epoch's VRF key given, for tests. */
-  private[forge] def evaluatedWith[F[_]: Async](
-      geometry: EpochGeometry,
-      now: Option[F[Instant]],
-      sleep: Option[FiniteDuration => F[Unit]],
-      evaluator: EpochInputs => Leadership.Evaluator
   ): F[LeaderSchedule[F]] =
     SignallingRef
       .of[F, Schedules](Schedules.empty)
@@ -407,7 +420,7 @@ object LeaderSchedule:
           geometry,
           now.getOrElse(Clock[F].realTimeInstant),
           sleep.getOrElse(d => Async[F].sleep(d)),
-          evaluator,
+          keys,
           state
         )
       )
