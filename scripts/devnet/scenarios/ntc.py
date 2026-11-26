@@ -200,13 +200,15 @@ def settle(args, root, seconds=90):
     return None
 
 
-def query_rounds(args, root, stats, until, every, ledger_states=None):
+def query_rounds(args, root, stats, until, every, ledger_states=None, switched=None):
+    """Same-point rounds (`compare_round`) until `until`, counted per query in `stats`; `switched`, when given,
+    collects each point the reference refused as not on its chain, the ones a later point made up for too."""
     rounds = 0
     while time.monotonic() < until:
         try:
             point, results = compare_round(args.name, f"{ENV}/socket/node1/sock",
                                            str(root / "scala-sock" / "node.socket"), dump_dir=root,
-                                           ledger_states=ledger_states)
+                                           ledger_states=ledger_states, switched=switched)
         except (RuntimeError, EOFError, OSError) as e:
             print(json.dumps({"round": "failed", "error": str(e)[:200]}), flush=True)
             time.sleep(1)
@@ -652,14 +654,14 @@ def ntc(args):
             log = root / f"{command[0]}.log"
             loaders.append(subprocess.Popen([sys.executable, str(ENTRY), "--name", args.name, *command],
                                             stdout=log.open("w"), stderr=subprocess.STDOUT))
-        stats, ledger_states = {}, {}
+        stats, ledger_states, switched = {}, {}, []
         started = time.monotonic()
         # let the load build some state (stake, pools, DReps, proposals) before the first round
         time.sleep(args.warmup)
         chain_sync = {}
         follower_thread = threading.Thread(target=chain_sync_comparison, args=(args, root, chain_sync))
         follower_thread.start()
-        rounds = query_rounds(args, root, stats, started + args.seconds, args.every, ledger_states)
+        rounds = query_rounds(args, root, stats, started + args.seconds, args.every, ledger_states, switched)
         follower_thread.join(300)
         for loader in loaders:
             loader.terminate()
@@ -725,7 +727,10 @@ def ntc(args):
             "queries": {"matched": sum(v["matched"] for v in stats.values()),
                         "total": sum(v["total"] for v in stats.values()),
                         "perQuery": {k: f"{v['matched']}/{v['total']}" for k, v in sorted(stats.items())},
-                        "notImplemented": {k: f"{v['matched']}/{v['total']}" for k, v in sorted(gaps.items())}},
+                        "notImplemented": {k: f"{v['matched']}/{v['total']}" for k, v in sorted(gaps.items())},
+                        # the Scala node's tips the reference refused as not on its chain, each asked again at a
+                        # new tip; a round that got none it held counts under `LOST_ROUND`
+                        "pointsSwitched": {"count": len(switched), "last": switched[-3:]}},
             "cli": {k: (f"{v['matched']}/{v['total']}" if v["total"] else f"unbracketed x{v['unbracketed']}")
                     for k, v in cli_results.items()},
             "cliDetails": {k: v for k, v in cli_results.items() if not v["total"] or v["matched"] != v["total"]},

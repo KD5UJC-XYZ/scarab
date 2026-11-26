@@ -429,6 +429,50 @@ class SamePointTest(unittest.TestCase):
         self.assertEqual(stats[ntcqueries.LOST_ROUND]["matched"], 0)
         self.assertEqual(stats[ntcqueries.LOST_ROUND]["total"], 1)
 
+    def switching_round(self, refusals, failure=1):
+        """`compare_round` on nodes whose reference refuses its first `refusals` acquisitions with `failure`
+        (1 `PointNotOnChain`, 0 `PointTooOld`): (point, results, the refusals collected, the pauses between rounds,
+        the rounds tried)."""
+        reference, scala = self.nodes(6)
+        reference.refusals = refusals
+
+        class Switching(FakeSession):
+            def acquire(self, point=None):
+                if self.node.name == "reference" and self.node.refusals:
+                    self.node.refusals -= 1
+                    raise ntcquery.AcquireRefused(failure)
+                super().acquire(point)
+
+        FakeSession.nodes = {"reference": reference, "scala": scala}
+        switched = []
+        with mock.patch.object(ntcquery, "LocalStateQuery", Switching), \
+                mock.patch.object(ntcqueries, "same_point", wraps=ntcqueries.same_point) as rounds, \
+                mock.patch.object(ntcqueries.time, "sleep") as pause, mock.patch("builtins.print"):
+            point, results = ntcqueries.compare_round("n", "ref.sock", "scala.sock", switched=switched)
+        return point, results, switched, pause.call_count, rounds.call_count
+
+    def test_a_tip_the_reference_switched_away_from_is_asked_again_at_a_new_tip(self):
+        # the Scala node sampled a block the reference had rolled back: the round is asked again at the Scala
+        # node's tip then, and judged there, and the refusal stays counted
+        point, results, switched, pauses, tried = self.switching_round(1)
+        self.assertEqual(point, POINT)
+        self.assertNotIn(ntcqueries.LOST_ROUND, [label for label, _, _, _, _ in results])
+        self.assertTrue(all(matched for _, implemented, matched, _, _ in results if implemented))
+        self.assertEqual(len(switched), 1)
+        self.assertIn("PointNotOnChain", switched[0])
+        self.assertEqual((pauses, tried), (1, 2))
+
+    def test_a_tip_the_reference_never_holds_loses_the_round_after_every_attempt(self):
+        attempts = ntcqueries.SWITCHED_ATTEMPTS
+        point, results, switched, pauses, tried = self.switching_round(attempts)
+        self.assertEqual((point, results), (None, [(ntcqueries.LOST_ROUND, True, False, 0, 0)]))
+        self.assertEqual((len(switched), pauses, tried), (attempts, attempts - 1, attempts))
+
+    def test_a_point_too_old_is_not_asked_again(self):
+        point, results, switched, pauses, tried = self.switching_round(1, failure=0)
+        self.assertEqual((point, results), (None, [(ntcqueries.LOST_ROUND, True, False, 0, 0)]))
+        self.assertEqual((switched, pauses, tried), ([], 0, 1))
+
     def test_every_failure_before_the_first_row_loses_the_round(self):
         # the Scala node's connection, the reference's acquisition, a malformed answer on the way: each a lost round,
         # which the ntc scenario counts as a query not matched
