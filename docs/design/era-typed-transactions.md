@@ -1182,18 +1182,23 @@ Conway's rules on the classes follow as the rest of stage 2.
     `EraRuleFailure "GOV"` and `EraRuleEvent "GOV"` are match types with Conway's case, and `InjectGov` is the
     reference's two injections at Conway, the identities. A mismatch is the era types' `Mismatch` with the
     reference's relation (`RelEQ`, `RelGT`) as a type, as every era failure's is. The embedding into LEDGER (`ConwayGovFailure`, `GovEvent`)
-    comes with LEDGER. `ConwayGovPredFailure.toStored` gives a failure's flat form, one-way glue the comparisons
-    read; an action is put in it as the transaction's proposal read it (`readOf`).
+    comes with LEDGER. A failure is named in the era's form: the flat GOV (`rules.Gov`) and the glue that gave a
+    failure its flat form (`ConwayGovPredFailure.toStored`, `readOf`, `GovActionNotRead`) were deleted in stage 3,
+    and the reference's transition (`Conway/Rules/Gov.hs:445-631`, cardano-ledger f649f975) is the era rule's
+    alone.
   - Who may vote is the reference's `isVotingAllowed` of each voter's threshold (`VotingThreshold`, with RATIFY,
     below). On the recorded proposals of each of the seven actions and on two crafted parameter
     changes, one of the security group and one of none, it equals the flat rule's (`EraConwaySuite`).
-  - `ConwayGovChecksSuite` runs the whole rule and the flat GOV on every Conway case of the refusal corpora, at the
-    recorded version and at 9, 10 and 11: the same failures in the same order, or the same proposals after. These
-    runs reach every one of the 19 failures. GOV's events carry the transaction's id, the proposals after and the
+  - `ConwayGovChecksSuite` ran the whole rule and the flat GOV on every Conway case of the refusal corpora the
+    flat GOV judged, at the recorded version and at 9, 10 and 11: the same failures in the same order, or the same
+    proposals after. Since the flat GOV was deleted it holds the whole rule, and the predicates it ported one by
+    one, to the flat GOV's judgments, recorded before (`fixtures/conway-flat-refusals/gov-judgments.jsonl`: a
+    refusal by its bytes, an admission by the governance state's), on those corpora, named, and on its crafted
+    cases. These runs, with those of the corpora recorded later, reach every one of the 19 failures. GOV's events carry the transaction's id, the proposals after and the
     DReps its certificates unregister. Where the reference refused a transaction for GOV alone (29 cases), the
     whole rule's failures, run two levels down as under MEMPOOL and LEDGER, encode to the reference's refusal byte
     for byte. A crafted committee update that fails both its conflict and its expiry records them in that order. The
-    predicates' comparisons keep their expected values, each failure in the flat form.
+    predicates' failures are each one's bytes, as often as it is reported.
   - `UpstreamGovernanceFunctionalSuite` runs it on the upstream GOV cases: the 15 lawful seeds, the empty vote maps
     of a named committee voter and the registered DRep's vote leave the reference's proposals, as the flat rule
     does, and the changed deposit is refused with the reference's failure. Five seeds (510102, 510103, 510109,
@@ -1201,14 +1206,14 @@ Conway's rules on the classes follow as the rest of stage 2.
     refuses; GOV never reads them, so those seeds run on their original environment with that field left out.
     Cast again on the proposals after, the DRep's vote replaces the one cast, and the event names it.
     `UpstreamGovConformanceSuite`'s generated empty signal leaves the reference's proposals too.
-  - Where the flat rule differs: it lists the failures over votes (`GovActionsDoNotExist`, `VotingOnExpiredGovAction`,
-    `DisallowedVoters`, `DisallowedVotesDuringBootstrap`) in the order the body's maps arrived in, and
-    `TreasuryWithdrawalReturnAccountsDoNotExist` in the order the withdrawals did. The reference folds a `Map`
-    (`foldrVotingProcedures`, `Map.keys`), so its lists ascend, and so do the era rule's. A crafted body with two
-    votes on unknown actions out of order shows it (`ConwayGovChecksSuite`). The verdict is the same; only the
-    order of a refusal's list differs, and no recorded refusal holds an out-of-order body, so the evidence for the
-    reference's order is its source. Tracked as #85's
-    [item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427).
+  - Where the flat rule differed, until it was deleted: it listed the failures over votes (`GovActionsDoNotExist`,
+    `VotingOnExpiredGovAction`, `DisallowedVoters`, `DisallowedVotesDuringBootstrap`) in the order the body's maps
+    arrived in, and `TreasuryWithdrawalReturnAccountsDoNotExist` in the order the withdrawals did. The reference
+    folds a `Map` (`foldrVotingProcedures`, `Map.keys`), so its lists ascend, and so do the era rule's. A crafted
+    body with two votes on unknown actions out of order shows it (`ConwayGovChecksSuite`), and the refusals of the
+    `conway-gov-order` corpus, recorded from the reference with each list's items written out of key order, are
+    the era rule's byte for byte (`ReferenceRefusalSuite`). The difference went with the flat GOV, which closed
+    #85's [item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427).
   - Incomplete (CNF-2):
     - the environment's certificate state is the recorded state's here; LEDGER gives GOV the state after CERTS
       (LEDGER whole, below);

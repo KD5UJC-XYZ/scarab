@@ -9,7 +9,6 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.ledger.{
   Certificate,
   GovActionId,
-  PredicateFailure,
   Proposal,
   Proposals as StoredProposals,
   TestLedger,
@@ -25,9 +24,7 @@ import xyz.kd5ujc.scarab.ledger.era.conway.{
 import xyz.kd5ujc.scarab.protocol.StateLayout
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayGov,
-  ConwayGovPredFailure,
   DijkstraSUBGOV,
-  GovActionNotRead,
   GovEnv,
   GovEvent,
   GovPredFailure,
@@ -40,11 +37,11 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
 import xyz.kd5ujc.scarab.ledger.rules.{Judge, Judgment, RuleT, focus}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag, Network}
 
-/** Conway's GOV on the era types (`ConwayGov.conwayGovTransition`) run in one judgment, and the
-  * forms its failures and state are compared in with the flat GOV's, for the suites that compare
-  * the two (`ConwayGovChecksSuite` in the node), and for those that hold it to the reference's
-  * judgments (`UpstreamGovernanceFunctionalSuite` in the node); and Dijkstra's, the same transition
-  * (`DijkstraGovSuite`, and `DijkstraRulesOracleSuite` in the node).
+/** Conway's GOV on the era types (`ConwayGov.conwayGovTransition`) run in one judgment, with the
+  * node's record of the proposals it reads and leaves, for the suites that hold it to the
+  * reference's judgments (`UpstreamGovernanceFunctionalSuite` in the node) and to the flat GOV's,
+  * recorded before it was deleted (`ConwayGovChecksSuite` in the node); and Dijkstra's, the same
+  * transition (`DijkstraGovSuite`, and `DijkstraRulesOracleSuite` in the node).
   */
 object EraGovRun:
   type Rec = GovPredFailure[Conway]
@@ -138,16 +135,6 @@ object EraGovRun:
       depth: Int = 0
   ): Either[GovDefect, Either[NonEmptyChain[Rec], S]] =
     conwayRun.run(env, signal, netId, state, depth)
-
-  /** A failure in the node's flat form, its action read from the signal's proposals. */
-  def stored(
-      signal: GovSignal[Conway],
-      failure: ConwayGovPredFailure[Conway]
-  ): Either[GovActionNotRead[Conway], PredicateFailure] =
-    ConwayGovPredFailure.toStored(
-      failure,
-      ConwayGovPredFailure.readOf(signal.gsProposalProcedures.toVector)
-    )
 
   // ---- Dijkstra's GOV: Conway's transition at Dijkstra (`Dijkstra/Rules/Gov.hs:199-220`,
   // cardano-ledger 9df9f98c)
