@@ -55,20 +55,41 @@ class PreviewConwayRulesSuite extends FunSuite:
   private def asRecorded(id: String, cell: String): Unit =
     assertEquals(Vector(cell), recording.getOrElse(id, fail(s"no recording of $id")), id)
 
+  /** The node's phase-2 counters of the block of the one transaction `tx` whose LEDGERS told
+    * `events`, as the block run counts them: each event as BBODY wraps it, read by
+    * `ScriptsTold.of`, and `ConwayPhase2.counted`, which `ConwayBlockRun` gives a block's counters
+    * by, `integrityChecked` among them.
+    */
+  private def phase2(
+      tx: era.conway.ConwayTx,
+      events: cats.data.Chain[era.rules.ShelleyLedgersEvent[Conway]]
+  ): PlutusStats =
+    era.rules.ConwayPhase2.counted(
+      Vector(tx),
+      events.flatMap(e =>
+        cats.data.Chain.fromOption(
+          era.rules.ScriptsTold.of(
+            era.rules.AlonzoBbodyEvent
+              .ShelleyInAlonzoEvent(era.rules.ShelleyBbodyEvent.LedgersEvent[Conway](e))
+          )
+        )
+      )
+    )
+
   /** The era-typed LEDGERS on the transaction of `c` from `s`, in the world of `group`: it admits
-    * it, and what it admitted is returned with its events: the state after it, and the counters its
-    * scripts' events give through LEDGER's and LEDGERS's embeddings
-    * ([[era.EraLedgerRun.counters]]), both the flat LEDGER's.
+    * it, and what it admitted is returned with its events and the node's phase-2 counters of it
+    * ([[phase2]]): the state after it, and the counters its scripts' events give through LEDGER's
+    * and LEDGERS's embeddings ([[era.EraLedgerRun.counters]]), both the flat LEDGER's.
     */
   private def acceptedWithEvents(
       s: NewEpochState[Conway],
       c: PlutusCase,
       group: String
-  ): (era.conway.ConwayTestKit.Admitted, Vector[era.rules.LedgerEvent[Conway]]) =
+  ): (era.conway.ConwayTestKit.Admitted, Vector[era.rules.LedgerEvent[Conway]], PlutusStats) =
     val (tx, judgedHere) = eraLedgers(s, c)
-    val (ls, events) = judgedHere match
+    val (ls, told, events) = judgedHere match
       case Right((ls, es)) =>
-        (ls, es.map { case era.rules.ShelleyLedgersEvent.LedgerEvent(e) => e })
+        (ls, es, es.map { case era.rules.ShelleyLedgersEvent.LedgerEvent(e) => e })
       case Left(fs) => fail(s"${c.name}: the era LEDGERS refused $fs")
     val t = era.EraTx.conway
     val (succeeded, failed, scripts) = era.EraLedgerRun
@@ -78,10 +99,17 @@ class PreviewConwayRulesSuite extends FunSuite:
       s"preview-rules/$group/${c.name}",
       FlatRecordings.admitted(ls, succeeded, failed, scripts)
     )
+    val stats = phase2(tx, told)
+    assertEquals(
+      (stats.succeeded, stats.failed, stats.scripts),
+      (succeeded, failed, scripts),
+      s"${c.name}: the block run's counters"
+    )
     (
       era.conway.ConwayTestKit
         .Admitted(ConwayNewEpochState.ls.replace(ls)(s), succeeded, failed, scripts),
-      events.toVector
+      events.toVector,
+      stats
     )
 
   private def accepted(
@@ -107,7 +135,7 @@ class PreviewConwayRulesSuite extends FunSuite:
     ) {
       val s = worldOf(c)
       assertEquals(total(s), Supply)
-      val (after, events) = acceptedWithEvents(s, c, "proposal")
+      val (after, events, counted) = acceptedWithEvents(s, c, "proposal")
       val body = c.tx.body
       // GOV tells the proposals after the transaction's, LEDGER and LEDGERS wrapping its event
       // (`Conway/Rules/Gov.hs` `GovNewProposals`, cardano-ledger f649f975)
@@ -124,6 +152,9 @@ class PreviewConwayRulesSuite extends FunSuite:
       assertEquals(deposited(after.nes), deposited(s) + body.proposals.map(_.deposit).sum)
       assertEquals(deposited(after.nes), NativeRules.obligation(after.nes))
       assertEquals(after.succeeded, 1L)
+      // the proposal's guardrails script ran, so its body declares a script integrity hash, which
+      // UTXOW checked: one check, as the node counts it for the block (`ConwayPhase2.counted`)
+      assertEquals(counted.integrityChecked, 1L)
       assertEquals(total(after.nes), Supply)
       // and the same transaction with another guardrails script is refused: a script hash of 28
       // bytes, which the era vocabulary reads, not the proposal's
