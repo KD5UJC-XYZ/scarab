@@ -345,3 +345,44 @@ passes and the flat decoder's transaction are gone.
 **Repeat.** `tools/runMain xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraDecodeBench 30 20 4` from the checkout's
 root, on a build of each commit; the two passes (`inBlockByFlat`) were timed in the build measured, and are gone since
 (#85).
+
+## 69. Reading Conway's transactions into the era's types in one pass (#85)
+
+**Why.** Conway's era decoders read each part of a transaction twice: the flat decoder at Conway read the body, the
+witness set and the auxiliary data from their bytes, and the projection into Conway's types then read them again. It
+parsed the witness set's and the auxiliary data's bytes a second time, read each output's inline datum as data twice and
+its reference script twice, read each native script twice, and decoded each datum and redeemer's data a second time from
+its bytes. Every Conway transaction the node decodes, on mainnet and preprod, took that path.
+
+**What changed.** `ConwayTxBody.decode`, `ConwayTxWits.decode` and `ConwayTxAuxData.decode` parse a part's bytes once
+(with its detached records) and read its fields once into Conway's types, the outputs by a Conway output reader
+(`ConwayTxOut.read`); `ConwayTx.fromEnvelope` reads the parts from the transaction's tree when its bytes hold no empty
+indefinite list. Each decoder reads in two phases, the flat decoder's keys, leaf readers and refusals in its order first
+and the era's values in the projection's order after, so that the first refusal is the two passes' own. The flat decoder
+is unchanged, and the two passes stay callable (`…ByFlat`) for the differential and this bench. `ConwayOnePassSuite`
+and the fuzz target `conway-tx-one-pass` hold the one pass to the two.
+
+**Measured offline** (`ConwayDecodeBench`: the 72 recorded Conway transactions, the 65 of the recorded blocks and the 7
+preprod ones, 132,238 bytes, eight times a round, each read in its block form from its parts and in its mempool form
+from its bytes; Docker, four pinned cores; five JVMs of the change's build over `e049b1f33`, 30 rounds after 20
+warm-up rounds each, the one pass and the two passes alternated round by round in each JVM, the median of each JVM's
+rounds):
+
+<!-- register:table perf-75.t1 -->
+| `ConwayDecodeBench`, 576 transactions a round (the 72 recorded eight times) | Median of the run medians | Range of the run medians | Allocated a round |
+|---|---:|---:|---:|
+| block form, two passes: `ConwayTx.decodeByFlat` | 35.91 ms | 35.01 to 37.73 ms | 208.9 to 219.0 MB |
+| block form, one pass: `ConwayTx.decode` | 24.30 ms | 23.67 to 25.29 ms | 146.3 to 149.6 MB |
+| mempool form, two passes: `ConwayTx.fromEnvelopeByFlat` | 38.12 ms | 37.14 to 39.72 ms | 217.6 to 227.7 MB |
+| mempool form, one pass: `ConwayTx.fromEnvelope` | 24.99 ms | 24.53 to 26.57 ms | 146.3 to 149.5 MB |
+<!-- /register -->
+
+In the same JVM the two passes took 1.47 to 1.51 times the one pass in the block form (the median of each JVM's
+rounds) and 1.51 to 1.54 times in the mempool form: the one pass takes about 0.67 of the time and 0.68 to 0.70 of the
+allocation of the two. Less than Dijkstra's 0.6 (section 64): Conway's blocks hold their transactions' parts as bytes
+(`Block.Transaction`), so each part's CBOR is still parsed apart from the block's, and the certificates, proposals and
+votes are read by the flat decoder's readers and then converted into the era's types, which reads nothing again but
+allocates both.
+
+**Repeat.** `tools/runMain xyz.kd5ujc.scarab.ledger.era.conway.ConwayDecodeBench 30 20 8` from the checkout's root;
+the two passes are timed in the same build until the flat decoder goes (stage 6a).
