@@ -17,7 +17,6 @@ import xyz.kd5ujc.scarab.ledger.{
   GovAction,
   GovActionId,
   GovActionState,
-  LedgerFailure,
   PoolParams,
   Proposal,
   Proposals,
@@ -28,7 +27,6 @@ import xyz.kd5ujc.scarab.ledger.{
   ScriptKind,
   TestLedger,
   TxEnv,
-  Tx,
   Value,
   Vote,
   Voter,
@@ -36,6 +34,19 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.ledger.TestLedger.*
+import xyz.kd5ujc.scarab.ledger.era
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit.Fails
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  ConwayCertsPredFailure,
+  ConwayDelegPredFailure,
+  ConwayGovCertPredFailure,
+  ConwayGovPredFailure,
+  ConwayLedgerPredFailure,
+  ConwayUtxoPredFailure,
+  ConwayUtxowPredFailure,
+  ShelleyPoolPredFailure
+}
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** The Conway LEDGER rules on the era-indexed state, on one transaction at a time: the suite builds
@@ -79,37 +90,50 @@ class ConwayLedgerSuite extends FunSuite:
 
   // ---- what the rules do with a transaction
 
-  /** The rules on one transaction: LEDGER, or, with `block`, LEDGERS on a block of that one. An
-    * accepted state is [[consistent]].
+  private type Failure = era.rules.LedgerPredFailure[Conway]
+  private type Verdict = Either[Vector[Failure], ConwayTestKit.Admitted]
+
+  /** The transaction of `b`, signed by `signers`, with `witnesses` beside their key witnesses,
+    * written with its true bytes ([[ConwayTestKit.encode]]).
+    */
+  private def tx(
+      b: node.TxBody,
+      signers: Vector[Key],
+      witnesses: Witnesses = Witnesses.empty,
+      isValid: Boolean = true
+  ): ConwayTestKit.Built =
+    ConwayTestKit.encode(TestLedger.tx(b, Vector.empty, witnesses, isValid), signers)
+
+  /** The rules on one transaction, each to its first failure: Conway's LEDGER on the era types
+    * ([[ConwayTestKit.judge]]), or, with `block`, LEDGERS on a block of that one
+    * ([[ConwayTestKit.judgeBlock]]). An accepted state is [[consistent]].
     */
   private def run(
       s: NewEpochState[Conway],
-      t: Tx,
+      t: ConwayTestKit.Built,
       ctx: TxEnv = TestLedger.env,
       block: Boolean = false
-  ): Either[LedgerFailure, Counted[NewEpochState[Conway]]] =
+  ): Verdict =
     val result =
-      if block then
-        Sts(Ledgers)(
-          NativeRules.globalsOf(ctx),
-          LedgersEnv(ctx, s.es.chainAccount.treasury),
-          Build.counted(s),
-          Vector(t)
-        ).map(c => Counted(ConwayNewEpochState.ls.replace(c.state)(s), c.plutus))
-      else NativeRules.txIn[Conway](s, t, ctx)
-    result.foreach(after => consistent(after.state))
+      if block then ConwayTestKit.judgeBlock(s, t, ctx, RuleT.Policy.FirstFailure)
+      else ConwayTestKit.judge(s, t, ctx, RuleT.Policy.FirstFailure)
+    result.foreach(after => consistent(after.nes))
     result
 
-  private def accepted(s: NewEpochState[Conway], t: Tx): NewEpochState[Conway] = run(s, t) match
-    case Right(next) => next.state
-    case Left(f)     => fail(s"expected the transaction to be accepted: $f")
+  private def accepted(s: NewEpochState[Conway], t: ConwayTestKit.Built): NewEpochState[Conway] =
+    run(s, t) match
+      case Right(next) => next.nes
+      case Left(f)     => fail(s"expected the transaction to be accepted: $f")
 
-  private def refusedWith(s: NewEpochState[Conway], t: Tx): String = run(s, t) match
-    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
-    case other                                     => fail(s"expected a refusal: ${outcome(other)}")
+  /** The rules refuse `t` on `s` for the failure `rule` names, the first check that failed. */
+  private def refusedBy(s: NewEpochState[Conway], t: ConwayTestKit.Built)(
+      rule: PartialFunction[Failure, Unit]
+  )(using munit.Location): Unit = run(s, t) match
+    case Left(Vector(f)) => assert(rule.isDefinedAt(f), s"refused for $f")
+    case other           => fail(s"expected a refusal: ${outcome(other)}")
 
   /** What the rules did, for the message of a failed test: the refusal, or that they accepted. */
-  private def outcome(r: Either[LedgerFailure, Counted[NewEpochState[Conway]]]): String =
+  private def outcome(r: Verdict): String =
     r.fold(f => s"refused: $f", _ => "accepted")
 
   /** What the rules keep beside what they change, against what it must agree with: the delegators
@@ -204,8 +228,13 @@ class ConwayLedgerSuite extends FunSuite:
   private def Blake2bHash(b: Bytes): Bytes =
     xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(b)
 
+  // the fee for size is the constant 200 whatever the size, as it was for the transactions of 100
+  // bytes the suite built as values (`TestLedger.tx`) under `minFeeA = 1, minFeeB = 100`: their
+  // true bytes are larger ([[ConwayTestKit.encode]]), and the fees the tests pay stay as they were
   private def pparams: node.ProtocolParams =
     params(10).copy(
+      minFeeA = 0,
+      minFeeB = 200,
       drepDeposit = 500 * ada,
       drepActivity = 20,
       govActionDeposit = 1000 * ada,
@@ -232,7 +261,10 @@ class ConwayLedgerSuite extends FunSuite:
       committeeState: Vector[(Credential[ColdCommittee], CommitteeAuthorization)] = Vector.empty,
       pp: node.ProtocolParams = pparams
   ): NewEpochState[Conway] =
-    val funded = Build.funded(Build.nes[Conway](5, pp), funds.toMap)
+    val funded = Build.funded(
+      Build.nes[Conway](5, pp),
+      funds.map((in, o) => in -> ConwayTestKit.stored(o)).toMap
+    )
     val registered = pools.foldLeft(funded)((nes, p) => Build.pool(nes, p, 500 * ada))
     def delegatorsBy[K](
         to: ConwayAccountState => Option[K]
@@ -292,7 +324,7 @@ class ConwayLedgerSuite extends FunSuite:
       votes: Vector[(Voter, Vector[(GovActionId, Vote)])] = Vector.empty,
       proposals: Vector[Proposal] = Vector.empty,
       withdrawals: Map[RewardAccount, BigInt] = Map.empty
-  ): Tx =
+  ): ConwayTestKit.Built =
     val b = body(
       id,
       Vector(coinIn),
@@ -384,7 +416,9 @@ class ConwayLedgerSuite extends FunSuite:
       extra = 2 * ada,
       signers = Vector(bob)
     )
-    assertEquals(refusedWith(s, t), "DelegateeStakePoolNotRegisteredDELEG")
+    refusedBy(s, t) {
+      case Fails.Deleg(ConwayDelegPredFailure.DelegateeStakePoolNotRegisteredDELEG(_)) =>
+    }
   }
 
   test("a pool registration, a re-registration, a retirement") {
@@ -493,7 +527,9 @@ class ConwayLedgerSuite extends FunSuite:
       signers = Vector(cold)
     )
     val s2 = accepted(withFundsOf(s)(s1), resign)
-    assertEquals(refusedWith(withFundsOf(s)(s2), auth), "ConwayCommitteeHasPreviouslyResigned")
+    refusedBy(withFundsOf(s)(s2), auth) {
+      case Fails.GovCert(ConwayGovCertPredFailure.ConwayCommitteeHasPreviouslyResigned(_)) =>
+    }
   }
 
   /** A state with an info action to vote on, and the committee member `cold` authorising `hot`. */
@@ -560,7 +596,7 @@ class ConwayLedgerSuite extends FunSuite:
     val next = accepted(s, t)
     assertEquals(proposalsOf(next).byId(id).committeeVotes, Map(hot.credential -> Vote.Yes))
     val (s11, _) = votingState(elected = false, pp = pparams.copy(protocolMajor = 11))
-    assertEquals(refusedWith(s11, t), "UnelectedCommitteeVoters")
+    refusedBy(s11, t) { case Fails.Gov(ConwayGovPredFailure.UnelectedCommitteeVoters(_)) => }
   }
 
   test("a vote on an action that does not exist, a vote by an unknown voter") {
@@ -574,7 +610,7 @@ class ConwayLedgerSuite extends FunSuite:
       votes = Vector(Voter.DRepVoter(voter.credential) -> Vector(missing -> Vote.Yes)),
       signers = Vector(voter)
     )
-    assertEquals(refusedWith(s, unknownAction), "GovActionsDoNotExist")
+    refusedBy(s, unknownAction) { case Fails.Gov(ConwayGovPredFailure.GovActionsDoNotExist(_)) => }
     val unknownVoter = pay(
       "novoter",
       alice,
@@ -583,7 +619,7 @@ class ConwayLedgerSuite extends FunSuite:
       votes = Vector(Voter.DRepVoter(carol.credential) -> Vector(id -> Vote.Yes)),
       signers = Vector(carol)
     )
-    assertEquals(refusedWith(s, unknownVoter), "VotersDoNotExist")
+    refusedBy(s, unknownVoter) { case Fails.Gov(ConwayGovPredFailure.VotersDoNotExist(_)) => }
   }
 
   test("a proposal: its deposit is taken, it is in the store") {
@@ -631,7 +667,9 @@ class ConwayLedgerSuite extends FunSuite:
         200,
         withdrawals = Map(RewardAccount(0, alice.credential) -> 3 * ada)
       )
-    assertEquals(refusedWith(s, partial), "WithdrawalsNotInRewardsCERTS")
+    refusedBy(s, partial) {
+      case Fails.Certs(ConwayCertsPredFailure.WithdrawalsNotInRewardsCERTS(_)) =>
+    }
   }
 
   test("a transaction flagged invalid that has no script to fail is refused") {
@@ -646,25 +684,19 @@ class ConwayLedgerSuite extends FunSuite:
     )
     // no redeemers: nothing for it to fail, so the node refuses a transaction flagged invalid
     val t = tx(b, Vector(alice), isValid = false)
-    assert(
-      run(s, t) match {
-        case Left(LedgerFailure.Rejected(_, _)) => true
-        case _                                  => false
-      },
-      "expected a refusal, the transaction was accepted"
-    )
+    assert(run(s, t).isLeft, "expected a refusal, the transaction was accepted")
   }
 
   test("the failures of the node are the failures of the new rules") {
     val s = base(fundedBy(alice))
     // not enough fee, wrong network in the body, expired validity interval, an input that is not there
     val cheap = pay("cheap", alice, 10000 * ada, 1)
-    assertEquals(refusedWith(s, cheap), "FeeTooSmallUTxO")
+    refusedBy(s, cheap) { case Fails.Utxo(ConwayUtxoPredFailure.FeeTooSmallUTxO(_)) => }
     val ghost = tx(
       body("ghost", Vector(txIn(77)), Vector(out(alice.baseAddress(alice), ada)), 200),
       Vector(alice)
     )
-    assertEquals(refusedWith(s, ghost), "BadInputsUTxO")
+    refusedBy(s, ghost) { case Fails.Utxo(ConwayUtxoPredFailure.BadInputsUTxO(_)) => }
     val unsigned = tx(
       body(
         "unsigned",
@@ -674,12 +706,14 @@ class ConwayLedgerSuite extends FunSuite:
       ),
       Vector.empty
     )
-    assertEquals(refusedWith(s, unsigned), "MissingVKeyWitnessesUTXOW")
+    refusedBy(s, unsigned) {
+      case Fails.Utxow(ConwayUtxowPredFailure.MissingVKeyWitnessesUTXOW(_)) =>
+    }
     val unbalanced = tx(
       body("unbalanced", Vector(coinIn), Vector(out(alice.baseAddress(alice), 10000 * ada)), 200),
       Vector(alice)
     )
-    assertEquals(refusedWith(s, unbalanced), "ValueNotConservedUTxO")
+    refusedBy(s, unbalanced) { case Fails.Utxo(ConwayUtxoPredFailure.ValueNotConservedUTxO(_)) => }
   }
 
   // ---- width: ADR 0011
@@ -717,7 +751,10 @@ class ConwayLedgerSuite extends FunSuite:
       fundedBy(alice),
       pools = Vector(poolParams(pool)),
       dreps = keys.map(k => cred[DRepRole](k) -> drepState(30)),
-      proposals = Proposals(Vector(action), node.PrevIds())
+      proposals = Proposals(Vector(action), node.PrevIds()),
+      // its true bytes, 1500 certificates, votes and key witnesses, are far past the suite's
+      // largest transaction: the size allowed is not what this test is about
+      pp = pparams.copy(maxTxSize = 1 << 20)
     )
     val registrations =
       keys.map(k => Certificate.Delegate(k.credential, Some(pool.hash), None, Some(2 * ada)))
@@ -733,8 +770,8 @@ class ConwayLedgerSuite extends FunSuite:
     )
     onSmallStack(run(s, t)) match
       case Right(next) =>
-        assertEquals(ConwayNewEpochState.accounts.get(next.state).states.size, width)
-        assertEquals(proposalsOf(next.state).byId(action.id).drepVotes.size, width)
+        assertEquals(ConwayNewEpochState.accounts.get(next.nes).states.size, width)
+        assertEquals(proposalsOf(next.nes).byId(action.id).drepVotes.size, width)
       case Left(f) => fail(s"expected the wide transaction to be accepted: $f")
   }
 
@@ -783,31 +820,57 @@ class ConwayLedgerSuite extends FunSuite:
       signers = Vector(bob)
     )
     assertEquals(Invariants.poolDelegators(ConwayLedgerState.cert.get(s.es.ls)), Vector.empty)
-    JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
-      globals,
-      LedgerEnv(TestLedger.env, Coin.zero),
-      Build.counted(s),
-      t
-    ) match
-      case Left(f) => fail(f.message)
+    run(s, t) match
+      case Left(f) => fail(s"refused: $f")
       case Right(after) =>
-        assertEquals(Invariants.poolDelegators(after.state.cert), Vector.empty)
+        assertEquals(Invariants.poolDelegators(after.nes.es.ls.cert), Vector.empty)
         assertEquals(
-          ConwayLedgerState.pools.get(after.state).values.map(_.delegators.size).sum,
+          ConwayLedgerState.pools.get(after.nes.es.ls).values.map(_.delegators.size).sum,
           1
         )
   }
 
   test("the rules are not tied to their interpreter: RuleT and the reference stack agree") {
-    // Haskell's `ReaderT Globals` over `StateT` over `Either` runs the same algebra (design 2.2)
-    type R[A] = Either[LedgerFailure, A]
-    type S[A] = StateT[R, ConwayLedger, A]
+    // Haskell's `ReaderT Globals` over `StateT` over `Either` runs the same algebra (design 2.2):
+    // Conway's LEDGER on the era types (`ConwayLedger.conwayLedgerTransition`) on Kleisli over
+    // StateT over Either, its first failure raised, against RuleT to its first failure
+    import cats.data.{Chain, NonEmptyChain}
+    import cats.mtl.{Raise, Stateful, Tell}
+    import xyz.kd5ujc.scarab.ledger.era.{EraLedgerRun, Phase2Deferral, Proposals as EraProposals}
+    import xyz.kd5ujc.scarab.ledger.era.rules.{LedgerEvent, ProposalsRecord}
+    type Rec = era.rules.LedgerPredFailure[Conway]
+    type Ev = LedgerEvent[Conway]
+    type Stop = Either[EraLedgerRun.Defect, Rec]
+    type St = (LedgerState[Conway], Chain[Ev])
+    type R[A] = Either[Stop, A]
+    type S[A] = StateT[R, St, A]
     type K[A] = Kleisli[S, Globals, A]
     given Monad[K] = Kleisli.catsDataMonadForKleisli[S, Globals]
+    given Stateful[K, LedgerState[Conway]] =
+      summon[Stateful[K, St]].focus(
+        monocle.Lens[St, LedgerState[Conway]](_._1)(l => s => (l, s._2))
+      )
+    given Tell[K, Chain[Ev]] = new Tell[K, Chain[Ev]]:
+      val functor: cats.Functor[K] = summon[Monad[K]]
+      def tell(events: Chain[Ev]): K[Unit] =
+        summon[Stateful[K, St]].modify((l, e) => (l, e ++ events))
+    val stop = summon[Raise[K, Stop]]
+    given Raise[K, era.ScriptVerdictUnavailable] =
+      stop.contramap(d => Left(EraLedgerRun.Defect.Script(d)))
+    given Raise[K, era.rules.UtxoStateDefect] =
+      stop.contramap(d => Left(EraLedgerRun.Defect.Utxo(d)))
+    given Raise[K, node.LedgerDefect] = stop.contramap(d => Left(EraLedgerRun.Defect.Ledger(d)))
+    given Raise[K, era.rules.GovDefect] = stop.contramap(d => Left(EraLedgerRun.Defect.Gov(d)))
+    given Raise[K, era.ProposalsReadError] =
+      stop.contramap(d => Left(EraLedgerRun.Defect.Proposals(d)))
+    given Stateful[K, EraProposals[Conway]] = ProposalsRecord.stateful[K, Conway]
+    given Judge[K, Rec] = Judge.raising[K, Rec, Stop](Right(_))
+    given Phase2Deferral[K, Conway] = Phase2Deferral.now
+    val ctx = TestLedger.env
+    given xyz.kd5ujc.scarab.plutus.ScriptEvaluator[K] =
+      request => Monad[K].map(Monad[K].unit)(_ => ctx.evaluator.evaluate(request))
     val pool1 = key()
     val s = base(fundedBy(alice), pools = Vector(poolParams(pool1)))
-    val start = Build.counted(s)
-    val ledgerEnv = LedgerEnv(TestLedger.env, s.es.chainAccount.treasury)
     val delegate = pay(
       "delegate",
       alice,
@@ -820,22 +883,25 @@ class ConwayLedgerSuite extends FunSuite:
     )
     val cheap = pay("cheap", alice, 10000 * ada, 1)
     for t <- Vector(delegate, cheap) do
-      val onRuleT =
-        JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(globals, ledgerEnv, start, t)
-      val onStack = Ledger
-        .transition[K](ledgerEnv, t)(using
-          summon,
-          summon,
-          summon,
-          summon,
-          Judge.raising[K, xyz.kd5ujc.scarab.ledger.PredicateFailure, LedgerFailure](
-            LedgerFailure.Rejected(t.body.id, _)
-          )
-        )
-        .run(globals)
-        .run(start)
+      val onRuleT = ConwayTestKit.eraLedger(s, t.typed, ctx, RuleT.Policy.FirstFailure)
+      val (env, stAnnTx, context) = ConwayTestKit.inputsOf(s, t.typed, ctx)
+      val onStack = era.rules.ConwayLedger
+        .conwayLedgerTransition[K, Conway](env, stAnnTx, context, ctx.verdicts, ctx.decoder)
+        .run(NativeRules.globalsOf(ctx))
+        .run((s.es.ls, Chain.empty))
         .map(_._1)
-      assertEquals(onRuleT, onStack)
+      val same = (onRuleT, onStack) match
+        case (Left(d), Left(Left(e)))          => d == e
+        case (Right(Left(fs)), Left(Right(f))) => fs == NonEmptyChain.one(f)
+        case (Right(Right((a, ea))), Right((b, eb))) =>
+          cats.Eq[LedgerState[Conway]].eqv(a, b) && ea == eb
+        case _ => false
+      assert(same, s"RuleT $onRuleT, the stack $onStack")
+    // the two transactions: one admitted, one refused
+    assert(
+      ConwayTestKit.eraLedger(s, delegate.typed, ctx).isRight &&
+        ConwayTestKit.eraLedger(s, cheap.typed, ctx).exists(_.isLeft)
+    )
   }
 
   test(
@@ -859,10 +925,9 @@ class ConwayLedgerSuite extends FunSuite:
       signers = Vector(op)
     )
     // a key that another pool holds is refused, the pool's own is not
-    assertEquals(
-      refusedWith(s, reg("dup", one, Blake2bHash(two.hash))),
-      "VRFKeyHashAlreadyRegistered"
-    )
+    refusedBy(s, reg("dup", one, Blake2bHash(two.hash))) {
+      case Fails.Pool(ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(_, _)) =>
+    }
     val fresh = Blake2bHash(Bytes(Vector(1, 2, 3)))
     val own = Set(poolParams(one).vrfKeyHash, poolParams(two).vrfKeyHash)
     assertEquals(vrfKeys(pStateOf(s)), own)
@@ -871,10 +936,9 @@ class ConwayLedgerSuite extends FunSuite:
     // the map the rules leave: the keys in use and the scheduled one
     assertEquals(vrfKeys(pStateOf(s1)), own + fresh)
     // the scheduled key is held: another pool cannot take it
-    assertEquals(
-      refusedWith(withFundsOf(s)(s1), reg("taken", two, fresh)),
-      "VRFKeyHashAlreadyRegistered"
-    )
+    refusedBy(withFundsOf(s)(s1), reg("taken", two, fresh)) {
+      case Fails.Pool(ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(_, _)) =>
+    }
     // a second re-registration in the epoch frees the first key
     val other = Blake2bHash(Bytes(Vector(4, 5, 6)))
     val s2 = accepted(withFundsOf(s)(s1), reg("again", one, other))
@@ -900,7 +964,7 @@ class ConwayLedgerSuite extends FunSuite:
         500 * ada,
         future = Some(poolParams(one))
       ),
-      fundedBy(alice).toMap
+      fundedBy(alice).map((in, o) => in -> ConwayTestKit.stored(o)).toMap
     )
     val t = pay(
       "quirk",
@@ -910,16 +974,14 @@ class ConwayLedgerSuite extends FunSuite:
       certificates = Vector(Certificate.RegisterPool(poolParams(one).copy(vrfKeyHash = other))),
       signers = Vector(one)
     )
-    val after = JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
-      globals,
-      LedgerEnv(TestLedger.env, start.es.chainAccount.treasury),
-      Build.counted(start),
-      t
-    ).fold(f => fail(f.message), identity)
+    // the state is built without its deposits, so it is not [[consistent]]: LEDGER alone
+    val after = ConwayTestKit
+      .judge(start, t, TestLedger.env, RuleT.Policy.FirstFailure)
+      .fold(f => fail(s"refused: $f"), _.nes.es.ls)
     // the reference's map before: the key in use; after: the new key, and not the one the
     // registered pool still uses
     assertEquals(vrfKeys(ConwayLedgerState.pState.get(start.es.ls)), Set(own))
-    val ps = ConwayLedgerState.pState.get(after.state)
+    val ps = ConwayLedgerState.pState.get(after)
     assertEquals(vrfKeys(ps), Set(other))
     // what the pools use: both
     assertEquals(vrfKeysOfPools(ps), Set(own, other))
@@ -1036,7 +1098,7 @@ class ConwayLedgerSuite extends FunSuite:
       )
 
     val hash = ScriptIntegrity.hash(
-      tx(bodyWith(None), Vector(alice), wits),
+      tx(bodyWith(None), Vector(alice), wits).flat,
       pp,
       Set(ScriptKind.PlutusV3)
     )(using xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SConway)
@@ -1051,7 +1113,7 @@ class ConwayLedgerSuite extends FunSuite:
         succeeds: Boolean,
         isValid: Boolean,
         block: Boolean = false
-    ): Either[LedgerFailure, Counted[NewEpochState[Conway]]] =
+    ): Verdict =
       attemptWith(succeeds, isValid, bodyWith(hash), block)
 
     def attemptWith(
@@ -1059,7 +1121,7 @@ class ConwayLedgerSuite extends FunSuite:
         isValid: Boolean,
         b: node.TxBody,
         block: Boolean = false
-    ): Either[LedgerFailure, Counted[NewEpochState[Conway]]] =
+    ): Verdict =
       // the integrity hash covers the witnesses, not the body: the same one serves any body
       run(state, tx(b, Vector(alice), wits, isValid = isValid), ctx(succeeds), block)
 
@@ -1069,26 +1131,20 @@ class ConwayLedgerSuite extends FunSuite:
     val c = ScriptCase(pparams, withdrawal = None)
     c.attempt(succeeds = true, isValid = true) match
       case Right(next) =>
-        assertEquals((next.plutus.succeeded, next.plutus.failed), (1L, 0L))
-        assert(!utxoOf(next.state).contains(c.lockedIn))
+        assertEquals((next.succeeded, next.failed), (1L, 0L))
+        assert(!utxoOf(next.nes).contains(c.lockedIn))
       case Left(f) => fail(s"expected the valid transaction to be accepted: $f")
     c.attempt(succeeds = false, isValid = false) match
       case Right(next) =>
         // the collateral is taken, what the script locks stays
-        val utxo = utxoOf(next.state)
+        val utxo = utxoOf(next.nes)
         assert(!utxo.contains(c.collateralIn) && utxo.contains(c.lockedIn))
-        assertEquals(next.plutus.failed, 1L)
-        assertEquals(feesOf(next.state), 100 * ada)
+        assertEquals(next.failed, 1L)
+        assertEquals(feesOf(next.nes), 100 * ada)
       case Left(f) => fail(s"expected the invalid transaction to take its collateral: $f")
     // a verdict that is not the tag's is refused, as the node refuses it
     for (succeeds, isValid) <- Vector((false, true), (true, false)) do
-      assert(
-        c.attempt(succeeds, isValid) match {
-          case Left(LedgerFailure.Rejected(_, _)) => true
-          case _                                  => false
-        },
-        s"expected a refusal for $succeeds / $isValid"
-      )
+      assert(c.attempt(succeeds, isValid).isLeft, s"expected a refusal for $succeeds / $isValid")
   }
 
   // The withdrawal accounts of a transaction are of the network of the ledger, whichever validity
@@ -1114,28 +1170,27 @@ class ConwayLedgerSuite extends FunSuite:
       val invalidHere = ScriptCase(pp, here)
       invalidHere.attempt(succeeds = false, isValid = false, block) match
         case Right(next) =>
-          val utxo = utxoOf(next.state)
+          val utxo = utxoOf(next.nes)
           assert(!utxo.contains(invalidHere.collateralIn) && utxo.contains(invalidHere.lockedIn))
-          assertEquals((next.plutus.failed, feesOf(next.state)), (1L, 100 * ada))
+          assertEquals((next.failed, feesOf(next.nes)), (1L, 100 * ada))
         case Left(f) => fail(s"expected the collateral to be taken: $f")
       ScriptCase(pp, there).attempt(succeeds = false, isValid = false, block) match
-        case Left(LedgerFailure.Rejected.Single(_, f)) =>
-          assertEquals(f.ruleName, "WrongNetworkWithdrawal")
+        case Left(Vector(Fails.Utxo(ConwayUtxoPredFailure.WrongNetworkWithdrawal(_, _)))) => ()
         case other =>
           fail(s"expected the withdrawal of another network to be refused: ${outcome(other)}")
       // the same for a transaction whose scripts succeed: here LEDGER's own check of the
       // withdrawals refuses it first (CERTS before protocol version 11, LEDGER from it)
       val validHere = ScriptCase(pp, here)
       validHere.attempt(succeeds = true, isValid = true, block) match
-        case Right(next) => assert(!utxoOf(next.state).contains(validHere.lockedIn))
+        case Right(next) => assert(!utxoOf(next.nes).contains(validHere.lockedIn))
         case Left(f)     => fail(s"expected the transaction to be accepted: $f")
       ScriptCase(pp, there).attempt(succeeds = true, isValid = true, block) match
-        case Left(LedgerFailure.Rejected.Single(_, f)) =>
-          assertEquals(
-            f.ruleName,
-            if protocol < 11 then "WithdrawalsNotInRewardsCERTS"
-            else "ConwayWithdrawalsMissingAccounts"
-          )
+        case Left(Vector(Fails.Certs(ConwayCertsPredFailure.WithdrawalsNotInRewardsCERTS(_))))
+            if protocol < 11 =>
+          ()
+        case Left(Vector(ConwayLedgerPredFailure.ConwayWithdrawalsMissingAccounts(_)))
+            if protocol >= 11 =>
+          ()
         case other =>
           fail(s"expected the withdrawal of another network to be refused: ${outcome(other)}")
     }
@@ -1146,41 +1201,33 @@ class ConwayLedgerSuite extends FunSuite:
     val ok = c.bodyWith(c.hash)
     // the baseline: the collateral is taken
     c.attemptWith(succeeds = false, isValid = false, ok) match
-      case Right(next) => assert(!utxoOf(next.state).contains(c.collateralIn))
+      case Right(next) => assert(!utxoOf(next.nes).contains(c.collateralIn))
       case Left(f)     => fail(s"expected the collateral to be taken: $f")
-    def refused(what: String, b: node.TxBody): String =
+    def refused(what: String, b: node.TxBody)(rule: PartialFunction[Failure, Unit]): Unit =
       c.attemptWith(succeeds = false, isValid = false, b) match
-        case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
-        case other => fail(s"$what: expected a refusal: ${outcome(other)}")
+        case Left(Vector(f)) => assert(rule.isDefinedAt(f), s"$what: refused for $f")
+        case other           => fail(s"$what: expected a refusal: ${outcome(other)}")
     val otherNetwork = node.Address
       .decode(Bytes(0x61.toByte +: alice.hash.value))
       .fold(e => fail(e.toString), identity)
     // a returned collateral output on another network, a collateral input that does not exist,
     // more collateral inputs than allowed (three), outputs that do not balance
-    assertEquals(
-      refused(
-        "collateral return",
-        c.bodyWith(c.hash, collateralReturn = Some(out(otherNetwork, 90 * ada)))
-      ),
-      "WrongNetwork"
-    )
+    refused(
+      "collateral return",
+      c.bodyWith(c.hash, collateralReturn = Some(out(otherNetwork, 90 * ada)))
+    ) { case Fails.Utxo(ConwayUtxoPredFailure.WrongNetwork(_, _)) => }
     // `feesOK` comes before the inputs (`Babbage/Rules/Utxo.hs:370-376`, cardano-ledger f649f975):
     // the collateral that does not exist pays nothing, which is the first failure
-    assertEquals(
-      refused("missing collateral", c.bodyWith(c.hash, collateral = Vector(txIn(40)))),
-      "InsufficientCollateral"
-    )
-    assertEquals(
-      refused(
-        "many collateral",
-        c.bodyWith(c.hash, collateral = Vector(c.collateralIn, txIn(41), txIn(42), txIn(43)))
-      ),
-      "TooManyCollateralInputs"
-    )
-    assertEquals(
-      refused("balance", c.bodyWith(c.hash, outputs = Some(Vector(out(bob.address(), 49 * ada))))),
-      "ValueNotConservedUTxO"
-    )
+    refused("missing collateral", c.bodyWith(c.hash, collateral = Vector(txIn(40)))) {
+      case Fails.Utxo(ConwayUtxoPredFailure.InsufficientCollateral(_, _)) =>
+    }
+    refused(
+      "many collateral",
+      c.bodyWith(c.hash, collateral = Vector(c.collateralIn, txIn(41), txIn(42), txIn(43)))
+    ) { case Fails.Utxo(ConwayUtxoPredFailure.TooManyCollateralInputs(_)) => }
+    refused("balance", c.bodyWith(c.hash, outputs = Some(Vector(out(bob.address(), 49 * ada))))) {
+      case Fails.Utxo(ConwayUtxoPredFailure.ValueNotConservedUTxO(_)) =>
+    }
   }
 
   test("collateral inputs exist and are not too many, whether or not there are redeemers") {
@@ -1197,21 +1244,19 @@ class ConwayLedgerSuite extends FunSuite:
         Vector(alice)
       )
     // no redeemers: the collateral is not looked at by the fee rule, but `allInputs` holds it
-    assertEquals(refusedWith(s, withCollateral(Vector(txIn(40)))), "BadInputsUTxO")
-    assertEquals(
-      refusedWith(s, withCollateral(Vector(coinIn, txIn(40), txIn(41), txIn(42)))),
-      "BadInputsUTxO"
-    )
-    assertEquals(
-      refusedWith(
-        base(
-          Vector(coinIn, txIn(2), txIn(3), txIn(4))
-            .map(_ -> out(alice.baseAddress(alice), 10000 * ada))
-        ),
-        withCollateral(Vector(coinIn, txIn(2), txIn(3), txIn(4)))
+    refusedBy(s, withCollateral(Vector(txIn(40)))) {
+      case Fails.Utxo(ConwayUtxoPredFailure.BadInputsUTxO(_)) =>
+    }
+    refusedBy(s, withCollateral(Vector(coinIn, txIn(40), txIn(41), txIn(42)))) {
+      case Fails.Utxo(ConwayUtxoPredFailure.BadInputsUTxO(_)) =>
+    }
+    refusedBy(
+      base(
+        Vector(coinIn, txIn(2), txIn(3), txIn(4))
+          .map(_ -> out(alice.baseAddress(alice), 10000 * ada))
       ),
-      "TooManyCollateralInputs"
-    )
+      withCollateral(Vector(coinIn, txIn(2), txIn(3), txIn(4)))
+    ) { case Fails.Utxo(ConwayUtxoPredFailure.TooManyCollateralInputs(_)) => }
     accepted(s, withCollateral(Vector(coinIn)))
   }
 
@@ -1253,10 +1298,14 @@ class ConwayLedgerSuite extends FunSuite:
       )
     // the ledger is on the test network (0): an address with a magic is of it, one without is not
     accepted(s, paying(byron(0, Some(42))))
-    assertEquals(refusedWith(s, paying(byron(0, None))), "WrongNetwork")
+    refusedBy(s, paying(byron(0, None))) {
+      case Fails.Utxo(ConwayUtxoPredFailure.WrongNetwork(_, _)) =>
+    }
     // 64 bytes of attributes are allowed, 65 are not; Conway reports Shelley's failure as
     // `OutputTooBigUTxO` (`Conway/Rules/Utxo.hs:158-161` (cardano-ledger f649f975),
     // `Allegra/Rules/Utxo.hs:387`)
     accepted(s, paying(byron(64, Some(42))))
-    assertEquals(refusedWith(s, paying(byron(65, Some(42)))), "OutputTooBigUTxO")
+    refusedBy(s, paying(byron(65, Some(42)))) {
+      case Fails.Utxo(ConwayUtxoPredFailure.OutputTooBigUTxO(_)) =>
+    }
   }

@@ -68,12 +68,17 @@ object EraLedgerRun:
     def lifted(evaluator: ScriptEvaluator[Id]): ScriptEvaluator[F] =
       request => Monad[F].map(Monad[F].unit)(_ => evaluator.evaluate(request))
 
-    def run(globals: Globals, state: LedgerState[Conway], depth: Int)(
+    def run(
+        globals: Globals,
+        state: LedgerState[Conway],
+        depth: Int,
+        policy: RuleT.Policy = RuleT.Policy.Accumulate
+    )(
         program: F[Unit]
     ): Either[Defect, Either[NonEmptyChain[Rec], (LedgerState[Conway], Events)]] =
       val nested = (0 until depth).foldLeft(program)((fa, _) => summon[Judge[F, Rec]].nest(fa))
       Judgment
-        .judge(nested, RuleT.Policy.Accumulate)(globals, (state, Chain.empty))
+        .judge(nested, policy)(globals, (state, Chain.empty))
         .map(_.map(_._1))
 
   private val ledgerRun = Run[LedgerPredFailure[Conway], LedgerEvent[Conway]]
@@ -87,7 +92,8 @@ object EraLedgerRun:
 
   /** LEDGER on `stAnnTx` from `state`, `depth` levels below the root: a submitted transaction's
     * LEDGER is one level down, under MEMPOOL (`Conway/Rules/Mempool.hs:138`, cardano-ledger
-    * f649f975), where the reference reports its failures in their order (`Judgment.flatten`).
+    * f649f975), where the reference reports its failures in their order (`Judgment.flatten`). Its
+    * failures are kept as `policy` keeps them: every one, or the first alone.
     */
   def ledger(
       globals: Globals,
@@ -98,18 +104,21 @@ object EraLedgerRun:
       evaluator: ScriptEvaluator[Id],
       verdicts: Verdicts,
       decoder: ScriptDecoder[Id],
-      depth: Int = 0
+      depth: Int = 0,
+      policy: RuleT.Policy = RuleT.Policy.Accumulate
   ): Judged[LedgerPredFailure[Conway], LedgerEvent[Conway]] =
     import ledgerRun.given
     import RuleT.given
     given ScriptEvaluator[ledgerRun.F] = ledgerRun.lifted(evaluator)
     given Phase2Deferral[ledgerRun.F, Conway] = Phase2Deferral.now
-    ledgerRun.run(globals, state, depth)(
+    ledgerRun.run(globals, state, depth, policy)(
       ConwayLedger
         .conwayLedgerTransition[ledgerRun.F, Conway](env, stAnnTx, context, verdicts, decoder)
     )
 
-  /** LEDGERS on `txs` from `state`, at the root, each annotated with `slotToPOSIXTime`. */
+  /** LEDGERS on `txs` from `state`, at the root, each annotated with `slotToPOSIXTime`, its
+    * failures kept as `policy` keeps them.
+    */
   def ledgers(
       globals: Globals,
       env: LedgersEnv[Conway],
@@ -119,13 +128,14 @@ object EraLedgerRun:
       evaluator: ScriptEvaluator[Id],
       verdicts: Verdicts,
       decoder: ScriptDecoder[Id],
-      slotToPOSIXTime: BigInt => Either[xyz.kd5ujc.scarab.ledger.TranslationError, BigInt]
+      slotToPOSIXTime: BigInt => Either[xyz.kd5ujc.scarab.ledger.TranslationError, BigInt],
+      policy: RuleT.Policy = RuleT.Policy.Accumulate
   ): Judged[LedgersPredFailure[Conway], LedgersEvent[Conway]] =
     import ledgersRun.given
     import RuleT.given
     given ScriptEvaluator[ledgersRun.F] = ledgersRun.lifted(evaluator)
     given Phase2Deferral[ledgersRun.F, Conway] = Phase2Deferral.now
-    ledgersRun.run(globals, state, 0)(
+    ledgersRun.run(globals, state, 0, policy)(
       ShelleyLedgers.ledgersTransition[ledgersRun.F, Conway](
         env,
         txs,

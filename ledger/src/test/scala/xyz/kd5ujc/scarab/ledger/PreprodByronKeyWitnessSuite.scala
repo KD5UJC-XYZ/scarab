@@ -7,7 +7,9 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as C}
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.ledger.Block
 import munit.FunSuite
-import xyz.kd5ujc.scarab.ledger.rules.{Counted, NativeRules}
+import cats.data.NonEmptySet
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
+import xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure
 import xyz.kd5ujc.scarab.ledger.state.{Build, Coin, Conway, ConwayNewEpochState, NewEpochState}
 
 import TestLedger.*
@@ -71,21 +73,24 @@ class PreprodByronKeyWitnessSuite extends FunSuite:
 
   private val conwayEnv = env.copy(slot = 83038792, epoch = 196)
 
-  private def judged(t: Tx): Either[LedgerFailure, Counted[NewEpochState[Conway]]] =
-    NativeRules.txIn[Conway](world, t, conwayEnv)
+  /** Conway's LEDGER on the era types ([[ConwayTestKit.ledger]]) on `t`. */
+  private def judged(t: ConwayTestKit.Built) = ConwayTestKit.ledger(world, t, conwayEnv)
 
   /** The refusal of a transaction whose Byron inputs no witness covers: the root is the key hash
     * that has no witness.
     */
-  private def missingRoot(t: Tx): Unit = judged(t) match
-    case Left(
-          LedgerFailure.Rejected.Single(
-            _,
-            PredicateFailure.Utxow(UtxowFailure.MissingVKeyWitnesses(hashes))
+  private def missingRoot(t: ConwayTestKit.Built): Unit =
+    given cats.Order[Bytes] = cats.Order.fromOrdering
+    assertEquals(
+      judged(t),
+      Left(
+        Vector(
+          ConwayTestKit.Fails.utxow(
+            ConwayUtxowPredFailure.MissingVKeyWitnessesUTXOW(NonEmptySet.one(root))
           )
-        ) =>
-      assertEquals(hashes, Set(root))
-    case other => fail(s"$other")
+        )
+      )
+    )
 
   test("the fixture is the recorded transaction: two Byron inputs, one vkey witness") {
     assertEquals(
@@ -108,15 +113,26 @@ class PreprodByronKeyWitnessSuite extends FunSuite:
   }
 
   test("a vkey witness whose key hashes to the Byron address root spends the Byron output") {
-    judged(tx).fold(f => fail(f.message), _ => ())
+    judged(ConwayTestKit.built(tx)).fold(f => fail(s"refused: $f"), _ => ())
   }
 
   test("no witness for the Byron root is refused, as a missing key hash witness") {
-    missingRoot(tx.copy(witnesses = Witnesses.empty))
+    missingRoot(ConwayTestKit.withVKeys(tx, Vector.empty))
   }
 
   test("a valid witness of another key does not spend the Byron output") {
     val other = key()
-    val t = tx.copy(witnesses = Witnesses(Vector(other.witness(tx.body.id))))
-    missingRoot(t)
+    // the recorded witness set with the key and the signature of another key in their places, so
+    // that the transaction keeps its size and its fee
+    val (vkey, signature) = tx.witnesses.vkeys.head
+    val (otherKey, otherSignature) = other.witness(tx.body.id)
+    val recorded = tx.witnesses.raw.getOrElse(fail("no witness bytes")).value
+    def replaced(in: Vector[Byte], from: Bytes, to: Bytes): Vector[Byte] =
+      val at = in.indexOfSlice(from.value)
+      assert(at >= 0, s"${from.hex} is not in the witness set")
+      in.patch(at, to.value, from.size)
+    val witnesses = Bytes(replaced(replaced(recorded, vkey, otherKey), signature, otherSignature))
+    missingRoot(
+      ConwayTestKit.read(Block.Transaction(tx.body.raw, witnesses, tx.auxiliary, tx.isValid))
+    )
   }

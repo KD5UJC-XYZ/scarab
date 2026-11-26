@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
-import xyz.kd5ujc.scarab.ledger.rules.{Counted, NativeRules}
+import xyz.kd5ujc.scarab.ledger.rules.NativeRules
 import xyz.kd5ujc.scarab.ledger.state.{Conway, ConwayNewEpochState, LedgerState, NewEpochState}
 
 import TestLedger.*
@@ -48,31 +48,38 @@ class PreviewConwayRulesSuite extends FunSuite:
     )
     (tx, PreviewConwayWorld.eraLedgers(c.name, s, c.slot, Vector(tx)))
 
-  /** The flat rules' state after `c` from `s`; the era-typed LEDGERS, on the same transaction,
-    * admits it with the same ledger state, and the counters its scripts' events give through
-    * LEDGER's and LEDGERS's embeddings are the flat rules' (`integrityChecked`, which no event
-    * tells, aside). Its events are returned with it.
+  /** The era-typed LEDGERS on the transaction of `c` from `s`: it admits it, and what it admitted
+    * is returned with its events: the state after it, and the counters its scripts' events give
+    * through LEDGER's and LEDGERS's embeddings ([[era.EraLedgerRun.counters]]). The flat rules give
+    * the same state and counters from `s`.
     */
   private def acceptedWithEvents(
       s: NewEpochState[Conway],
       c: PlutusCase
-  ): (Counted[NewEpochState[Conway]], Vector[era.rules.LedgerEvent[Conway]]) =
-    val after = NativeRules.txIn[Conway](s, c.tx, envOf(c)).fold(f => fail(f.message), identity)
+  ): (era.conway.ConwayTestKit.Admitted, Vector[era.rules.LedgerEvent[Conway]]) =
     val (tx, judged) = eraLedgers(s, c)
-    val events = judged match
+    val (ls, events) = judged match
       case Right((ls, es)) =>
-        assert(cats.Eq[LedgerState[Conway]].eqv(ls, after.state.es.ls), s"${c.name}: era state")
-        es.map { case era.rules.ShelleyLedgersEvent.LedgerEvent(e) => e }
+        (ls, es.map { case era.rules.ShelleyLedgersEvent.LedgerEvent(e) => e })
       case Left(fs) => fail(s"${c.name}: the era LEDGERS refused $fs")
     val t = era.EraTx.conway
+    val (succeeded, failed, scripts) = era.EraLedgerRun
+      .counters(t.isValid(tx) == era.IsPhase2Valid.Phase2Valid, events)
+      .getOrElse(fail(s"${c.name}: the events $events"))
+    val flat = NativeRules.txIn[Conway](s, c.tx, envOf(c)).fold(f => fail(f.message), identity)
+    assert(cats.Eq[LedgerState[Conway]].eqv(ls, flat.state.es.ls), s"${c.name}: era state")
     assertEquals(
-      era.EraLedgerRun.counters(t.isValid(tx) == era.IsPhase2Valid.Phase2Valid, events),
-      Some((after.plutus.succeeded, after.plutus.failed, after.plutus.scripts)),
+      (succeeded, failed, scripts),
+      (flat.plutus.succeeded, flat.plutus.failed, flat.plutus.scripts),
       s"${c.name}: the counters"
     )
-    (after, events.toVector)
+    (
+      era.conway.ConwayTestKit
+        .Admitted(ConwayNewEpochState.ls.replace(ls)(s), succeeded, failed, scripts),
+      events.toVector
+    )
 
-  private def accepted(s: NewEpochState[Conway], c: PlutusCase): Counted[NewEpochState[Conway]] =
+  private def accepted(s: NewEpochState[Conway], c: PlutusCase): era.conway.ConwayTestKit.Admitted =
     acceptedWithEvents(s, c)._1
 
   test("the captured proposal transactions are present") {
@@ -101,15 +108,14 @@ class PreviewConwayRulesSuite extends FunSuite:
                 .GovEvent(era.rules.ConwayGovEvent.GovNewProposals(id, proposals)) =>
             (id.bytes, era.rules.ProposalsRecord.conway.write(proposals))
         },
-        Vector((body.id, gov(after.state).proposals))
+        Vector((body.id, gov(after.nes).proposals))
       )
-      assertEquals(fees(after.state), body.fee)
-      assertEquals(gov(after.state).proposals.actions.size, body.proposals.size)
-      assertEquals(deposited(after.state), deposited(s) + body.proposals.map(_.deposit).sum)
-      assertEquals(deposited(after.state), NativeRules.obligation(after.state))
-      assertEquals(after.plutus.succeeded, 1L)
-      assertEquals(after.plutus.integrityChecked, 1L)
-      assertEquals(total(after.state), Supply)
+      assertEquals(fees(after.nes), body.fee)
+      assertEquals(gov(after.nes).proposals.actions.size, body.proposals.size)
+      assertEquals(deposited(after.nes), deposited(s) + body.proposals.map(_.deposit).sum)
+      assertEquals(deposited(after.nes), NativeRules.obligation(after.nes))
+      assertEquals(after.succeeded, 1L)
+      assertEquals(total(after.nes), Supply)
       // and the same transaction with another guardrails script is refused: a script hash of 28
       // bytes, which the era vocabulary reads, not the proposal's
       val another = xyz.kd5ujc.scarab.crypto.Blake2b.hash224.hash(body.id)
@@ -146,11 +152,11 @@ class PreviewConwayRulesSuite extends FunSuite:
   spends.foreach { c =>
     test(s"${c.name}: the Conway rules accept the Plutus transaction (${c.kind})") {
       val after = accepted(worldOf(c), c)
-      assertEquals(fees(after.state), c.tx.body.fee)
-      assert(after.plutus.succeeded >= 1)
-      assertEquals(total(after.state), Supply)
-      assertEquals(deposited(after.state), NativeRules.obligation(after.state))
-      c.tx.body.inputs.foreach(i => assert(!after.state.es.ls.utxo.utxo.utxo.contains(i)))
+      assertEquals(fees(after.nes), c.tx.body.fee)
+      assert(after.succeeded >= 1)
+      assertEquals(total(after.nes), Supply)
+      assertEquals(deposited(after.nes), NativeRules.obligation(after.nes))
+      c.tx.body.inputs.foreach(i => assert(!after.nes.es.ls.utxo.utxo.utxo.contains(i)))
     }
   }
 
@@ -169,9 +175,9 @@ class PreviewConwayRulesSuite extends FunSuite:
       val voters = body.votes.collect { case (Voter.CommitteeHot(h), vs) => h -> vs }
       val s = PreviewConwayWorld.withCommittee(worldOf(c), Vector(c))
       val after = accepted(s, c)
-      val recorded = gov(after.state).proposals.actions.flatMap(_.committeeVotes.values)
+      val recorded = gov(after.nes).proposals.actions.flatMap(_.committeeVotes.values)
       assertEquals(recorded.size, voters.flatMap(_._2).size)
       assert(recorded.forall(_ == Vote.Yes))
-      assertEquals(total(after.state), Supply)
+      assertEquals(total(after.nes), Supply)
     }
   }
