@@ -294,3 +294,22 @@ class EntryPointTotalitySuite extends munit.ScalaCheckSuite:
       returns("CompressedEdwardsY.decompress")(new CompressedEdwardsY(point.clone()).decompress())
     }
   }
+
+  test("inputs past the size limits the entry points check return a value") {
+    // one input each, just over StrictDraft03's limit on alpha (1 MiB) and Sum6Kes's on the message
+    val alpha = Bytes.fromArray(new Array[Byte](StrictDraft03.MaxAlphaBytes + 1))
+    val message = Bytes.fromArray(new Array[Byte](Sum6Kes.MaxMessageBytes + 1))
+    returns("StrictDraft03.verify over 1 MiB")(
+      StrictDraft03.verify(vrfKey.publicKey, vrfProved.proof, alpha)
+    )
+    returns("PraosVrfCertificate.verifyAlpha over 1 MiB")(
+      PraosVrfCertificate.verifyAlpha(alpha, vrfKey.publicKey, vrfProved.proof, vrfProved.output)
+    )
+    returns("prove over 1 MiB")(vrfKey.prove(alpha))
+    returns("Sum6Kes.verify over 64 KiB")(
+      Sum6Kes.verify(kesKey.verificationKey, 0, message, kesSignature)
+    )
+    returns("sign over 64 KiB")(kesKey.copy.sign(message))
+    returns("StrictEd25519.verify over 1 MiB")(StrictEd25519.verify(edKey, edSignature, alpha))
+    returns("ByronEd25519.verify over 1 MiB")(ByronEd25519.verify(edKey, edSignature, alpha))
+  }
