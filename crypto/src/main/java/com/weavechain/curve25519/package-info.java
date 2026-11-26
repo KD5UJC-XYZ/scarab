@@ -23,9 +23,10 @@
  *       {@code toRadix16()}, {@code multiply(Scalar)}) compute through them.</li>
  * </ul>
  *
- * <p>No exception covers the decoders that throw on a malformed encoding ({@link InvalidEncodingException} from
- * {@code decompress}, {@link IllegalArgumentException} from {@code Scalar.fromCanonicalBytes}), which ERR-4
- * refuses; the callers in {@code xyz.kd5ujc.scarab.crypto} catch them where they call. That, and that no guard
- * reads these sources, are gaps of #1418.
+ * <p>The decoders throw on a malformed encoding ({@link InvalidEncodingException} from {@code decompress},
+ * {@link IllegalArgumentException} from {@code Scalar.fromCanonicalBytes}), as their upstream does: ERR-4 lists
+ * these sources among its exceptions, and the interfaces of {@code xyz.kd5ujc.scarab.crypto} that pass them
+ * outside input catch where they call. No wart or guard of FUN-1, FUN-3 or ERR-4 reads these sources: they are
+ * FUN-2 (f), review only. A typed result from the decoders is an open item of #1418.
  */
 package com.weavechain.curve25519;
