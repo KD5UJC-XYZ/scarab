@@ -375,7 +375,8 @@ object Main extends IOApp:
             follower.committedChain.get.map(chain => ReadAheadStore.inputs(raw, chain.state))
           )
         case _ => IO.unit
-    Resource
+    // a reader of the read-ahead that ends stops the node, raised here (FIB-2)
+    readAhead.stopped.flatMap(fatal).background *> Resource
       .eval(
         work.fold(
           SelectionWork

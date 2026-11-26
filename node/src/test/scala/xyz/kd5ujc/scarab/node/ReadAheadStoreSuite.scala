@@ -15,15 +15,14 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{
-  Address,
   Block,
+  ByteStrings,
   Header,
   NodeError,
   StorageError,
   TxIn,
   TxOut,
-  Utxo,
-  Value
+  Utxo
 }
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 import xyz.kd5ujc.scarab.storage.{MemoryUtxoStore, RocksUtxoStore, UtxoPinnedReadView, UtxoStore}
@@ -37,13 +36,18 @@ import xyz.kd5ujc.scarab.storage.{MemoryUtxoStore, RocksUtxoStore, UtxoPinnedRea
 class ReadAheadStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with ScalaCheckSuite:
   import ReadAheadStore.{Bounds, Buffer}
 
-  private val address: Address =
-    Address
-      .decode(Bytes.fromHex("61" + "05" * 28).fold(e => fail(e.toString), identity))
-      .fold(e => fail(e.toString), identity)
-
   private def in(n: Int): TxIn = TxIn(Bytes(Vector.fill(32)((n & 0xff).toByte)), n)
-  private def out(n: Int): TxOut = TxOut(address, Value.coin(BigInt(1000000 + n)))
+
+  /** An output decoded from its encoding, `[address, coin]`, so it carries its bytes (`raw`), of a
+    * size that grows with `n` (the coin's head).
+    */
+  private def out(n: Int): TxOut =
+    val coin = n match
+      case _ if n < 24  => f"${n}%02x"
+      case _ if n < 256 => f"18${n}%02x"
+      case _            => f"19${n & 0xffff}%04x"
+    val raw = Bytes.fromHex("82581d61" + "05" * 28 + coin).fold(e => fail(e.toString), identity)
+    TxOut.fromBytes(raw)(using ByteStrings.Chunked).fold(e => fail(e.toString), identity)
 
   /** `body` with a typed storage error failing the test. */
   private def ok[A](body: Raise[IO, StorageError] ?=> IO[A]): IO[A] =
@@ -73,12 +77,12 @@ class ReadAheadStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with
       .map(_.toVector)
 
   property("the buffer never exceeds its bounds, and its bytes are those of the outputs it holds") {
-    Prop.forAll(ops, Gen.choose(0, 40), Gen.choose(0L, 2000L)) { (steps, entries, bytes) =>
+    Prop.forAll(ops, Gen.choose(0, 40), Gen.choose(0L, 6000L)) { (steps, entries, bytes) =>
       val bounds = Bounds(entries, bytes)
       steps.scanLeft(Buffer.empty(bounds))((b, step) => step(b)).forall { b =>
         val (_, all) = b.take((0 until 64).map(in), Long.MinValue)
         b.size <= entries && b.bytes <= bytes && all.size == b.size &&
-        b.bytes == all.valuesIterator.map(_.raw.size.toLong).sum
+        b.bytes == all.valuesIterator.map(_.raw.size + ReadAheadStore.EntryBytes).sum
       }
     }
   }
@@ -102,6 +106,16 @@ class ReadAheadStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with
       val (after, served) = filled.take(keys.map(in), flushed)
       served == expected.toMap && keys.forall(k => !after.holds(in(k)))
     }
+  }
+
+  test("the bytes alone bound the buffer: the oldest entry leaves first") {
+    // three outputs of one size, with room in bytes for two
+    val size = out(300).raw.size + ReadAheadStore.EntryBytes
+    val b = Seq(300, 301, 302).foldLeft(Buffer.empty(Bounds(100, 2 * size))) { (b, k) =>
+      b.put(0, 5, Map(in(k) -> out(k)))
+    }
+    assertEquals((b.size, b.bytes), (2, 2 * size))
+    assertEquals(Seq(300, 301, 302).map(k => b.holds(in(k))), Seq(false, true, true))
   }
 
   test("a read put in a generation the buffer has left is not kept") {
@@ -171,11 +185,14 @@ class ReadAheadStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with
         reading <- Deferred[IO, Unit]
         release <- Deferred[IO, Unit]
         store <- ReadAheadStore.idle[IO](Gated(memory, reading, release))
-        prefetch <- store.prefetch(Set(in(5))).start
-        _ <- reading.get
-        _ <- store.reset
-        _ <- release.complete(())
-        _ <- prefetch.joinWithNever
+        // the read in flight is owned by a resource, and released on any failure
+        _ <- store
+          .prefetch(Set(in(5)))
+          .background
+          .use(landed =>
+            reading.get *> store.reset *> release.complete(()) *> landed.flatMap(_.embedNever)
+          )
+          .guarantee(release.complete(()).void)
         held <- store.buffered.get
       yield assertEquals(held.size, 0)
     }
