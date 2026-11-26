@@ -1,22 +1,30 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""The Java main sources are a recorded list, and their `throw` statements only go down (#1418).
+"""The Java main sources are a recorded list, and the count of `throw` in each only goes down (#1418).
 
 The Java main sources of `crypto` are an exception to the functional-style rules (docs/design-rules.md, FUN-2
-(f)), and no wart reads Java. This guard holds two things about them that review alone held before:
+(f)), and no wart reads Java. This guard holds three things about them that review alone held before:
 
-  * The Java main sources, every tracked `.java` file under a `src/main/` directory of any module (`tools`
-    included, `package-info.java` too), are exactly those that `docs/data/java-sources.json` lists. A source
-    added or removed fails until the list is changed in the same change, by hand, where review sees it.
+  * The Java main sources, every tracked `.java` file under a `src/main/` directory anywhere in the repository
+    (of any module, `tools` included, at the root too, whatever the directories under it are named, and
+    `package-info.java` too), are exactly those that `docs/data/java-sources.json` lists. A source added or
+    removed fails until the list is changed in the same change, by hand, where review sees it.
+  * No Java main source holds a Unicode escape: a backslash, one or more `u` and four hexadecimal digits,
+    anywhere, comments and literals included. javac translates them before it reads anything else, so an
+    escape can spell `throw`, or end a comment with an escaped line break, where this guard's reading sees
+    neither. It refuses every such sequence, also one whose backslash is itself escaped (`"\\u0041"`), which
+    javac would not translate: the rule of the backslashes before it is not applied.
   * The `throw` statements of each are counted, with comments, string and character literals and text blocks
-    removed, and compared with the committed baseline `docs/data/java-throw-baseline.json`, which only shrinks
-    (`shrinking_baseline`): a file may not go up, a file not in the baseline must have none, and a count that
-    went down fails until the change also commits the smaller baseline.
+    removed, and compared with the committed baseline `docs/data/java-throw-baseline.json` (`shrinking_baseline`):
+    a file may not go up, a file not in the baseline must have none, and a count that went down fails until the
+    change also commits the smaller baseline. So a file's count cannot rise unless the change rewrites the
+    baseline as well, a diff a reviewer sees.
 
-What it does not see: an exception that a call throws (a JDK method, Bouncy Castle, an array index) and not a
-`throw` of these sources; a `throws` clause, which declares and throws nothing; and whether a `throw` can be
-reached from outside input, which `EntryPointTotalitySuite` (crypto tests) and review hold. The Scala that calls
-these sources is the warts' and `check_imperative.py`'s.
+What it does not see: a `throw` replaced by another in the same file, which leaves the count as it was; an
+exception that a call throws (a JDK method, Bouncy Castle, an array index) and not a `throw` of these sources; a
+`throws` clause, which declares and throws nothing; and whether a `throw` can be reached from outside input,
+which `EntryPointTotalitySuite` (crypto tests) and review hold. The Scala that calls these sources is the warts'
+and `check_imperative.py`'s.
 
     python3 scripts/check_java_sources.py                    check (the default)
     python3 scripts/check_java_sources.py --write-baseline   record lower throw counts (or the first baseline);
@@ -43,11 +51,14 @@ RULE = 'docs/design-rules.md#fun-2'
 BASELINE = shrinking_baseline.Baseline(
     path='docs/data/java-throw-baseline.json',
     sites='throw statements in Java main sources',
-    refusal=f'new throw statements in Java main sources: return a value the caller types instead ({RULE}):',
+    refusal=f'more throw statements in Java main sources than the baseline allows: return a value the caller '
+            f'types instead ({RULE}):',
     comment='throw statements per Java main source, comments and literals aside; written by '
             'scripts/check_java_sources.py --write-baseline, which refuses an increase. It only shrinks (#1418).')
 # `throw` as a word of Java, which a `$` in an identifier does not end
 THROW = re.compile(r'(?<![\w$])throw(?![\w$])')
+# a Unicode escape (JLS 3.3), whatever the backslashes before it
+UNICODE_ESCAPE = re.compile(r'\\u+[0-9a-fA-F]{4}')
 
 
 def code(source: str) -> str:
@@ -102,10 +113,21 @@ def sites(source: str) -> list[int]:
     return [text.count('\n', 0, match.start()) + 1 for match in THROW.finditer(text)]
 
 
+def escapes(source: str) -> list[int]:
+    """The line of each Unicode escape, in the text as it is."""
+    return [source.count('\n', 0, match.start()) + 1 for match in UNICODE_ESCAPE.finditer(source)]
+
+
+def under_main(path: str) -> bool:
+    """Whether the repository-relative `path` lies under a `src/main/` directory, at any depth."""
+    parts = path.split('/')
+    return any(parts[i:i + 2] == ['src', 'main'] for i in range(len(parts) - 2))
+
+
 def java_main_sources(root: Path) -> list[str]:
-    listed = subprocess.run(['git', '-C', str(root), 'ls-files', '*.java'], check=True, capture_output=True,
-                            text=True).stdout.split()
-    return sorted(p for p in listed if '/src/main/' in p and '/src_managed/' not in p)
+    listed = subprocess.run(['git', '-C', str(root), 'ls-files', '-z', '*.java'], check=True,
+                            capture_output=True, text=True).stdout.split('\0')
+    return sorted(p for p in listed if p and under_main(p))
 
 
 def recorded(root: Path) -> list[str] | None:
@@ -143,7 +165,14 @@ def main(argv: list[str] | None = None, root: Path = ROOT) -> int:
         print('\n'.join('  ' + line for line in problems))
         return 1
     print(f'Java main sources: {len(present)}, each listed in {SOURCES}')
-    found = {path: sites((root / path).read_text(encoding='utf-8')) for path in present}
+    texts = {path: (root / path).read_text(encoding='utf-8') for path in present}
+    escaped = [f'  {path}:{line}' for path, text in texts.items() for line in escapes(text)]
+    if escaped:
+        print('Unicode escapes in Java main sources, which javac reads before this guard can count throw '
+              f'statements in them: write the character itself, or name it another way ({RULE} (f)):')
+        print('\n'.join(escaped))
+        return 1
+    found = {path: sites(text) for path, text in texts.items()}
     return shrinking_baseline.check(root, BASELINE, {p: lines for p, lines in found.items() if lines},
                                     args.write_baseline)
 

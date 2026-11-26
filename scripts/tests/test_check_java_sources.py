@@ -84,6 +84,16 @@ class GuardTest(unittest.TestCase):
         (self.root / 'mod/src/main/java/a/Untracked.java').write_text('class U {}\n')
         self.assertEqual(java.java_main_sources(self.root), [MAIN, OTHER])
 
+    def test_every_tracked_java_file_under_a_src_main_directory_is_read(self):
+        root_source = 'src/main/java/Root.java'
+        generated = 'tools/src/main/java/src_managed/G.java'
+        nested = 'a/b/src/main/java/c/N.java'
+        for path in (root_source, generated, nested):
+            self.write(path, 'class X {}\n')
+        self.write('src/mainly/java/M.java', 'class M {}\n')
+        self.write('docs/src/Main.java', 'class M {}\n')
+        self.assertEqual(java.java_main_sources(self.root), sorted([root_source, generated, nested]))
+
     def test_a_source_added_or_removed_fails_until_the_list_changes(self):
         self.write(MAIN, 'class A {}\n')
         self.record(MAIN)
@@ -114,6 +124,27 @@ class GuardTest(unittest.TestCase):
         code, out = self.run_check()
         self.assertEqual(code, 1)
         self.assertIn(f'listed twice: {MAIN}', out)
+
+    def test_a_unicode_escape_fails_wherever_it_is(self):
+        self.write(MAIN, 'class A {}\n')
+        self.record(MAIN)
+        self.assertEqual(self.run_check('--write-baseline')[0], 0)
+        spellings = [
+            ('a throw spelled with an escape', 'class A { void f() { \\u0074hrow new X(); } }\n', 1),
+            ('an escaped line break that ends a comment',
+             'class A {\n  // a note \\u000a throw new X();\n}\n', 2),
+            ('an escape with more than one u', 'class A {\n\n  String s = "\\uuuu0041";\n}\n', 3),
+            ('an escape whose backslash is escaped', 'class A { String s = "\\\\u0041"; }\n', 1),
+        ]
+        for what, text, line in spellings:
+            with self.subTest(what):
+                self.write(MAIN, text)
+                code, out = self.run_check()
+                self.assertEqual(code, 1, f'{what} passed')
+                self.assertIn('Unicode escapes', out)
+                self.assertIn(f'{MAIN}:{line}', out)
+        self.write(MAIN, 'class A { String s = "\\\\ u0041 \\\\n"; }\n')
+        self.assertEqual(self.run_check()[0], 0, 'a backslash before no escape is text')
 
     def test_a_new_throw_fails_and_the_baseline_only_shrinks(self):
         self.write(MAIN, 'class A { void f() { throw new X(); } }\n')

@@ -6,7 +6,7 @@
   {"id": "error-channels", "title": "closed error channel guard", "argv": ["scripts/check_error_channels.py"]},
   {"id": "text-policy", "title": "text policy guard", "argv": ["scripts/check_text_policy.py"]},
   {"id": "imperative", "title": "no new try/catch/finally in main sources", "argv": ["scripts/check_imperative.py"]},
-  {"id": "java-sources", "title": "the Java main sources are the recorded list, and no new throw in them", "argv": ["scripts/check_java_sources.py"]},
+  {"id": "java-sources", "title": "the Java main sources are the recorded list, hold no Unicode escape, and no file has more throws than its baseline", "argv": ["scripts/check_java_sources.py"]},
   {"id": "test-sleeps", "title": "no new sleeps in tests", "argv": ["scripts/check_test_sleeps.py"]},
   {"id": "ci-parity", "title": "a push to main runs nothing its pull request did not, and is never cancelled", "argv": ["scripts/check_ci_parity.py"]},
   {"id": "pinned-citations", "title": "no new unpinned upstream citations in comments", "argv": ["scripts/check_pinned_citations.py"]},
