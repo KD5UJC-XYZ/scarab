@@ -71,13 +71,32 @@ class ConwayOnePassSuite extends ScalaCheckSuite:
 
   // ---- what equality leaves out
 
-  /** The levels of a native script, each with its bytes and its tree, walked on the heap. */
-  private def levels(t: Timelock): Vector[(Bytes, Any)] =
-    @tailrec def go(todo: List[Timelock], out: Vector[(Bytes, Any)]): Vector[(Bytes, Any)] =
+  /** A native script's bytes, and each of its levels, walked on the heap: where its bytes lie in
+    * the script's and how many there are, and its constructor with its own fields and the number of
+    * its sub-scripts, so that two scripts with the same bytes and levels have the same tree and the
+    * same bytes at each level, in time linear in the script's size.
+    */
+  private def levels(t: Timelock): (Bytes, Vector[(Long, Int, Any)]) =
+    import xyz.kd5ujc.scarab.ledger.NativeScript as N
+    def shallow(n: N): Any = n match
+      case N.Sig(h)              => ("sig", h)
+      case N.AllOf(xs)           => ("all", xs.size)
+      case N.AnyOf(xs)           => ("any", xs.size)
+      case N.NOfK(k, xs)         => ("n of k", k, xs.size)
+      case N.InvalidBefore(s)    => ("before", s)
+      case N.InvalidHereafter(s) => ("hereafter", s)
+    val root = t.raw
+    def at(b: Bytes): Long =
+      if b.unsafeArray eq root.unsafeArray then (b.unsafeOffset - root.unsafeOffset).toLong else -1L
+    @tailrec def go(
+        todo: List[Timelock],
+        out: Vector[(Long, Int, Any)]
+    ): Vector[(Long, Int, Any)] =
       todo match
-        case Nil       => out
-        case s :: rest => go(s.children.toList ++ rest, out :+ (s.raw -> s.script))
-    go(List(t), Vector.empty)
+        case Nil => out
+        case s :: rest =>
+          go(s.children.toList ::: rest, out :+ (at(s.raw), s.raw.size, shallow(s.script)))
+    (root, go(List(t), Vector.empty))
 
   private def sameBodyKept(a: ConwayTxBody, b: ConwayTxBody, what: String): Unit =
     // an output's equality leaves out its bytes and its value's size; the stored form has them
@@ -91,8 +110,8 @@ class ConwayOnePassSuite extends ScalaCheckSuite:
     def scripts(x: ConwayTxBody) = x.outputs.flatMap(_.value.rep.scriptRef).flatMap(nativeLevels)
     assertEquals(scripts(a), scripts(b), what)
 
-  private def nativeLevels(s: ConwayScript): Vector[(Bytes, Any)] =
-    ConwayScript.instance.getNativeScript(s).toVector.flatMap(t => levels(t.rep))
+  private def nativeLevels(s: ConwayScript): Vector[(Bytes, Vector[(Long, Int, Any)])] =
+    ConwayScript.instance.getNativeScript(s).toVector.map(t => levels(t.rep))
 
   private def sameWitsKept(a: ConwayTxWits, b: ConwayTxWits, what: String): Unit =
     assertEquals(a.raw, b.raw, what)
@@ -119,8 +138,8 @@ class ConwayOnePassSuite extends ScalaCheckSuite:
     assertEquals(a.raw, b.raw, what)
     assertEquals(a.plutusArrival, b.plutusArrival, what)
     assertEquals(
-      a.nativeScripts.flatMap(t => levels(t.rep)),
-      b.nativeScripts.flatMap(t => levels(t.rep)),
+      a.nativeScripts.map(t => levels(t.rep)),
+      b.nativeScripts.map(t => levels(t.rep)),
       what
     )
 
@@ -867,5 +886,51 @@ class ConwayOnePassSuite extends ScalaCheckSuite:
       assert(
         outs.forall(o => o.value.rep.scriptRef.isDefined || o.value.rep.datum != Datum.NoDatum)
       )
+    }
+  }
+
+  test(
+    "deep data in a datum, a redeemer and an inline datum reads the same both ways on a small stack"
+  ) {
+    // a list nested 20,000 deep, far deeper than a recursion over it fits on the small stack; the
+    // results are compared by their bytes, ids and hashes, since equality of the data would recurse
+    val depth = 20000
+    val deep = Bytes.wrap(Array.fill(depth)(0x81.toByte) :+ 0x00.toByte)
+    val t = Block.Transaction(
+      body(1 -> arr(output(2 -> arr(u(1), tag(24, bytes(deep)))))),
+      mp(
+        u(4) -> arr(deep),
+        u(5) -> mp(arr(u(0), u(0)) -> arr(deep, arr(u(1), u(2))))
+      ),
+      None,
+      true
+    )
+    val whole = FlatTx.envelope(t)
+    def summary(r: Either[EraTxError, ConwayTx]) = r.map(tx =>
+      (
+        tx.body.id,
+        tx.body.outputs.map(o => (ConwayTxOut.toStored(o.value), o.size)),
+        tx.wits.raw,
+        tx.wits.datums.datums.toVector.map((h, d) => (h, d.originalBytes)),
+        tx.wits.redeemers.entries.toVector.map((p, v) => (p, v._1.originalBytes, v._2)),
+        tx.sizeTxForFeeCalculation
+      )
+    )
+    val read = PreprodDeepTx.onSmallStack(
+      layouts.map(l =>
+        (
+          summary(ConwayTx.decode(t, l)),
+          summary(ConwayTx.decodeByFlat(t, l)),
+          summary(ConwayTx.fromEnvelope(whole, l)),
+          summary(ConwayTx.fromEnvelopeByFlat(whole, l))
+        )
+      )
+    )
+    read.zip(layouts).foreach { case ((one, two, oneWhole, twoWhole), l) =>
+      assert(one.isRight, s"$l: $one")
+      assertEquals(one, two, l.toString)
+      assertEquals(oneWhole, one, l.toString)
+      assertEquals(twoWhole, one, l.toString)
+      one.foreach(x => assertEquals(x._4.map(_._2), Vector(deep)))
     }
   }
