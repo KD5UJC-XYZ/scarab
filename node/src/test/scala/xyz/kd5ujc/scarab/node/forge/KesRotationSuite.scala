@@ -1901,3 +1901,68 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
       )
       assertEquals(events, Vector.empty, "failed evolution emits no reload success")
   }
+
+  test("a defect in the read of the key file or its stage leaves both files, and is the answer") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 5, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(9)
+        assertEquals(KesFiles.stage(f.kes, evolved), Right(()))
+        val key = Files.readAllBytes(f.kes).toVector
+        val stage = Files.readAllBytes(f.next).toVector
+        val defect = ForgeError.KesKey(
+          f.next.toString,
+          Sum6KesSigning.Failure.Sha512Unavailable(
+            new java.security.NoSuchAlgorithmException("no SHA-512 here")
+          )
+        )
+        def stageDefect(path: Path) =
+          if path == f.next then Left(defect) else KeyFiles.kesSigningKey(path)
+        assertEquals(
+          KesFiles.recoverWith(f.kes, new Renaming {}, stageDefect).map(_.period),
+          Left(defect),
+          "a defect in the stage's read"
+        )
+        assertEquals(
+          KesFiles.recoverWith(f.kes, new Renaming {}, _ => Left(defect)).map(_.period),
+          Left(defect),
+          "a defect in both reads, as a JDK without SHA-512 gives"
+        )
+        assertEquals(Files.readAllBytes(f.kes).toVector, key, "the key file is as it was")
+        assertEquals(Files.readAllBytes(f.next).toVector, stage, "the stage is as it was")
+        // once the reads are judged, the replacement completes as before
+        assertEquals(KesFiles.recover(f.kes).map(_.period), Right(9))
+        assert(!Files.exists(f.next))
+      }
+    }
+  }
+
+  test("a key read for a recovery is forgotten when a later step fails or throws") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 5, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(9)
+        assertEquals(KesFiles.stage(f.kes, evolved), Right(()))
+        val refuseReadback = new Renaming:
+          override def readStage(s: Scratch, file: Path): s.Buffer =
+            throw new IOException("injected stage readback refusal")
+        val read = f.onDisk
+        def withRead(path: Path) =
+          if path == f.kes then Right(read) else KeyFiles.kesSigningKey(path)
+        KesFiles.recoverWith(f.kes, refuseReadback, withRead) match
+          case Left(ForgeError.KesFileFailure(_, KesFileOperation.StageReadback, _)) => ()
+          case other => fail(s"expected the stage readback's failure, found $other")
+        assert(read.isForgotten, "the key read was kept after the recovery failed")
+        val again = f.onDisk
+        val broken = new IllegalStateException("a stage read that threw")
+        def throwing(path: Path) = if path == f.kes then Right(again) else throw broken
+        assertEquals(
+          intercept[IllegalStateException](KesFiles.recoverWith(f.kes, new Renaming {}, throwing)),
+          broken
+        )
+        assert(again.isForgotten, "the key read was kept after the recovery threw")
+      }
+    }
+  }
