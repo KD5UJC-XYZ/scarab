@@ -54,7 +54,10 @@ digits of the SHA-256 of the bytes it names.
   - `preview-blocks/`, 10 lines: `PreviewConwayBlockLedgersSuite`'s three Preview blocks, the era LEDGERS on each
     prefix (`<file>:<line>/<k>`: the state after it, the counters of its last transaction), the block with its
     first transaction again (`/repeated`: LEDGER at the root, one level down, and LEDGERS), and the proposal
-    under another guardrails script (`/guardrails`);
+    under another guardrails script (`/guardrails`). Of `/repeated`, the parent compared the era LEDGER at the
+    root with the flat LEDGER's accumulated failures, the era LEDGERS's whole list with those failures reversed,
+    and the flat LEDGERS, which raises a transaction's first failure, with the flat LEDGER's first failure alone:
+    no flat rule gave the era LEDGERS's whole list itself;
   - `preview-rules/`, 22 lines: `PreviewConwayRulesSuite`'s Preview transactions, the era LEDGERS on each in the
     world of its test (`proposal/`, `spend/`, `vote/`), and each proposal under another guardrails script
     (`guardrails/`).

@@ -456,10 +456,10 @@ object ConwayTestKit extends munit.Assertions:
       ConwayUtxo.injectShelleyFailure(ctx.referenceBuild)
     )
 
-  /** Conway's LEDGERS on the era types (`ledgersTransition`, `Shelley/Rules/Ledgers.hs:185-209`,
-    * cardano-ledger f649f975, through [[EraLedgerRun.ledgers]]) on a block of the one transaction
-    * `tx` from `nes` under `ctx`, its failures kept as `policy` keeps them: each a LEDGER failure
-    * of the transaction, or what it admitted ([[Admitted]]).
+  /** Conway's LEDGERS on the era types (Babbage's, which Conway selects, `ledgersTransition`,
+    * `Babbage/Rules/Ledgers.hs:124-142`, cardano-ledger f649f975, through [[EraLedgerRun.ledgers]])
+    * on a block of the one transaction `tx` from `nes` under `ctx`, its failures kept as `policy`
+    * keeps them: each a LEDGER failure of the transaction, or what it admitted ([[Admitted]]).
     */
   def judgeBlock(
       nes: NewEpochState[Conway],
@@ -616,7 +616,7 @@ object ConwayTestKit extends munit.Assertions:
   )
 
   /** Conway's LEDGER on the era types (`conwayLedgerTransitionTRC`,
-    * `Conway/Rules/Ledger.hs:320-519`, cardano-ledger f649f975) on `built` from `nes` under `ctx`,
+    * `Conway/Rules/Ledger.hs:320-440`, cardano-ledger f649f975) on `built` from `nes` under `ctx`,
     * at the root, its failures kept as `policy` keeps them (every one, by default; under
     * [[RuleT.Policy.FirstFailure]] the first check that fails alone): its failures in the
     * reference's order, or what it admitted ([[Admitted]]). A defect fails the test.

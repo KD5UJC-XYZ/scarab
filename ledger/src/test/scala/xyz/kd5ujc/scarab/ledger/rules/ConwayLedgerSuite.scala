@@ -44,6 +44,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayGovPredFailure,
   ConwayLedgerPredFailure,
   ConwayUtxoPredFailure,
+  ConwayUtxosPredFailure,
   ConwayUtxowPredFailure,
   ShelleyPoolPredFailure
 }
@@ -52,13 +53,13 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 /** The Conway LEDGER rules on the era-indexed state, on one transaction at a time: the suite builds
   * the native state, runs the rules on the transaction and checks what they do with it: the
   * failure, if it is refused, and the state after it, if it is not. The rules are Conway's LEDGER
-  * on the era types (`conwayLedgerTransitionTRC`, `Conway/Rules/Ledger.hs:320-519`, cardano-ledger
-  * f649f975), and LEDGERS over it (`ledgersTransition`, `Shelley/Rules/Ledgers.hs:185-209`,
-  * cardano-ledger f649f975), on the transactions the suite builds as values written with their true
-  * bytes ([[era.conway.ConwayTestKit.encode]]), each judged to its first failure. Every accepted
-  * state is also checked for what the rules keep beside what they change ([[consistent]]): the
-  * delegators of each pool and each DRep against the accounts, the instant stake against the UTxO,
-  * the deposits against the obligation.
+  * on the era types (`conwayLedgerTransitionTRC`, `Conway/Rules/Ledger.hs:320-440`, cardano-ledger
+  * f649f975), and LEDGERS over it (Babbage's, which Conway selects, `ledgersTransition`,
+  * `Babbage/Rules/Ledgers.hs:124-142`, cardano-ledger f649f975), on the transactions the suite
+  * builds as values written with their true bytes ([[era.conway.ConwayTestKit.encode]]), each
+  * judged to its first failure. Every accepted state is also checked for what the rules keep beside
+  * what they change ([[consistent]]): the delegators of each pool and each DRep against the
+  * accounts, the instant stake against the UTxO, the deposits against the obligation.
   */
 class ConwayLedgerSuite extends FunSuite:
   private val alice = key()
@@ -1147,9 +1148,35 @@ class ConwayLedgerSuite extends FunSuite:
         assertEquals(next.failed, 1L)
         assertEquals(feesOf(next.nes), 100 * ada)
       case Left(f) => fail(s"expected the invalid transaction to take its collateral: $f")
-    // a verdict that is not the tag's is refused, as the node refuses it
-    for (succeeds, isValid) <- Vector((false, true), (true, false)) do
-      assert(c.attempt(succeeds, isValid).isLeft, s"expected a refusal for $succeeds / $isValid")
+    // a verdict that is not the tag's is refused by UTXOS: a failing script of a transaction
+    // flagged valid failed unexpectedly, the passing scripts of one flagged invalid passed
+    // unexpectedly (`Alonzo/Rules/Utxos.hs:210-238`, cardano-ledger f649f975)
+    c.attempt(succeeds = false, isValid = true) match
+      case Left(
+            Vector(
+              Fails.Utxos(
+                ConwayUtxosPredFailure.ValidationTagMismatch(
+                  era.IsPhase2Valid.Phase2Valid,
+                  era.rules.TagMismatchDescription.FailedUnexpectedly(_)
+                )
+              )
+            )
+          ) =>
+        ()
+      case other => fail(s"expected FailedUnexpectedly: ${outcome(other)}")
+    assertEquals(
+      c.attempt(succeeds = true, isValid = false),
+      Left(
+        Vector(
+          Fails.utxos(
+            ConwayUtxosPredFailure.ValidationTagMismatch(
+              era.IsPhase2Valid.Phase2Invalid,
+              era.rules.TagMismatchDescription.PassedUnexpectedly
+            )
+          )
+        )
+      )
+    )
   }
 
   // The withdrawal accounts of a transaction are of the network of the ledger, whichever validity
