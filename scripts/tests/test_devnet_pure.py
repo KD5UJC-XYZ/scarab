@@ -2191,6 +2191,14 @@ class AdoptionLatencyTest(unittest.TestCase):
         self.assertIn("first block", over[0])
         self.assertEqual(pool.adoption_failures({"first": pool.COLD_FIRST_BLOCK_MS, "later": [1000]}, 1000), [])
 
+    def test_the_forgers_maximum_fails_only_for_a_block_the_log_does_not_hold(self):
+        cold = {"first": 1589, "later": [72]}
+        self.assertEqual(pool.adoption_failures(cold, 1000, counted=1589), [])
+        self.assertEqual(pool.adoption_failures(cold, 1000, counted=None), [])
+        unlogged = pool.adoption_failures(cold, 1000, counted=2400)
+        self.assertEqual(len(unlogged), 1)
+        self.assertIn("the log does not hold", unlogged[0])
+
 
 class SlotClockTest(unittest.TestCase):
     SHELLEY = {"systemStart": "2026-10-11T12:00:00Z", "slotLength": 0.1}

@@ -231,23 +231,28 @@ COLD_FIRST_BLOCK_MS = 5000  # the first block's own bound: a JVM that has not fo
 
 def adoption_latency(events):
     """The slot-start-to-adoption latency of the blocks the node forged and adopted (`adopted`'s `latencyMs`), in
-    slot order, split where the JVM stops being cold: `first`, the first such block of the run, which is built
-    and adopted by code that has not run before (#1471), and `later`, every one after it. `first` is None when
-    the node adopted no block of its own."""
+    slot order, split where the JVM stops being cold: `first`, the first such block of the run, whose adoption
+    is by code that has not run before (#1471; a block forged before it and lost at the handover does not
+    count), and `later`, every one after it. `first` is None when the node adopted no block of its own."""
     ordered = [e["latencyMs"] for e in sorted((e for e in events if e["event"] == "adopted"),
                                               key=lambda e: e["block"]["slot"])]
     return {"first": ordered[0] if ordered else None, "later": ordered[1:]}
 
 
-def adoption_failures(latency, budget):
+def adoption_failures(latency, budget, counted=None):
     """What `adoption_latency` holds over its bounds: a later block over `budget` ms, or the first one over
-    `COLD_FIRST_BLOCK_MS`."""
+    `COLD_FIRST_BLOCK_MS`; and `counted`, the forger's own maximum, when it is over `budget` and above every
+    latency of the log: a block whose `adopted` line the log does not hold (the counter is written first)."""
     first, slowest = latency["first"], max(latency["later"], default=None)
-    return ([f"the node's first block took {first} ms from its slot's start to adoption (bound "
-             f"{COLD_FIRST_BLOCK_MS} ms for a block forged before any other)"]
+    logged = max([v for v in (first, slowest) if v is not None], default=0)
+    return ([f"the node's first adopted block took {first} ms from its slot's start to adoption (bound "
+             f"{COLD_FIRST_BLOCK_MS} ms for the first block it adopts)"]
             if first is not None and first > COLD_FIRST_BLOCK_MS else []) + (
         [f"a block took {slowest} ms from its slot's start to adoption (budget {budget:.0f} ms)"]
-        if slowest is not None and slowest > budget else [])
+        if slowest is not None and slowest > budget else []) + (
+        [f"the forger counted a block of {counted} ms from its slot's start to adoption that the log does not "
+         f"hold (budget {budget:.0f} ms)"]
+        if counted is not None and counted > budget and counted > logged + 1 else [])
 
 
 FORGE_PHASES = ("toForged", "checkToForgedBlock", "leaderToForgedBlock", "forgedToAdopted", "adoptedLatency")
@@ -863,7 +868,7 @@ def pool(args):
                                 f"disagree with the log ({len(forged)} forged blocks)")
             if not 0 <= len(adopted) - last["adopted"] <= 2:
                 failures.append(f"the forger's counters say {last['adopted']} adopted, the log {len(adopted)}")
-            failures += adoption_failures(adoption, budget)
+            failures += adoption_failures(adoption, budget, forging_stats["total"]["forgeLatencyMs"]["max"])
             print(json.dumps({"forgerStats": forging_stats}), flush=True)
             failures += [f"metrics: {f}" for f in metric_failures]
         if not forged:
