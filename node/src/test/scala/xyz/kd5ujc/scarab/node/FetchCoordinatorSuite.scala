@@ -31,7 +31,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
         FetchCoordinator
           .GenesisContext(Gsm.Phase.Syncing, time, GenesisBlockFetch.Starvation.Ongoing)
       ),
-      _ => IO.unit
+      _ => IO.unit,
+      GenesisEvents.none[IO]
     )
 
   /** The request's blocks have all arrived, into `cache`, and its ranges have ended. */
@@ -196,7 +197,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
                   )
                 )
             },
-            _ => IO.unit
+            _ => IO.unit,
+            GenesisEvents.none[IO]
           )
         )
         times <- coordinator.session(1).use { peer =>
@@ -236,7 +238,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
                   )
                 )
             },
-            _ => IO.unit
+            _ => IO.unit,
+            GenesisEvents.none[IO]
           )
         )
         observed <- coordinator.watchDecisions(0).background.use { _ =>
@@ -345,7 +348,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
               FetchCoordinator
                 .GenesisContext(Gsm.Phase.CaughtUp, 0, GenesisBlockFetch.Starvation.Ongoing)
             ),
-          _ => IO.unit
+          _ => IO.unit,
+          GenesisEvents.none[IO]
         )
       )
       result <- coordinator.session(0).use { session =>
@@ -459,7 +463,8 @@ class FetchCoordinatorSuite extends FailsOnUncaught:
             ),
             _ =>
               events.update(_ :+ Event.Demoting) *> entered.complete(()).void *>
-                release.get *> events.update(_ :+ Event.Demoted)
+                release.get *> events.update(_ :+ Event.Demoted),
+            GenesisEvents.none[IO]
           )
         )
         _ <- coordinator.session(0).use { session =>

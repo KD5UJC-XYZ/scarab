@@ -119,3 +119,45 @@ class ChainSyncJumpingRuntimeSuite extends FailsOnUncaught:
       yield ()
     }
   }
+
+  test(
+    "each committed transition is traced as its peer's, a wait once, a rotation as Devoted BlockFetch's"
+  ) {
+    Settled { settle =>
+      for
+        traced <- Ref.of[IO, Vector[Either[(Int, Event[Int]), RotatedDynamo[Int]]]](Vector.empty)
+        traces = new ChainSyncJumpingRuntime.Traces[IO, Int]:
+          def csj(peer: Int, event: Event[Int]) = traced.update(_ :+ Left(peer -> event))
+          def dbf(event: RotatedDynamo[Int]) = traced.update(_ :+ Right(event))
+        runtime <- ChainSyncJumpingRuntime.create[IO, Int, Unit](4, traces = Some(traces))
+        _ <- runtime.session(1, Point.Origin, false).use { dynamo =>
+          runtime.session(2, Point.Origin, false).use { jumper =>
+            for
+              waiting <- jumper.next.start
+              _ <- settle
+              // a change that leaves the jumper waiting wakes it, and it does not trace again
+              _ <- dynamo.update(info(3))
+              _ <- settle
+              _ <- dynamo.update(info(4))
+              _ <- dynamo.onRollForward(info(5).tip)
+              jump <- waiting.joinWithNever.timeout(2.seconds)
+              _ <- IO(assertEquals(jump, Instruction.Jump(info(4), false)))
+              _ <- runtime.rotate(1)
+            yield ()
+          }
+        }
+        all <- traced.get
+      // when the sessions end, the newer first, each dynamo in turn names its successor
+      yield assertEquals(
+        all,
+        Vector(
+          Left(1 -> Event.InitializedAsDynamo),
+          Left(2 -> Event.BlockedOnJump),
+          Left(1 -> Event.SentJumpInstruction(info(4).tip)),
+          Right(RotatedDynamo(1, 2)),
+          Left(2 -> Event.NoLongerDynamo(Some(1), Reason.Disconnect)),
+          Left(1 -> Event.NoLongerDynamo(None, Reason.Disconnect))
+        )
+      )
+    }
+  }

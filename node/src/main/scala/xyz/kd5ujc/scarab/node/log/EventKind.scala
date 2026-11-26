@@ -152,6 +152,25 @@ enum EventKind(val area: Area, val severity: Severity):
   case LeiosVoteAcquired extends EventKind(Area.Chain, Severity.Info)
   case LeiosCertified extends EventKind(Area.Chain, Severity.Info)
 
+  /** The Genesis traces (issue 1397), under the last part of the reference's namespace and with its
+    * severity (cardano-node 11.1.3, `Cardano/Node/Tracing/Tracers/Consensus.hs`): the GDD's
+    * evaluations and disconnections (`Consensus.GDD.TraceGDDEvent`, Debug, 946-953), ChainSync
+    * jumping's events of a peer (`Consensus.CSJ.*`, Debug, 2048-2064), the rotation of the dynamo
+    * (`Consensus.DevotedBlockFetch.RotatedDynamo`, Info, 2102-2111) and Genesis BlockFetch's
+    * demotion of a peer that starved chain selection (`BlockFetch.Decision.PeerStarvedUs`, Info,
+    * 661). The reference's default configuration lets only `PeerStarvedUs` through
+    * ([[LogSettings.defaultThreshold]]).
+    */
+  case TraceGDDEvent extends EventKind(Area.Chain, Severity.Debug)
+  case BecomingObjector extends EventKind(Area.Chain, Severity.Debug)
+  case BlockedOnJump extends EventKind(Area.Chain, Severity.Debug)
+  case InitializedAsDynamo extends EventKind(Area.Chain, Severity.Debug)
+  case NoLongerDynamo extends EventKind(Area.Chain, Severity.Debug)
+  case NoLongerObjector extends EventKind(Area.Chain, Severity.Debug)
+  case SentJumpInstruction extends EventKind(Area.Chain, Severity.Debug)
+  case RotatedDynamo extends EventKind(Area.Chain, Severity.Info)
+  case PeerStarvedUs extends EventKind(Area.Chain, Severity.Info)
+
   // the ledger state
   case LedgerEpoch extends EventKind(Area.Ledger, Severity.Info)
 
@@ -291,6 +310,12 @@ enum EventKind(val area: Area, val severity: Severity):
     */
   case ScheduledGC extends EventKind(Area.Storage, Severity.Debug)
   case PerformedGC extends EventKind(Area.Storage, Severity.Debug)
+
+  /** Debug, as the reference's ChainDB traces `ChainSelStarvationEvent` (cardano-node 11.1.3
+    * `cardano-node/src/Cardano/Node/Tracing/Tracers/ChainDB.hs` 182-183 and 212): an edge of chain
+    * selection's starvation.
+    */
+  case ChainSelStarvationEvent extends EventKind(Area.Storage, Severity.Debug)
   case ReceivedBlockDiscarded extends EventKind(Area.Storage, Severity.Warning)
   case VolatileResumed extends EventKind(Area.Storage, Severity.Info)
   case NetworkRecorded extends EventKind(Area.Storage, Severity.Info)

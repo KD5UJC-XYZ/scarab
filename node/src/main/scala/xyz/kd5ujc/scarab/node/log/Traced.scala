@@ -428,6 +428,8 @@ object Traced:
   /** The blockchain time's traces with the reference's machine fields (cardano-node 11.1.3
     * `Tracers/Consensus.hs` 1810-1823).
     */
+  given Traced[xyz.kd5ujc.scarab.node.GenesisTrace] = GenesisLines.line(_)
+
   given Traced[ClockTrace] =
     case ClockTrace.StartTimeInTheFuture(start, wait) =>
       EventKind.StartTimeInTheFuture.line(

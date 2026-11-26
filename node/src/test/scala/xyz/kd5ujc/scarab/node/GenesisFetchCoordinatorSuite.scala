@@ -22,7 +22,8 @@ class GenesisFetchCoordinatorSuite extends FailsOnUncaught:
       val local = ChainSelection.Local(Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)
       for
         fetched <- Ref.of[IO, Set[Bytes]](Set.empty)
-        demoted <- Ref.of[IO, Vector[Long]](Vector.empty)
+        // the starvation's trace and the demotions, in the order they happen
+        demoted <- Ref.of[IO, Vector[Either[GenesisTrace, Long]]](Vector.empty)
         coordinator <- FetchCoordinator
           .create[IO](selection = Some(IO.pure(local)), fetched = Some(fetched.get.map(Fetched.of)))
         _ <- coordinator.installGenesis(
@@ -34,10 +35,11 @@ class GenesisFetchCoordinatorSuite extends FailsOnUncaught:
                 GenesisBlockFetch.Starvation.Ongoing
               )
             ),
-            id => demoted.update(_ :+ id)
+            id => demoted.update(_ :+ Right(id)),
+            event => demoted.update(_ :+ Left(event))
           )
         )
-        _ <- (coordinator.session(1), coordinator.session(2)).tupled.use { (slow, fast) =>
+        dynamo <- (coordinator.session(1), coordinator.session(2)).tupled.use { (slow, fast) =>
           for
             _ <- slow.follows(headers)
             _ <- fast.follows(headers)
@@ -67,9 +69,62 @@ class GenesisFetchCoordinatorSuite extends FailsOnUncaught:
             assertEquals(flight(slow.identity).requests, 1)
             assertEquals(before, false)
             assert(after)
+            slow.identity
         }
         observations <- demoted.get
-        _ <- IO(assert(observations.nonEmpty))
+        // Decision/Genesis.hs:288-291 (ouroboros-network c45735a5): `PeerStarvedUs` names the
+        // starved dynamo before it is demoted
+        _ <- IO(
+          assertEquals(
+            observations.take(2),
+            Vector(Left(GenesisTrace.PeerStarvedUs(PeerOrder(dynamo))), Right(dynamo))
+          )
+        )
       yield ()
     }
+  }
+
+  test("PeerStarvedUs names a starved dynamo by its connection after its session has ended") {
+    val headers = Fixtures.chain(2)
+    val local = ChainSelection.Local(Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)
+    // orders that are not the sessions' numbers, so a name read from a session is not a fallback
+    val (starvedOrder, otherOrder) = (PeerOrder(701), PeerOrder(702))
+    for
+      fetched <- Ref.of[IO, Set[Bytes]](Set.empty)
+      now <- Ref.of[IO, BigInt](0)
+      happened <- Ref.of[IO, Vector[Either[GenesisTrace, Long]]](Vector.empty)
+      coordinator <- FetchCoordinator
+        .create[IO](selection = Some(IO.pure(local)), fetched = Some(fetched.get.map(Fetched.of)))
+      _ <- coordinator.installGenesis(
+        FetchCoordinator.GenesisControl(
+          now.get.map(time =>
+            FetchCoordinator
+              .GenesisContext(Gsm.Phase.Syncing, time, GenesisBlockFetch.Starvation.Ongoing)
+          ),
+          id => happened.update(_ :+ Right(id)),
+          event => happened.update(_ :+ Left(event))
+        )
+      )
+      starved <- coordinator.session(1, Some(starvedOrder)).allocated
+      (dynamo, end) = starved
+      _ <- coordinator.session(2, Some(otherOrder)).use { other =>
+        for
+          _ <- dynamo.follows(headers)
+          _ <- other.follows(headers)
+          _ <- coordinator.step
+          first <- dynamo.requestedHeaders
+          _ <- IO(assertEquals(first, headers))
+          // the dynamo's session ends; the grace period passes with chain selection starved
+          _ <- end
+          _ <- now.set(GenesisBlockFetch.DefaultGracePicos)
+          _ <- coordinator.step
+        yield ()
+      }
+      observed <- happened.get
+    // Decision/Genesis.hs:281-299 (ouroboros-network c45735a5): the current peer is checked
+    // before the order is aligned with the live peers, so the one that has gone is named
+    yield assertEquals(
+      observed.take(2),
+      Vector(Left(GenesisTrace.PeerStarvedUs(starvedOrder)), Right(dynamo.identity))
+    )
   }
