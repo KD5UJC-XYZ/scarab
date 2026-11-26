@@ -48,8 +48,9 @@ object ByronEd25519:
       signature: Signature64,
       message: Bytes
   ): Either[VerificationError, VerificationResult] =
-    // The arithmetic refuses a key off the curve with a verdict; anything it throws is a typed
-    // implementation failure.
+    // The arithmetic refuses a key off the curve with a verdict and, given a key of 32 bytes and a
+    // signature of 64, throws nothing. What can throw is the JDK's SHA-512, when no provider
+    // supplies it, and a null argument: a typed implementation failure.
     Either
       .catchNonFatal(evaluate(publicKey, signature, message))
       .leftMap(VerificationError.ImplementationFailure(_))

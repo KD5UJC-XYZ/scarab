@@ -21,6 +21,12 @@ import xyz.kd5ujc.scarab.crypto.secret.{Scratch, Sha512}
   * response take, and B has order L, so `[x]B` is that of x mod L. The curve library's own
   * intermediates (field elements and points) are immutable objects that no scratch holds and that
   * are not erased; the JIT and the processor give no constant-time guarantee.
+  *
+  * The vendored calls refuse arrays of the wrong size by throwing, and none is handed one: every
+  * array they take is a buffer made here at the size the call takes (scalars and encodings of 32
+  * bytes, hashes and radix-16 digits of 64), filled by the call before it, and the seed is the 32
+  * bytes at an offset of a key whose size its loader checked. The message, the one input of any
+  * size, is only hashed.
   */
 private[kes] object Leaf:
   val SeedBytes: Int = 32

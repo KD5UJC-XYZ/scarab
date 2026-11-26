@@ -87,6 +87,22 @@ class StrictEd25519DifferentialSuite extends munit.FunSuite:
     assert(StrictEd25519.canonicalY(le(BigInt(0))))
   }
 
+  test("bytes of another length than 32 are neither canonical nor a key, and nothing throws") {
+    val random = new Random(1418)
+    val lengths = (0 to 100) ++ Vector(447, 448, 449, 4096)
+    lengths.foreach { n =>
+      val random1 = new Array[Byte](n)
+      random.nextBytes(random1)
+      Vector(Array.fill[Byte](n)(0), Array.fill[Byte](n)(-1), random1).foreach { e =>
+        val canonical = StrictEd25519.canonicalY(e)
+        val accepted = StrictEd25519.acceptsKey(e)
+        if n != 32 then
+          assert(!canonical, s"$n bytes read as a canonical encoding")
+          assert(!accepted, s"$n bytes read as a key")
+      }
+    }
+  }
+
   test("an encoding is accepted as a point exactly when it was before: random bytes") {
     val random = new Random(147)
     (0 until 100000).foreach { _ =>

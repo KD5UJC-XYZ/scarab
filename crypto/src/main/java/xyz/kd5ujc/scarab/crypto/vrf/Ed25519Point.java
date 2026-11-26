@@ -67,6 +67,7 @@ final class Ed25519Point {
                 (byte)0x66, (byte)0x66, (byte)0x66, (byte)0x66, (byte)0x66, (byte)0x66, (byte)0x66, (byte)0x66
         };
         BASE_POINT = decode(baseBytes);
+        // an assertion on a constant: the base point's encoding decodes
         if (BASE_POINT == null) {
             throw new IllegalStateException("Failed to decode Ed25519 base point");
         }

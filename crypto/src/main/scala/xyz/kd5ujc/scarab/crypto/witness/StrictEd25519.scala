@@ -93,17 +93,21 @@ object StrictEd25519:
       signature: Signature64,
       message: Bytes
   ): Either[VerificationError, VerificationResult] =
-    // The arithmetic refuses an invalid input with a verdict; anything it throws is a typed
-    // implementation failure.
+    // The arithmetic refuses an invalid input with a verdict and, given a key of 32 bytes and a
+    // signature of 64, throws nothing. What can throw is the JDK's SHA-512, when no provider
+    // supplies it, and a null argument: a typed implementation failure.
     Either
       .catchNonFatal(evaluate(publicKey, signature, message))
       .leftMap(VerificationError.ImplementationFailure(_))
 
   /** Whether the 255-bit little-endian `y` of a point encoding is below p = 2^255 - 19, the
-    * encoding being canonical (bit 255, the sign of x, is ignored).
+    * encoding being canonical (bit 255, the sign of x, is ignored). Bytes of another length than 32
+    * are no encoding, and not canonical.
     */
   private[witness] def canonicalY(bytes: Array[Byte]): Boolean =
-    VartimeEd25519.canonicalY(bytes, 0)
+    PublicKey32
+      .fromArray(bytes)
+      .exists(_.bytes.withRange((encoding, at, _) => VartimeEd25519.canonicalY(encoding, at)))
 
   /** Whether a 32-byte encoding is accepted as a key: canonical, on the curve and not of small
     * order.
@@ -114,10 +118,13 @@ object StrictEd25519:
     * y; and it takes the x whose sign is the encoded bit, so they differ in the sign only when x =
     * 0, that is y = 1 or y = -1, which are the points of order 1 and 2, refused by the small-order
     * test in any case. `StrictEd25519DifferentialSuite` compares the two over the blacklist
-    * encodings, their neighbours and random encodings, on and off the curve.
+    * encodings, their neighbours and random encodings, on and off the curve. Bytes of another
+    * length than 32 are no key, and not accepted.
     */
   private[witness] def acceptsKey(bytes: Array[Byte]): Boolean =
-    VartimeEd25519.strictKey(bytes, 0)
+    PublicKey32
+      .fromArray(bytes)
+      .exists(_.bytes.withRange((key, at, _) => VartimeEd25519.strictKey(key, at)))
 
   private def evaluate(
       publicKey: PublicKey32,
