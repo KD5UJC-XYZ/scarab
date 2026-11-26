@@ -226,6 +226,35 @@ def slot_clock(events, shelley):
                                  if e["event"] == "extended" and e["block"]["hash"] not in mine])}
 
 
+COLD_FIRST_BLOCK_MS = 5000  # the first block's own bound: a JVM that has not forged yet took 1.5 to 1.6 s (#1471)
+
+
+def adoption_latency(events):
+    """The slot-start-to-adoption latency of the blocks the node forged and adopted (`adopted`'s `latencyMs`), in
+    slot order, split where the JVM stops being cold: `first`, the first such block of the run, whose adoption
+    is by code that has not run before (#1471; a block forged before it and lost at the handover does not
+    count), and `later`, every one after it. `first` is None when the node adopted no block of its own."""
+    ordered = [e["latencyMs"] for e in sorted((e for e in events if e["event"] == "adopted"),
+                                              key=lambda e: e["block"]["slot"])]
+    return {"first": ordered[0] if ordered else None, "later": ordered[1:]}
+
+
+def adoption_failures(latency, budget, counted=None):
+    """What `adoption_latency` holds over its bounds: a later block over `budget` ms, or the first one over
+    `COLD_FIRST_BLOCK_MS`; and `counted`, the forger's own maximum, when it is over `budget` and above every
+    latency of the log: a block whose `adopted` line the log does not hold (the counter is written first)."""
+    first, slowest = latency["first"], max(latency["later"], default=None)
+    logged = max([v for v in (first, slowest) if v is not None], default=0)
+    return ([f"the node's first adopted block took {first} ms from its slot's start to adoption (bound "
+             f"{COLD_FIRST_BLOCK_MS} ms for the first block it adopts)"]
+            if first is not None and first > COLD_FIRST_BLOCK_MS else []) + (
+        [f"a block took {slowest} ms from its slot's start to adoption (budget {budget:.0f} ms)"]
+        if slowest is not None and slowest > budget else []) + (
+        [f"the forger counted a block of {counted} ms from its slot's start to adoption that the log does not "
+         f"hold (budget {budget:.0f} ms)"]
+        if counted is not None and counted > budget and counted > logged + 1 else [])
+
+
 FORGE_PHASES = ("toForged", "checkToForgedBlock", "leaderToForgedBlock", "forgedToAdopted", "adoptedLatency")
 
 
@@ -785,6 +814,7 @@ def pool(args):
         adopted_by_pools = set().union(*(v.get("tips", set()) for v in logs.values()))
         # each forged block by its own contents, a lost one too
         kinds = None if plutus_evidence is None else pool_plutus.block_kinds(forged, observed, plutus_evidence)
+        adoption = adoption_latency(events)
         summary = {
             "oracle": {**oracle, "scheduleCollectorErrors": collector.errors[:5]},
             "pool": {"id": pool_id, "number": ours, "stakeFraction": round(sigma, 4)},
@@ -817,6 +847,7 @@ def pool(args):
             "scheduling": scheduling_summary(events, log, args),
             "slotClock": slot_clock(events, shelley),
             "forgerStats": forging_stats,
+            "adoptionLatency": {"firstBlockMs": adoption["first"], "laterBlocksMs": spread(adoption["later"])},
             "forgeTiming": {**forge_timing(events, shelley, kinds), "rules": rules},
             "referenceInvalidBlocks": reference_invalid_blocks(logs),
             "referenceLogCounts": {pool: v.get("counts") for pool, v in logs.items()},
@@ -825,10 +856,10 @@ def pool(args):
                                   "scalaConnectionsEnded": {pool: v["scalaConnectionsEnded"] for pool, v in logs.items()}},
         }
         if forging_stats:
-            total = forging_stats["total"]
             # A sanity bound, not a performance benchmark: a block is adopted within ten slots of its
             # slot's start. The slowest block is one outlier on a shared CI runner (passing runs saw
-            # up to 462 ms against a mean near 25 ms at 100 ms slots).
+            # up to 462 ms against a mean near 25 ms at 100 ms slots). The node's first block is held
+            # to its own bound, since where the schedule puts it decides how cold the JVM still is (#1471).
             budget = 10 * shelley["slotLength"] * 1000
             # the counters were read right before the cutoff: the node may have forged one more block since
             last = at_cutoff["total"]
@@ -837,9 +868,7 @@ def pool(args):
                                 f"disagree with the log ({len(forged)} forged blocks)")
             if not 0 <= len(adopted) - last["adopted"] <= 2:
                 failures.append(f"the forger's counters say {last['adopted']} adopted, the log {len(adopted)}")
-            slowest = total["forgeLatencyMs"]["max"]
-            if slowest is not None and slowest > budget:
-                failures.append(f"a block took {slowest} ms from its slot's start to adoption (budget {budget:.0f} ms)")
+            failures += adoption_failures(adoption, budget, forging_stats["total"]["forgeLatencyMs"]["max"])
             print(json.dumps({"forgerStats": forging_stats}), flush=True)
             failures += [f"metrics: {f}" for f in metric_failures]
         if not forged:
