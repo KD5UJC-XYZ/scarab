@@ -130,7 +130,7 @@ object KeyGuard:
     * file a crash left half-replaced), under the lock (`lock` on). The lock comes first: a second
     * instance on the same key files is refused before it reads any of them, so it never takes for a
     * crash's leftover the replacement the running instance is writing, and never finishes or erases
-    * it.
+    * it. The read is [[loaded]], so whatever it throws fails the start as a typed error.
     */
   def credentials[F[_]: Sync](
       vrf: Path,
@@ -141,11 +141,25 @@ object KeyGuard:
   )(using
       Raise[F, ForgeError]
   ): Resource[F, PoolCredentials] =
+    held(kes, lock) *> Resource.eval(loaded(KeyFiles.load(vrf, kes, opCert, bls)))
+
+  /** The credentials `load` reads, on a blocking thread: its refusal raised as it is, and an
+    * exception it throws, which no reader of a key file throws on the file's content, as
+    * [[ForgeError.KeyFilesDefect]], so that a start fails with a typed error and not with the
+    * exception.
+    */
+  private[forge] def loaded[F[_]: Sync](load: => Either[ForgeError, PoolCredentials])(using
+      Raise[F, ForgeError]
+  ): F[PoolCredentials] =
     val F = Sync[F]
-    held(kes, lock) *> Resource.eval(
-      F.blocking(KeyFiles.load(vrf, kes, opCert, bls))
-        .flatMap(_.fold(_.raise[F, PoolCredentials], F.pure))
-    )
+    F.blocking(load)
+      .attempt
+      .flatMap(
+        _.fold(
+          cause => ForgeError.KeyFilesDefect(cause).raise[F, PoolCredentials],
+          _.fold(_.raise[F, PoolCredentials], F.pure)
+        )
+      )
 
   /** The lock for the KES key alone: the lock's file it holds ([[lockFile]], found once), or none
     * with `lock` off.

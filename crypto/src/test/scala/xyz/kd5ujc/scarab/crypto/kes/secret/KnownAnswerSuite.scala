@@ -7,7 +7,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.crypto.secret.Scratch
+import xyz.kd5ujc.scarab.crypto.secret.{Scratch, Sha512}
 
 /** Known answers for the two primitives of the KES secret path, beside the differential suites.
   *
@@ -24,6 +24,9 @@ import xyz.kd5ujc.scarab.crypto.secret.Scratch
   * which `Sum6KesSigningSuite` runs through this code.
   */
 class KnownAnswerSuite extends munit.FunSuite:
+  // the JDK's SHA-512, which the leaves hash with
+  private given Sha512.Provider = Sha512.Provider.found.toOption.get
+
   private def hex(s: String): Array[Byte] = s.grouped(2).map(Integer.parseInt(_, 16).toByte).toArray
   private def show(a: Array[Byte]): String = Bytes.fromArray(a).hex
 

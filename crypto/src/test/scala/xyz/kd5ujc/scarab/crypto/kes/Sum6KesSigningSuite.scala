@@ -21,7 +21,7 @@ class Sum6KesSigningSuite extends munit.FunSuite:
     assert(rows.nonEmpty)
     rows.foreach { row =>
       val Array(name, r1, vk1, vk0, vk) = row.split("\t")
-      assertEquals(rootOfSeed(hex(r1), 5).hex, vk1, name)
+      assertEquals(rootOfSeed(hex(r1), 5).map(_.hex), Right(vk1), name)
       assertEquals(
         Blake2b.hash256.hash(Bytes(hex(vk0).value ++ hex(vk1).value)).hex,
         vk,
@@ -37,7 +37,7 @@ class Sum6KesSigningSuite extends munit.FunSuite:
     val vk0 = Bytes.fromArray(raw.slice(544, 576))
     val vk1 = Bytes.fromArray(raw.slice(576, 608))
     assertEquals(k.verificationKey, Blake2b.hash256.hash(Bytes(vk0.value ++ vk1.value)))
-    assertEquals(rootOfSeed(Bytes.fromArray(raw.slice(512, 544)), 5), vk1)
+    assertEquals(rootOfSeed(Bytes.fromArray(raw.slice(512, 544)), 5), Right(vk1))
   }
 
   test("every period signs a message the verifier accepts, and only for that period") {
@@ -201,4 +201,22 @@ class Sum6KesSigningSuite extends munit.FunSuite:
       case Left(Sum6KesSigning.Failure.InvalidKeyLength(_)) => true
       case _                                                => false
     })
+  }
+
+  test("a JDK without SHA-512 refuses a key when it is made or read, as a typed failure") {
+    val refusal = new java.security.NoSuchAlgorithmException("no SHA-512 here")
+    val none = Left(refusal)
+    assertEquals(generatedWith(none)(seed).map(_.period), Left(Failure.Sha512Unavailable(refusal)))
+    val payload = fresh.toBytes.toArray
+    assertEquals(
+      evolvedPayloadWith(none)(payload).map(_.period),
+      Left(Failure.Sha512Unavailable(refusal))
+    )
+    // the input's own refusals come first, as with a JDK that has it
+    assertEquals(generatedWith(none)(Bytes.empty).map(_.period), Left(Failure.InvalidSeedLength(0)))
+    assertEquals(
+      evolvedPayloadWith(none)(new Array[Byte](10)).map(_.period),
+      Left(Failure.InvalidKeyLength(10))
+    )
+    assert(Failure.Sha512Unavailable(refusal).message.contains("no SHA-512 here"))
   }

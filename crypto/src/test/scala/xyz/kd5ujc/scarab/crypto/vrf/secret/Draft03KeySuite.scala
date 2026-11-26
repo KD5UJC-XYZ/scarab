@@ -202,3 +202,15 @@ class Draft03KeySuite extends munit.FunSuite:
       )
     )
   }
+
+  test("a JDK without SHA-512 refuses the key when it is made, as an internal failure") {
+    val refusal = new java.security.NoSuchAlgorithmException("no SHA-512 here")
+    assertEquals(
+      Draft03Key.fromSeedWith(Left(refusal))(Bytes.fromArray(seed)).map(_.publicKey),
+      Left(Failure.InternalFailure(refusal))
+    )
+    assertEquals(
+      Draft03Key.fromSeedWith(Left(refusal))(Bytes.empty).map(_.publicKey),
+      Left(Failure.SeedLength(0))
+    )
+  }

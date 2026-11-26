@@ -741,3 +741,20 @@ class ForgerFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
         assert(!events.exists(_.isInstanceOf[ForgeEvent.KesPersistFailed]))
     }
   }
+
+  test("a JDK without SHA-512, and a read of the key files that threw, stop the node as defects") {
+    val refusal = new java.security.NoSuchAlgorithmException("no SHA-512 here")
+    val kesKey = ForgeError.KesKey("kes", Sum6KesSigning.Failure.Sha512Unavailable(refusal))
+    assertEquals(HotKeys.infrastructureFailure(kesKey), Some(Fatal.Defect(refusal)))
+    assertEquals(HotKeys.reloadFailure(kesKey), Some(Fatal.Defect(refusal)))
+    val broken = new IllegalStateException("a reader that threw")
+    assertEquals(
+      HotKeys.infrastructureFailure(ForgeError.KeyFilesDefect(broken)),
+      Some(Fatal.Defect(broken))
+    )
+    // a KES key that is only damaged is still the files' refusal, not a defect
+    assertEquals(
+      HotKeys.infrastructureFailure(ForgeError.KesKey("kes", Sum6KesSigning.Failure.Forgotten)),
+      None
+    )
+  }

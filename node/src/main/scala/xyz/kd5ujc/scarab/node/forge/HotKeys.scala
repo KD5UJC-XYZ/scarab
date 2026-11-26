@@ -835,6 +835,9 @@ object HotKeys:
       Some(Fatal.Defect(cause))
     case ForgeError.VrfProof(Draft03Prover.Failure.HashToCurveEncoding) =>
       Some(Fatal.Internal(error))
+    case ForgeError.KesKey(_, Sum6KesSigning.Failure.Sha512Unavailable(cause)) =>
+      Some(Fatal.Defect(cause))
+    case ForgeError.KeyFilesDefect(cause) => Some(Fatal.Defect(cause))
     case ForgeError.KeyFile(_, ForgeKeyProblem.Vrf(Draft03Prover.Failure.InternalFailure(cause))) =>
       Some(Fatal.Defect(cause))
     case ForgeError.CertificateFailure(OperationalCertificate.Failure.Defect(cause)) =>

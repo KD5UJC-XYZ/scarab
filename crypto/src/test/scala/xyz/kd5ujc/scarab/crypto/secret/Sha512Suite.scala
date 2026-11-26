@@ -35,3 +35,13 @@ class Sha512Suite extends munit.FunSuite:
     intercept[java.security.DigestException](Sha512.intoWith(failed)(new Array[Byte](63), seed))
     assertEquals(failed.resets.get(), 1, "resets after a hash that threw")
   }
+
+  test("the JDK's SHA-512 provider is found, and a lookup the JDK refuses is its typed refusal") {
+    val provider = Sha512.Provider.found
+    assert(provider.isRight, s"no SHA-512 in this JDK: $provider")
+    val out = new Array[Byte](64)
+    provider.foreach { case given Sha512.Provider => Sha512.into(out, seed) }
+    assertEquals(out.toVector, MessageDigest.getInstance("SHA-512").digest(seed).toVector)
+    val refusal = new java.security.NoSuchAlgorithmException("no SHA-512 here")
+    assertEquals(Sha512.Provider.foundWith(throw refusal), Left(refusal))
+  }

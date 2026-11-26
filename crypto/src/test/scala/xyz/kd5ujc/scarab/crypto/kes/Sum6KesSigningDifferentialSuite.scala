@@ -9,7 +9,7 @@ import org.scalacheck.Prop.forAllNoShrink
 import org.scalacheck.rng.Seed
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.secret.{Blake2b256, Leaf}
-import xyz.kd5ujc.scarab.crypto.secret.Scratch
+import xyz.kd5ujc.scarab.crypto.secret.{Scratch, Sha512}
 
 /** The KES signing key against the key it replaced ([[LegacySum6KesSigning]], kept unchanged): key
   * generation, evolution, signing and the `kes.skey` layout are deterministic functions of the
@@ -21,6 +21,9 @@ import xyz.kd5ujc.scarab.crypto.secret.Scratch
   */
 class Sum6KesSigningDifferentialSuite extends munit.ScalaCheckSuite:
   import Sum6KesSigning.*
+
+  // the JDK's SHA-512, which the leaves hash with
+  private given Sha512.Provider = Sha512.Provider.found.toOption.get
 
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters.withMinSuccessfulTests(200)

@@ -26,7 +26,8 @@ import xyz.kd5ujc.scarab.crypto.secret.{Scratch, Sha512}
   * array they take is a buffer made here at the size the call takes (scalars and encodings of 32
   * bytes, hashes and radix-16 digits of 64), filled by the call before it, and the seed is the 32
   * bytes at an offset of a key whose size its loader checked. The message, the one input of any
-  * size, is only hashed.
+  * size, is only hashed. The hashes take their digests from the [[Sha512.Provider]] the key found
+  * when it was made or read, so none of them can fail.
   */
 private[kes] object Leaf:
   val SeedBytes: Int = 32
@@ -34,7 +35,9 @@ private[kes] object Leaf:
   val SignatureBytes: Int = 64
 
   /** The public key of the seed at `seed(at, at + 32)`, into `out` at `outAt`. */
-  def publicKey(s: Scratch)(seed: Array[Byte], at: Int, out: Array[Byte], outAt: Int): Unit =
+  def publicKey(s: Scratch)(seed: Array[Byte], at: Int, out: Array[Byte], outAt: Int)(using
+      Sha512.Provider
+  ): Unit =
     val (_, _, a) = expanded(s)(seed, at)
     System.arraycopy(s.array(a), 0, out, outAt, PublicKeyBytes)
 
@@ -46,7 +49,7 @@ private[kes] object Leaf:
       message: Array[Byte],
       out: Array[Byte],
       outAt: Int
-  ): Unit =
+  )(using Sha512.Provider): Unit =
     val (x, prefix, a) = expanded(s)(seed, at)
     val nonce = s.buffer(64)
     sha512(s.array(nonce))(s.array(prefix), message)
@@ -65,7 +68,9 @@ private[kes] object Leaf:
 
   /** The scalar x, the nonce prefix and the public key of the seed at `seed(at, at + 32)`, in `s`.
     */
-  private def expanded(s: Scratch)(seed: Array[Byte], at: Int): (s.Buffer, s.Buffer, s.Buffer) =
+  private def expanded(s: Scratch)(seed: Array[Byte], at: Int)(using
+      Sha512.Provider
+  ): (s.Buffer, s.Buffer, s.Buffer) =
     val copy = s.buffer(SeedBytes)
     System.arraycopy(seed, at, s.array(copy), 0, SeedBytes)
     val az = s.buffer(64)
@@ -93,4 +98,5 @@ private[kes] object Leaf:
   /** SHA-512 of `pieces` into the 64 bytes of `into`, with a digest reset on the way out, as the
     * VRF prover's hash is ([[Sha512]]).
     */
-  private def sha512(into: Array[Byte])(pieces: Array[Byte]*): Unit = Sha512.into(into, pieces*)
+  private def sha512(into: Array[Byte])(pieces: Array[Byte]*)(using Sha512.Provider): Unit =
+    Sha512.into(into, pieces*)

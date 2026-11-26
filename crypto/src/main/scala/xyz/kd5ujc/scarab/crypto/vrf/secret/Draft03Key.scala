@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.crypto.vrf.secret
 
 import cats.syntax.either.*
 import com.weavechain.curve25519.{CompressedEdwardsY, Constants, EdwardsPoint, Scalar}
-import java.security.MessageDigest
+import java.security.{MessageDigest, NoSuchAlgorithmException}
 import java.util.Arrays
 import scala.jdk.OptionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -39,12 +39,21 @@ import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover.{Failure, Proved}
   * The seed is zeroed by [[forget]], under this key's monitor, which every copy of it also holds:
   * an operation copies the whole seed or, once the key is forgotten, refuses
   * ([[Failure.MissingSigningKey]]). A forgotten key proves nothing more.
+  *
+  * The key keeps the [[Sha512.Provider]] its maker found, which every hash it computes takes its
+  * digest from: a JDK without SHA-512 refuses the key when it is made
+  * ([[Failure.InternalFailure]]), and a key that exists proves with no failure of that kind.
+  * Nothing else an operation calls throws: the curve arithmetic is handed buffers of the sizes it
+  * takes, made in the operation, and decodes without throwing.
   */
 private[vrf] final class Draft03Key private (
     private val material: Array[Byte],
-    val publicKey: Bytes
+    val publicKey: Bytes,
+    digests: Sha512.Provider
 ):
   import Draft03Key.*
+
+  private given Sha512.Provider = digests
 
   // FUN-2 (d): the seed is zeroed in place by forget; reads and the erasure hold this monitor
   @SuppressWarnings(Array("org.wartremover.warts.Var"))
@@ -88,12 +97,12 @@ private[vrf] final class Draft03Key private (
     * [[prove]] certifies, from the same steps up to Gamma, without the nonce, the commitments, the
     * challenge and the response that only the proof needs.
     */
-  def output(h: Bytes): Either[Failure, Bytes] = run(Scratch.within(s => outputIn(s, h)))
+  def output(h: Bytes): Either[Failure, Bytes] = Scratch.within(s => outputIn(s, h))
 
   /** The proof `Gamma || c || s` over the input whose hash-to-curve point is encoded as `h`, and
     * the output it certifies.
     */
-  def prove(h: Bytes): Either[Failure, Proved] = run(Scratch.within(s => provingIn(s, h)))
+  def prove(h: Bytes): Either[Failure, Proved] = Scratch.within(s => provingIn(s, h))
 
   /** [[output]] in the scratch `s`; [[Failure.MissingSigningKey]] once the key is forgotten, and
     * [[Failure.HashToCurveEncoding]] if `h` encodes no point.
@@ -138,10 +147,15 @@ private[vrf] object Draft03Key:
   private val ChallengeDomain: Byte = 2
   private val OutputDomain: Byte = 3
 
-  def fromSeed(seed: Bytes): Either[Failure, Draft03Key] =
+  def fromSeed(seed: Bytes): Either[Failure, Draft03Key] = fromSeedWith(Sha512.Provider.found)(seed)
+
+  /** [[fromSeed]] with the JDK's SHA-512 as `found` finds it, a seam for the suites. */
+  private[secret] def fromSeedWith(
+      found: => Either[NoSuchAlgorithmException, Sha512.Provider]
+  )(seed: Bytes): Either[Failure, Draft03Key] =
     if seed == null then Left(Failure.MissingSeed)
     else if seed.size != SeedBytes then Left(Failure.SeedLength(seed.size))
-    else made(seed.copyTo)
+    else made(seed.copyTo, found)
 
   /** The 64-byte `vrf.skey` payload `seed || publicKey`; the stored public key must be the seed's.
     */
@@ -149,7 +163,7 @@ private[vrf] object Draft03Key:
     if bytes == null then Left(Failure.MissingSigningKey)
     else if bytes.size != SeedBytes + 32 then Left(Failure.SigningKeyLength(bytes.size))
     else
-      made(bytes.take(SeedBytes).copyTo).flatMap { key =>
+      made(bytes.take(SeedBytes).copyTo, Sha512.Provider.found).flatMap { key =>
         if key.publicKey == bytes.drop(SeedBytes) then Right(key)
         else
           key.forget()
@@ -163,7 +177,10 @@ private[vrf] object Draft03Key:
     if payload == null then Left(Failure.MissingSigningKey)
     else if payload.length != SeedBytes + 32 then Left(Failure.SigningKeyLength(payload.length))
     else
-      made((into, at) => System.arraycopy(payload, 0, into, at, SeedBytes)).flatMap { key =>
+      made(
+        (into, at) => System.arraycopy(payload, 0, into, at, SeedBytes),
+        Sha512.Provider.found
+      ).flatMap { key =>
         val stored = new Array[Byte](32)
         System.arraycopy(payload, SeedBytes, stored, 0, 32)
         if key.publicKey == Bytes.fromArray(stored) then Right(key)
@@ -172,47 +189,36 @@ private[vrf] object Draft03Key:
           Left(Failure.PublicKeyMismatch)
       }
 
-  /** The key of the 32 bytes `seed`: its public key `[x]B`, computed from a copy in a scratch,
-    * which zeroes it however the computation ends; then the key, made with an array of zeros, and
-    * the seed copied into that array, which nothing between the copy and the key that owns it can
-    * fail. What can throw is the JDK's SHA-512, as in [[run]].
+  /** The key of the 32 bytes `seed`, once `found` gives the JDK's SHA-512 (its refusal is a
+    * [[Failure.InternalFailure]]): its public key `[x]B`, computed from a copy in a scratch, which
+    * zeroes it however the computation ends; then the key, made with an array of zeros, and the
+    * seed copied into that array, which nothing between the copy and the key that owns it can fail.
     */
-  private def made(copySeed: (Array[Byte], Int) => Unit): Either[Failure, Draft03Key] =
-    Either
-      .catchNonFatal(Scratch.within { s =>
+  private def made(
+      copySeed: (Array[Byte], Int) => Unit,
+      found: => Either[NoSuchAlgorithmException, Sha512.Provider]
+  ): Either[Failure, Draft03Key] =
+    found.leftMap(Failure.InternalFailure(_)).map { digests =>
+      given Sha512.Provider = digests
+      val publicKey = Scratch.within { s =>
         val copy = s.buffer(SeedBytes)
         copySeed(s.array(copy), 0)
         val (x, _) = expanded(s)(copy)
         s.publish(
           encoded(s)(Constants.ED25519_BASEPOINT_TABLE.multiplyRadix16(s.array(digits(s)(x))))
         )
-      })
-      .bimap(
-        Failure.InternalFailure(_),
-        { publicKey =>
-          val key = new Draft03Key(new Array[Byte](SeedBytes), publicKey)
-          copySeed(key.material, 0)
-          key
-        }
-      )
-
-  /** What an operation computed or refused, or a failure of the library as
-    * [[Failure.InternalFailure]]. What can throw is the JDK's SHA-512 ([[Sha512]]), when no
-    * provider of the JDK supplies it; the curve arithmetic is handed buffers of the sizes it takes,
-    * made in the operation, and decodes without throwing.
-    */
-  private def run[A](computed: => Either[Failure, A]): Either[Failure, A] =
-    Either
-      .catchNonFatal(computed)
-      .leftMap(Failure.InternalFailure(_))
-      .flatMap(identity)
+      }
+      val key = new Draft03Key(new Array[Byte](SeedBytes), publicKey, digests)
+      copySeed(key.material, 0)
+      key
+    }
 
   /** The scalar x and the nonce key of `seed`, in `s`: SHA-512 of the seed, its first half clamped
     * (bit 255 clear, bit 254 set, the low three bits clear) and its second half. x stays unreduced:
     * it is below 2^255, the range the radix-16 recoding and the response take, and B and H have
     * order L, so `[x]B` and `[x]H` are those of x mod L.
     */
-  private def expanded(s: Scratch)(seed: s.Buffer): (s.Buffer, s.Buffer) =
+  private def expanded(s: Scratch)(seed: s.Buffer)(using Sha512.Provider): (s.Buffer, s.Buffer) =
     val az = s.buffer(64)
     sha512(s.array(az), s.array(seed))
     val x = s.buffer(32)
@@ -232,7 +238,7 @@ private[vrf] object Draft03Key:
       nonceKey: s.Buffer,
       hString: Array[Byte],
       hPoint: EdwardsPoint
-  ): Proved =
+  )(using Sha512.Provider): Proved =
     val gamma = gammaOf(s)(x, hPoint)
     val gammaString = encoded(s)(gamma)
     // k = SHA-512(nonce key || H) mod L, the deterministic nonce of draft-03 (RFC 8032 style)
@@ -279,7 +285,7 @@ private[vrf] object Draft03Key:
   /** The output of `gamma`: SHA-512 of the suite, the domain byte and the encoding of `[8]Gamma`,
     * what the verifier computes from the proof's Gamma.
     */
-  private def outputOf(s: Scratch)(gamma: EdwardsPoint): Bytes =
+  private def outputOf(s: Scratch)(gamma: EdwardsPoint)(using Sha512.Provider): Bytes =
     val out = s.buffer(64)
     sha512(
       s.array(out),
@@ -298,4 +304,5 @@ private[vrf] object Draft03Key:
       .toRight(Failure.HashToCurveEncoding)
 
   /** SHA-512 of `pieces` into `into`, with a digest reset on the way out ([[Sha512]]). */
-  private def sha512(into: Array[Byte], pieces: Array[Byte]*): Unit = Sha512.into(into, pieces*)
+  private def sha512(into: Array[Byte], pieces: Array[Byte]*)(using Sha512.Provider): Unit =
+    Sha512.into(into, pieces*)

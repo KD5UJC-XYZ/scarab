@@ -10,7 +10,7 @@ import scala.concurrent.{Await, ExecutionContext, Future}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.LegacySum6KesSigning
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.Failure
-import xyz.kd5ujc.scarab.crypto.secret.{Public, Scratch}
+import xyz.kd5ujc.scarab.crypto.secret.{Public, Scratch, Sha512}
 
 /** What the secret half of a KES key holds and erases. Between operations, its array alone, which
   * after every evolution holds no seed of a period the key has left, and which `forget` zeroes;
@@ -26,6 +26,9 @@ import xyz.kd5ujc.scarab.crypto.secret.{Public, Scratch}
   * halves are Blake2b-256 of `1 || seed` and `2 || seed`.
   */
 class Sum6KeySuite extends munit.FunSuite:
+  // the JDK's SHA-512, which the leaves hash with
+  private given Sha512.Provider = Sha512.Provider.found.toOption.get
+
   private val L = BigInt(2).pow(252) + BigInt("27742317777372353535851937790883648493")
 
   private val root: Array[Byte] = Array.tabulate(32)(i => (i * 41 + 7).toByte)

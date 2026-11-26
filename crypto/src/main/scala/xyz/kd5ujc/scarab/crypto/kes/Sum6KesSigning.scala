@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.crypto.kes
 
+import cats.syntax.either.*
+import java.security.NoSuchAlgorithmException
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.secret.Sum6Key
-import xyz.kd5ujc.scarab.crypto.secret.Scratch
+import xyz.kd5ujc.scarab.crypto.secret.{Scratch, Sha512}
 
 /** Sum6 KES signing keys in the binary layout of cardano-base (`SumKES` over `Ed25519`,
   * Blake2b-256): the `kes.skey` payload of `cardano-cli node key-gen-KES`.
@@ -25,6 +27,10 @@ import xyz.kd5ujc.scarab.crypto.secret.Scratch
   * intermediates are immutable objects that are not erased. See it for what is erased and what is
   * not. The reference keeps the key in locked memory outside the heap; a JVM may copy an array
   * before it is zeroed, so the erasure is of the arrays this code owns.
+  *
+  * A key is made or read only once the JDK's SHA-512 is found ([[Failure.Sha512Unavailable]]
+  * otherwise); the key keeps the provider found, so signing and evolving have no failure of that
+  * kind, and nothing here throws on its input.
   */
 object Sum6KesSigning:
   val Depth: Int = Sum6Key.Depth
@@ -46,6 +52,11 @@ object Sum6KesSigning:
     /** The key is forgotten (its material zeroed): it signs and evolves no more. */
     case Forgotten
 
+    /** The JDK supplies no SHA-512, which the leaves hash with: a defect of the JDK's
+      * configuration, found when a key is made or read.
+      */
+    case Sha512Unavailable(cause: NoSuchAlgorithmException)
+
     def message: String = this match
       case MissingSeed | InvalidSeedLength(_) => "KES seed must be 32 bytes"
       case MissingKey | InvalidKeyLength(_)   => s"Sum6 KES signing key must be $KeyBytes bytes"
@@ -61,6 +72,8 @@ object Sum6KesSigning:
       case RightSeedMismatch(depth) =>
         s"level $depth: the right-half seed does not generate the stored verification key"
       case Forgotten => "the KES signing key has been erased"
+      case Sha512Unavailable(cause) =>
+        s"the JDK supplies no SHA-512: ${Option(cause.getMessage).getOrElse(cause.toString)}"
 
   enum SeedState:
     case Present, Erased
@@ -115,13 +128,30 @@ object Sum6KesSigning:
 
   /** `genKeyKES seed`: the key for period 0, deterministic in the 32-byte seed. */
   def generate(seed: Bytes): Either[Failure, SigningKey] =
+    generatedWith(Sha512.Provider.found)(seed)
+
+  /** [[generate]] with the JDK's SHA-512 as `found` finds it, a seam for the suites. */
+  private[kes] def generatedWith(
+      found: => Either[NoSuchAlgorithmException, Sha512.Provider]
+  )(seed: Bytes): Either[Failure, SigningKey] =
     if seed == null then Left(Failure.MissingSeed)
     else if seed.size != SeedBytes then Left(Failure.InvalidSeedLength(seed.size))
-    else Right(new SigningKey(seed.withRange((array, from, _) => Sum6Key.generated(array, from))))
+    else
+      digests(found).map { case given Sha512.Provider =>
+        new SigningKey(seed.withRange((array, from, _) => Sum6Key.generated(array, from)))
+      }
 
   /** Verification key of the depth-`depth` tree generated from `seed` (test and diagnostics). */
-  private[kes] def rootOfSeed(seed: Bytes, depth: Int): Bytes =
-    seed.withRange((array, from, _) => Sum6Key.rootOf(array, from, depth))
+  private[kes] def rootOfSeed(seed: Bytes, depth: Int): Either[Failure, Bytes] =
+    digests(Sha512.Provider.found).map { case given Sha512.Provider =>
+      seed.withRange((array, from, _) => Sum6Key.rootOf(array, from, depth))
+    }
+
+  /** The provider of the JDK's SHA-512 that `found` gives, or the typed failure of its absence. */
+  private def digests(
+      found: => Either[NoSuchAlgorithmException, Sha512.Provider]
+  ): Either[Failure, Sha512.Provider] =
+    found.leftMap(Failure.Sha512Unavailable(_))
 
   /** Load a `kes.skey` payload that is at period `period` (0 for a fresh key). Every level's stored
     * verification keys are recomputed and checked, so a corrupt or mis-sized key is refused. The
@@ -132,9 +162,11 @@ object Sum6KesSigning:
     else if bytes.size != KeyBytes then Left(Failure.InvalidKeyLength(bytes.size))
     else if period < 0 || period >= Periods then Left(Failure.PeriodOutOfRange(period))
     else
-      bytes
-        .withRange((array, from, _) => Sum6Key.loaded(array, from, Some(period)))
-        .map(new SigningKey(_))
+      digests(Sha512.Provider.found).flatMap { case given Sha512.Provider =>
+        bytes
+          .withRange((array, from, _) => Sum6Key.loaded(array, from, Some(period)))
+          .map(new SigningKey(_))
+      }
 
   /** Load a `kes.skey` payload of any period (a key this node has evolved and written back, see
     * `KesStore`): the period is read off the key itself, because an evolution erases the `r1` seed
@@ -147,12 +179,25 @@ object Sum6KesSigning:
     if bytes == null then Left(Failure.MissingKey)
     else if bytes.size != KeyBytes then Left(Failure.InvalidKeyLength(bytes.size))
     else
-      bytes.withRange((array, from, _) => Sum6Key.loaded(array, from, None)).map(new SigningKey(_))
+      digests(Sha512.Provider.found).flatMap { case given Sha512.Provider =>
+        bytes
+          .withRange((array, from, _) => Sum6Key.loaded(array, from, None))
+          .map(new SigningKey(_))
+      }
 
   /** [[fromEvolved]] of an array its caller owns and erases: the key checks the bytes in working
     * storage of its own and copies them only once they pass.
     */
   def fromEvolvedPayload(payload: Array[Byte]): Either[Failure, SigningKey] =
+    evolvedPayloadWith(Sha512.Provider.found)(payload)
+
+  /** [[fromEvolvedPayload]] with the JDK's SHA-512 as `found` finds it, a seam for the suites. */
+  private[kes] def evolvedPayloadWith(
+      found: => Either[NoSuchAlgorithmException, Sha512.Provider]
+  )(payload: Array[Byte]): Either[Failure, SigningKey] =
     if payload == null then Left(Failure.MissingKey)
     else if payload.length != KeyBytes then Left(Failure.InvalidKeyLength(payload.length))
-    else Sum6Key.loaded(payload, 0, None).map(new SigningKey(_))
+    else
+      digests(found).flatMap { case given Sha512.Provider =>
+        Sum6Key.loaded(payload, 0, None).map(new SigningKey(_))
+      }
