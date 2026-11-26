@@ -13,9 +13,9 @@ import ContextFailureCbor.ContextEra
 import FailureCbor.*
 
 /** The predicate-failure CBOR of the eras from Shelley to Babbage (`EncCBOR` of
-  * `ShelleyLedgerPredFailure` and the rules it nests), as [[PredicateFailureCbor]] has it for
-  * Conway. The tags and the nesting are those of the reference's instances, which differ from
-  * Conway's and from era to era:
+  * `ShelleyLedgerPredFailure` and the rules it nests), as [[ConwayFailureCbor]] has Conway's. The
+  * tags and the nesting are those of the reference's instances, which differ from Conway's and from
+  * era to era:
   *
   *   - LEDGER (`Shelley/Rules/Ledger.hs:210-221`, every era up to Babbage): UTXOW 0, DELEGS 1, the
   *     withdrawals that name no account 2 and the incomplete ones 3. DELEGS (`Delegs.hs`) holds

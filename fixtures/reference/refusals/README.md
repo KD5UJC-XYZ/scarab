@@ -57,14 +57,14 @@ former name is read as that build, which has the same cardano-ledger, so the rec
 
 For a **Conway** case the suite decodes the state and UTxO with Scarab's Haskell-state codecs (a state
 that does not read and write back byte for byte fails its own test), ticks it to the slot after the tip
-(`MempoolLedger.tick`), and puts `item` through Scarab's own node-to-client path:
+(`Tick`, then `ConwayPoolLedger.of`, the pool's Conway ledger), and puts `item` through Scarab's own node-to-client path:
 `LocalSubmission.unwrap`, `MempoolState.add` on an empty mempool, `LocalSubmission.reasonItem`. The
 result must equal `reason` byte for byte: every failure, their number and their order.
 
 For a **Shelley, Allegra, Mary, Alonzo or Babbage** case the same state is ticked and the transaction
-is judged by that era's LEDGER rule (`ShelleyLedger.sts[E]`) and written by `PreConwayFailureCbor`. Scarab's mempool and
-LocalTxSubmission serve Conway only, so this compares the rule and its encoding, not a node-to-client
-path.
+goes through the same node-to-client path: `LocalSubmission.unwrap`, `MempoolState.add` on an empty mempool whose
+ledger is that era's (`EarlierLedger`, whose rule is the era's LEDGER, `ShelleyLedger.sts[E]`), and
+`LocalSubmission.reasonItem`, which writes the refusal in the era's encoding (`PreConwayFailureCbor`).
 
 The 2026-10-26 corpus contains 105 transactions: 7 each in Shelley, Allegra and Mary,
 8 in Alonzo, 28 in Babbage and 48 in Conway. Every case compares the complete refusal bytes,

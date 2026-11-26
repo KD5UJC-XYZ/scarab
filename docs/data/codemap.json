@@ -1395,7 +1395,7 @@
         "NtcQuerySuite",
         "QueryVersionSuite",
         "WalletQuerySuite",
-        "PredicateFailureCborSuite",
+        "ReferenceRefusalSuite",
         "QueryGoldenSuite"
       ],
       "docs": [

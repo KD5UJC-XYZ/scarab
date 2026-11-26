@@ -50,7 +50,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.ledger.Utxo
 import xyz.kd5ujc.scarab.node.NodeSetup
-import xyz.kd5ujc.scarab.node.mempool.{LocalSubmission, MempoolEnv, MempoolLedger}
+import xyz.kd5ujc.scarab.node.mempool.{ConwayTicked, LocalSubmission, MempoolEnv}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
 
@@ -80,7 +80,7 @@ class ConwayLedgerChecksSuite extends FunSuite:
       stored: Map[TxIn, TxOut],
       utxo: UTxO[Conway],
       pp: PParams[Conway],
-      ledger: MempoolLedger,
+      ledger: ConwayTicked,
       slot: BigInt,
       build: ReferenceBuild,
       families: Vector[Family],
@@ -118,7 +118,7 @@ class ConwayLedgerChecksSuite extends FunSuite:
           .modify(ls =>
             ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(Utxo.fromMap(stored))))
           )(nes)
-        val ledger = right(s"$what tick")(MempoolLedger.tick(withUtxo, Some(rc.tipSlot), env))
+        val ledger = right(s"$what tick")(ConwayTicked.ticked(withUtxo, Some(rc.tipSlot), env))
         Seen(
           what,
           bytes,
@@ -404,47 +404,33 @@ class ConwayLedgerChecksSuite extends FunSuite:
       val era = eraLedger(s, s.build, TxEnv.Validation.All, depth = 1) match
         case Right(Left(fs)) => fs.toChain.toVector
         case other           => fail(s"${s.label}: $other")
-      val failures = era.map(stored(s))
-      assertEquals(
-        PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
-        s.reason.hex,
-        s.label
-      )
-      // the era failures written by their own encoder, without the flat form
-      assertEquals(ConwayFailureCborCheck.direct(era).hex, s.reason.hex, s"${s.label}: direct")
+      // the era failures written by their own encoder
+      assertEquals(ConwayFailureCborCheck.direct(era).hex, s.reason.hex, s.label)
     }
 
   test(
-    "the era failures' own encoder writes the flat form's bytes, on every refused case, version, build and policy"
+    "the era failures' bytes are those the flat encoder wrote, on every case, version, build, policy and depth"
   ):
-    // the same era failures, written by `ConwayFailureCbor` and by `PredicateFailureCbor` after the
-    // flat projection: every refusal is compared, none left out, the flat projection having a form
-    // for each failure of the corpus: the 3,744 refusals of the cases at each version, build, policy
-    // and depth
-    val judged = for
-      s0 <- seen
-      s <- versions(s0)
-      build <- ReferenceBuild.values.toVector
-      validation <- TxEnv.Validation.values.toVector
-      depth <- Vector(0, 1)
-      fs <- eraLedger(s, build, validation, depth) match
-        case Right(Left(fs)) => Vector(fs.toChain.toVector)
-        case Right(Right(_)) => Vector.empty
-        case Left(defect)    => fail(s"${s.label}: defect $defect")
-    yield
-      val what = s"${s.label} under ${build.name}, $validation, depth $depth"
-      val direct = ConwayFailureCborCheck.direct(fs)
-      val flat = fs
-        .traverse(ConwayLedgerPredFailure.toStored(_, purposes(s), readOf(s)))
-        .fold(e => fail(s"$what: no flat form, $e"), identity)
-      assertEquals(
-        direct.hex,
-        PredicateFailureCbor.applyTxError(flat).fold(e => fail(s"$what: $e"), _.hex),
-        what
-      )
-      what
-    assertEquals(judged.size, 3744, "the refusals compared")
-    assertEquals(judged.distinct.size, judged.size, "each judgment once")
+    // the flat rules' encoder, before it was deleted, wrote each refusal of these judgments, and
+    // the era encoder wrote the same bytes (`fixtures/conway-flat-refusals`): 3,744 refusals
+    val recorded = FlatRecordings.ledgerChecks
+    assertEquals(recorded.keySet, seen.map(_.label).toSet, "the cases recorded")
+    val cells = seen.flatMap { s0 =>
+      val judged = for
+        s <- versions(s0)
+        build <- ReferenceBuild.values.toVector
+        validation <- TxEnv.Validation.values.toVector
+        depth <- Vector(0, 1)
+      yield eraLedger(s, build, validation, depth) match
+        case Right(Left(fs)) =>
+          FlatRecordings.digest(ConwayFailureCborCheck.direct(fs.toChain.toVector))
+        case Right(Right(_)) => "-"
+        case Left(defect)    => fail(s"${s.label} under ${build.name}: defect $defect")
+      assertEquals(judged, recorded(s0.label), s0.label)
+      judged
+    }
+    assertEquals(cells.count(_ != "-"), 3744, "the refusals compared")
+    assertEquals(cells.size, seen.size * 48, "the judgments compared")
 
   test("LEDGERS of one transaction is its LEDGER one level down, embedded, on every Conway case"):
     seen.foreach { s =>

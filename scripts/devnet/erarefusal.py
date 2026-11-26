@@ -4,7 +4,7 @@
 Each case is a transaction the Haskell node must refuse; its raw `ApplyTxErr` over LocalTxSubmission is kept
 with the transaction and the provenance of the run in `refused-raw-plutus.jsonl` of the run directory, and
 `refused_fixture.py raw-plutus` assembles `fixtures/devnet/refused-raw-plutus.jsonl` from it. The Scala suite
-`PlutusFailureReferenceSuite` checks that `PreConwayFailureCbor` / `PredicateFailureCbor` write those bytes.
+`PlutusFailureReferenceSuite` checks that `PreConwayFailureCbor` / `ConwayFailureCbor` write those bytes.
 Nothing is asserted about the reference's text here: the bytes are the evidence, and a case the reference
 accepts or refuses with a list the Scala model cannot rebuild shows up when the suite is run on the recording.
 

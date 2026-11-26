@@ -823,7 +823,16 @@ class ConwayUtxoChecksSuite extends FunSuite:
       consumed,
       produced
     )
-    val typed = BabbageUtxo.babbageUtxoValidation[Conway](
+    (flat, conway(typedUtxo(s, build, validation, ei)))
+
+  /** `babbageUtxoValidation` on `s`: its verdict in the era's failures. */
+  private def typedUtxo(
+      s: Seen,
+      build: ReferenceBuild,
+      validation: TxEnv.Validation,
+      ei: Horizon
+  ): Verdict[ConwayUtxoPredFailure[Conway]] =
+    BabbageUtxo.babbageUtxoValidation[Conway](
       UtxoEnv(s.slot, s.pp, s.cert),
       s.utxo,
       s.typed,
@@ -835,7 +844,12 @@ class ConwayUtxoChecksSuite extends FunSuite:
         ConwayUtxo.injectShelleyFailure(build)
       )
     )
-    (flat, conway(typed))
+
+  /** A UTXO failure under LEDGER's UTXOW, as LEDGER reports it. */
+  private def underLedger(f: ConwayUtxoPredFailure[Conway]) =
+    xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure.ConwayUtxowFailure[Conway](
+      xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure.UtxoFailure[Conway](f)
+    )
 
   test(
     "babbageUtxoValidation gives the flat UTXO's verdict on every Conway case, build and policy"
@@ -861,13 +875,9 @@ class ConwayUtxoChecksSuite extends FunSuite:
     )
     assert(utxoOnly.nonEmpty, "no case that only UTXO refuses")
     utxoOnly.foreach { s =>
-      val (_, typed) = assembled(s, s.build, TxEnv.Validation.All, historyAt(s.slot))
-      val failures = typed.fold(_.iterator.toVector, _ => fail(s"${s.label}: no failure"))
-      assertEquals(
-        PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
-        s.reason.hex,
-        s.label
-      )
+      val failures = typedUtxo(s, s.build, TxEnv.Validation.All, historyAt(s.slot))
+        .fold(_.iterator.toVector.map(underLedger), _ => fail(s"${s.label}: no failure"))
+      assertEquals(ConwayFailureCborCheck.direct(failures).hex, s.reason.hex, s.label)
     }
     assert(
       utxoOnly.map(_.build).toSet.size >= 2,
@@ -1092,13 +1102,9 @@ class ConwayUtxoChecksSuite extends FunSuite:
           xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
           asSubRule = true
         ) match
-        case Right(Left(fs)) => fs.toChain.toVector.map(stored)
+        case Right(Left(fs)) => fs.toChain.toVector.map(underLedger)
         case other           => fail(s"${s.label}: $other")
-      assertEquals(
-        PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
-        s.reason.hex,
-        s.label
-      )
+      assertEquals(ConwayFailureCborCheck.direct(failures).hex, s.reason.hex, s.label)
     }
 
   // ---- UTXOW whole: its checks, then UTXO with UTXOS -------------------------------------------
@@ -1211,15 +1217,9 @@ class ConwayUtxoChecksSuite extends FunSuite:
     utxowOnly.foreach { s =>
       val failures = eraUtxow(s, s.build, TxEnv.Validation.All, 2) match
         case Right(Left(fs)) =>
-          fs.toChain.toVector.map(f =>
-            xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure
-              .toStored(f, purposes(s))
-              .fold(e => fail(s"${s.label}: $e"), identity)
+          fs.toChain.toVector.map(
+            xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure.ConwayUtxowFailure[Conway](_)
           )
         case other => fail(s"${s.label}: $other")
-      assertEquals(
-        PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
-        s.reason.hex,
-        s.label
-      )
+      assertEquals(ConwayFailureCborCheck.direct(failures).hex, s.reason.hex, s.label)
     }

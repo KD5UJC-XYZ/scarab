@@ -443,9 +443,10 @@ class LocalSubmissionSuite extends FailsOnUncaught:
       }
   }
 
-  test("the node's own refusals are Conway's free text, byte for byte as before the switch") {
-    // `ConwayMempoolFailure` by Conway's era encoder, as the flat rules' encoder wrote it, under
-    // every ledger that has the text and with none
+  test("the node's own refusals are Conway's free text under every ledger but Dijkstra's") {
+    // `ConwayMempoolFailure` by Conway's era encoder, `[[6, [[7, text]]]]`, under every ledger
+    // before Dijkstra and with none: the eras before Conway have no free-text failure
+    // (`PreConwayFailureCbor` has no encoding of one), so Conway's is sent under them too
     val id = Bytes(Vector.fill(32)(7.toByte))
     val problems = Vector(
       Rejection.AlreadyHeld(id) -> xyz.kd5ujc.scarab.ledger.MempoolProblem.AllInputsSpent,
@@ -469,9 +470,26 @@ class LocalSubmissionSuite extends FailsOnUncaught:
       (rejection, problem) <- problems
       era <- eras
     do
-      val flat = xyz.kd5ujc.scarab.node.ntc.PredicateFailureCbor
-        .applyTxError(Vector(xyz.kd5ujc.scarab.ledger.PredicateFailure.Mempool(problem)))
-      assertEquals(LocalSubmission.reasonItem(rejection, era).map(_.hex), flat.map(_.hex), s"$era")
+      // written byte by byte, apart from any encoder of the node's
+      val conway = xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck.freeTextReply(problem.message)
+      val sent = LocalSubmission.reasonItem(rejection, era).fold(e => fail(e.message), identity)
+      assertEquals(sent.hex, conway.hex, s"$era")
+      assertEquals(
+        xyz.kd5ujc.scarab.node.ntc.ConwayFailureCborCheck.freeText(sent),
+        problem.message,
+        s"$era"
+      )
+      era.foreach(e =>
+        if e != Era.Byron && e != Era.Conway then
+          assertEquals(
+            xyz.kd5ujc.scarab.node.ntc.PreConwayFailureCbor.applyTxError(
+              e,
+              Vector(xyz.kd5ujc.scarab.ledger.PredicateFailure.Mempool(problem))
+            ),
+            Right(None),
+            s"$e has no free-text failure"
+          )
+      )
   }
 
   test(

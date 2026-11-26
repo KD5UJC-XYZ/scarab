@@ -57,7 +57,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   UtxoTables
 }
 import xyz.kd5ujc.scarab.node.NodeSetup
-import xyz.kd5ujc.scarab.node.mempool.{LocalSubmission, MempoolEnv, MempoolLedger}
+import xyz.kd5ujc.scarab.node.mempool.{ConwayTicked, LocalSubmission, MempoolEnv}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
 
@@ -122,7 +122,7 @@ class ConwayCertsChecksSuite extends FunSuite:
           .modify(ls =>
             ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(Utxo.fromMap(stored))))
           )(nes)
-        val ledger = right(s"$what tick")(MempoolLedger.tick(withUtxo, Some(rc.tipSlot), env))
+        val ledger = right(s"$what tick")(ConwayTicked.ticked(withUtxo, Some(rc.tipSlot), env))
         val gov: ConwayGovState = ledger.ls.utxo.gov
         Seen(
           what,
@@ -904,21 +904,20 @@ class ConwayCertsChecksSuite extends FunSuite:
   test(
     "where only the certificate rules refused, the era-typed CERTS's refusal is the reference's"
   ):
-    // CERTS two levels down, under MEMPOOL and LEDGER, its failures in the node's flat form,
-    // encoded as the node sends a refusal
+    // CERTS two levels down, under MEMPOOL and LEDGER, its failures under LEDGER's, encoded by
+    // Conway's encoder as the node sends a refusal
     val certsOnly = seen.filter(s => s.families.nonEmpty && s.families.forall(CertsFamilies))
     assert(clue(certsOnly.size) >= 15, "too few cases only the certificate rules refuse")
     assert(certsOnly.exists(_.families.size >= 3), "no case with three failures")
     assert(certsOnly.exists(_.families.contains(Family.CERTS)), "no withdrawal case")
     certsOnly.foreach { s =>
       val failures = typedRun(s, typedCerts(s), depth = 2) match
-        case Right(Left(fs)) => fs.toChain.toVector.map(ConwayCertsPredFailure.toStored)
-        case other           => fail(s"${s.label}: $other")
-      assertEquals(
-        PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
-        s.reason.hex,
-        s.label
-      )
+        case Right(Left(fs)) =>
+          fs.toChain.toVector.map(
+            xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure.ConwayCertsFailure[Conway](_)
+          )
+        case other => fail(s"${s.label}: $other")
+      assertEquals(ConwayFailureCborCheck.direct(failures).hex, s.reason.hex, s.label)
     }
 
   /** [[base]] with withdrawals of more than an account holds, of an unregistered account and of

@@ -21,9 +21,8 @@ before it (a failure that has no encoding there has no reply, `NoEncoding`); a t
 era that does not reach the pool's gets the era mismatch `[[era, name], [ledger era, name]]` (#934). The
 node's own refusals (a duplicate, a full pool, a validation too slow, no ledger) are Conway's free-text
 `ConwayMempoolFailure`, and have no reply under a Dijkstra ledger. The encoders share their leaf writers and the hard-fork wrapper
-(`ntc/FailureCbor.scala`). `PredicateFailureCbor` is the flat rules' Conway encoder, which no answer of
-the node uses: the suites that hold Conway's era rules to the flat MEMPOOL write the flat refusals with
-it, byte for byte (#85). No failure carries a rule name as its identity (`ruleName` is derived from the
+(`ntc/FailureCbor.scala`). The flat rules' Conway encoder went with the flat MEMPOOL (#85): Conway's
+refusals are written from its era rules' failures alone (`ConwayFailureCbor`). No failure carries a rule name as its identity (`ruleName` is derived from the
 case). In Conway the LEDGER-level checks (treasury value, reference-script size,
 withdrawals), CERTS and GOV run before UTXOW, as in the ledger, and a submitted transaction is judged
 by the ledger's MEMPOOL rule; from Shelley to Babbage the pool applies the era's LEDGER rule (`EarlierLedger`), as

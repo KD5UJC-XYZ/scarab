@@ -156,6 +156,18 @@ class ConwayGovChecksSuite extends FunSuite:
       s: Seen,
       depth: Int = 0
   ): Either[Vector[PredicateFailure], (xyz.kd5ujc.scarab.ledger.Proposals, EraGovRun.Events)] =
+    val signal = EraGovRun.signalOf(s.typed)
+    eraGov(s, depth) match
+      case Left(fs) =>
+        Left(
+          fs.toChain.toVector.map(f => right(s"${s.label}: flat form")(EraGovRun.stored(signal, f)))
+        )
+      case Right((after, events)) => Right((EraGovRun.toStored(after), events))
+
+  /** Conway's GOV whole on the era types, `depth` levels down: its failures, or the proposals after
+    * with GOV's events.
+    */
+  private def eraGov(s: Seen, depth: Int) =
     val tx = EraTx.conway
     val tb = tx.body[TxLevel.Top](s.typed)(using tx.bodyOf.top)
     val signal = EraGovRun.signalOf(s.typed)
@@ -169,12 +181,7 @@ class ConwayGovChecksSuite extends FunSuite:
     )
     val netId = s.globals.networkId
     val state = right(s"${s.label}: the stored proposals")(EraGovRun.proposals(s.gov.proposals))
-    right(s"${s.label}: a defect")(EraGovRun.run(env, signal, netId, state, depth)) match
-      case Left(fs) =>
-        Left(
-          fs.toChain.toVector.map(f => right(s"${s.label}: flat form")(EraGovRun.stored(signal, f)))
-        )
-      case Right((after, events)) => Right((EraGovRun.toStored(after), events))
+    right(s"${s.label}: a defect")(EraGovRun.run(env, signal, netId, state, depth))
 
   /** A failure of the era types in the node's flat form, its action read from `proposals`. */
   private def storedOf(label: String, proposals: Vector[ProposalProcedure[Conway]])(
@@ -461,16 +468,18 @@ class ConwayGovChecksSuite extends FunSuite:
   private val NeverReached: Set[String] = Set()
 
   test("where only GOV refused, the era-typed GOV's refusal is the reference's, byte for byte"):
-    // GOV two levels down, under MEMPOOL and LEDGER, encoded as the node sends a refusal
+    // GOV two levels down, under MEMPOOL and LEDGER, its failures under LEDGER's, encoded by
+    // Conway's encoder as the node sends a refusal
     val govOnly = seen.filter(s => s.families == Vector(Family.GOV))
     assert(govOnly.nonEmpty, "no case only GOV refuses")
     govOnly.foreach { s =>
-      val failures = eraRun(s, depth = 2).fold(identity, _ => fail(s"${s.label}: admitted"))
-      assertEquals(
-        PredicateFailureCbor.applyTxError(failures).fold(e => fail(s"${s.label}: $e"), _.hex),
-        s.reason.hex,
-        s.label
+      val failures = eraGov(s, depth = 2).fold(
+        _.toChain.toVector.map(
+          xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure.ConwayGovFailure[Conway](_)
+        ),
+        _ => fail(s"${s.label}: admitted")
       )
+      assertEquals(ConwayFailureCborCheck.direct(failures).hex, s.reason.hex, s.label)
     }
 
   /** A voter as the body encodes it (`EncCBOR Voter`, `Procedures.hs:357-363`, cardano-ledger

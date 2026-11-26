@@ -20,25 +20,18 @@ import xyz.kd5ujc.scarab.ledger.{
   UtxowFailure
 }
 import xyz.kd5ujc.scarab.ledger.rules.{
-  ConwayLedger,
   Counted,
   EraNes,
   Globals,
   Hfc,
-  JudgedSts,
   Judgment,
-  LedgerEnv,
-  Mempool,
   PreConway,
   ShelleyLedger,
   ShelleyLedgerEnv,
-  Sts,
-  Tick,
   TickFailure
 }
 import xyz.kd5ujc.scarab.ledger.state.{
   ChainAccountState,
-  Coin,
   Conway,
   EraTag,
   LedgerState,
@@ -304,108 +297,6 @@ final case class EarlierLedger[E <: EraTag](
       .flatMap(_.leftMap(LedgerFailure.Rejected(tx.body.id, _)))
       .map(after => copy(ls = after.state))
 
-/** The flat rules' Conway ledger: the Conway ledger state at the chain tip, the treasury of the
-  * chain account (the transaction's `currentTreasuryValue` is checked against it) and the epoch,
-  * whose transactions the flat MEMPOOL judges. The pool judges Conway's transactions by Conway's
-  * era rules ([[ConwayPoolLedger]], #85), and so does the forger's snapshot of a slot
-  * ([[MempoolState.conwaySnapshot]]); the flat MEMPOOL stays for the suites that compare the two
-  * and for `tools`.
-  */
-final case class MempoolLedger(ls: LedgerState[Conway], treasury: Coin, epoch: BigInt):
-  def era: Era = Era.Conway
-
-  /** The protocol parameters in force. */
-  def params: xyz.kd5ujc.scarab.ledger.ProtocolParams = ls.utxo.gov.curPParams
-
-  /** The handle on the UTxO set. */
-  def utxo: Utxo = ls.utxo.utxo.utxo
-
-  def withUtxo(u: Utxo): MempoolLedger =
-    copy(ls = ls.copy[Conway](utxo = ls.utxo.copy(utxo = UtxoTables(u))))
-
-  /** A transaction validated before, applied again: MEMPOOL and LEDGER without their static checks
-    * (`reapplyTx`, ouroboros-consensus 82ecba32 `Shelley/Ledger/Mempool.hs` 325–338; cardano-ledger
-    * f649f975 `Shelley/API/Mempool.hs` 472–473, whose Conway rule is MEMPOOL, `Conway.hs` 57). The
-    * pool revalidates its transactions so, and so does block production (`revalidateTxsFor`,
-    * `Mempool/Impl/Common.hs` 403–422): no signature is verified and no script is evaluated again
-    * ([[TxEnv.Validation]]). Its refusal holds every predicate failure, in the reference's order,
-    * as `applySTSNonStatic` returns them (`Shelley/API/Mempool.hs`; issue 412).
-    */
-  def reapply(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
-    judged(Mempool, Judgment.Policy.Accumulate)(
-      tx,
-      env.copy(validation = TxEnv.Validation.NonStatic),
-      rules
-    )
-
-  /** The transaction applied by the MEMPOOL rule of the ledger (`Conway/Rules/Mempool.hs`), whose
-    * refusal holds every predicate failure the reference reports, in its order.
-    */
-  def submit(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
-    judged(Mempool, Judgment.Policy.Accumulate)(tx, env, rules)
-
-  private def judged(
-      rule: JudgedSts[LedgerEnv, ConwayLedger, Tx, PredicateFailure, LedgerFailure],
-      policy: Judgment.Policy
-  )(tx: Tx, env: TxEnv, rules: Globals): Either[LedgerFailure, MempoolLedger] =
-    Judgment
-      .run(rule, policy)(rules, LedgerEnv(env, treasury), Counted(ls, PlutusStats.zero), tx)
-      .flatMap(_.leftMap(LedgerFailure.Rejected(tx.body.id, _)))
-      .map(after => copy(ls = after.state))
-
-  /** The transaction admitted from `source`, with the transaction as it is to be held (its
-    * `is_valid` possibly changed). A local transaction is applied as received. A remote one is
-    * applied with `is_valid` true; when exactly that flag is what the rules refuse, because a
-    * script fails (`UtxosFailure.ValidationTagMismatch(true, _)`), it is applied again with
-    * `is_valid` false and that result is the answer. This is `applyAlonzoBasedTx` with
-    * `DoNotIntervene`
-    * (`ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Eras.hs` at
-    * `82ecba329d7d054340bf707d44fe6e9ac27cec40`, `isIncorrectClaimedFlag`). The reference takes a
-    * refusal that is the only element of the failure list, and so does this one
-    * ([[LedgerFailure.Rejected.Single]]): the scripts run only when nothing failed before them
-    * (`whenFailureFree`), so a mismatch is the only failure when it is the reason of the refusal.
-    */
-  def admit(
-      tx: Tx,
-      env: TxEnv,
-      rules: Globals,
-      source: Source
-  ): Either[LedgerFailure, (MempoolLedger, Tx)] =
-    PoolLedger.admitting(era, tx, source)(submit(_, env, rules))
-
-object MempoolLedger:
-  /** The ledger of the new-epoch state at the tip. */
-  def of(nes: NewEpochState[Conway]): MempoolLedger =
-    MempoolLedger(nes.es.ls, nes.es.chainAccount.treasury, nes.epoch.toBigInt)
-
-  /** Tick the complete Conway state before projecting its transaction view. This is
-    * `tickLedgerState (ForgeInUnknownSlot _)` in consensus Mempool/Impl/Common.hs: the next
-    * available slot, including epoch transitions, rewards, certificate state and treasury. `None`
-    * denotes Origin, whose next available slot is zero. The selected state's epoch agrees with its
-    * tip, so its successor crosses at most one epoch boundary. Conway is the final era: no
-    * hard-fork translation precedes this tick. Reference: ouroboros-consensus
-    * `82ecba329d7d054340bf707d44fe6e9ac27cec40`, `Mempool/Impl/Common.hs`, `tickLedgerState`.
-    */
-  def tick(
-      nes: NewEpochState[Conway],
-      tipSlot: Option[BigInt],
-      env: MempoolEnv
-  ): Either[TickFailure, MempoolLedger] =
-    for
-      slot <- SlotNo.fromBigInt(tipSlot.fold(BigInt(0))(_ + 1)).leftMap(TickFailure.Vocab(_))
-      next <- Sts(Tick.sts[Conway])(env.rules, (), nes, slot)
-    yield of(next)
-
-  /** The next-slot transaction view of a selected chain. A tick failure is an internal ledger
-    * failure, distinct from the chain being in an unsupported era.
-    */
-  def at[S: ChainRead](
-      s: S,
-      tip: Option[BlockRef],
-      env: MempoolEnv
-  ): Either[TickFailure, Either[ConwayView.Unavailable, MempoolLedger]] =
-    ConwayView(s, tip).traverse(tick(_, tip.map(_.slot), env))
-
 /** The pool's ledger of Conway, whose transactions Conway's MEMPOOL judges on the era's types
   * (`LedgerSupportsMempool (ShelleyBlock proto ConwayEra)`, ouroboros-consensus 82ecba32
   * `Shelley/Ledger/Mempool.hs`; `ApplyTx ConwayEra`, cardano-ledger f649f975 `Conway.hs:50-59`,
@@ -413,7 +304,11 @@ object MempoolLedger:
   * (`mkMempoolState`, `Shelley/API/Mempool.hs:384-385`) and its chain account (`mkMempoolEnv`,
   * `:363-377`), the epoch, the parameters in force read into Conway's once, when the ledger is made
   * ([[ConwayPoolLedger.of]]), and the layout of the state, which Conway's decoders read a
-  * transaction's pool registrations in ([[ConwayRead.of]]).
+  * transaction's pool registrations in ([[ConwayRead.of]]). Its rule is MEMPOOL
+  * (`mempoolTransition`, `Conway/Rules/Mempool.hs:91-138` (f649f975)), which each build's consensus
+  * applies a transaction by (`applyShelleyTx`, `Shelley/Ledger/Mempool.hs:288` (82ecba329), `:312`
+  * (808e4005), `:335` (d91b3557)) and applies a held one again by ([[reapply]]); the node has no
+  * other Conway MEMPOOL.
   */
 final case class ConwayPoolLedger private (
     ls: LedgerState[Conway],
@@ -548,8 +443,10 @@ final case class ConwayPoolLedger private (
           case other => other
 
   /** A held transaction applied again as the build's consensus applies it
-    * ([[ConwayMempoolRun.reapply]]: 11.1's `reapplyTx`, 11.2's and the Leios build's
-    * `reapplyValidatedTx`). The transaction stays as held.
+    * ([[ConwayMempoolRun.reapply]]; `reapplyShelleyTx`: 11.1's `SL.reapplyTx`,
+    * `Shelley/Ledger/Mempool.hs:325-338` (82ecba329), 11.2's and the Leios build's
+    * `SL.reapplyValidatedTx`, `:349-362` (808e4005) and `:372-385` (d91b3557)). The transaction
+    * stays as held.
     */
   def reapply(held: ConwayAdmitted, env: ConwayPoolEnv): Either[Rejection, ConwayPoolLedger] =
     reapplied(held, env).flatMap(_.leftMap(r => r: Rejection))

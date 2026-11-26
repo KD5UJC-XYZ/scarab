@@ -4,8 +4,10 @@ package xyz.kd5ujc.scarab.node.ntc
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.TestLedger.out
-import xyz.kd5ujc.scarab.plutus.PlutusLanguage
+import xyz.kd5ujc.scarab.plutus.{EvalFailure, ExUnits, PlutusLanguage, ScriptFailure}
 import xyz.kd5ujc.scarab.protocol.Era
+import xyz.kd5ujc.scarab.uplc.cek.{CekError, CekFailure}
+import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
 import munit.FunSuite
 
 /** The predicate-failure CBOR of the eras before Conway (`PreConwayFailureCbor`).
@@ -310,58 +312,6 @@ class PreConwayFailureCborSuite extends FunSuite:
     )
   }
 
-  test("Conway sends the failures of the earlier rules as its free-text failure") {
-    val earlier: Vector[PredicateFailure] = Vector(
-      PredicateFailure.utxo(UtxoFailure.ExpiredUTxO(Mismatch(100, 120))),
-      PredicateFailure.utxo(UtxoFailure.Update(PpupFailure.PVCannotFollow(3, 1))),
-      PredicateFailure.utxow(UtxowFailure.MIRInsufficientGenesisSigs(Set(keyHash))),
-      PredicateFailure.deleg(DelegFailure.MIRNegativeTransfer(Pot.Treasury, -1)),
-      PredicateFailure.utxo(
-        UtxoFailure.Utxos(
-          UtxosFailure.CollectErrors(
-            cats.data.NonEmptyVector.one(CollectError.BadTranslation(TranslationError.NoEraHistory))
-          )
-        )
-      )
-    )
-    earlier.foreach { f =>
-      assert(!PredicateFailureCbor.inConway(f), s"$f")
-      val decoded =
-        Cbor
-          .decode(
-            PredicateFailureCbor
-              .applyTxError(Vector(f))
-              .fold(error => fail(error.message), identity)
-          )
-          .fold(e => fail(e.message), identity)
-      // [[6, [[7 ConwayMempoolFailure, text]]]]
-      decoded.value match
-        case CborValue.Arr(Vector(wrapper)) =>
-          wrapper.value match
-            case CborValue.Arr(Vector(_, failures)) =>
-              failures.value match
-                case CborValue.Arr(Vector(one)) =>
-                  one.value match
-                    case CborValue.Arr(Vector(tag, text)) =>
-                      assertEquals(tag.value, CborValue.UInt(7), s"$f")
-                      assert(text.value.isInstanceOf[CborValue.Text], s"$f")
-                    case other => fail(s"$f: $other")
-                case other => fail(s"$f: $other")
-            case other => fail(s"$f: $other")
-        case other => fail(s"$f: $other")
-    }
-  }
-
-  test("Conway's LEDGER encoder, called on its own, also sends them as text") {
-    val f = PredicateFailure.utxo(UtxoFailure.ExpiredUTxO(Mismatch(100, 120)))
-    val item = PredicateFailureCbor.ledger(f).fold(error => fail(error.message), identity)
-    Cbor.decode(item).fold(e => fail(e.message), identity).value match
-      case CborValue.Arr(Vector(tag, text)) =>
-        assertEquals(tag.value, CborValue.UInt(7))
-        assert(text.value.isInstanceOf[CborValue.Text])
-      case other => fail(s"$other")
-  }
-
   test("the failures every pre-Conway era shares encode to well-formed CBOR in each") {
     val shared: Vector[PredicateFailure] = Vector(
       PredicateFailure.utxo(UtxoFailure.InputSetEmpty),
@@ -543,4 +493,106 @@ class PreConwayFailureCborSuite extends FunSuite:
       ),
       Some("81" + "8205" + "81" + "8200" + utxo)
     )
+  }
+
+  // ---- Plutus failures at the wire boundary (Alonzo, Babbage)
+
+  test("typed script failures render only at the wire boundary, the evaluator's cause kept") {
+    val evaluation =
+      EvalFailure.Script(ScriptFailure.Uplc(EvaluationError.InvalidReturnValue, Vector("trace")))
+    val failure = PredicateFailure.utxo(
+      UtxoFailure.Utxos(
+        UtxosFailure.ValidationTagMismatch(
+          true,
+          Some(Vector(PlutusFailure(evaluation, hex("0102"))))
+        )
+      )
+    )
+    // Alonzo/Rules/Utxos.hs:259-309 (f649f975): PlutusFailure keeps constructor tag 1,
+    // its rendered text and opaque reconstruction bytes. The outer UTXOS tag stays 0.
+    // the text is the failure's: "InvalidReturnValue; trace: trace"
+    val utxos =
+      "8300f582018183017820496e76616c696452657475726e56616c75653b2074726163653a207472616365420102"
+    for era <- Vector(Era.Alonzo, Era.Babbage) do
+      val encoded = FlatRefusal
+        .applyTxError(era, Vector(failure))
+        .fold(error => fail(error.message), identity)
+        .getOrElse(fail(s"missing $era validity-tag encoding"))
+      assert(encoded.hex.endsWith(utxos), s"$era: ${encoded.hex}")
+    evaluation match
+      case EvalFailure.Script(ScriptFailure.Uplc(original, logs)) =>
+        assertEquals(original, EvaluationError.InvalidReturnValue)
+        assertEquals(logs, Vector("trace"))
+      case other => fail(s"changed evaluator cause: $other")
+  }
+
+  test(
+    "malformed contexts retain their typed defect and original evaluator cause in each Plutus era"
+  ) {
+    val original = EvaluationError.Cek(CekFailure(CekError.ErrorTerm, None))
+    val request = xyz.kd5ujc.scarab.plutus.EvalRequest(
+      PlutusLanguage.V1,
+      10,
+      hex("0102"),
+      Vector.empty,
+      Vector.empty,
+      ExUnits.zero
+    )
+    val failure = PlutusFailure(
+      EvalFailure.Script(ScriptFailure.Uplc(original, Vector("trace"))),
+      hex("0304"),
+      Some(request)
+    )
+    val predicate = PredicateFailure.utxo(
+      UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(true, Some(Vector(failure))))
+    )
+    for era <- Vector(Era.Alonzo, Era.Babbage) do
+      FlatRefusal.applyTxError(era, Vector(predicate)) match
+        case Left(RefusalPresentationError.InvalidPlutusContext(retained, cause)) =>
+          assertEquals(cause, PlutusContextText.Error.Arguments(request.language, 0))
+          assert(retained eq failure)
+          retained.cause match
+            case EvalFailure.Script(ScriptFailure.Uplc(error, logs)) =>
+              assertEquals(error, original)
+              assertEquals(logs, Vector("trace"))
+            case other => fail(s"changed evaluator cause: $other")
+        case other => fail(s"$era silently encoded malformed context: $other")
+    assertEquals(FlatRefusal.applyTxError(Era.Shelley, Vector(predicate)), Right(None))
+  }
+
+  // A malformed context makes the explicit-error description observable: it is a presentation
+  // defect only on that path, and every other path keeps the provider's description.
+  test("the evaluator's explicit error is described; its other errors are not") {
+    def request(language: PlutusLanguage) =
+      xyz.kd5ujc.scarab.plutus.EvalRequest(
+        language,
+        10,
+        hex("0102"),
+        Vector.empty,
+        Vector.empty,
+        ExUnits.zero
+      )
+    def uplc(error: CekError, language: PlutusLanguage) =
+      PlutusFailure(
+        EvalFailure.Script(
+          ScriptFailure.Uplc(EvaluationError.Cek(CekFailure(error, None)), Vector("trace"))
+        ),
+        hex("0304"),
+        Some(request(language))
+      )
+    val v1 = PlutusLanguage.V1
+    assertEquals(
+      PlutusFailureCbor.description(uplc(CekError.ErrorTerm, v1)),
+      Left(PlutusContextText.Error.Arguments(v1, 0))
+    )
+    assertEquals(
+      PlutusFailureCbor.description(uplc(CekError.NonFunctionalApplication, v1)),
+      Right(None)
+    )
+    val v4 = PlutusLanguage.V4
+    assertEquals(
+      PlutusContextText.arguments(request(v4)),
+      Left(PlutusContextText.Error.Unported(v4))
+    )
+    assertEquals(PlutusFailureCbor.description(uplc(CekError.ErrorTerm, v4)), Right(None))
   }

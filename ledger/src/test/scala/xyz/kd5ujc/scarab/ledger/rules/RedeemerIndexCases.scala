@@ -183,34 +183,23 @@ object RedeemerIndexCases extends Assertions:
     val nes = state[E](major)
     judged[E](nes, ctx)(of(EraLedger.curPParams(nes.es.ls.utxo.gov)))
 
-  /** The verdict on `tx` in the chain `nes` with the rules' context `context`, as the node's pool
-    * judges a submitted transaction: Conway's MEMPOOL, the LEDGER of an earlier era, every
+  /** The verdict on `tx` in the chain `nes` of an era before Conway with the rules' context
+    * `context`, as the node's pool judges a submitted transaction: the era's LEDGER, every
     * predicate failure in the reference's order. The refusal, or the number of scripts evaluated.
+    * Conway's cases run its era rules (`RedeemerIndexReferenceSuite`), not these.
     */
   def judged[E <: EraTag](nes: NewEpochState[E], context: TxEnv)(tx: Tx)(using
       era: ShelleyBasedEra[E]
   ): Either[Vector[PredicateFailure], Long] =
-    val globals = NativeRules.globalsOf(context)
-    val judgment = era match
-      case ShelleyBasedEra.SConway =>
-        Judgment
-          .run(Mempool, Judgment.Policy.Accumulate)(
-            globals,
-            LedgerEnv(context, nes.es.chainAccount.treasury),
-            Counted(nes.es.ls, PlutusStats.zero),
-            tx
-          )
-          .map(_.map(_.plutus))
-      case _ =>
-        given PreConway[E] = PreConway.of(era).getOrElse(fail(s"$era is not before Conway"))
-        Judgment
-          .run(ShelleyLedger.sts[E], Judgment.Policy.Accumulate)(
-            globals,
-            ShelleyLedgerEnv(context, nes.es.chainAccount),
-            Counted(nes.es.ls, PlutusStats.zero),
-            tx
-          )
-          .map(_.map(_.plutus))
+    given PreConway[E] = PreConway.of(era).getOrElse(fail(s"$era is not before Conway"))
+    val judgment = Judgment
+      .run(ShelleyLedger.sts[E], Judgment.Policy.Accumulate)(
+        NativeRules.globalsOf(context),
+        ShelleyLedgerEnv(context, nes.es.chainAccount),
+        Counted(nes.es.ls, PlutusStats.zero),
+        tx
+      )
+      .map(_.map(_.plutus))
     judgment
       .fold(defect => fail(s"no verdict: ${defect.message}"), identity)
       .left
