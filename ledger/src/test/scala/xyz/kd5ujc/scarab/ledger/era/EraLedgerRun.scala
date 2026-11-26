@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.era
 
 import cats.{Functor, Id, Monad}
-import cats.syntax.all.*
 import cats.data.{Chain, NonEmptyChain}
 import cats.mtl.{Raise, Stateful, Tell}
 import monocle.Lens
@@ -10,28 +9,25 @@ import xyz.kd5ujc.scarab.ledger.{LedgerDefect, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayLedger,
   ConwayLedgerEvent,
-  ConwayLedgerPredFailure,
   GovDefect,
   LedgerEnv,
   LedgerEvent,
   LedgerPredFailure,
-  LedgerUnprojected,
   LedgersEnv,
   LedgersEvent,
   LedgersPredFailure,
   ProposalsRecord,
   ShelleyLedgers,
   UtxoContext,
-  UtxoStateDefect,
-  UtxowUnprojected
+  UtxoStateDefect
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Judgment, RuleT, contramap, focus}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState}
 import xyz.kd5ujc.scarab.plutus.{ScriptDecoder, ScriptEvaluator}
 
 /** Conway's LEDGER and LEDGERS on the era types (`ConwayLedger.conwayLedgerTransition`,
-  * `ShelleyLedgers.ledgersTransition`) run in one judgment, every failure accumulated, for the
-  * suites that compare them with the flat rules (`ConwayLedgerChecksSuite` in the node).
+  * `ShelleyLedgers.ledgersTransition`) run in one judgment, its failures kept as a policy keeps
+  * them, for the suites that judge them (`ConwayTestKit`, `ConwayLedgerChecksSuite` in the node).
   */
 object EraLedgerRun:
   /** Why a judgment reached no verdict: a defect of one of the rules below LEDGER. */
@@ -146,28 +142,6 @@ object EraLedgerRun:
       )
     )
 
-  /** A LEDGER failure in the node's flat form, which the node encodes as the reference does
-    * (`ConwayLedgerPredFailure.toStored`), and a collection's errors with it where the flat form
-    * names each ([[flatCollect]]): what a refusal is compared with the reference's bytes through.
-    */
-  def flat(
-      failure: LedgerPredFailure[Conway],
-      purpose: EraUtxoRun.Purposes,
-      read: GovAction[Conway] => Option[xyz.kd5ujc.scarab.ledger.GovAction]
-  ): Either[LedgerUnprojected, xyz.kd5ujc.scarab.ledger.PredicateFailure] =
-    import xyz.kd5ujc.scarab.ledger.{PredicateFailure, UtxoFailure, UtxosFailure, UtxowFailure}
-    ConwayLedgerPredFailure.toStored(failure, purpose, read).recoverWith {
-      case unprojected @ LedgerUnprojected.Utxow(UtxowUnprojected.CollectErrors(es)) =>
-        es.toNev
-          .traverse(flatCollect(_, purpose))
-          .map(fs =>
-            PredicateFailure.Utxow(
-              UtxowFailure.Utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(fs)))
-            )
-          )
-          .toRight(unprojected)
-    }
-
   /** A collection's error in the node's flat form, where it names it: a missing redeemer's purpose
     * by `purpose`, and a translation's failure where the flat form has the reference's constructor
     * with the same contents (a missing input, a time past the horizon by the clock's `PastHorizon`,
@@ -220,16 +194,3 @@ object EraLedgerRun:
       valid,
       events.collect { case ConwayLedgerEvent.UtxowEvent(e) => e }
     )
-
-  /** A LEDGER failure in the comparison's form (`EraUtxoRun.Failure`): UTXOW's as
-    * `EraUtxoRun.Utxow.eraForm` has it, every other through the node's flat form; none where a
-    * missing redeemer's purpose has no flat form by `purpose`.
-    */
-  def form(
-      failure: LedgerPredFailure[Conway],
-      purpose: EraUtxoRun.Purposes,
-      read: GovAction[Conway] => Option[xyz.kd5ujc.scarab.ledger.GovAction]
-  ): Option[EraUtxoRun.Failure] = failure match
-    case ConwayLedgerPredFailure.ConwayUtxowFailure(u) => EraUtxoRun.Utxow.eraForm(u, purpose)
-    case other =>
-      ConwayLedgerPredFailure.toStored(other, purpose, read).toOption.flatMap(EraUtxoRun.form)

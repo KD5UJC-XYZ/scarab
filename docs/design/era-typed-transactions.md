@@ -1587,7 +1587,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     `ConwayMempoolFailure` holds the node's typed cause (`MempoolProblem`) where the reference holds its `Text`, as
     the flat failure does: LEDGER never gives it. `InjectLedgerFailure` is the reference's
     instances of every rule below LEDGER, Shelley's UTXO failure's by the build's injection
-    (`conwayShelleyUtxo`), and `ConwayLedgerPredFailure.toStored` the flat form the comparisons read.
+    (`conwayShelleyUtxo`).
     `InjectLedgersFailure` is the reference's instances into LEDGERS (`Conway/Rules/Ledgers.hs:28-82`), each
     `LedgerFailure` over LEDGER's, Shelley's LEDGER failure without one as in the reference; `LedgerInjectionSuite`
     summons each injection into LEDGER and LEDGERS and finds the failure the embeddings wrap it in. Under
@@ -1595,6 +1595,13 @@ Conway's rules on the classes follow as the rest of stage 2.
     CertFailure . DelegFailure` (`Conway/Rules/Ledger.hs:137-138` at both), a function of the build
     (`InjectLedgerFailure.conwayAccountAlreadyRegistered`, none under the 11.1 line, whose f649f975 has neither the
     type nor the instance), and into LEDGERS under none; the suite checks its wrapping under each build.
+  - Since the flat LEDGER and LEDGERS were deleted (stage 3), the comparisons with them below hold the era rules to
+    the flat rules' judgments, recorded before (`fixtures/conway-flat-refusals/ledger-judgments.jsonl`: a refusal by
+    its bytes, an admission by its state's and its counters), and the projection of the era LEDGER's failures to
+    the flat form (`ConwayLedgerPredFailure.toStored`, `EraLedgerRun.flat`) is gone: a failure is named in the
+    era's form. The suites that ran the flat LEDGER on transactions built as values (`ConwayLedgerSuite`,
+    `ConwayRulesSuite`) judge the era LEDGER on their true bytes, which Conway's test kit writes
+    (`ConwayTestKit.encode`), each refusal named by the era failure the flat LEDGER gave first.
   - `ConwayLedgerChecksSuite` runs the era LEDGER and the flat `rules.Ledger` from the state the mempool judges a
     transaction in, on every Conway case of the refusal corpora, at the recorded version and at 9, 10 and 11, under
     each build and policy: the same failures in the same order, cases of three and more among them, or the same
@@ -1657,9 +1664,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     `ledger/src/test`) writes each transaction in the forms of Conway's CDDL, its body, certificates, procedures
     and actions, signs the body's hash and reads the parts back with the flat decoder, which must give every field
     asked for, and with Conway's; the funded outputs carry their bytes too. Each transaction's era LEDGER, its
-    failures in the node's flat form (`EraLedgerRun.flat`), gives the suite's expected values, and the flat
-    LEDGER on the same bytes from the same state gives the same failures in the same order or the same ledger
-    state, on every transaction the suite submits, across its epoch boundaries.
+    failures in the era's form, gives the suite's expected values, which the flat LEDGER on the same bytes from
+    the same state gave too, on every transaction the suite submits, across its epoch boundaries.
   - Incomplete (CNF-2): LEDGERS is compared in sequence
     on recorded blocks only from a state built from their transactions' recorded outputs, as the repository holds
     no ledger state of a chain at a recorded Conway block with transactions, and not on blocks whose transactions

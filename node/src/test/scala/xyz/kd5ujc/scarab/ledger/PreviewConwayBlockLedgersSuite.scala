@@ -6,49 +6,43 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.era.{EraLedgerRun, EraTx, EraTxBody, EraUTxO, TxLevel}
-import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayTx, ConwayUTxO}
+import cats.data.NonEmptyChain
+import xyz.kd5ujc.scarab.ledger.era.{EraLedgerRun, EraTx}
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTx
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayGovPredFailure,
   ConwayLedgerPredFailure,
+  ConwayUtxoPredFailure,
+  ConwayUtxosPredFailure,
   ConwayUtxowPredFailure,
   LedgerEvent,
   LedgerPredFailure,
   ShelleyLedgersEvent,
   ShelleyLedgersPredFailure
 }
-import xyz.kd5ujc.scarab.ledger.rules.{
-  Counted,
-  Judgment,
-  Ledger as FlatLedger,
-  LedgerEnv as FlatLedgerEnv,
-  Ledgers as FlatLedgers,
-  LedgersEnv as FlatLedgersEnv,
-  NativeRules,
-  Sts
-}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, ConwayNewEpochState, LedgerState, NewEpochState}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, ConwayNewEpochState, NewEpochState}
+import xyz.kd5ujc.scarab.node.ntc.FlatRecordings
 import xyz.kd5ujc.scarab.protocol.Era
 
 import TestLedger.Supply
 
-/** Conway's LEDGERS on the era types (`ShelleyLedgers.ledgersTransition`) against the flat LEDGERS
-  * (`rules.Ledgers`, what BBODY runs) over the transactions of recorded Preview Conway blocks, in
-  * the order the block holds them. The blocks are those of `fixtures/preview` every transaction of
-  * which is a recorded case (`fixtures/preview/plutus`), so that the ledger around the block can be
-  * built from the outputs its transactions spend, reference and put up as collateral
-  * (`PreviewConwayWorld`); no ledger state of the chain at a block with transactions is recorded.
-  * Each transaction is read from the block's own bytes, by Conway's decoder for the era rule.
+/** Conway's LEDGERS on the era types (`ShelleyLedgers.ledgersTransition`) over the transactions of
+  * recorded Preview Conway blocks, in the order the block holds them. The blocks are those of
+  * `fixtures/preview` every transaction of which is a recorded case (`fixtures/preview/plutus`), so
+  * that the ledger around the block can be built from the outputs its transactions spend, reference
+  * and put up as collateral (`PreviewConwayWorld`); no ledger state of the chain at a block with
+  * transactions is recorded. Each transaction is read from the block's own bytes, by Conway's
+  * decoder.
   *
-  * For each prefix of a block both rules run from the same state: the same ledger state after each
-  * transaction, and the counters the scripts' events give through LEDGER's and LEDGERS' embeddings,
-  * transaction by transaction, summing to the flat rules' (the integrity checks the flat rules
-  * count aside, which no event tells). Two refusals show the failures in sequence: the block with
-  * its first transaction again at its end, refused for what the transactions before it spent, and a
+  * For each prefix of a block the ledger state after each transaction, and the counters the
+  * scripts' events give through LEDGER's and LEDGERS' embeddings, are the flat LEDGERS's, recorded
+  * before it was deleted (`fixtures/conway-flat-refusals/ledger-judgments.jsonl`). Two refusals
+  * show the failures in sequence, their bytes the flat rules' recorded too: the block with its
+  * first transaction again at its end, refused for what the transactions before it spent, and a
   * block with a proposal under another guardrails script.
   */
 class PreviewConwayBlockLedgersSuite extends FunSuite:
-  import PreviewConwayWorld.{envOf, gov, total}
+  import PreviewConwayWorld.{gov, total}
 
   /** The files of recorded Preview blocks that hold Conway blocks. */
   private val files = Vector(
@@ -120,41 +114,15 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
         )
     }
 
-  /** The flat LEDGERS on `txs` from the ledger state of `s` at `slot`, from no script run. */
-  private def flatLedgers(
-      s: NewEpochState[Conway],
-      slot: BigInt,
-      txs: Vector[Tx]
-  ): Either[LedgerFailure, Counted[LedgerState[Conway]]] =
-    val ctx = envOf(slot)
-    Sts(FlatLedgers)(
-      NativeRules.globalsOf(ctx),
-      FlatLedgersEnv(ctx, s.es.chainAccount.treasury),
-      Counted(s.es.ls, PlutusStats.zero),
-      txs
-    )
+  /** The recording of the flat LEDGERS's and LEDGER's judgments of these blocks. */
+  private val recording = FlatRecordings.judgments("preview-blocks/")
 
-  /** The flat LEDGER on `tx` at index `ix` of a block from `ls`, its failures as `policy` keeps
-    * them.
-    */
-  private def flatLedger(
-      what: String,
-      s: NewEpochState[Conway],
-      ls: LedgerState[Conway],
-      slot: BigInt,
-      ix: Int,
-      tx: Tx,
-      policy: Judgment.Policy
-  ): Either[cats.data.NonEmptyChain[PredicateFailure], Counted[LedgerState[Conway]]] =
-    val ctx = envOf(slot).copy(txIndex = ix)
-    Judgment
-      .run(FlatLedger, policy)(
-        NativeRules.globalsOf(ctx),
-        FlatLedgerEnv(ctx, s.es.chainAccount.treasury),
-        Counted(ls, PlutusStats.zero),
-        tx
-      )
-      .fold(defect => fail(s"$what: flat defect $defect"), identity)
+  /** The id of a judgment of the block `r`. */
+  private def idOf(r: Recorded, what: String): String = s"preview-blocks/${r.file}:${r.line}/$what"
+
+  /** `cells`, of the judgment `id`, are the recording's. */
+  private def asRecorded(id: String, cells: Vector[String]): Unit =
+    assertEquals(cells, recording.getOrElse(id, fail(s"no recording of $id")), id)
 
   /** The events of LEDGERS unwrapped to LEDGER's. */
   private def ledgerEvents(
@@ -162,31 +130,11 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
   ): Vector[LedgerEvent[Conway]] =
     events.toVector.map { case ShelleyLedgersEvent.LedgerEvent(e) => e }
 
-  /** An era failure of `tx`, judged on `ls`, in the node's flat form (`EraLedgerRun.flat`), which
-    * keeps a translation failure's contents: a missing redeemer's purpose by the scripts `tx` needs
-    * there, an action by its proposals.
-    */
-  private def eraFlat(what: String, ls: LedgerState[Conway], tx: ConwayTx)(
-      failure: LedgerPredFailure[Conway]
-  ): PredicateFailure =
-    val u = EraUTxO.conway
-    val t = EraTx.conway
-    val b = EraTxBody.conway
-    val body = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
-    val utxo =
-      ConwayUTxO.fromStored(ls.utxo.utxo.utxo.toMap).fold(e => fail(s"$what: $e"), identity)
-    val purposes = ConwayUtxowPredFailure.storedPurposes(
-      u.getScriptsNeeded[TxLevel.Top](utxo, body)(using u.txOf.bodyOf.top),
-      utxo
-    )
-    val read =
-      ConwayGovPredFailure.readOf(b.proposalProcedures[TxLevel.Top](body)(using b.top).toVector)
-    EraLedgerRun
-      .flat(failure, purposes, read)
-      .fold(e => fail(s"$what: no flat form for $failure: $e"), identity)
-
-  private def scripts(c: Counted[?]): (Long, Long, Long) =
-    (c.plutus.succeeded, c.plutus.failed, c.plutus.scripts)
+  /** LEDGERS's failures unwrapped to LEDGER's. */
+  private def ledgerFailures(
+      fs: NonEmptyChain[ShelleyLedgersPredFailure[Conway]]
+  ): Vector[LedgerPredFailure[Conway]] =
+    fs.toChain.toVector.map { case ShelleyLedgersPredFailure.LedgerFailure(f) => f }
 
   private def plus(a: (Long, Long, Long), b: (Long, Long, Long)): (Long, Long, Long) =
     (a._1 + b._1, a._2 + b._2, a._3 + b._3)
@@ -206,21 +154,18 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
 
   recorded.foreach { r =>
     test(
-      s"${r.label}: the era LEDGERS and the flat LEDGERS admit the block's transactions in sequence (${r.flat.size}), with the same state after each"
+      s"${r.label}: the era LEDGERS admits the block's transactions in sequence (${r.flat.size}), with the flat LEDGERS's state after each"
     ) {
       val world = r.world
       assertEquals(total(world), Supply, s"${r.label}: the supply before")
-      val (_, _, flatAfter) =
+      val (_, scripts, afterBlock) =
         (1 to r.flat.size).foldLeft(
-          (Vector.empty[LedgerEvent[Conway]], (0L, 0L, 0L), Counted(world.es.ls, PlutusStats.zero))
+          (Vector.empty[LedgerEvent[Conway]], (0L, 0L, 0L), world.es.ls)
         ) { case ((seen, counted, _), k) =>
           val what = s"${r.label}, its first $k transactions"
-          val flat =
-            flatLedgers(world, r.slot, r.flat.take(k)).fold(f => fail(s"$what: $f"), identity)
           val (ls, events) = PreviewConwayWorld
             .eraLedgers(what, world, r.slot, r.typed.take(k))
             .fold(fs => fail(s"$what: the era LEDGERS refused $fs"), identity)
-          assert(cats.Eq[LedgerState[Conway]].eqv(ls, flat.state), s"$what: the state")
           val all = ledgerEvents(events)
           // the transactions before judged as they were in the shorter prefix
           assertEquals(all.take(seen.size), seen, s"$what: the events before")
@@ -231,12 +176,16 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
               Chain.fromSeq(all.drop(seen.size))
             )
             .getOrElse(fail(s"$what: the events of the last ${all.drop(seen.size)}"))
-          val sum = plus(counted, own)
-          assertEquals(sum, scripts(flat), s"$what: the counters")
-          (all, sum, flat)
+          // the state after the prefix and the counters of its last transaction: the flat
+          // LEDGERS's, recorded
+          asRecorded(
+            idOf(r, k.toString),
+            Vector(FlatRecordings.admitted(ls, own._1, own._2, own._3))
+          )
+          (all, plus(counted, own), ls)
         }
       // after the block: its fees collected, its inputs spent, its outputs held, the supply kept
-      val after = ConwayNewEpochState.ls.replace(flatAfter.state)(world)
+      val after = ConwayNewEpochState.ls.replace(afterBlock)(world)
       assertEquals(after.es.ls.utxo.fees.value, r.flat.map(_.body.fee).sum, s"${r.label}: fees")
       r.flat.foreach { t =>
         t.body.inputs.foreach(i => assert(!after.es.ls.utxo.utxo.utxo.contains(i), s"$i spent"))
@@ -250,100 +199,94 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
         s"${r.label}: the proposals"
       )
       assertEquals(total(after), Supply, s"${r.label}: the supply after")
-      assert(flatAfter.plutus.succeeded >= 1, s"${r.label}: scripts ran")
+      assert(scripts._1 >= 1, s"${r.label}: scripts ran")
     }
 
     test(
-      s"${r.label}: the block with its first transaction again at its end is refused by both, for what the transactions before it spent"
+      s"${r.label}: the block with its first transaction again at its end is refused, for what the transactions before it spent"
     ) {
       val world = r.world
       val n = r.flat.size
       val what = s"${r.label}, its first transaction again at index $n"
-      val before = flatLedgers(world, r.slot, r.flat).fold(f => fail(s"$what: $f"), identity)
-      val repeated = r.flat.head
-      def flatAlone(policy: Judgment.Policy) =
-        flatLedger(what, world, before.state, r.slot, n, repeated, policy) match
-          case Left(fs) => fs.toChain.toList
-          case Right(_) => fail(s"$what: the flat LEDGER admitted it again")
-      val accumulated = flatAlone(Judgment.Policy.Accumulate)
+      val (before, _) = PreviewConwayWorld
+        .eraLedgers(what, world, r.slot, r.typed)
+        .fold(fs => fail(s"$what: the era LEDGERS refused $fs"), identity)
+      val tx = r.typed.head
+      def eraAlone(depth: Int) =
+        PreviewConwayWorld.eraLedger(what, world, before, r.slot, n, tx, depth) match
+          case Left(fs) => fs.toChain.toVector
+          case Right(_) => fail(s"$what: the era LEDGER admitted it again")
+      val root = eraAlone(0)
       // refused for the inputs the block spent: exactly the transaction's own, and its scripts'
       // contexts cannot be built for them
-      val consumed = repeated.body.inputs.toSet
+      val consumed = r.flat.head.body.inputs.toSet
       assertEquals(
-        accumulated.collect {
-          case PredicateFailure.Utxow(UtxowFailure.Utxo(UtxoFailure.BadInputs(inputs))) => inputs
+        root.collect {
+          case ConwayLedgerPredFailure.ConwayUtxowFailure(
+                ConwayUtxowPredFailure.UtxoFailure(ConwayUtxoPredFailure.BadInputsUTxO(inputs))
+              ) =>
+            inputs.toSortedSet.toSet
         },
-        List(consumed),
+        Vector(consumed),
         s"$what: the inputs it finds spent"
       )
-      accumulated
+      root
         .collect {
-          case PredicateFailure.Utxow(
-                UtxowFailure.Utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(es)))
+          case ConwayLedgerPredFailure.ConwayUtxowFailure(
+                ConwayUtxowPredFailure.UtxoFailure(
+                  ConwayUtxoPredFailure.UtxosFailure(ConwayUtxosPredFailure.CollectErrors(es))
+                )
               ) =>
-            es.toVector
+            es.toList
         }
         .flatten
         .foreach {
-          case CollectError.BadTranslation(TranslationError.UnresolvedInput(input)) =>
+          case era.CollectError.BadTranslation(
+                era.conway.ConwayContextError.BabbageContextError(
+                  era.BabbageContextError.AlonzoContextError(
+                    era.AlonzoContextError.TranslationLogicMissingInput(input)
+                  )
+                )
+              ) =>
             assert(consumed.contains(input), s"$what: $input is not an input it spent before")
           case other => fail(s"$what: a collection's failure $other")
         }
-      // the flat LEDGERS: the block's verdict is the transaction's first failure, as the flat
-      // LEDGER at its first failure gives it
-      flatLedgers(world, r.slot, r.flat :+ repeated) match
-        case Left(LedgerFailure.Rejected(id, fs)) =>
-          assertEquals(id, repeated.body.id, what)
-          assertEquals(
-            fs.toChain.toList,
-            flatAlone(Judgment.Policy.FirstFailure),
-            s"$what: the flat LEDGERS' failure"
-          )
-        case other => fail(s"$what: the flat LEDGERS gave $other")
-      // the era LEDGER at the root, from the state after the block: the flat LEDGER's failures in
-      // their order, contents and all
-      val tx = r.typed.head
-      val flatOf = eraFlat(what, before.state, tx)
-      def eraAlone(depth: Int) =
-        PreviewConwayWorld.eraLedger(what, world, before.state, r.slot, n, tx, depth) match
-          case Left(fs) => fs.toChain.toList.map(flatOf)
-          case Right(_) => fail(s"$what: the era LEDGER admitted it again")
-      assertEquals(eraAlone(0), accumulated, s"$what: the era LEDGER at the root")
       // the era LEDGERS, the transactions before admitted: the sole failing transaction's failures
       // put in front of LEDGERS' list one at a time (`Extended.hs:721`, cardano-ledger f649f975),
       // so the root LEDGER's reversed, which is LEDGER's one level down
       PreviewConwayWorld.eraLedgers(what, world, r.slot, r.typed :+ tx) match
         case Left(fs) =>
-          val ledgers = fs.toChain.toList.map { case ShelleyLedgersPredFailure.LedgerFailure(f) =>
-            flatOf(f)
-          }
-          assertEquals(ledgers, accumulated.reverse, s"$what: the flat LEDGER's failures reversed")
+          val ledgers = ledgerFailures(fs)
+          assertEquals(ledgers, root.reverse, s"$what: the root LEDGER's failures reversed")
           assertEquals(ledgers, eraAlone(1), s"$what: LEDGER one level down")
+          // the flat LEDGER's failures in their order, contents and all, recorded: at the root,
+          // one level down, and LEDGERS's
+          asRecorded(
+            idOf(r, "repeated"),
+            Vector(
+              FlatRecordings.refused(root),
+              FlatRecordings.refused(eraAlone(1)),
+              FlatRecordings.refused(ledgers)
+            )
+          )
         case Right(_) => fail(s"$what: the era LEDGERS admitted it again")
     }
   }
 
+  /** The block of a proposal and a spend, the first of more than one transaction a proposal. */
+  private lazy val proposing: Recorded = recorded
+    .find(r => r.flat.size > 1 && r.flat.head.body.proposals.nonEmpty)
+    .getOrElse(fail("no block of more than one transaction, a proposal first"))
+
   test(
-    "the block of a proposal and a spend under another guardrails script: the era LEDGERS and the flat LEDGERS refuse the proposal alone, by GOV"
+    "the block of a proposal and a spend under another guardrails script: the era LEDGERS refuses the proposal alone, by GOV"
   ) {
-    val r = recorded
-      .find(r => r.flat.size > 1 && r.flat.head.body.proposals.nonEmpty)
-      .getOrElse(fail("no block of more than one transaction, a proposal first"))
+    val r = proposing
     val world = r.world
     val another = xyz.kd5ujc.scarab.crypto.Blake2b.hash224.hash(r.flat.head.body.id)
     val other = ConwayNewEpochState.gov.modify(g =>
       g.copy(constitution = g.constitution.copy(script = Some(another)))
     )(world)
-    val flat = flatLedgers(other, r.slot, r.flat) match
-      case Left(
-            rejected @ LedgerFailure.Rejected.Single(
-              _,
-              PredicateFailure.Gov(GovFailure.InvalidGuardrailsScriptHash(_, _))
-            )
-          ) =>
-        assertEquals(rejected.txId, r.flat.head.body.id, r.label)
-        rejected.failures.toChain.toList
-      case unexpected => fail(s"${r.label}: the flat LEDGERS gave $unexpected")
     PreviewConwayWorld.eraLedgers(r.label, other, r.slot, r.typed) match
       case Left(fs) =>
         fs.toChain.toList match
@@ -352,11 +295,17 @@ class PreviewConwayBlockLedgersSuite extends FunSuite:
                   ConwayGovPredFailure.InvalidGuardrailsScriptHash(_, _)
                 )
               ) :: Nil =>
-            assertEquals(
-              List(eraFlat(r.label, other.es.ls, r.typed.head)(f)),
-              flat,
-              r.label
-            )
+            // the flat LEDGERS's failure, recorded
+            asRecorded(idOf(r, "guardrails"), Vector(FlatRecordings.refused(Vector(f))))
           case unexpected => fail(s"${r.label}: the era LEDGERS refused $unexpected")
       case Right(_) => fail(s"${r.label}: the era LEDGERS admitted another guardrails script")
+  }
+
+  test("the recording holds the judgments of these blocks, each once, and no other") {
+    // the judgments the tests above make, of the blocks they judge
+    val expected = recorded.flatMap(r =>
+      (1 to r.flat.size).map(k => idOf(r, k.toString)) :+ idOf(r, "repeated")
+    ) :+ idOf(proposing, "guardrails")
+    assertEquals(expected.toSet, recording.keySet)
+    assertEquals(expected.size, recording.size)
   }

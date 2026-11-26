@@ -51,10 +51,14 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** The Conway LEDGER rules on the era-indexed state, on one transaction at a time: the suite builds
   * the native state, runs the rules on the transaction and checks what they do with it: the
-  * failure, if it is refused, and the state after it, if it is not. Every accepted state is also
-  * checked for what the rules keep beside what they change ([[consistent]]): the delegators of each
-  * pool and each DRep against the accounts, the instant stake against the UTxO, the deposits
-  * against the obligation.
+  * failure, if it is refused, and the state after it, if it is not. The rules are Conway's LEDGER
+  * on the era types (`conwayLedgerTransitionTRC`, `Conway/Rules/Ledger.hs:320-519`, cardano-ledger
+  * f649f975), and LEDGERS over it (`ledgersTransition`, `Shelley/Rules/Ledgers.hs:185-209`,
+  * cardano-ledger f649f975), on the transactions the suite builds as values written with their true
+  * bytes ([[era.conway.ConwayTestKit.encode]]), each judged to its first failure. Every accepted
+  * state is also checked for what the rules keep beside what they change ([[consistent]]): the
+  * delegators of each pool and each DRep against the accounts, the instant stake against the UTxO,
+  * the deposits against the obligation.
   */
 class ConwayLedgerSuite extends FunSuite:
   private val alice = key()
@@ -747,14 +751,15 @@ class ConwayLedgerSuite extends FunSuite:
       5,
       20
     )
+    // its true bytes, 1500 certificates, votes and key witnesses, are far past the suite's largest
+    // transaction: the size allowed is not what this test is about
+    val wide = pparams.copy(maxTxSize = 1 << 20)
     val s = base(
       fundedBy(alice),
       pools = Vector(poolParams(pool)),
       dreps = keys.map(k => cred[DRepRole](k) -> drepState(30)),
       proposals = Proposals(Vector(action), node.PrevIds()),
-      // its true bytes, 1500 certificates, votes and key witnesses, are far past the suite's
-      // largest transaction: the size allowed is not what this test is about
-      pp = pparams.copy(maxTxSize = 1 << 20)
+      pp = wide
     )
     val registrations =
       keys.map(k => Certificate.Delegate(k.credential, Some(pool.hash), None, Some(2 * ada)))

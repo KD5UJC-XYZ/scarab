@@ -110,10 +110,11 @@ import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild, StateLayout}
   *     `fixtures/preview`) as the flat decoder reads it, and the units of a block's transactions
   *     are their sum.
   *
-  * A refusal is compared in the node's form (`flatOf`): the body's size or hash `BodyCommitment`,
-  * which holds neither; the units `BlockExUnitsTooBig`; the reference scripts `RefScriptsTooLarge`;
-  * the header's version the envelope's `HeaderProtVerTooHigh`; LEDGERS's failures the transaction's
-  * `Rejected`, through `EraLedgerRun.flat`; and where the order matters, as the era's own failures.
+  * A refusal is compared in the node's form (`refusedOf`): the body's size or hash
+  * `BodyCommitment`, which holds neither; the units `BlockExUnitsTooBig`; the reference scripts
+  * `RefScriptsTooLarge`; the header's version the envelope's `HeaderProtVerTooHigh`; LEDGERS's
+  * failures in the era's form, as the block's one transaction's (`Refused.Ledgers`); and where the
+  * order matters, as the era's own failures.
   *
   * Incomplete (CNF-2): no recording holds a Conway block's refusal or a Conway block with
   * transactions and the state before it, so the refusals are crafted, the transactions built, and
@@ -722,7 +723,9 @@ class ConwayBbodySuite extends FailsOnUncaught:
     onMainnet.foreach(v =>
       assertEquals(
         v,
-        Left(Vector(Refused.Block(BlockFailure.Envelope(EnvelopeError.HeaderProtVerTooHigh(11, 10)))))
+        Left(
+          Vector(Refused.Block(BlockFailure.Envelope(EnvelopeError.HeaderProtVerTooHigh(11, 10))))
+        )
       )
     )
   }
@@ -788,7 +791,12 @@ class ConwayBbodySuite extends FailsOnUncaught:
     val j = judge(first, both)
     assertEquals(
       j.era,
-      Left(Vector(Refused.Block(BlockFailure.BodyCommitment), Refused.Block(BlockFailure.BodyCommitment)))
+      Left(
+        Vector(
+          Refused.Block(BlockFailure.BodyCommitment),
+          Refused.Block(BlockFailure.BodyCommitment)
+        )
+      )
     )
     // the era rule's own failures, before their flat form: the size is checked before the hash, and
     // the root's list is the reverse of the order its predicates recorded (each failure put in
@@ -2061,7 +2069,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     assert(
       j.era match {
         case Left(Vector(Refused.Ledgers(_))) => true
-        case _                                                         => false
+        case _                                => false
       },
       s"${j.era}"
     )

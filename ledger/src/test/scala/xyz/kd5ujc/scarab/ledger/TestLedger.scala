@@ -7,13 +7,8 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 import java.security.{KeyPair, KeyPairGenerator, Signature}
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.rules.{Counted, Globals, JudgedSts, Ledger, LedgerEnv, Test}
-import xyz.kd5ujc.scarab.ledger.state.{
-  Conway,
-  LedgerState as EraLedgerState,
-  NewEpochState,
-  ShelleyBasedEra
-}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, Test}
+import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
 
 /** Builders for ledger rule tests: parameters per era, funded states, keys that really sign, and
   * transactions assembled as values (no CBOR).
@@ -144,21 +139,6 @@ object TestLedger:
         kes = xyz.kd5ujc.scarab.ledger.KesParameters.Mainnet
       ),
       geometry
-    )
-
-  /** The Conway LEDGER rule on one transaction of the state `nes`: the ledger state after it, or
-    * the refusal.
-    */
-  def conwayLedger(
-      nes: NewEpochState[Conway],
-      tx: Tx,
-      env: TxEnv
-  ): Either[LedgerFailure, Counted[EraLedgerState[Conway]]] =
-    JudgedSts(Ledger)(LedgerFailure.Rejected(tx.body.id, _))(
-      globals,
-      LedgerEnv(env, nes.es.chainAccount.treasury),
-      Counted(nes.es.ls, PlutusStats.zero),
-      tx
     )
 
   def txIn(n: Int): TxIn = TxIn(Blake2b.hash256.hash(Bytes(Vector(n.toByte))), 0)

@@ -21,9 +21,7 @@ import xyz.kd5ujc.scarab.ledger.{
   GovAction,
   GovActionId,
   Horizon,
-  PlutusStats,
   PoolParams,
-  PredicateFailure,
   Proposal,
   ProtocolParams,
   RewardAccount,
@@ -41,12 +39,10 @@ import xyz.kd5ujc.scarab.ledger.era.{
   ProposalProcedure,
   EraLedgerRun,
   EraTx,
-  EraTxBody,
   EraUTxO,
   IsPhase2Valid,
   Network,
-  PParams,
-  TxLevel
+  PParams
 }
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   BbodyEnv,
@@ -61,14 +57,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ShelleyBbodyState,
   UtxoContext
 }
-import xyz.kd5ujc.scarab.ledger.rules.{
-  Counted,
-  Judgment,
-  Ledger as FlatLedger,
-  LedgerEnv as FlatLedgerEnv,
-  NativeRules,
-  RuleT
-}
+import xyz.kd5ujc.scarab.ledger.rules.{NativeRules, RuleT}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, EpochNo, LedgerState, NewEpochState, TxIx}
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
@@ -79,9 +68,9 @@ import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
   * ([[ConwayTx.decode]]), and the flat reading must give back every field the test asked for. The
   * bytes are a form both decoders read, not checked against the reference's own encoder.
   *
-  * [[ledger]] judges such a transaction with Conway's LEDGER on the era types
-  * (`ConwayLedger.conwayLedgerTransition`, through [[EraLedgerRun.ledger]]) and with the flat
-  * LEDGER on the same bytes from the same state, and requires the two to agree.
+  * [[judge]] judges such a transaction with Conway's LEDGER on the era types
+  * (`ConwayLedger.conwayLedgerTransition`, through [[EraLedgerRun.ledger]]), and [[judgeBlock]] a
+  * block of it with LEDGERS; [[encode]] writes a transaction a suite built as a value.
   */
 object ConwayTestKit extends munit.Assertions:
   /** Definite-length CBOR writers. */
@@ -467,11 +456,10 @@ object ConwayTestKit extends munit.Assertions:
       ConwayUtxo.injectShelleyFailure(ctx.referenceBuild)
     )
 
-  /** Conway's LEDGERS on the era types (`ShelleyLedgers.ledgersTransition`, through
-    * [[EraLedgerRun.ledgers]]) on a block of the one transaction `tx` from `nes` under `ctx`, its
-    * failures kept as `policy` keeps them: each a LEDGER failure of the transaction, or what it
-    * admitted ([[Admitted]]). The flat LEDGERS, on the same bytes from the same state, gives the
-    * same failure, in the node's flat form, or the same state and counters.
+  /** Conway's LEDGERS on the era types (`ledgersTransition`, `Shelley/Rules/Ledgers.hs:185-209`,
+    * cardano-ledger f649f975, through [[EraLedgerRun.ledgers]]) on a block of the one transaction
+    * `tx` from `nes` under `ctx`, its failures kept as `policy` keeps them: each a LEDGER failure
+    * of the transaction, or what it admitted ([[Admitted]]).
     */
   def judgeBlock(
       nes: NewEpochState[Conway],
@@ -481,7 +469,7 @@ object ConwayTestKit extends munit.Assertions:
   ): Either[Vector[LedgerPredFailure[Conway]], Admitted] =
     val ls = nes.es.ls
     val clock = ctx.clock.getOrElse(fail("the environment has no clock"))
-    val era = EraLedgerRun.ledgers(
+    EraLedgerRun.ledgers(
       NativeRules.globalsOf(ctx),
       LedgersEnv[Conway](
         ctx.slot,
@@ -515,33 +503,6 @@ object ConwayTestKit extends munit.Assertions:
           )
           .getOrElse(fail(s"the events $events"))
         Right(Admitted(nes.copy(es = nes.es.copy(ls = after)), succeeded, failed, scripts))
-    val flat = xyz.kd5ujc.scarab.ledger.rules.Sts(xyz.kd5ujc.scarab.ledger.rules.Ledgers)(
-      NativeRules.globalsOf(ctx),
-      xyz.kd5ujc.scarab.ledger.rules.LedgersEnv(ctx, nes.es.chainAccount.treasury),
-      Counted(ls, PlutusStats.zero),
-      Vector(built.flat)
-    )
-    (era, flat) match
-      case (Right(e), Right(f)) =>
-        assert(
-          cats.Eq[LedgerState[Conway]].eqv(e.nes.es.ls, f.state),
-          "the era and the flat LEDGERS"
-        )
-        assertEquals(
-          (e.succeeded, e.failed, e.scripts),
-          (f.plutus.succeeded, f.plutus.failed, f.plutus.scripts),
-          "the era and the flat LEDGERS' counters"
-        )
-      case (Left(e), Left(xyz.kd5ujc.scarab.ledger.LedgerFailure.Rejected(_, fs))) =>
-        // the flat LEDGERS raises the transaction's first failure
-        if policy == RuleT.Policy.FirstFailure then
-          assertEquals(
-            e.map(flatForm(built, utxoOf(ls), _)),
-            fs.toChain.toVector,
-            "the era and the flat LEDGERS"
-          )
-      case other => fail(s"the era and the flat LEDGERS: $other")
-    era
 
   /** The transaction `tx` the flat decoder read, read by Conway's decoder from the same original
     * parts (its body, witnesses, auxiliary data and validity flag).
@@ -654,13 +615,11 @@ object ConwayTestKit extends munit.Assertions:
       scripts: Long
   )
 
-  /** Conway's LEDGER on the era types on `built` from `nes` under `ctx`, at the root, its failures
-    * kept as `policy` keeps them (every one, by default; under [[RuleT.Policy.FirstFailure]] the
-    * first check that fails alone): its failures in the reference's order, or what it admitted
-    * ([[Admitted]]). The flat LEDGER, on the same bytes from the same state, under the same policy,
-    * gives the same failures in the same order, in the node's flat form ([[EraLedgerRun.flat]]), or
-    * the same state and counters; a defect of either, or a failure without a flat form, fails the
-    * test.
+  /** Conway's LEDGER on the era types (`conwayLedgerTransitionTRC`,
+    * `Conway/Rules/Ledger.hs:320-519`, cardano-ledger f649f975) on `built` from `nes` under `ctx`,
+    * at the root, its failures kept as `policy` keeps them (every one, by default; under
+    * [[RuleT.Policy.FirstFailure]] the first check that fails alone): its failures in the
+    * reference's order, or what it admitted ([[Admitted]]). A defect fails the test.
     */
   def judge(
       nes: NewEpochState[Conway],
@@ -668,11 +627,7 @@ object ConwayTestKit extends munit.Assertions:
       ctx: TxEnv,
       policy: RuleT.Policy = RuleT.Policy.Accumulate
   ): Either[Vector[LedgerPredFailure[Conway]], Admitted] =
-    val globals = NativeRules.globalsOf(ctx)
-    val ls = nes.es.ls
-    val utxo =
-      utxoOf(ls)
-    val era = eraLedger(nes, built.typed, ctx, policy) match
+    eraLedger(nes, built.typed, ctx, policy) match
       case Left(defect)          => fail(s"the era LEDGER: $defect")
       case Right(Left(failures)) => Left(failures.toChain.toVector)
       case Right(Right((after, events))) =>
@@ -680,33 +635,6 @@ object ConwayTestKit extends munit.Assertions:
         val (succeeded, failed, scripts) =
           EraLedgerRun.counters(valid, events).getOrElse(fail(s"the events $events"))
         Right(Admitted(nes.copy(es = nes.es.copy(ls = after)), succeeded, failed, scripts))
-    val flat = Judgment.run(FlatLedger, policy)(
-      globals,
-      FlatLedgerEnv(ctx, nes.es.chainAccount.treasury),
-      Counted(ls, PlutusStats.zero),
-      built.flat
-    ) match
-      case Left(defect)          => fail(s"the flat LEDGER: $defect")
-      case Right(Left(failures)) => Left(failures.toChain.toVector)
-      case Right(Right(after))   => Right(after)
-    (era, flat) match
-      case (Right(e), Right(f)) =>
-        assert(
-          cats.Eq[LedgerState[Conway]].eqv(e.nes.es.ls, f.state),
-          s"the era and the flat LEDGER: $e\n$f"
-        )
-        assertEquals(
-          (e.succeeded, e.failed, e.scripts),
-          (f.plutus.succeeded, f.plutus.failed, f.plutus.scripts),
-          "the era and the flat LEDGER's counters"
-        )
-      case _ =>
-        assertEquals(
-          era.left.toOption.map(_.map(flatForm(built, utxo, _))),
-          flat.left.toOption,
-          "the era and the flat LEDGER"
-        )
-    era
 
   /** [[judge]]'s failures, or the state after the transaction. */
   def ledger(
@@ -989,25 +917,3 @@ object ConwayTestKit extends munit.Assertions:
       def unapply(f: LedgerPredFailure[Conway]): Option[ConwayGovCertPredFailure[Conway]] = f match
         case Cert(ConwayCertPredFailure.GovCertFailure(g)) => Some(g)
         case _                                             => None
-
-  /** A failure of the era LEDGER in the node's flat form: a missing redeemer's purpose read from
-    * the transaction's scripts and a proposal's action from its proposals.
-    */
-  private def flatForm(
-      built: Built,
-      utxo: xyz.kd5ujc.scarab.ledger.era.UTxO[Conway],
-      failure: xyz.kd5ujc.scarab.ledger.era.rules.LedgerPredFailure[Conway]
-  ): PredicateFailure =
-    val t = EraTx.conway
-    val b = EraTxBody.conway
-    val u = EraUTxO.conway
-    val body = t.body[TxLevel.Top](built.typed)(using t.bodyOf.top)
-    val purposes = ConwayUtxowPredFailure.storedPurposes(
-      u.getScriptsNeeded[TxLevel.Top](utxo, body)(using u.txOf.bodyOf.top),
-      utxo
-    )
-    val read =
-      ConwayGovPredFailure.readOf(b.proposalProcedures[TxLevel.Top](body)(using b.top).toVector)
-    EraLedgerRun
-      .flat(failure, purposes, read)
-      .fold(e => fail(s"no flat form of $failure: $e"), identity)

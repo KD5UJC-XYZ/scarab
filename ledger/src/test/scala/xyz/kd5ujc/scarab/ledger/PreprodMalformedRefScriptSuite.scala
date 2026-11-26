@@ -55,13 +55,13 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
     val reserves = Coin(Supply - nes.es.ls.utxo.utxo.utxo.coin)
     ConwayNewEpochState.reserves.replace(reserves)(nes)
 
+  // preprod: the Shelley era starts at slot 86400, 1 s slots, at POSIX time 1655769600
   private def env = TxEnv(
     slot = c.slot,
     epoch = 248,
     network = 0,
     firstSlotNextEpoch = c.slot + 100,
     stabilityWindow = 129600,
-    // preprod: the Shelley era starts at slot 86400, 1 s slots, at POSIX time 1655769600
     clock = Some(
       xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => (BigInt(1655769600) + slot - 86400) * 1000)
     ),
