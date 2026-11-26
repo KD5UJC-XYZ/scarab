@@ -14,7 +14,9 @@ is kept beside it from `GetCBOR GetUTxOWhole`) and the genesis files of the clus
 A batch counts only when, on one connection, the ledger tip and the mempool's snapshot slot (LocalTxMonitor,
 the tip's successor, with no transaction held) are the same before the state is read and after the last
 refusal: the reference then judged every transaction of the batch against that state. Otherwise the batch is
-taken again. Nothing is written by hand: `families` is read from the reference's bytes and checked against the
+taken again. A case may name transactions the reference must admit first (`before`): they are submitted on the
+same connection just before it, so that it is judged against the mempool they leave, and the batch's mempool must
+then hold them. Nothing is written by hand: `families` is read from the reference's bytes and checked against the
 names in its `cardano-cli` rendering, which is kept only as a diagnostic (it comes from a second submission).
 """
 import datetime
@@ -23,6 +25,7 @@ import importlib
 import json
 import pathlib
 import subprocess
+import time
 
 from . import ntclocal, ntcquery
 from .cbor import Raw, Tag, enc
@@ -213,7 +216,8 @@ class Session(ntclocal.Session):
 
 
 def judged(name, era, batch, build=DEFAULT_BUILD):
-    """The refusals of `batch` and the state they were judged against, or None when the tip moved."""
+    """The refusals of `batch` and the state they were judged against, or None when the tip moved. Raises Unexpected
+    when the reference admits a case, or refuses an item it must admit first."""
     with Session(ref(name), f"{ENV}/socket/node1/sock", MAGIC, relay=BUILDS[build]["relay"]) as s:
         s.acquire()
         point = s.point(era)
@@ -223,8 +227,18 @@ def judged(name, era, batch, build=DEFAULT_BUILD):
         slot, held = s.mempool()
         if held or slot != point[0][0] + 1:
             return None
-        reasons = [s.submit_item(item(era, case.tx)) for case in batch]
-        if s.tip(era) != point or s.mempool() != (slot, 0):
+        reasons = []
+        for case in batch:
+            for tx in case.before:
+                if s.submit_item(item(era, tx)) is not None:
+                    raise Unexpected(f"the reference refused a transaction it must admit before {case.label}")
+            reasons.append(s.submit_item(item(era, case.tx)))
+        # an admitted case is wrong whether or not the tip held still: taking the batch again (with a case's retry,
+        # under the same label) must not hide it
+        accepted = [case.label for case, reason in zip(batch, reasons) if reason is None]
+        if accepted:
+            raise Unexpected(f"the reference accepted {accepted}: the cases are wrong")
+        if s.tip(era) != point or s.mempool() != (slot, sum(len(case.before) for case in batch)):
             return None
     return {"point": point[0], "mempoolSlot": slot, "state": state, "utxo": utxo, "reasons": reasons}
 
@@ -276,22 +290,45 @@ def write(path, data):
     path.write_bytes(data)
 
 
+def drained(name, era, build):
+    """Wait until the reference's mempool holds nothing: the transactions a case admitted before it reached a block."""
+    for _ in range(120):
+        with Session(ref(name), f"{ENV}/socket/node1/sock", MAGIC, relay=BUILDS[build]["relay"]) as s:
+            if s.mempool()[1] == 0:
+                return
+        time.sleep(1)
+    raise Unexpected("the reference's mempool did not empty")
+
+
 def capture(name, era, cases, build=DEFAULT_BUILD):
-    """Every case judged, in batches whose state held still."""
+    """Every case judged, in batches whose state held still. A case with transactions before it (`Case.before`) is
+    a batch of its own; when its batch must be taken again, it is replaced by its `retry`, since its prefix is
+    admitted already, once the mempool is empty again."""
     out, pending, attempts = [], list(cases), 0
     while pending:
-        batch = pending[:BATCH]
+        if pending[0].before:
+            size = 1
+        else:
+            size = next((n for n, c in enumerate(pending[:BATCH]) if c.before), len(pending[:BATCH]))
+        batch = pending[:size]
         result = judged(name, era, batch, build)
         if result is None:
             attempts += 1
             if attempts > ATTEMPTS:
                 raise Unexpected("the reference's tip did not hold still for a batch")
+            if batch[0].before:
+                if batch[0].retry is None:
+                    raise Unexpected(f"{batch[0].label} must be taken again and has no retry")
+                pending[0] = batch[0].retry()
+                drained(name, era, build)
             continue
         accepted = [c.label for c, r in zip(batch, result["reasons"]) if r is None]
         if accepted:
             raise Unexpected(f"the reference accepted {accepted}: the cases are wrong")
         out += [(c, result, r) for c, r in zip(batch, result["reasons"])]
-        pending = pending[BATCH:]
+        pending = pending[size:]
+        if batch[0].before:
+            drained(name, era, build)
         print(json.dumps({"judged": [c.label for c in batch], "slot": result["point"][0]}), flush=True)
     return out
 
@@ -346,6 +383,7 @@ def refusal_corpus(args):
                              "familiesNotNamed": unnamed(era, fams, rendered), "rendered": rendered[:600]})
         record = {"label": case.label, "era": era, "families": fams, "expect": list(case.expect),
                   "item": item(era, case.tx).hex(),
+                  **({"before": [item(era, tx).hex() for tx in case.before]} if case.before else {}),
                   "tip": {"slot": result["point"][0], "hash": result["point"][1].hex()},
                   "mempoolSlot": result["mempoolSlot"], "state": state_file, "utxo": utxo_file,
                   "reason": reason.hex(), "reasonSha256": sha256(reason), "rendered": rendered}

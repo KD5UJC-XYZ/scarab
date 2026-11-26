@@ -73,7 +73,8 @@ class ConwayMempoolRunSuite extends FunSuite:
       judging: ConwayMempoolRun.Judging,
       build: ReferenceBuild,
       families: Vector[Family],
-      reason: Option[Bytes]
+      reason: Option[Bytes],
+      afterAdmitted: Boolean = false
   ):
     def utxo: UTxO[Conway] =
       right(s"$label: typed UTxO")(ConwayMempoolRun.utxoOf(ledger.ls, typed))
@@ -165,7 +166,8 @@ class ConwayMempoolRunSuite extends FunSuite:
           ),
           c.build,
           rc.families,
-          Some(rc.reason)
+          Some(rc.reason),
+          rc.before.nonEmpty
         )
       }
     }
@@ -226,10 +228,22 @@ class ConwayMempoolRunSuite extends FunSuite:
   )
 
   test("applyTx's refusal at the root is the reference's, byte for byte, on every MEMPOOL case"):
+    // a case the reference judged after admitting items first is replayed by
+    // `ReferenceRefusalSuite`, which admits them too
     val (left, compared) =
-      corpus.partition(s => Capacity.phase1(s.flat, s.ledger.params).isLeft)
+      corpus
+        .filterNot(_.afterAdmitted)
+        .partition(s => Capacity.phase1(s.flat, s.ledger.params).isLeft)
     assertEquals(left.map(_.label).toSet, Measured, "the cases the measure refuses")
-    assertEquals((corpus.size, compared.size), (84, 81), "the Conway cases, and those compared")
+    assertEquals(
+      corpus.filter(_.afterAdmitted).map(_.label).toSet,
+      Set(
+        "conway-mempool/mempool-vote-on-admitted-proposal",
+        "conway-mempool/mempool-authorization-after-admitted-proposal"
+      ),
+      "the cases judged after admitted items"
+    )
+    assertEquals((corpus.size, compared.size), (112, 107), "the Conway cases, and those compared")
     assert(compared.exists(_.families == Vector(Family.MEMPOOL)), "no case of MEMPOOL's own")
     compared.foreach { recorded =>
       // under the corpus's own build
@@ -272,11 +286,14 @@ class ConwayMempoolRunSuite extends FunSuite:
     // the flat MEMPOOL, before it was deleted, judged each case at its recorded protocol version
     // and at 9, 10 and 11, under each build, applied and applied again, and the era MEMPOOL gave
     // the same failures in the same order, or the same ledger state (the moved withdrawals as
-    // `MovedWithdrawals.expected` has them); the era MEMPOOL's results were recorded
+    // `MovedWithdrawals.expected` has them); the era MEMPOOL's results were recorded. The corpora
+    // recorded after the flat MEMPOOL was gone (`ReferenceRefusalSuite.EraOnly`) have no such
+    // recording; their reference bytes are checked above
     val recorded = FlatRecordings.mempoolRun
-    assertEquals(recorded.keySet, corpus.map(_.label).toSet, "the cases recorded")
+    val flatCorpus = corpus.filterNot(s => ReferenceRefusalSuite.eraOnly(s.label))
+    assertEquals(recorded.keySet, flatCorpus.map(_.label).toSet, "the cases recorded")
     val codecsOf = corpusCodecs
-    val cells = corpus.flatMap { s0 =>
+    val cells = flatCorpus.flatMap { s0 =>
       val judged = for
         v <- versions(s0)
         build <- ReferenceBuild.values.toVector
@@ -293,7 +310,7 @@ class ConwayMempoolRunSuite extends FunSuite:
       assertEquals(judged, recorded(s0.label), s0.label)
       judged
     }
-    assertEquals(cells.size, corpus.size * 4 * ReferenceBuild.values.size * 2, "the judgments")
+    assertEquals(cells.size, flatCorpus.size * 4 * ReferenceBuild.values.size * 2, "the judgments")
     assert(cells.exists(_.startsWith("A:")), "no admission")
     assert(cells.exists(_.startsWith("R:")), "no refusal")
 

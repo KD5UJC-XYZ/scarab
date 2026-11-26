@@ -546,6 +546,7 @@ class PreConwayFailureCborSuite extends FunSuite:
     val predicate = PredicateFailure.utxo(
       UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(true, Some(Vector(failure))))
     )
+    // Conway's refusal is its era encoder's (`ConwayFailureCborContextSuite`)
     for era <- Vector(Era.Alonzo, Era.Babbage) do
       FlatRefusal.applyTxError(era, Vector(predicate)) match
         case Left(RefusalPresentationError.InvalidPlutusContext(retained, cause)) =>

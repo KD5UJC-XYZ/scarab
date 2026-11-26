@@ -60,7 +60,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
   * protocol version and at 9, 10 and 11, under each build and validation policy: the same failures
   * in the same order, or the same ledger state. Where the reference refused a transaction for
   * LEDGER, the era rule's failures, one level below MEMPOOL, encode to the reference's refusal byte
-  * for byte.
+  * for byte. The corpora recorded for the era rules alone
+  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out of the flat
+  * comparisons, which stage 3 retires; the era rules' own assertions keep them, and
+  * `ReferenceRefusalSuite` binds the era rules to them.
   */
 class ConwayLedgerChecksSuite extends FunSuite:
   import ReferenceRefusalSuite.*
@@ -84,7 +87,8 @@ class ConwayLedgerChecksSuite extends FunSuite:
       slot: BigInt,
       build: ReferenceBuild,
       families: Vector[Family],
-      reason: Bytes
+      reason: Bytes,
+      afterAdmitted: Boolean
   )
 
   private def right[E, A](what: String)(e: Either[E, A]): A =
@@ -136,7 +140,8 @@ class ConwayLedgerChecksSuite extends FunSuite:
           rc.tipSlot + 1,
           c.build,
           rc.families,
-          rc.reason
+          rc.reason,
+          rc.before.nonEmpty
         )
       }
     }
@@ -320,9 +325,14 @@ class ConwayLedgerChecksSuite extends FunSuite:
   test("the corpus has Conway cases, each read by both paths"):
     assert(clue(seen.size) > 40)
 
+  /** The cases the flat comparisons and the flat encoder's recorded bytes judge: the corpora
+    * recorded for the era rules alone aside.
+    */
+  private lazy val flatSeen: Vector[Seen] = seen.filterNot(s => eraOnly(s.label))
+
   test("conwayLedgerTransition gives the flat LEDGER's failures, in order, on every Conway case"):
     val outcomes = for
-      s0 <- seen
+      s0 <- flatSeen
       s <- versions(s0)
       build <- ReferenceBuild.values.toVector
       validation <- TxEnv.Validation.values.toVector
@@ -378,19 +388,25 @@ class ConwayLedgerChecksSuite extends FunSuite:
     "conway-devnet/tx-too-large",
     "conway-devnet/tx-too-large-spent-inputs",
     "conway-devnet/utxo-mint-units-too-big",
-    "conway-devnet/all-inputs-spent"
+    "conway-devnet/all-inputs-spent",
+    "conway-constructors/mempool-inputs-empty",
+    "conway-mempool/mempool-unelected-committee-voter",
+    "conway-mempool/mempool-unelected-voters-with-ledger-failures"
   )
 
   test("conwayLedgerTransition's refusal is the reference's, byte for byte, on every LEDGER case"):
     // LEDGER one level down, under MEMPOOL, where the reference reports its failures in their
     // order; every other case is LEDGER's, the combined ones among them
-    val (left, compared) = seen.partition(s => NotLedgers.contains(s.label))
+    // and a case the reference judged after admitting items first is replayed by
+    // `ReferenceRefusalSuite`, which admits them too
+    val (left, compared) =
+      seen.filterNot(_.afterAdmitted).partition(s => NotLedgers.contains(s.label))
     assertEquals(left.map(_.label).toSet, NotLedgers, "the cases left out are cases")
     assertEquals(
       seen
         .filter(s =>
           xyz.kd5ujc.scarab.node.mempool.Capacity.phase1(s.flat, s.ledger.params).isLeft ||
-            s.families == Vector(Family.MEMPOOL)
+            s.families.contains(Family.MEMPOOL)
         )
         .map(_.label)
         .toSet,
@@ -412,10 +428,11 @@ class ConwayLedgerChecksSuite extends FunSuite:
     "the era failures' bytes are those the flat encoder wrote, on every case, version, build, policy and depth"
   ):
     // the flat rules' encoder, before it was deleted, wrote each refusal of these judgments, and
-    // the era encoder wrote the same bytes (`fixtures/conway-flat-refusals`): 3,744 refusals
+    // the era encoder wrote the same bytes (`fixtures/conway-flat-refusals`): 3,744 refusals, of
+    // the corpora recorded before it was deleted
     val recorded = FlatRecordings.ledgerChecks
-    assertEquals(recorded.keySet, seen.map(_.label).toSet, "the cases recorded")
-    val cells = seen.flatMap { s0 =>
+    assertEquals(recorded.keySet, flatSeen.map(_.label).toSet, "the cases recorded")
+    val cells = flatSeen.flatMap { s0 =>
       val judged = for
         s <- versions(s0)
         build <- ReferenceBuild.values.toVector
@@ -430,7 +447,52 @@ class ConwayLedgerChecksSuite extends FunSuite:
       judged
     }
     assertEquals(cells.count(_ != "-"), 3744, "the refusals compared")
-    assertEquals(cells.size, seen.size * 48, "the judgments compared")
+    assertEquals(cells.size, flatSeen.size * 48, "the judgments compared")
+
+  /** The cases that register a new pool. The era POOL writes a new pool's state in the layout of
+    * the build whose rules it follows: 11.2's layout is not implemented
+    * (`ReferenceBuildNotYet.Layout`), and the Leios build's is not that of the recorded state,
+    * 11.1's (`LedgerFailure.PoolParamsLayout`). Under those two builds the era LEDGER reaches no
+    * verdict on them, a defect each, named here; under 11.1, the corpora's own, it refuses them
+    * (`ReferenceRefusalSuite` compares the refusals with the reference's).
+    */
+  private val NewPools: Set[String] = Set(
+    "conway-constructors/pool-reward-account-wrong-network",
+    "conway-constructors/pool-metadata-hash-too-big",
+    "conway-constructors-v11/pool-vrf-key-registered-v11",
+    "conway-constructors-v11/pool-cost-too-low-v11"
+  )
+
+  test("a new pool under the 11.2 and Leios builds' rules is a defect of the pool's layout, named"):
+    val registering = seen.filter(s => NewPools.contains(s.label))
+    assertEquals(registering.map(_.label).toSet, NewPools)
+    for
+      s0 <- registering
+      s <- versions(s0)
+      validation <- TxEnv.Validation.values.toVector
+    do
+      val what = s"${s.label}, $validation"
+      assertEquals(
+        eraLedger(s, ReferenceBuild.Release11_2, validation).left.toOption,
+        Some(
+          EraLedgerRun.Defect.Ledger(
+            xyz.kd5ujc.scarab.ledger.LedgerFailure.LayoutNotYet(
+              xyz.kd5ujc.scarab.protocol.ReferenceBuildNotYet.Layout(ReferenceBuild.Release11_2)
+            )
+          )
+        ),
+        s"$what under 11.2"
+      )
+      eraLedger(s, ReferenceBuild.Leios, validation) match
+        case Left(
+              EraLedgerRun.Defect.Ledger(
+                xyz.kd5ujc.scarab.ledger.LedgerFailure
+                  .PoolParamsLayout(_, StateLayout.Node11_1, StateLayout.Leios)
+              )
+            ) =>
+          ()
+        case other => fail(s"$what under the Leios build: $other")
+      assert(eraLedger(s, ReferenceBuild.Release11_1, validation).isRight, s"$what under 11.1")
 
   test("LEDGERS of one transaction is its LEDGER one level down, embedded, on every Conway case"):
     seen.foreach { s =>

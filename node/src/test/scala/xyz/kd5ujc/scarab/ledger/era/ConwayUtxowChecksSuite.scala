@@ -41,6 +41,10 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
   * from each. The scripts a transaction needs and provides are the era types' own (`EraUTxO`'s
   * `getScriptsNeeded` and `getScriptsProvided`), checked against the flat path's on every case. A
   * predicate the corpus never fails is named, and refused on a case crafted from a recorded one.
+  * The corpora recorded for the era rules alone
+  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out of the flat
+  * comparisons, which stage 3 retires; the era rules' own assertions keep them, and
+  * `ReferenceRefusalSuite` binds the era rules to them.
   */
 class ConwayUtxowChecksSuite extends FunSuite:
   private given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
@@ -352,8 +356,11 @@ class ConwayUtxowChecksSuite extends FunSuite:
       (tag, ix, hash)
     }
 
+  /** The cases the flat comparisons judge: the corpora recorded for the era rules alone aside. */
+  private lazy val flatSeen: Vector[Seen] = seen.filterNot(s => eraOnly(s.label))
+
   test("getScriptsNeeded is the flat path's, in order with each purpose's index, on every case"):
-    seen.foreach(s => assertEquals(typedNeeded(s), flatNeeded(s), s.label))
+    flatSeen.foreach(s => assertEquals(typedNeeded(s), flatNeeded(s), s.label))
 
   // what a wrong order or index would change: the corpus has a guardrails script; the recorded
   // blocks a script's withdrawal and a script voter (`EraUtxowSuite`); the crafted case below a
@@ -412,7 +419,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
     assert(compared.nonEmpty, "no case the datums alone refuse")
 
   test("a certificate's flat form is the one the flat decoder read, on every case"):
-    val certs = seen.flatMap { s =>
+    val certs = flatSeen.flatMap { s =>
       val typed = EraTxBody.conway
         .certs[TxLevel.Top](tx.body[TxLevel.Top](s.typed)(using top))(using EraTxBody.conway.top)
       assertEquals(typed.map(ConwayTxCert.toStored), s.flat.body.certificates, s.label)
@@ -506,7 +513,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
 
   test("getScriptsProvided is the flat path's scripts on every case: hashes, kinds and bytes"):
     val scripts = tx.witsOf.scriptsOf
-    val bytesCompared = seen.map { s =>
+    val bytesCompared = flatSeen.map { s =>
       val body = s.flat.body
       val outs = (body.inputs ++ body.referenceInputs).flatMap(s.stored.get)
       val flat = TxChecks.providedScripts(s.flat.witnesses, outs.toVector)
@@ -531,13 +538,13 @@ class ConwayUtxowChecksSuite extends FunSuite:
     assert(clue(seen.size) > 0)
 
   test("each typed predicate gives the flat one's verdict on every Conway case"):
-    seen.foreach(s =>
+    flatSeen.foreach(s =>
       pairs(s).foreach((name, flat, typed) => assertEquals(typed, flat, s"${s.label}: $name"))
     )
 
   /** The cases on which each predicate refuses. */
   private lazy val refusals: Map[String, Int] =
-    seen
+    flatSeen
       .flatMap(s => pairs(s).collect { case (name, Right(fs), _) if fs.nonEmpty => name })
       .groupMapReduce(identity)(_ => 1)(_ + _)
 

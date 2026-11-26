@@ -146,6 +146,14 @@ chain data, and are set in the public Leios testnet's environment (its public pr
 start and slot length, as fixtures/reference/leios-testnet-chain-contexts records them); the results are the verdicts
 the unchanged cardano-ledger (Apache-2.0) of the pinned Leios testnet build gives on them, run in an image built from
 it that is not redistributed (provenance in fixtures/reference/leios-testnet-context-refusals/README.md).
+fixtures/reference/refusals holds, under the project's licence (Apache-2.0), transactions Scarab's tooling built and
+signed with throwaway keys of private local devnets, the genesis files of those devnets, and the refusals and ledger
+states the unchanged official cardano-node release (Apache-2.0) recorded for them; only public verification keys,
+key hashes and signatures are retained, and no signing key is distributed (provenance in
+fixtures/reference/refusals/README.md and each corpus's corpus.json). fixtures/reference/genesis-fields holds, under
+the same licence, changes Scarab generates to the repository's genesis files and the verdicts the unchanged released
+cardano-ledger (Apache-2.0) parsers give on them, run in an image built from it that is not redistributed
+(provenance in fixtures/reference/genesis-fields/README.md and provenance.json).
 fixtures/reference/dijkstra-pparams holds, under the project's licence (Apache-2.0), synthetic Dijkstra
 protocol-parameter updates Scarab generates and what the unchanged cardano-ledger (Apache-2.0) of the pinned Leios
 testnet build makes of them, run in an image built from it that is not redistributed (provenance in

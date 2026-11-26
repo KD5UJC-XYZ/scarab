@@ -511,13 +511,20 @@ object ConwayFailureCbor:
     */
   private def describe(d: FailureDescription): Result[(String, Bytes)] = d match
     case FailureDescription.PlutusFailure(cause, pwc) =>
-      val failure = PlutusFailure(cause, Bytes.empty, Some(PlutusWithContext.evalRequest(pwc)))
-      PlutusFailureCbor
-        .description(failure)
-        .leftMap(e => RefusalPresentationError.InvalidPlutusContext(failure, e))
-        .map(text =>
-          (text.getOrElse(failure.cause.message), PlutusFailureCbor.reconstruction(failure))
-        )
+      described(PlutusFailure(cause, Bytes.empty, Some(PlutusWithContext.evalRequest(pwc))))
+
+  /** [[describe]] of the failure with its evaluator's request. A typed context always prints; a
+    * request whose arguments the printer cannot read is Scarab's own defect
+    * ([[RefusalPresentationError.InvalidPlutusContext]]), which keeps the failure and the printer's
+    * typed cause.
+    */
+  private[ntc] def described(failure: PlutusFailure): Result[(String, Bytes)] =
+    PlutusFailureCbor
+      .description(failure)
+      .leftMap(e => RefusalPresentationError.InvalidPlutusContext(failure, e))
+      .map(text =>
+        (text.getOrElse(failure.cause.message), PlutusFailureCbor.reconstruction(failure))
+      )
 
   /** `EncCBOR (CollectError era)` (`Alonzo/Plutus/Context.hs:376-379`, cardano-ledger f649f975):
     * tags 0 to 3.
