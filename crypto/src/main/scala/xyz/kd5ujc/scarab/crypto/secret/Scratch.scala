@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.crypto.vrf.secret
+package xyz.kd5ujc.scarab.crypto.secret
 
 import java.util.Arrays
 import scala.util.Using
@@ -26,7 +26,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
   *
   * A scratch belongs to the thread that runs its computation and is not shared.
   */
-private[vrf] final class Scratch private (observe: List[Array[Byte]] => Unit):
+private[scarab] final class Scratch private (observe: List[Array[Byte]] => Unit):
   /** A buffer of this scratch, which only this scratch reads and writes. */
   opaque type Buffer = Array[Byte]
 
@@ -85,7 +85,7 @@ private[vrf] final class Scratch private (observe: List[Array[Byte]] => Unit):
     held = None
     Using.resource(arrays)(observe)(using Scratch.wiped)
 
-private[vrf] object Scratch:
+private[scarab] object Scratch:
   private given Releasable[Scratch] = _.release()
 
   /** Zeroing the arrays a scratch held is their release. */
@@ -97,9 +97,9 @@ private[vrf] object Scratch:
   def within[A: Public](body: Scratch => A): A = observed(_ => ())(body)
 
   /** [[within]] that hands `before` every buffer just before they are zeroed, on success and on
-    * failure, so that a suite of this package can see what a computation held and that it is gone.
-    * Main code calls it only through [[within]].
+    * failure, so that a suite can see what a computation held and that it is gone. Main code calls
+    * it only through [[within]].
     */
-  private[secret] def observed[A: Public](before: List[Array[Byte]] => Unit)(
+  private[scarab] def observed[A: Public](before: List[Array[Byte]] => Unit)(
       body: Scratch => A
   ): A = Using.resource(new Scratch(before))(body)

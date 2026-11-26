@@ -2,9 +2,8 @@
 package xyz.kd5ujc.scarab.node.forge
 
 import cats.syntax.all.*
-import io.circe.Json
 import io.circe.parser
-import io.circe.syntax.*
+import java.nio.ByteBuffer
 import java.nio.file.{Files, Path}
 import scala.util.control.Exception.allCatch
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -14,6 +13,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
 import xyz.kd5ujc.scarab.ledger.{ForgeError, ForgeKeyProblem, Header, KeyShape}
 import xyz.kd5ujc.scarab.crypto.opcert.OperationalCertificate
+import xyz.kd5ujc.scarab.crypto.secret.{KeyText, Public}
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 
 /** The part of a pool's credentials that rotation replaces as a unit: the KES signing key, the
@@ -73,6 +73,12 @@ object PoolCredentials:
 
 /** The cardano-cli text envelopes: `{"type": ..., "description": ..., "cborHex": ...}` whose
   * `cborHex` is the CBOR encoding of the payload.
+  *
+  * The VRF and KES signing keys are read from their files as bytes ([[KeyText]]): a flat envelope
+  * of the expected type is read in place, and its key decoded and copied out of storage that is
+  * zeroed once the key is made, so that no `String`, `Json` or `Bytes` holds a copy of it. An
+  * envelope that is not flat is read as text, by the readers below that take a text, with the
+  * results and failures they always had.
   */
 object KeyFiles:
   val VrfSigningKeyType = "VrfSigningKey_PraosVRF"
@@ -112,7 +118,26 @@ object KeyFiles:
           Left(ForgeError.KeyFile(file, ForgeKeyProblem.ExpectedByteString(KeyShape.of(n.value))))
     }
 
-  def vrfSigningKey(file: String, text: String): Either[ForgeError, Draft03Prover.SigningKey] =
+  /** The VRF key of the file `file`, read as bytes. */
+  def vrfSigningKey(file: Path): Either[ForgeError, Draft03Prover.SigningKey] =
+    vrfSigningKeyRead(file.toString, KeyText.file(file)).leftMap(unreadable(file.toString)).flatten
+
+  /** The VRF key of the envelope `source` gives, named `file`: none if its bytes cannot be read. */
+  private[forge] def vrfSigningKeyRead(
+      file: String,
+      source: KeyText.Source
+  ): Either[Throwable, Either[ForgeError, Draft03Prover.SigningKey]] =
+    keyRead(file, source, VrfSigningKeyType)(
+      Draft03Prover.SigningKey.fromPayload,
+      e => ForgeError.KeyFile(file, ForgeKeyProblem.Vrf(e)),
+      vrfSigningKey(file, _)
+    )
+
+  /** The VRF key of an envelope's text. */
+  private[forge] def vrfSigningKey(
+      file: String,
+      text: String
+  ): Either[ForgeError, Draft03Prover.SigningKey] =
     for
       raw <- expect(file, text, VrfSigningKeyType)
       payload <- byteString(file, raw)
@@ -184,9 +209,27 @@ object KeyFiles:
 
   /** The KES key as `cardano-cli node key-gen-KES` writes it (the 608-byte period-0 key), or as
     * [[KesFiles]] writes it back after evolving (the same envelope; the period is read off the
-    * key).
+    * key), read as bytes.
     */
-  def kesSigningKey(file: String, text: String): Either[ForgeError, Sum6KesSigning.SigningKey] =
+  def kesSigningKey(file: Path): Either[ForgeError, Sum6KesSigning.SigningKey] =
+    kesSigningKeyRead(file.toString, KeyText.file(file)).leftMap(unreadable(file.toString)).flatten
+
+  /** The KES key of the envelope `source` gives, named `file`: none if its bytes cannot be read. */
+  private[forge] def kesSigningKeyRead(
+      file: String,
+      source: KeyText.Source
+  ): Either[Throwable, Either[ForgeError, Sum6KesSigning.SigningKey]] =
+    keyRead(file, source, KesSigningKeyType)(
+      Sum6KesSigning.fromEvolvedPayload,
+      ForgeError.KesKey(file, _),
+      kesSigningKey(file, _)
+    )
+
+  /** The KES key of an envelope's text. */
+  private[forge] def kesSigningKey(
+      file: String,
+      text: String
+  ): Either[ForgeError, Sum6KesSigning.SigningKey] =
     for
       raw <- expect(file, text, KesSigningKeyType)
       payload <- byteString(file, raw)
@@ -195,20 +238,40 @@ object KeyFiles:
         .leftMap(ForgeError.KesKey(file, _))
     yield key
 
-  /** The text of a KES key file: the cardano-cli envelope around the key at its current period. */
-  def kesEnvelope(file: String, key: Sum6KesSigning.SigningKey): Either[ForgeError, String] =
-    Cbor
-      .encode(Value.ByteString(key.toBytes))
-      .leftMap(e => ForgeError.KeyFile(file, ForgeKeyProblem.Cbor(e)))
-      .map(cbor =>
-        Json
-          .obj(
-            "type" -> KesSigningKeyType.asJson,
-            "description" -> "KES Signing Key".asJson,
-            "cborHex" -> cbor.hex.asJson
-          )
-          .spaces2
-      )
+  /** The text of a KES key file, the cardano-cli envelope around the key at its current period,
+    * handed to `use` in native memory that is zeroed when `use` ends; its bytes are those circe's
+    * `spaces2` printed of `{"type", "description", "cborHex"}` before (`KeyFilesBytesSuite`).
+    */
+  def kesEnvelope[A](key: Sum6KesSigning.SigningKey)(use: ByteBuffer => A): A =
+    KeyText.written(KesSigningKeyType, KesDescription, Sum6KesSigning.KeyBytes, key.payloadIn(_))(
+      use
+    )
+
+  private val KesDescription = "KES Signing Key"
+
+  /** What [[KeyText.read]] found in the envelope of a key: the key, made by `make` from the read's
+    * buffer, which it copies what it keeps from and the read then zeroes; or the failure the
+    * readers of an envelope's text give, through `text` when the byte reader does not take it;
+    * outside, a failure to read it.
+    */
+  private def keyRead[F: Public, K: Public](
+      file: String,
+      source: KeyText.Source,
+      typ: String
+  )(
+      make: Array[Byte] => Either[F, K],
+      failure: F => ForgeError,
+      text: String => Either[ForgeError, K]
+  ): Either[Throwable, Either[ForgeError, K]] =
+    KeyText.read(source, typ)(make) match
+      case KeyText.Read.Unreadable(cause) => Left(cause)
+      case KeyText.Read.Payload(made)     => Right(made.leftMap(failure))
+      case KeyText.Read.WrongType(found) =>
+        Right(Left(ForgeError.KeyFile(file, ForgeKeyProblem.EnvelopeType(typ, found))))
+      case KeyText.Read.Other(envelope) => Right(text(envelope))
+
+  private def unreadable(file: String)(cause: Throwable): ForgeError =
+    ForgeError.KeyFile(file, ForgeKeyProblem.Io(cause))
 
   /** `[[hotVkey, sequence, kesPeriod, sigma], coldVkey]`. */
   def opCert(file: String, text: String): Either[ForgeError, (Header.OpCert, Bytes)] =
@@ -258,7 +321,17 @@ object KeyFiles:
       opCertFile: Path,
       blsFile: Option[Path] = None
   ): Either[ForgeError, PoolCredentials] =
-    read(vrfFile).flatMap(vrfSigningKey(vrfFile.toString, _)).flatMap { vrf =>
+    loadWith(vrfFile, kesFile, opCertFile, blsFile, KesFiles.readHot)
+
+  /** [[load]] with the KES key and certificate read by `readHot`, a seam for the suites. */
+  private[forge] def loadWith(
+      vrfFile: Path,
+      kesFile: Path,
+      opCertFile: Path,
+      blsFile: Option[Path],
+      readHot: (Path, Path) => Either[ForgeError, HotCredentials]
+  ): Either[ForgeError, PoolCredentials] =
+    vrfSigningKey(vrfFile).flatMap { vrf =>
       erasedUnless(
         vrf,
         for
@@ -266,9 +339,10 @@ object KeyFiles:
           // `readLeaderCredentialsSingleton` reads them (`Cardano/Node/Protocol/Shelley.hs:187-201`,
           // cardano-node b004fe0c)
           keys <- blsFile.traverse(loadBlsSigningKeys).map(_.getOrElse(Vector.empty))
-          hot <- KesFiles.readHot(kesFile, opCertFile)
+          hot <- readHot(kesFile, opCertFile)
           credentials = PoolCredentials(vrf, hot.kes, hot.opCert, hot.coldVkey, keys)
-          _ <- PoolCredentials.check(credentials)
+          // credentials that do not belong together are not taken: their KES key is erased too
+          _ <- erasedUnless(hot.kes, PoolCredentials.check(credentials))(_ => true)
         yield credentials
       )(_ => true)
     }
@@ -278,17 +352,31 @@ object KeyFiles:
     * leave no copy of its seed. A computation that throws, whatever it throws, erases the key too,
     * and its `Throwable` is passed on as it came (ERR-4); that is the reason for the suppression.
     */
-  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
   private[forge] def erasedUnless[A](
       vrf: Draft03Prover.SigningKey,
       result: => Either[ForgeError, A]
   )(
       keeps: A => Boolean
   ): Either[ForgeError, A] =
+    erasing(() => vrf.forget(), result)(keeps)
+
+  /** [[erasedUnless]] for a KES key read for `result`: erased unless `result` keeps it. */
+  private[forge] def erasedUnless[A](
+      kes: Sum6KesSigning.SigningKey,
+      result: => Either[ForgeError, A]
+  )(
+      keeps: A => Boolean
+  ): Either[ForgeError, A] =
+    erasing(() => kes.forget(), result)(keeps)
+
+  @SuppressWarnings(Array("org.wartremover.warts.Throw"))
+  private def erasing[A](forget: () => Unit, result: => Either[ForgeError, A])(
+      keeps: A => Boolean
+  ): Either[ForgeError, A] =
     allCatch.either(result) match
       case Right(computed) =>
-        if !computed.exists(keeps) then vrf.forget()
+        if !computed.exists(keeps) then forget()
         computed
       case Left(thrown) =>
-        vrf.forget()
+        forget()
         throw thrown

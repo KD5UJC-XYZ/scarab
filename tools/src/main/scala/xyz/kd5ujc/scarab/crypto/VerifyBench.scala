@@ -62,7 +62,7 @@ object VerifyBench:
           identity
         )
       val message = Bytes.fromArray(bytes(64))
-      (key.verificationKey, message, key.sign(message))
+      (key.verificationKey, message, key.sign(message).fold(e => sys.error(e.toString), identity))
     }
     val stake =
       PraosLeaderThreshold.Fraction.checked(1, 1000).fold(e => sys.error(e.toString), identity)

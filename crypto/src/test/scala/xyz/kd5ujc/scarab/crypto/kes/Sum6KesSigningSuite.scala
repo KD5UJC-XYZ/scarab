@@ -46,7 +46,7 @@ class Sum6KesSigningSuite extends munit.FunSuite:
     val msg = hex("deadbeef")
     (0 until Periods).foreach { p =>
       assertEquals(k.period, p)
-      val sig = k.sign(msg)
+      val sig = k.sign(msg).toOption.get
       assertEquals(sig.size, SignatureBytes)
       assert(verified(vk, p, msg, sig), s"period $p")
       if p > 0 then assert(!verified(vk, p - 1, msg, sig), s"period $p under ${p - 1}")
@@ -82,9 +82,9 @@ class Sum6KesSigningSuite extends munit.FunSuite:
     val loaded = fromBytes(k.toBytes, 37).toOption.get
     assertEquals(loaded.verificationKey, k.verificationKey)
     val msg = hex("00")
-    assert(verified(k.verificationKey, 37, msg, loaded.sign(msg)))
+    assert(verified(k.verificationKey, 37, msg, loaded.sign(msg).toOption.get))
     loaded.evolve()
-    assert(verified(k.verificationKey, 38, msg, loaded.sign(msg)))
+    assert(verified(k.verificationKey, 38, msg, loaded.sign(msg).toOption.get))
     // the same bytes do not load at another half
     assertEquals(
       fromBytes(k.toBytes, 3),

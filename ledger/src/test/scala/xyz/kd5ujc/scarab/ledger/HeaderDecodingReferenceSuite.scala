@@ -174,10 +174,13 @@ class HeaderDecodingReferenceSuite extends FunSuite:
       Right(OperationalCertificate.Result.OperationalCertificateSignatureVerified)
     def check(h: Header.Shelley) =
       OCertRules.verifySignaturesWith(h, BigInt(129600), BigInt(62), Sum6Kes.verify, certificate)
-    val reference = header(key.sign(canonical))
+    val reference = header(key.sign(canonical).toOption.get)
     assertEquals(reference.signable, canonical)
     assertEquals(check(reference), Right(()))
-    assertEquals(check(header(key.sign(original))), Left(OCertError.KesSignatureRejected))
+    assertEquals(
+      check(header(key.sign(original).toOption.get)),
+      Left(OCertError.KesSignatureRejected)
+    )
 
   test("a Praos header body with non-minimal heads is signed as its canonical encoding") {
     // the list head of ten items in four bytes, and the block number in eight

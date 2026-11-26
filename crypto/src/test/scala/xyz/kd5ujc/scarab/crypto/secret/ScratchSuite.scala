@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-package xyz.kd5ujc.scarab.crypto.vrf.secret
+package xyz.kd5ujc.scarab.crypto.secret
 
 import xyz.kd5ujc.scarab.codec.Bytes
 

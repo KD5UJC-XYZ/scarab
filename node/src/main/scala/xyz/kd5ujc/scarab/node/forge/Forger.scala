@@ -1938,12 +1938,17 @@ final class Forger[F[_]: Async, S](
           // the key at the slot's period before it signs in it: as it is where it is there, else
           // moved there, only by an attempt admitted at the slot, and written back (§5.5)
           hot.evolvedFor(c, forecastable, admitted).flatMap {
-            case Left(early)    => F.pure(Left(early))
-            case Right(Left(e)) => F.pure(Right(Left(e)))
+            case Left(early)     => F.pure(Left(early))
+            case Right(Left(e))  => F.pure(Right(Left(e)))
             case Right(Right(_)) =>
+              // a key erased meanwhile refuses to sign, as it refuses to evolve
               F.blocking(c.kes.sign(headerBody))
-                .map(signature =>
-                  Right(Right((headerBody, signature, c.kes.period, c.opCert.sequence)))
+                .map(signed =>
+                  Right(
+                    signed
+                      .leftMap(ForgeError.KesEvolution(_))
+                      .map((headerBody, _, c.kes.period, c.opCert.sequence))
+                  )
                 )
           }
     // the header, the key's evolution and the signature all use the credentials of one moment: a

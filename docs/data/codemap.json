@@ -112,10 +112,28 @@
       ],
       "suites": [
         "Sum6KesSuite",
-        "Sum6KesSigningSuite"
+        "Sum6KesSigningSuite",
+        "Sum6KesSigningDifferentialSuite"
       ],
       "docs": [
         "docs/adr/0015-kes-key-written-back-and-checked-reload.md"
+      ]
+    },
+    {
+      "module": "crypto",
+      "path": "crypto/kes/secret",
+      "responsibility": "The secret steps of KES signing: the key's 608 bytes, its period and its evolution, and what is computed from its seeds (the hashes of the seed halves, the leaves' Ed25519 keys, scalars and nonces), in working storage",
+      "entryPoints": [
+        "Sum6Key",
+        "Blake2b256",
+        "Leaf"
+      ],
+      "suites": [
+        "Sum6KeySuite",
+        "Sum6KesSigningDifferentialSuite"
+      ],
+      "docs": [
+        "docs/security/threat-model.md"
       ]
     },
     {
@@ -155,16 +173,32 @@
     },
     {
       "module": "crypto",
-      "path": "crypto/vrf/secret",
-      "responsibility": "The secret steps of VRF proving: the key's seed, and the working storage erased after each operation",
+      "path": "crypto/secret",
+      "responsibility": "Working storage for one computation on secret material, zeroed when it ends, whose buffers cannot be its result; the signing-key text envelope read and written as bytes in it and in native memory zeroed before it is freed",
       "entryPoints": [
-        "Draft03Key",
         "Scratch",
-        "Public"
+        "Public",
+        "KeyText",
+        "Sha512"
       ],
       "suites": [
-        "Draft03KeySuite",
-        "ScratchSuite"
+        "ScratchSuite",
+        "KeyTextSuite",
+        "Sha512Suite"
+      ],
+      "docs": [
+        "docs/security/threat-model.md"
+      ]
+    },
+    {
+      "module": "crypto",
+      "path": "crypto/vrf/secret",
+      "responsibility": "The secret steps of VRF proving: the key's seed, kept between operations, and every value computed from it, in working storage",
+      "entryPoints": [
+        "Draft03Key"
+      ],
+      "suites": [
+        "Draft03KeySuite"
       ],
       "docs": [
         "docs/security/threat-model.md"
@@ -1298,6 +1332,7 @@
         "ForgeSuite",
         "KesRotationSuite",
         "KeyFilesSuite",
+        "KeyFilesBytesSuite",
         "ForgerFailureSuite",
         "PlutusBackendBlockProbeSuite",
         "LeaderScheduleSuite",

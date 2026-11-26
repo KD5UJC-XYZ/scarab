@@ -5,9 +5,8 @@ import cats.syntax.either.*
 import com.weavechain.curve25519.{CompressedEdwardsY, Constants, EdwardsPoint, Scalar}
 import java.security.MessageDigest
 import java.util.Arrays
-import scala.util.Using
-import scala.util.Using.Releasable
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.crypto.secret.{Scratch, Sha512}
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover.{Failure, Proved}
 
 /** The secret steps of ECVRF-ED25519-SHA512-Elligator2 (draft-03) proving, in the order and form of
@@ -169,7 +168,7 @@ private[vrf] object Draft03Key:
   def fromSeed(seed: Bytes): Either[Failure, Draft03Key] =
     if seed == null then Left(Failure.MissingSeed)
     else if seed.size != SeedBytes then Left(Failure.SeedLength(seed.size))
-    else made(seed)
+    else made(seed.copyTo)
 
   /** The 64-byte `vrf.skey` payload `seed || publicKey`; the stored public key must be the seed's.
     */
@@ -177,8 +176,24 @@ private[vrf] object Draft03Key:
     if bytes == null then Left(Failure.MissingSigningKey)
     else if bytes.size != SeedBytes + 32 then Left(Failure.SigningKeyLength(bytes.size))
     else
-      made(bytes.take(SeedBytes)).flatMap { key =>
+      made(bytes.take(SeedBytes).copyTo).flatMap { key =>
         if key.publicKey == bytes.drop(SeedBytes) then Right(key)
+        else
+          key.forget()
+          Left(Failure.PublicKeyMismatch)
+      }
+
+  /** [[fromBytes]] of the 64 bytes of `payload`, an array its caller owns and erases: the seed is
+    * copied from it into the key's array and a scratch only, and the public key compared.
+    */
+  def fromArray(payload: Array[Byte]): Either[Failure, Draft03Key] =
+    if payload == null then Left(Failure.MissingSigningKey)
+    else if payload.length != SeedBytes + 32 then Left(Failure.SigningKeyLength(payload.length))
+    else
+      made((into, at) => System.arraycopy(payload, 0, into, at, SeedBytes)).flatMap { key =>
+        val stored = new Array[Byte](32)
+        System.arraycopy(payload, SeedBytes, stored, 0, 32)
+        if key.publicKey == Bytes.fromArray(stored) then Right(key)
         else
           key.forget()
           Left(Failure.PublicKeyMismatch)
@@ -189,11 +204,11 @@ private[vrf] object Draft03Key:
     * the seed copied into that array, which nothing between the copy and the key that owns it can
     * fail.
     */
-  private def made(seed: Bytes): Either[Failure, Draft03Key] =
+  private def made(copySeed: (Array[Byte], Int) => Unit): Either[Failure, Draft03Key] =
     Either
       .catchNonFatal(Scratch.within { s =>
         val copy = s.buffer(SeedBytes)
-        seed.copyTo(s.array(copy), 0)
+        copySeed(s.array(copy), 0)
         val (x, _) = expanded(s)(copy)
         s.publish(
           encoded(s)(Constants.ED25519_BASEPOINT_TABLE.multiplyRadix16(s.array(digits(s)(x))))
@@ -203,7 +218,7 @@ private[vrf] object Draft03Key:
         Failure.InternalFailure(_),
         { publicKey =>
           val key = new Draft03Key(new Array[Byte](SeedBytes), publicKey)
-          seed.copyTo(key.material, 0)
+          copySeed(key.material, 0)
           key
         }
       )
@@ -263,26 +278,5 @@ private[vrf] object Draft03Key:
   private def decoded(h: Bytes): EdwardsPoint = new CompressedEdwardsY(h.toArray).decompress()
 
   /** SHA-512 of `pieces` into the 64 bytes of `into`, with a digest made for the call. */
-  private def sha512(into: Array[Byte], pieces: Array[Byte]*): Unit =
-    sha512With(MessageDigest.getInstance("SHA-512"))(into, pieces*)
-
-  private given Releasable[MessageDigest] = _.reset()
-
-  /** SHA-512 of `pieces` into `into` with `digest`, which is reset on the way out, whether the hash
-    * returns or throws. `digest(into, …)` does not clear the provider: in the JDK
-    * (`sun.security.provider.DigestBase` and `SHA5` at jdk-25.0.4.1-ga) it leaves the input after
-    * the last whole block in the provider's buffer, the result in its state words and the last
-    * block's message schedule in its `W` array, and clears them only when the object is used again
-    * or reset (`engineReset`: `implReset` restores the initial state and zeroes `W`, then the
-    * buffer is zeroed). A digest made for one call and dropped kept the seed, the expanded key or
-    * the nonce key until the collector reused its memory. What the reset cannot reach: what the
-    * compression's intrinsic keeps in registers or spills to the stack, and copies a moving
-    * collector made of the provider's arrays before the reset.
-    */
-  private[secret] def sha512With(
-      digest: MessageDigest
-  )(into: Array[Byte], pieces: Array[Byte]*): Unit =
-    Using.resource(digest) { d =>
-      pieces.foreach(d.update)
-      d.digest(into, 0, into.length)
-    }
+  /** SHA-512 of `pieces` into `into`, with a digest reset on the way out ([[Sha512]]). */
+  private def sha512(into: Array[Byte], pieces: Array[Byte]*): Unit = Sha512.into(into, pieces*)

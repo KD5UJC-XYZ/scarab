@@ -7,6 +7,7 @@ import cats.effect.testkit.TestControl
 import cats.syntax.all.*
 import java.nio.file.{Files, Path}
 import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
 import java.nio.channels.FileChannel
 import java.io.IOException
 import java.util.concurrent.CountDownLatch
@@ -16,6 +17,7 @@ import scala.concurrent.duration.*
 import munit.CatsEffectSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
+import xyz.kd5ujc.scarab.crypto.secret.Scratch
 import xyz.kd5ujc.scarab.crypto.vrf.Draft03Prover
 import xyz.kd5ujc.scarab.ledger.{
   Block,
@@ -87,7 +89,7 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
       install(p.creds.hot)
 
     def install(h: HotCredentials): Unit =
-      Files.writeString(kes, KeyFiles.kesEnvelope(kes.toString, h.kes).toOption.get)
+      Files.writeString(kes, LegacyKeyFiles.kesEnvelope(kes.toString, h.kes).toOption.get)
       Files.writeString(cert, opCertText(h))
 
     /** The key as the file holds it, without any recovery. */
@@ -272,9 +274,10 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
         expected.evolveTo(7)
         val wrongPeriod = f.onDisk
         wrongPeriod.evolveTo(6)
-        val wrongPeriodText = rightOrFail(KeyFiles.kesEnvelope("staged", wrongPeriod))
+        val wrongPeriodText = rightOrFail(LegacyKeyFiles.kesEnvelope("staged", wrongPeriod))
         val wrongPeriodOps = new Renaming:
-          override def readStage(file: Path): String = wrongPeriodText
+          override def readStage(s: Scratch, file: Path): s.Buffer =
+            s.adopt(wrongPeriodText.getBytes(StandardCharsets.UTF_8))
         KesFiles.stageWith(f.kes, expected, wrongPeriodOps) match
           case Left(
                 ForgeError.KesFileFailure(
@@ -299,9 +302,10 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
         expected.evolveTo(7)
         val foreign = hotFor(TestLedger.key(), 58, 0, 0).kes
         foreign.evolveTo(7)
-        val foreignText = rightOrFail(KeyFiles.kesEnvelope("staged", foreign))
+        val foreignText = rightOrFail(LegacyKeyFiles.kesEnvelope("staged", foreign))
         val foreignOps = new Renaming:
-          override def readStage(file: Path): String = foreignText
+          override def readStage(s: Scratch, file: Path): s.Buffer =
+            s.adopt(foreignText.getBytes(StandardCharsets.UTF_8))
         KesFiles.stageWith(f.kes, expected, foreignOps) match
           case Left(
                 ForgeError.KesFileFailure(
@@ -327,7 +331,8 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
         val evolved = f.onDisk
         evolved.evolveTo(3)
         val malformed = new Renaming:
-          override def readStage(file: Path): String = "not a KES envelope"
+          override def readStage(s: Scratch, file: Path): s.Buffer =
+            s.adopt("not a KES envelope".getBytes(StandardCharsets.UTF_8))
         KesFiles.stageWith(f.kes, evolved, malformed) match
           case Left(
                 ForgeError.KesFileFailure(
@@ -1119,7 +1124,10 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
         val (gen0, gen1) = (f.dir.resolve("gen-0"), f.dir.resolve("gen-1"))
         def install(gen: Path, h: HotCredentials): Unit =
           Files.createDirectories(gen)
-          Files.writeString(gen.resolve("kes.skey"), KeyFiles.kesEnvelope("k", h.kes).toOption.get)
+          Files.writeString(
+            gen.resolve("kes.skey"),
+            LegacyKeyFiles.kesEnvelope("k", h.kes).toOption.get
+          )
           Files.writeString(gen.resolve("node.cert"), opCertText(h))
         def point(gen: Path): Unit =
           val tmp = f.dir.resolve("current.tmp")
