@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.node.forge
 import cats.syntax.all.*
 import io.circe.parser
 import java.nio.ByteBuffer
+import java.nio.charset.MalformedInputException
 import java.nio.file.{Files, Path}
 import scala.util.control.Exception.allCatch
 import xyz.kd5ujc.scarab.crypto.Blake2b
@@ -265,7 +266,9 @@ object KeyFiles:
   ): Either[Throwable, Either[ForgeError, K]] =
     KeyText.read(source, typ)(make) match
       case KeyText.Read.Unreadable(cause) => Left(cause)
-      case KeyText.Read.Payload(made)     => Right(made.leftMap(failure))
+      case KeyText.Read.NotUtf8(cause) =>
+        Right(Left(ForgeError.KeyFile(file, ForgeKeyProblem.NotUtf8(cause))))
+      case KeyText.Read.Payload(made) => Right(made.leftMap(failure))
       case KeyText.Read.WrongType(found) =>
         Right(Left(ForgeError.KeyFile(file, ForgeKeyProblem.EnvelopeType(typ, found))))
       case KeyText.Read.Other(envelope) => Right(text(envelope))
@@ -306,11 +309,17 @@ object KeyFiles:
       case Value.UInt(n) => Right(n)
       case _             => Left(bad(ForgeKeyProblem.UnsignedInteger(KeyShape.of(v))))
 
-  /** The text of a file, or why it cannot be read. */
+  /** The text of a file, or why it is none: bytes that are not UTF-8, which are the file's content
+    * (`NotUtf8`), or a failure to read it (`Io`).
+    */
   private[forge] def read(p: Path): Either[ForgeError, String] =
     Either
       .catchNonFatal(Files.readString(p))
-      .leftMap(e => ForgeError.KeyFile(p.toString, ForgeKeyProblem.Io(e)))
+      .leftMap {
+        case malformed: MalformedInputException =>
+          ForgeError.KeyFile(p.toString, ForgeKeyProblem.NotUtf8(malformed))
+        case other => ForgeError.KeyFile(p.toString, ForgeKeyProblem.Io(other))
+      }
 
   /** Load and cross-check the three files of a pool (a KES key left half-replaced by a crash is put
     * right first, see [[KesFiles.recover]]).

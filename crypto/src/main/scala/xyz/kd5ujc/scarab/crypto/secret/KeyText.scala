@@ -33,8 +33,13 @@ private[scarab] object KeyText:
 
   /** What a read found. */
   enum Read[+F, +K]:
-    /** The bytes could not be read, or are not UTF-8, as `Files.readString` fails on them. */
+    /** The bytes could not be read. */
     case Unreadable(cause: Throwable)
+
+    /** The bytes are not UTF-8: the failure `Files.readString` has on them. It is the content of
+      * what was read, not a failure to read it.
+      */
+    case NotUtf8(cause: MalformedInputException)
 
     /** A flat envelope of the expected type whose CBOR is a byte string of the expected size: what
       * the key's constructor made of those bytes.
@@ -47,8 +52,8 @@ private[scarab] object KeyText:
     /** Not such an envelope: its text, for the text reader. */
     case Other(text: String)
 
-  /** The bytes of `file`, read as `Files.readString` reads them, with its failures: the file cannot
-    * be opened or read, or it is not UTF-8 (`MalformedInputException`).
+  /** The bytes of `file`, read as `Files.readString` reads them, with its failures to open or read
+    * it; whether they are UTF-8 is [[read]]'s to say ([[Read.NotUtf8]]).
     */
   def file(path: Path): Source = s => readInto(s, path)
 
@@ -68,8 +73,10 @@ private[scarab] object KeyText:
     scala.util
       .Try(source(s))
       .toEither
-      .flatMap(utf8(s))
-      .fold(Read.Unreadable(_), parsed(s, expected, make))
+      .fold(
+        Read.Unreadable(_),
+        text => utf8(s)(text).fold(Read.NotUtf8(_), parsed(s, expected, make))
+      )
 
   /** The text of an envelope of type `typ` and description `description` around the CBOR byte
     * string of the `payloadBytes` bytes `payload` puts in a scratch, laid out as circe's `spaces2`
@@ -302,7 +309,7 @@ private[scarab] object KeyText:
     * one that is malformed, overlong or a surrogate, two for one cut short after a byte that
     * already makes it so; four for a four-byte one, one when cut short.
     */
-  private def utf8(s: Scratch)(text: s.Buffer): Either[Throwable, s.Buffer] =
+  private def utf8(s: Scratch)(text: s.Buffer): Either[MalformedInputException, s.Buffer] =
     malformed(s.array(text), 0).map(new MalformedInputException(_)).toLeft(text)
 
   private def continuation(b: Int): Boolean = (b & 0xc0) == 0x80

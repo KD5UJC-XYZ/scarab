@@ -23,6 +23,11 @@ enum ForgeKeyProblem:
   case CertificateFields(actual: KeyShape)
   case FixedBytes(expected: Int, actual: KeyShape)
   case UnsignedInteger(actual: KeyShape)
+
+  /** The file's bytes are not UTF-8: its content, which no key file has, and not a failure to read
+    * it (`Io`).
+    */
+  case NotUtf8(cause: java.nio.charset.MalformedInputException)
   case Io(cause: Throwable)
 
   /** The file gives its "other" class some access (`mode & 0o007 != 0`): refused, as

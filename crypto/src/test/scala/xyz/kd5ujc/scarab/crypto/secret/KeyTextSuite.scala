@@ -45,9 +45,9 @@ class KeyTextSuite extends munit.FunSuite:
 
   private def ours(bytes: Array[Byte]): Either[Int, String] =
     KeyText.read(source(bytes), "none")(_ => Right[Boolean, Boolean](true)) match
-      case KeyText.Read.Unreadable(e: MalformedInputException) => Left(e.getInputLength)
-      case KeyText.Read.Other(text)                            => Right(text)
-      case other                                               => fail(s"not read as text: $other")
+      case KeyText.Read.NotUtf8(e)  => Left(e.getInputLength)
+      case KeyText.Read.Other(text) => Right(text)
+      case other                    => fail(s"not read as text: $other")
 
   test("bytes are UTF-8 exactly when Files.readString takes them, and fail as it fails") {
     // a zip file system that is never written out: its entries are held in memory

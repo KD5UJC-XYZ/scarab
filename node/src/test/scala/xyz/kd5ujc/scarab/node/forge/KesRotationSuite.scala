@@ -1966,3 +1966,46 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
       }
     }
   }
+
+  test("a stage that is not UTF-8 beside a valid key is destroyed, and the key is read") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 5, 0, 0))
+        Files.write(f.next, Array[Byte](0x7b, 0xff.toByte, 0x7d))
+        assertEquals(KesFiles.recover(f.kes).map(_.period), Right(0))
+        assert(!Files.exists(f.next), "the stage that is no key file is gone")
+      }
+    }
+  }
+
+  test("a key file that is not UTF-8 is replaced by its valid stage") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 5, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(9)
+        assertEquals(KesFiles.stage(f.kes, evolved), Right(()))
+        Files.write(f.kes, Array[Byte](0xc3.toByte, 0x28))
+        assertEquals(KesFiles.recover(f.kes).map(_.period), Right(9))
+        assert(!Files.exists(f.next))
+        assertEquals(f.onDisk.period, 9)
+      }
+    }
+  }
+
+  test("a stage that cannot be read leaves both files, and the read's failure is the answer") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 5, 0, 0))
+        val key = Files.readAllBytes(f.kes).toVector
+        // a directory where the stage would be: its read fails (EISDIR) for every user, root too
+        Files.createDirectory(f.next)
+        KesFiles.recover(f.kes) match
+          case Left(ForgeError.KeyFile(_, ForgeKeyProblem.Io(_: IOException))) => ()
+          case other => fail(s"expected the stage read's I/O failure, found $other")
+        assertEquals(Files.readAllBytes(f.kes).toVector, key, "the key file is as it was")
+        assert(Files.isDirectory(f.next), "the stage is as it was")
+      }
+    }
+  }
+

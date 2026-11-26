@@ -155,7 +155,8 @@ class KeyFilesBytesSuite extends munit.ScalaCheckSuite:
       case ForgeError.KeyFile(f, ForgeKeyProblem.Json(pf)) => ("json", f, pf.message)
       case ForgeError.KeyFile(f, ForgeKeyProblem.Field(n, df)) =>
         ("field", f, n, df.message, df.history)
-      case ForgeError.KeyFile(f, ForgeKeyProblem.Io(t)) => ("io", f, t.getClass, t.getMessage)
+      case ForgeError.KeyFile(f, ForgeKeyProblem.Io(t))      => ("io", f, t.getClass, t.getMessage)
+      case ForgeError.KeyFile(f, ForgeKeyProblem.NotUtf8(t)) => ("not UTF-8", f, t.getInputLength)
       case ForgeError.KeyFile(f, ForgeKeyProblem.Vrf(Draft03Prover.Failure.InternalFailure(t))) =>
         ("vrf", f, t.getClass)
       case other => other
@@ -223,6 +224,7 @@ class KeyFilesBytesSuite extends munit.ScalaCheckSuite:
             case KeyText.Read.WrongType(_)  => "by type"
             case KeyText.Read.Other(_)      => "as text"
             case KeyText.Read.Unreadable(_) => "unreadable"
+            case KeyText.Read.NotUtf8(_)    => "not UTF-8"
         }
     }
     val counts = outcomes.groupBy(identity).view.mapValues(_.size).toMap

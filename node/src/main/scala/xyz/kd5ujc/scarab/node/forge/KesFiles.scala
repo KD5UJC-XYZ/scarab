@@ -715,7 +715,7 @@ object KesFiles:
             ForgeKeyProblem.EnvelopeType(_, _) | ForgeKeyProblem.Cbor(_) |
             ForgeKeyProblem.ExpectedByteString(_) | ForgeKeyProblem.CertificateEnvelope(_) |
             ForgeKeyProblem.CertificateFields(_) | ForgeKeyProblem.FixedBytes(_, _) |
-            ForgeKeyProblem.UnsignedInteger(_) =>
+            ForgeKeyProblem.UnsignedInteger(_) | ForgeKeyProblem.NotUtf8(_) =>
           Read.Refused(error)
         case ForgeKeyProblem.Io(_) | ForgeKeyProblem.Vrf(_) | ForgeKeyProblem.Bls(_) |
             ForgeKeyProblem.OtherPermissions(_) | ForgeKeyProblem.InstanceLocked(_) =>
