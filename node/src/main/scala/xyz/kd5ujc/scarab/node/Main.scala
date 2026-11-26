@@ -350,6 +350,7 @@ object Main extends IOApp:
       work: Option[SelectionWork[IO]],
       received: Option[ReceivedBlocks[IO]],
       preverify: Peer.Prepare[IO],
+      readAhead: ReadAheadStore[IO],
       fatal: Fatal => IO[Unit],
       origin: Option[xyz.kd5ujc.scarab.codec.Bytes]
   )(using Raise[IO, NodeError], Log[IO]): Resource[IO, Unit] =
@@ -366,6 +367,14 @@ object Main extends IOApp:
             raw
           )
         )
+      // the block's store reads, read ahead of the worker from the selected chain's tip as a
+      // reader finds it (#1484)
+      def ahead(header: Header, raw: xyz.kd5ujc.scarab.codec.Bytes): IO[Unit] = header match
+        case _: Header.Shelley =>
+          readAhead.ahead(
+            follower.committedChain.get.map(chain => ReadAheadStore.inputs(raw, chain.state))
+          )
+        case _ => IO.unit
     Resource
       .eval(
         work.fold(
@@ -807,24 +816,26 @@ object Main extends IOApp:
 
   /** The UTxO store, and where the checkpoints that keep it in step with the snapshots live (none:
     * the store is in memory and nothing is kept). The backing itself ([[backing]]) is of the form
-    * of the chain's state.
+    * of the chain's state. A store on disk reads the queued blocks' entries ahead
+    * ([[ReadAheadStore]], #1484); one in memory has no disk to wait on, and reads nothing ahead.
     */
   private def utxoBacking(
       options: Options
-  )(using Handle[IO, NodeError]): Resource[IO, (UtxoStore[IO], Option[fs2.io.file.Path])] =
+  )(using Handle[IO, NodeError]): Resource[IO, (ReadAheadStore[IO], Option[fs2.io.file.Path])] =
     val kind = options.utxoStore.getOrElse(if options.db.isDefined then "rocksdb" else "memory")
     (kind, options.db) match
       case ("rocksdb", Some(dir)) =>
         val root = fs2.io.file.Path.fromNioPath(dir) / "utxo"
         RocksUtxoStore
           .resource[IO](root / "live", options.utxoCacheMb.toLong * 1024 * 1024)
-          .map(s => (s: UtxoStore[IO]) -> Option(root / "checkpoints"))
+          .flatMap(s => ReadAheadStore.resource[IO](s))
+          .map(_ -> Option(root / "checkpoints"))
       case (_, db) =>
         val root =
           db.fold(fs2.io.file.Path("utxo-memory"))(d => fs2.io.file.Path.fromNioPath(d) / "utxo")
         Resource
-          .eval(MemoryUtxoStore[IO])
-          .map(s => (s: UtxoStore[IO]) -> db.map(_ => root / "checkpoints"))
+          .eval(MemoryUtxoStore[IO].flatMap(ReadAheadStore.idle[IO](_)))
+          .map(_ -> db.map(_ => root / "checkpoints"))
 
   /** The backing of the UTxO set of the chain's state. */
   private def backing(
@@ -1408,7 +1419,7 @@ object Main extends IOApp:
       loaded: NodeSetup,
       setup: NodeSetup,
       topology: Option[Topology],
-      store: UtxoStore[IO],
+      store: ReadAheadStore[IO],
       leios: Option[LeiosStore[IO]],
       txCache: LeiosTxCache[IO],
       cache: VerificationCache,
@@ -1550,7 +1561,7 @@ object Main extends IOApp:
       cliPeers: List[SocketAddress[Host]],
       loaded: NodeSetup,
       topology: Option[Topology],
-      store: UtxoStore[IO],
+      store: ReadAheadStore[IO],
       leios: Option[LeiosStore[IO]],
       backing: StateBacking[IO, MirrorState],
       cache: VerificationCache,
@@ -2880,6 +2891,7 @@ object Main extends IOApp:
             genesisRuntime.map(_.work),
             receivedBlocks,
             rules.warm,
+            store,
             fatalSink,
             setup.origin
           )

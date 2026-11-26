@@ -224,7 +224,8 @@ final class MirrorRules[F[_]: Monad](
         fetched <-
           if wanted.isEmpty || inByron then
             Map.empty[xyz.kd5ujc.scarab.ledger.TxIn, xyz.kd5ujc.scarab.ledger.TxOut].pure[F]
-          else store.read(wanted)
+          // what the store read ahead for this state, and the rest read now (`UtxoStore.readFor`)
+          else store.readFor(state.utxo, wanted)
         // A block that enters Dijkstra upgrades the stored outputs its tick did not see, once the
         // rules have accepted it (`MirrorRules.DijkstraCrossing`), so a header or a body that
         // fails them never starts the pass over the store. The mempool, the forger and the local

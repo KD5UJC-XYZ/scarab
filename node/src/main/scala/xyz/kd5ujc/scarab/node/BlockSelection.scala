@@ -303,11 +303,14 @@ private[node] object BlockSelection:
   /** What is done with a block before it joins the processed forest: a delivered block is written
     * to the received log and its verification cache warmed (`prepare`); a block this node forged is
     * written to the received log only (`store`), since its rules ran or run when selection reaches
-    * it ([[Follower.submitForged]]).
+    * it ([[Follower.submitForged]]). When a delivered block enters the add-block queue, its store
+    * reads are asked for ahead of the worker (`ahead`, [[ReadAheadStore.ahead]]), which must not
+    * wait: it runs under the queue's publication.
     */
   trait Before[F[_]]:
     def prepare(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
     def store(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
+    def ahead(header: Header, raw: Bytes): F[Unit]
 
   object Before:
     def noop[F[_]: cats.Applicative]: Before[F] = new Before[F]:
@@ -316,6 +319,10 @@ private[node] object BlockSelection:
       ): F[Unit] = cats.Applicative[F].unit
       def store(@scala.annotation.unused header: Header, @scala.annotation.unused raw: Bytes)(using
           Raise[F, NodeError]
+      ): F[Unit] = cats.Applicative[F].unit
+      def ahead(
+          @scala.annotation.unused header: Header,
+          @scala.annotation.unused raw: Bytes
       ): F[Unit] = cats.Applicative[F].unit
 
   /** What the worker applies a candidate from: the bodies the pool admitted, and where a refusal of
@@ -358,7 +365,8 @@ private[node] object BlockSelection:
   )(using before: Before[F], owner: Raise[F, NodeError]): Resource[F, Selecting[F]] =
     work.session.flatMap { session =>
       pool.invalidBlocks.selectionResource *> pool.admissions.resource(a =>
-        session.ready(Vector(a.delivered.header.hash))
+        session.ready(Vector(a.delivered.header.hash)) *>
+          before.ahead(a.delivered.header, a.taken.block)
       ) *>
         (for
           ready <- Resource.eval(Deferred[F, Either[Fatal, Unit]])
