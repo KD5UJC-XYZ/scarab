@@ -208,7 +208,7 @@ belong to nightly CI, not to a change.
 
 ### Nightly CI is the safety net
 
-`.github/workflows/e2e.yml` runs soak, e2e, relay, pool, kes-rotate, ntc and restart every night, each scenario in its own job (a matrix), and on demand and on
+`.github/workflows/e2e.yml` runs every scenario `SCENARIOS` lists in `scripts/ci_e2e_matrix.py` every night, each scenario in its own job (a matrix), and on demand and on
 version tags; `fuzz.yml` runs the longer fuzzing (rotating daily seeds); `cuddle-crosscheck.yml` runs the CDDL cross-check on every pull request, every push to `main` and nightly; `fuzz-gate.yml` runs the fixed-seed `fuzz 100000 1 4` gate on pull requests that change decoder or fuzz inputs and passes without fuzzing on any other. `.github/workflows/ci.yml` runs `check` (built once, its tests in parallel shards), the script tests, actionlint, a gitleaks
 scan of the checked-out commit's full history, including merge parents (unrelated fetched branches
 are scanned in their own runs; `.gitleaks.toml`; a new false positive is allowlisted there by path or
@@ -216,7 +216,10 @@ commit, scoped to its rule, with a reason) and, on pull requests, a dependency r
 nightly is fixed first, before new work lands: it is the cheapest point at which to find what the
 per-change gates did not cover. Run the E2E scenarios on a branch with `python3 scripts/dispatch_e2e.py --ref
 <branch>`, which waits until no E2E run is waiting before it dispatches: the workflow's concurrency group keeps one
-run going and one waiting, and a plain `gh workflow run` replaces, and so cancels, the waiting one.
+run going and one waiting, and a plain `gh workflow run` replaces, and so cancels, the waiting one. Add
+`--scenario <name>`, once per scenario, to run only those (the names are `SCENARIOS` in `scripts/ci_e2e_matrix.py`),
+and `--repeat <n>` to run each of them n times (at most `MAX_REPEAT` there), each on a devnet of its own; a run started from the
+Actions page takes the same in its `scenarios` and `repeat` inputs.
 `.github/workflows/flaky-tests.yml` reads the last day's CI runs every night: a test that failed and then passed on
 the same commit gets an issue of its own, or a comment on its existing one (`scripts/flaky_tests.py`).
 

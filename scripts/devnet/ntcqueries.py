@@ -332,6 +332,13 @@ class PointLost(RuntimeError):
     """A round's sessions could not all be acquired at its point, or ran out: the round is not judged."""
 
 
+class PointSwitched(PointLost):
+    """The reference refused the round's point, the Scala node's tip, as not on its chain (`PointNotOnChain`). The
+    Scala node follows the reference, so the point was a block the reference held and had already switched away
+    from, a rollback of the tip the Scala node had not followed yet when its tip was read. Nothing was compared at
+    it; `compare_round` asks again at the Scala node's tip then (`SWITCHED_ATTEMPTS`)."""
+
+
 class Incomparable(RuntimeError):
     """The two nodes cannot be compared at the round's point: their states there are of different eras, or not of a
     Shelley-based one, or they agreed on different node-to-client versions. No block query is sent."""
@@ -588,7 +595,8 @@ def same_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=
             try:
                 main.live[0].acquire(point)
             except ntcquery.AcquireRefused as e:
-                raise PointLost(f"the reference refused {point!r}: {e.failure}") from e
+                lost = PointSwitched if e.failure == "PointNotOnChain" else PointLost
+                raise lost(f"the reference refused {point!r}: {e.failure}") from e
             era, scala_era = ntcquery.acquired_era(main.live[0]), ntcquery.acquired_era(probe)
             if era != scala_era or era not in ntcquery.SHELLEY_BASED:
                 raise Incomparable(f"at {point!r} the reference's state is of era {era!r}, the Scala node's of {scala_era!r}")
@@ -664,17 +672,41 @@ def round_results(rnd, dump_dir=None, ledger_states=None):
 # nodes could not be compared there (`PointLost`, `Incomparable`): a query not matched, as each query of the round was
 # when its acquisition failed.
 LOST_ROUND = "round:notAcquired"
+# Rounds `compare_round` tries while the reference refuses the Scala node's tip as not on its chain (`PointSwitched`),
+# each at the Scala node's tip then and `SWITCHED_PAUSE` seconds after the one before, as many as the `e2e` walk tries
+# for a request (`ntceras.ATTEMPTS`, `RETRY_PAUSE`): a rollback the Scala node has not followed yet is followed by then.
+SWITCHED_ATTEMPTS = 4
+SWITCHED_PAUSE = 1
+
+
+def held_point(name, ref_socket, scala_socket, queries_for=battery, universe_of=universe, switched=None):
+    """`same_point`, asked again at the Scala node's tip then while the reference refuses the round's point as not
+    on its chain (`PointSwitched`), at most `SWITCHED_ATTEMPTS` rounds in all. Each refusal is printed and, when
+    `switched` (a list) is given, added to it, the last one too, which is raised."""
+    for attempt in range(1, SWITCHED_ATTEMPTS + 1):
+        try:
+            return same_point(name, ref_socket, scala_socket, queries_for, universe_of)
+        except PointSwitched as e:
+            print(json.dumps({"roundPointSwitched": repr(e)[:300], "attempt": attempt,
+                              "attempts": SWITCHED_ATTEMPTS}), flush=True)
+            if switched is not None:
+                switched.append(str(e)[:300])
+            if attempt == SWITCHED_ATTEMPTS:
+                raise
+            time.sleep(SWITCHED_PAUSE)
 
 
 def compare_round(name, ref_socket, scala_socket, queries_for=battery, universe_of=universe, dump_dir=None,
-                  ledger_states=None):
-    """One round of the `ntc` scenario (`same_point`). Returns (point, [(label, implemented, matched,
+                  ledger_states=None, switched=None):
+    """One round of the `ntc` scenario (`held_point`). Returns (point, [(label, implemented, matched,
     reference_length, scala_length)]) (`round_results`). The ledger-state queries (`ledgercompare.LABELS`) require
     complete wire-byte equality. A round that ends with an error after its sessions were acquired keeps the rows
     asked before it, and the query it ended on counts as not matched; a round whose sessions could not be acquired
-    at its point, or whose nodes cannot be compared there, is (None, [(LOST_ROUND, True, False, 0, 0)])."""
+    at its point, or whose nodes cannot be compared there, is (None, [(LOST_ROUND, True, False, 0, 0)]), and so is
+    one whose point the reference refused as not on its chain `SWITCHED_ATTEMPTS` times. `switched`, when given,
+    collects each of those refusals (`held_point`), the ones a later point made up for too."""
     try:
-        rnd, ended = same_point(name, ref_socket, scala_socket, queries_for, universe_of), None
+        rnd, ended = held_point(name, ref_socket, scala_socket, queries_for, universe_of, switched), None
     except RoundError as e:
         rnd, ended = e.round, e
         print(json.dumps({"roundError": str(e)[:300], "slot": rnd.point[0]}), flush=True)

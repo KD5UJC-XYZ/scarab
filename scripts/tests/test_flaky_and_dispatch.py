@@ -2,6 +2,7 @@
 import json
 import sys
 import unittest
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -69,6 +70,32 @@ class DispatchCase(unittest.TestCase):
         self.assertEqual(slept, [30, 30])
         self.assertEqual([c for c in calls if c[0] == "workflow"],
                          [["workflow", "run", "e2e.yml", "--repo", de.REPOSITORY, "--ref", "feature"]])
+
+    def test_it_dispatches_only_the_named_scenarios(self):
+        run, calls = self.fake([[]])
+        scenarios = de.ci_e2e_matrix.select("restart ntc")
+        self.assertTrue(de.dispatch_when_free("feature", 600, 30, run, lambda s: None, lambda: 0, scenarios))
+        self.assertEqual([c for c in calls if c[0] == "workflow"],
+                         [["workflow", "run", "e2e.yml", "--repo", de.REPOSITORY, "--ref", "feature",
+                           "-f", "scenarios=ntc restart"]])
+
+    def test_a_repeat_dispatches_copies_and_one_run_says_nothing(self):
+        for repeat, extra in ((3, ["-f", "repeat=3"]), (1, [])):
+            with self.subTest(repeat=repeat):
+                run, calls = self.fake([[]])
+                scenarios = de.ci_e2e_matrix.select("ntc")
+                self.assertTrue(de.dispatch_when_free("feature", 600, 30, run, lambda s: None, lambda: 0, scenarios,
+                                                      repeat))
+                self.assertEqual([c for c in calls if c[0] == "workflow"],
+                                 [["workflow", "run", "e2e.yml", "--repo", de.REPOSITORY, "--ref", "feature",
+                                   "-f", "scenarios=ntc", *extra]])
+
+    def test_an_unknown_scenario_or_a_repeat_out_of_range_is_refused_before_anything_waits(self):
+        for argv in (["--scenario", "nct"], ["--scenario", "ntc", "--repeat", "0"], ["--repeat", "6"]):
+            with self.subTest(argv=argv):
+                with mock.patch.object(de, "dispatch_when_free") as dispatch, mock.patch("sys.stderr"):
+                    self.assertEqual(de.main(["--ref", "feature", *argv]), 2)
+                dispatch.assert_not_called()
 
     def test_it_gives_up_at_the_timeout_without_dispatching(self):
         run, calls = self.fake([[7]] * 10)

@@ -22,5 +22,6 @@ or error.
    python3 scripts/devnet.py --name <yours> down
    ```
 
-5. Document it in running/devnet.md. A scenario that runs nightly is an entry of the matrix in
-   `.github/workflows/e2e.yml` (`{scenario: <name>, args: '<name>'}`).
+5. Document it in running/devnet.md. A scenario that runs nightly is an entry of `SCENARIOS` in
+   `scripts/ci_e2e_matrix.py` (`Scenario("<name>", "<name>")`), from which `.github/workflows/e2e.yml` builds
+   its matrix.

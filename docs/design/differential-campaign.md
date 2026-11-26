@@ -494,7 +494,7 @@ Each test run also leaves nothing outside its run directory and the private stor
 Node logs are the subtle leak: the reference's refusal trace carries the transaction and its error (R18; what its log
 prints of it is N13), and Scarab's logs may carry its own. They stay on the private runner. Neither `e2e.yml`'s
 pattern, which prints a scenario's output and uploads every node log and run summary even when a run fails
-(`.github/workflows/e2e.yml` 85-112), nor `faults.yml`'s seed from the public run number is copied where the public
+(`.github/workflows/e2e.yml` 110-137), nor `faults.yml`'s seed from the public run number is copied where the public
 can read it.
 
 The record and the minimal inputs go to the private store, encrypted at rest; the advisory draft holds what its fix
