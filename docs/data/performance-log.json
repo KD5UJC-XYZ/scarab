@@ -5783,6 +5783,76 @@
      "close": "```"
     }
    ]
+  },
+  {
+   "id": "perf-74",
+   "section": "68",
+   "heading": "68. uplc-turbo on GitHub-hosted runners: the score by CPU (#1411)",
+   "subject": "uplc-turbo on GitHub-hosted runners: the score by CPU (#1411)",
+   "date": "2026-11-25",
+   "dateSource": "text",
+   "issues": [
+    "#1411"
+   ],
+   "commits": [
+    "ae5ed2c2c",
+    "1477fe052",
+    "8e2701101",
+    "9989052bf"
+   ],
+   "links": [],
+   "page": "rewards-and-evaluation",
+   "results": [
+    {
+     "id": "perf-74.t1",
+     "header": [
+      "Where",
+      "CPU",
+      "Scarab",
+      "Runs",
+      "Programs met, of 3,997"
+     ],
+     "separator": "|---|---|---|---|---:|",
+     "rows": [
+      [
+       "GitHub-hosted runner",
+       "Intel Xeon 6975P-C",
+       "`ae5ed2c2c`",
+       "45682241083, 45684247173, 45685651691",
+       "3,995, 3,994, 3,995"
+      ],
+      [
+       "GitHub-hosted runner",
+       "Intel Xeon 6975P-C",
+       "`1477fe052`",
+       "45690908941",
+       "3,992"
+      ],
+      [
+       "GitHub-hosted runner",
+       "Intel Xeon 6975P-C",
+       "`9989052bf`",
+       "45701051392, 45702457985",
+       "3,995, 3,993"
+      ],
+      [
+       "GitHub-hosted runner",
+       "Intel Xeon Platinum 8370C",
+       "`8e2701101`",
+       "45692610105",
+       "3,857"
+      ],
+      [
+       "a development laptop",
+       "",
+       "`ae5ed2c2c`",
+       "three",
+       "3,981, 3,986, 3,992"
+      ]
+     ]
+    }
+   ],
+   "listings": []
   }
  ]
 }

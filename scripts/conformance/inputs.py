@@ -228,15 +228,28 @@ def receipt(pin: Pin, target: Path) -> dict:
     return {"pin": pin.record(), "tree_sha256": tree_digest(target)}
 
 
-def fetch(pin: Pin, root: Path, run: Run = run_command, get: Callable[[str, Path], None] = download) -> Path:
-    """The verified directory of `pin` under `root`, fetched unless the receipt beside it names the same pin and the
-    directory's files are still those it was verified with."""
+def verified(pin: Pin, root: Path) -> Path | None:
+    """The directory of `pin` under `root` when the receipt beside it names the same pin and the directory's files are
+    still those it was verified with; None otherwise. It only reads."""
     target = root / pin.directory
     record = root / f"{pin.directory}.verified.json"
-    if record.is_file() and target.is_dir() and not target.is_symlink():
+    if not (record.is_file() and target.is_dir() and not target.is_symlink()):
+        return None
+    try:
         kept = json.loads(record.read_text(encoding="utf-8"))
-        if kept.get("pin") == pin.record() and kept.get("tree_sha256") == tree_digest(target):
-            return target
+    except (OSError, ValueError):
+        return None
+    if isinstance(kept, dict) and kept.get("pin") == pin.record() and kept.get("tree_sha256") == tree_digest(target):
+        return target
+    return None
+
+
+def fetch(pin: Pin, root: Path, run: Run = run_command, get: Callable[[str, Path], None] = download) -> Path:
+    """The verified directory of `pin` under `root` (`verified`), else fetched there and verified."""
+    target = root / pin.directory
+    record = root / f"{pin.directory}.verified.json"
+    if verified(pin, root) is not None:
+        return target
     if record.exists():
         record.unlink()
     if target.is_symlink():

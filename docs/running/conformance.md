@@ -7,8 +7,8 @@ pragma-org's [node-diversity-conformance](https://pragma-org.github.io/node-dive
 the reports that independent Cardano nodes publish for four scenarios: `ledger-rules`, `uplc-conformance`,
 `uplc-turbo` and `cbor-decoding` (one report per era, `conway` and `dijkstra`). The site runs nothing itself: it
 downloads each node's newest report when it is built. Scarab writes its reports with the `tools` entry points
-named in [the code map](../codemap.md). The CBOR detector runs nightly; publication stays on demand. The Plutus scenarios
-report Scarab's Plutus evaluator, its own (`uplc`).
+named in [the code map](../codemap.md). The CBOR detector and `uplc-turbo` run nightly; publication stays on demand.
+The Plutus scenarios report Scarab's Plutus evaluator, its own (`uplc`).
 
 ## Running a scenario locally
 
@@ -36,11 +36,12 @@ python3 -I -B scripts/conformance/run.py ledger-rules uplc-conformance cbor-deco
    `cbor-decoding` exactly the samples of the era. `uplc-turbo` has no such check, since its tool leaves out a
    program that does not evaluate and the site counts it as failed; the provenance records how many it reports.
 5. It writes the report, compressed, beside a `.provenance.json` (commit, inputs and pins, tool and arguments,
-   image, checks, timings; no host name or path) and `summary.json`.
+   image, the runner, the CPU a tool container sees and the container's limits, checks, timings; no host name or
+   path) and `summary.json`.
 
-The workflow also runs `scripts/conformance/summarize.py --out <dir>`. Its `cbor-outcomes.md` is the job summary;
-`cbor-outcomes.json` retains matched and mismatched counts by era and rule, source identities and every mismatched
-sample's name. A successfully generated report may contain disagreements: the summary says **MISMATCHES**, emits
+The workflow also runs `scripts/conformance/summarize.py --out <dir>`. Its `cbor-outcomes.md` is the job summary,
+and, for the uplc-turbo job, `turbo-score.md` (below); `cbor-outcomes.json` retains matched and mismatched counts by
+era and rule, source identities and every mismatched sample's name. A successfully generated report may contain disagreements: the summary says **MISMATCHES**, emits
 a workflow warning and keeps those results visible. It does not add a merge gate or prevent publishing an honest
 report. Missing or invalid report evidence is **INCOMPLETE**, never a conformance pass.
 With `--previous <earlier-run-dir>`, the summarizer identifies new and resolved disagreements only when dataset,
@@ -68,7 +69,8 @@ not change persisted-state codecs or the reference profile selected by the node.
 ## Nightly CBOR detector
 
 The existing workflow runs `cbor-decoding` nightly, with both complete pinned era corpora and all normalisation
-vectors. It does not publish reports automatically or add a required PR check. The job's summary gives the
+vectors, and `uplc-turbo` in a job of its own (below). It does not publish reports automatically or add a required
+PR check. The job's summary gives the
 conformance verdict; a successful report-generation job alone is not a conformance pass. Reports, provenance,
 outcome summaries and diagnostic logs have bounded workflow-artifact retention. The workflow reads the most recent
 successful nightly run's artifact for comparison. A first run, expired/missing artifact or incompatible corpus
@@ -97,26 +99,46 @@ anyway, and `publish.py` then refuses the report). Each run takes a fresh `--out
 already holds reports, so that `publish.py` takes only that run's. The exit status is 1 if a scenario failed. `--dry-run` prints
 the plan without building, fetching or running anything.
 
-`uplc-turbo` measures time, so its report is written ad hoc on a quiet local machine with a fast core, one run at
-a time:
+`uplc-turbo` measures each program's CPU time and the bytes it allocates, at the runner's own settings (3 CPUs,
+8 GB, a 4 GB heap), on one reference CPU: `TURBO_REFERENCE_CPU` in `scripts/conformance/scenarios.py`, the model of
+the GitHub-hosted runners it is written on, as `/proc/cpuinfo` names it. Runners cannot be chosen by CPU and the
+score moves with the CPU much more than from run to run
+([section 68 of the performance log](../performance/rewards-and-evaluation.md#68-uplc-turbo-on-github-hosted-runners-the-score-by-cpu-1411)),
+so on GitHub Actions `run.py` probes the CPU in the image before it builds the tools and, on another CPU, or one the
+probe cannot name, ends the scenario there as `not-reference-cpu`: no report, no failure, and the job summary says
+so; re-run the job to be given another runner. `--any-cpu` (the workflow's `uplc-turbo-any-cpu`) measures on any CPU
+instead, and the nightly run does so, for a trend with the CPU beside it. `publish.py` refuses a `uplc-turbo` report
+measured on another CPU, or on one its provenance does not name, wherever it was written: a report from a local
+machine is published only if that machine has the reference CPU, so publication relies on no machine of ours. When
+GitHub retires the hardware, change the reference in a commit of its own, with a measurement in the performance log.
 
 ```sh
-python3 -I -B scripts/conformance/run.py uplc-turbo --out <dir> [--cpus 3] [--memory 8g]
+python3 -I -B scripts/conformance/run.py uplc-turbo --out <dir>
 ```
 
 The restricting budget is 10 billion CPU units and 14 million memory units through protocol 10,
 then 16.5 million memory units from protocol 11, per the [clarified scenario](https://github.com/pragma-org/node-diversity-conformance/blob/628006278309c02a1c3e49dce00e43595d925c2e/scenarios/uplc-turbo/README.md).
 These are Plutus execution units. The runner measures JVM allocation separately in bytes.
-A busy or shared machine moves its `cpu_us` measurements and the score the site gives them.
+
+Timings still vary from run to run on the reference CPU, and with them the score the site gives a program near its
+CPU limit. The provenance records, in `environment.cpu`, what a tool container saw: the CPU's `model` (none when the
+kernel names none, as on most ARM CPUs), the machine's `logical_cpus` (`/proc/cpuinfo`), `available_cpus`, which is
+what `nproc` reports in the container (the image's `nproc` counts the container's quota), `quota_cpus`, the quota
+itself as the container's cgroup states it (`cpu.max`; none when it sets no limit), and `failure`, why the probe gave
+no CPU count, when it gave none; `environment.limits` holds the container's `--cpus` and `--memory`.
+`scripts/conformance/provenance.py` gives the record's whole shape, which `run.py` checks before it writes a record
+and `publish.py` before it stages one.
 
 The bytes a program allocates depend mostly on the JVM's settings and CPU count, which the runner fixes, and little
 on the machine's speed or load: a program's figure moves by a fraction of a per cent from run to run, since the
-tool averages the thirty fastest of fifty evaluations. So the count of programs within the memory limit can be
-compared between runs on a GitHub-hosted runner, at the runner's own settings (3 CPUs, 8 GB, a 4 GB heap): on CI the runner refuses `uplc-turbo` unless it is given `--allocation-only`,
-and `scripts/conformance/turbo_memory.py --out <dir>` then writes `turbo-memory.md` and `turbo-memory.json`: the
-programs within the site's memory limit, and the median and 95th percentile of bytes per memory unit. The
-**Conformance reports** workflow does both when `uplc-turbo-memory` is ticked, and keeps the counts as an artifact
-of their own. `publish.py` refuses a `uplc-turbo` report that was not written on a local machine.
+tool averages the thirty fastest of fifty evaluations. For a run asked for `uplc-turbo`,
+`summarize.py --inputs <inputs>` writes `turbo-score.md` and `turbo-score.json`: the programs met by the site's rule
+(`score.py`), those missed on memory (whatever their CPU time), on CPU alone, not reported or with nothing to
+compare, each missed program with its CPU time and memory as multiples of its budget (the page lists the 50 furthest
+over budget in the dimensions that fail them), the programs within the memory limit, the median and 95th percentile
+of bytes per memory unit, the CPU, and whether the report is publishable. It scores a report only once it and its
+provenance hold together and the site under `--inputs` is the one its receipt verified (the checks of `publish.py`,
+below); otherwise the page says **INCOMPLETE**. On another CPU it says **NOT MEASURED**.
 
 ## Names and the reports repository
 
@@ -147,10 +169,22 @@ python3 -I -B scripts/conformance/publish.py <dir> --apply    # clones the repor
 
 With `--apply` it checks that each report's Scarab commit is on GitHub (with `gh`), fetches the site at its pinned
 commit as the runner does (into `--inputs`, reusing a copy verified there, else into a temporary directory of its
-own), clones the reports repository shallowly into that temporary directory with your Git credentials
-(`--repo-url` names another), copies each report under `reports/`, points `latest/` at it unless a newer report is
-there, writes `README.md`, stages exactly those files, commits with a message that names the Scarab commits, and
-pushes to `main`.
+own) and checks each report against it, clones the reports repository shallowly into that temporary directory with
+your Git credentials (`--repo-url` names another), writes each report under `reports/`, points `latest/` at it
+unless a newer report is there, writes `README.md`, stages exactly those files, commits with a message that names
+the Scarab commits, and pushes to `main`.
+
+It reads each file once, and the bytes it checks are the bytes it writes. A report and its provenance must hold
+together (`scripts/conformance/evidence.py`): the provenance has the shape `run.py` writes and names the file, its
+size and sha256; the file is gzipped standard JSON whose sha256 the provenance names; the report and its provenance
+agree on the scenario, the era, the time it was generated (which dates its name), the Scarab commit where the
+report names one, and the CPU of a timing report (`machine.cpu`); and the report is valid against the scenario's
+schema at the pinned site and readable by the site's scoring, which refuses, for instance, an `experimental` report.
+A dry run checks all this but the site part, and that too when `--inputs` holds a verified site. These checks give
+consistency, not authenticity: they show that a report is the one its provenance describes and that the site will
+take it, not that a measurement was made as its provenance says. A file that fails one refuses the whole
+publication. For each run directory given, a scenario its `summary.json` names without a report, such as
+uplc-turbo off the reference CPU, is printed as not published, and its `latest/` stays as it is.
 
 The README's Results are computed again at each publication from the reports `latest/` then holds, by
 `scripts/conformance/score.py`, which mirrors the site's scoring at the pinned site commit and cites it rule by
@@ -162,18 +196,29 @@ new commit: the publisher refuses a pin that is not the commit `score.py` mirror
 out: it also fails a uplc-turbo benchmark whose budget disagrees with the other nodes' reports, which the reports
 repository does not hold. The clone is
 removed on normal exit and on exceptions: a failure before the push publishes nothing, so run it again once
-the cause is fixed. It refuses a file whose provenance does
-not match it or records a failed check or uncommitted changes, a report whose commit is not on GitHub, and a dated
-report that is already published, unless `--replace` (a second run on the same day replaces the first).
+the cause is fixed. Beyond the checks above, it refuses a report whose provenance records a failed check or
+uncommitted changes, a timing report of another CPU than the reference, a report whose commit is not on GitHub, and a
+dated report that is already published, unless `--replace` (a second run on the same day replaces the first).
 
-On GitHub, the **Conformance reports** workflow (`.github/workflows/conformance.yml`, run by hand, and nightly for the CBOR detector) runs the
-runner for the scenarios ticked (`ledger-rules`, `uplc-conformance` and `cbor-decoding`; turbo only for its memory
-counts, above) and
-keeps the files as a workflow artifact. When `publish` is ticked and the run is on `main`, a job of its own runs
-`publish.py --apply`, with Git reaching the reports repository over SSH through the deploy key in the secret
-`CONFORMANCE_REPO_DEPLOY_KEY` (`GIT_SSH_COMMAND`, checking GitHub's published host keys); this repository's token
-stays read-only. The job fails at once if the secret is not
-set. A turbo report from a local machine is published with `publish.py` directly.
+On GitHub, the **Conformance reports** workflow (`.github/workflows/conformance.yml`, run by hand, and nightly for
+the CBOR detector and `uplc-turbo`) runs the runner for the scenarios ticked (`ledger-rules`, `uplc-conformance`,
+`uplc-turbo` and `cbor-decoding`) and keeps the files as workflow artifacts. `uplc-turbo` runs in a job of its own,
+on a runner of its own, whose CPU is the one that matters, and keeps an artifact of its own
+(`conformance-turbo-<run>`); the other scenarios' job and artifact (`conformance-reports-<run>`) hold nothing of it.
+The turbo job may fail without failing the run (`continue-on-error`): the failure is red on that job and in its
+summary, and the run stays the CBOR baseline of the next nightly run, which takes the newest successful scheduled
+run's report. Dispatched runs share one concurrency group and run one at a time: while one runs, the next dispatch
+waits, and a later one replaces it (GitHub cancels the waiting run), so dispatch another only once the one before it
+has started; the nightly run has a group of its own.
+When `publish` is ticked and the run is on `main`, a job of its own runs
+`publish.py --apply` on what both jobs kept, with Git reaching the reports repository over SSH through the deploy
+key in the secret `CONFORMANCE_REPO_DEPLOY_KEY` (`GIT_SSH_COMMAND`, checking GitHub's published host keys); this
+repository's token stays read-only. The job fails at once if the secret is not set, or if `uplc-turbo-any-cpu` is
+ticked: such a run is never published. Since `publish.py` takes a `uplc-turbo` report of the reference CPU alone, a
+run cannot publish a turbo score of another CPU: when the turbo job was given another CPU, or failed, the other
+scenarios are published, `latest/uplc-turbo` stays as it is, and the publish job's summary says why in a
+`not published: uplc-turbo` line. A failed reports job publishes nothing. A report written locally is published
+with `publish.py` directly.
 
 ### Setting up the reports repository and its key
 
