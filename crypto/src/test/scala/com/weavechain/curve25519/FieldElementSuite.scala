@@ -325,7 +325,6 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
   private val constants = Vector(
     Constant("ZERO", FieldElement.ZERO),
     Constant("ONE", FieldElement.ONE),
-    Constant("MINUS_ONE", FieldElement.MINUS_ONE),
     Constant("EDWARDS_D", Constants.EDWARDS_D),
     Constant("EDWARDS_2D", Constants.EDWARDS_2D),
     Constant("SQRT_M1", Constants.SQRT_M1)
@@ -363,14 +362,6 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
   test("the field constants are those of edwards25519") {
     assertEquals(value(Constants.EDWARDS_D), Curve25519Gen.d, "d")
     assertEquals(value(Constants.EDWARDS_2D), (2 * Curve25519Gen.d).mod(p), "2d")
-    assertEquals(value(Constants.NEG_EDWARDS_D), (-Curve25519Gen.d).mod(p), "-d")
     assertEquals(value(Constants.SQRT_M1), Curve25519Gen.sqrtM1, "sqrt(-1)")
     assertEquals((Curve25519Gen.sqrtM1 * Curve25519Gen.sqrtM1).mod(p), p - 1, "sqrt(-1)^2")
-    assertEquals(value(FieldElement.MINUS_ONE), p - 1, "MINUS_ONE")
-    assertEquals(
-      value(Constants.ONE_MINUS_D_SQ),
-      (1 - Curve25519Gen.d * Curve25519Gen.d).mod(p),
-      "1 - d^2"
-    )
-    assertEquals(value(Constants.D_MINUS_ONE_SQ), (Curve25519Gen.d - 1).pow(2).mod(p), "(d - 1)^2")
   }

@@ -3,7 +3,6 @@
  "files": {
   "crypto/src/main/java/com/weavechain/curve25519/AffineNielsPoint.java": 2,
   "crypto/src/main/java/com/weavechain/curve25519/CompressedEdwardsY.java": 1,
-  "crypto/src/main/java/com/weavechain/curve25519/CompressedRistretto.java": 1,
   "crypto/src/main/java/com/weavechain/curve25519/EdwardsBasepointTable.java": 1,
   "crypto/src/main/java/com/weavechain/curve25519/EdwardsPoint.java": 2,
   "crypto/src/main/java/com/weavechain/curve25519/FieldElement.java": 1,

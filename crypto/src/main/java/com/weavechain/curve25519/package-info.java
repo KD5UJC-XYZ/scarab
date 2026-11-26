@@ -18,12 +18,12 @@
  *       {@code toRadix16()}, {@code multiply(Scalar)}) compute through them.</li>
  * </ul>
  *
- * <p>The decoders return a result and throw on no input: {@link CompressedEdwardsY#decompress()} and
- * {@link CompressedRistretto#decompress()} give an empty {@code Optional} for bytes that encode no point, and
- * {@link Scalar#fromCanonicalBytes(byte[])} for bytes that are not the 32-byte encoding of a scalar below the
- * group order. The {@code throw} statements left check the caller's arguments, which the callers in
- * {@code xyz.kd5ujc.scarab.crypto} never fail: an array of another length than a constructor or a method takes,
- * a radix-16 digit outside [-8, 8], a NAF digit that is even or above 15, an exponent below 1, and the high bit of
- * a 32-byte {@link Scalar}. Their count may only go down ({@code scripts/check_java_sources.py}).
+ * <p>The decoders return a result and throw on no input: {@link CompressedEdwardsY#decompress()} gives an empty
+ * {@code Optional} for bytes that encode no point, and {@link Scalar#fromCanonicalBytes(byte[])} for bytes that are
+ * not the 32-byte encoding of a scalar below the group order. The {@code throw} statements left check the caller's
+ * arguments, which the callers in {@code xyz.kd5ujc.scarab.crypto} never fail: an array of another length than a
+ * constructor or a method takes, a radix-16 digit outside [-8, 8], a NAF digit that is even or above 15, an exponent
+ * below 1, and the high bit of a 32-byte {@link Scalar}. Their count may only go down
+ * ({@code scripts/check_java_sources.py}).
  */
 package com.weavechain.curve25519;
