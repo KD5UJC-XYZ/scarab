@@ -1,10 +1,10 @@
 # Conway judgments as the flat rules wrote them
 
 Status: Current — the expected values of `ConwayLedgerChecksSuite`, `ConwayFailureCborSuite`,
-`ConwayMempoolRunSuite`, `EraUtxoSuite`, `PreviewConwayBlockLedgersSuite` and `PreviewConwayRulesSuite`
-(#85). Licence: Apache-2.0, this project's (see `NOTICE`).
+`ConwayMempoolRunSuite`, `EraUtxoSuite`, `PreviewConwayBlockLedgersSuite`, `PreviewConwayRulesSuite` and
+`ConwayGovChecksSuite` (#85). Licence: Apache-2.0, this project's (see `NOTICE`).
 
-Before Scarab deleted its flat Conway rules (the flat MEMPOOL, then its LEDGER and LEDGERS) and the flat rules'
+Before Scarab deleted its flat Conway rules (the flat MEMPOOL, then its LEDGER and LEDGERS, then its GOV) and the flat rules'
 Conway refusal encoder (`PredicateFailureCbor`), the suites that held Conway's era rules and their encoder (`ConwayFailureCbor`)
 to them ran once more, and each recorded, for every judgment it compared, what the era side gave after asserting
 that the flat side gave the same. The era side that stays must keep giving it. A digest is the first 16 hex
@@ -67,6 +67,35 @@ digits of the SHA-256 of the bytes it names.
   `ConwayGovernanceSuite`) have no judgment the same from run to run, and are not here: their cases name the era
   failures they expect, which the flat LEDGER gave on every one before it was deleted (but for
   `EraNotVersionUtxowSuite`'s Conway case, ported after, which keeps its typed expectations).
+
+- `gov-judgments.jsonl`: one line for each judgment of Conway's era GOV, or of the GOV predicates ported to the era
+  types, that `ConwayGovChecksSuite` compared with the flat GOV, 174 lines, each id once: `id`, the judgment's;
+  and `r`, its cells separated by spaces. A refusal's cell is `R:` and the digest of the `ApplyTxErr` bytes of
+  its failures in their order, each under LEDGER's `ConwayGovFailure`, as the node sends GOV's refusal; an
+  admission's is `A:` and the digest of the case's governance state with the proposals GOV leaves, in the Haskell
+  state's encoding of 11.1's layout at protocol version 9. The flat GOV gave the same failures in the same order,
+  or the same proposals. The prefixes:
+  - `whole/`, 85 lines: the transition whole at the root, on each Conway case of the eight corpora the flat GOV
+    judged (`ConwayGovChecksSuite.RecordedCorpora`, named; the corpora recorded for the era rules alone,
+    `ReferenceRefusalSuite.EraOnly`, are held to the reference's bytes instead), 4 cells each: at the version
+    the case was recorded at, then 9, 10 and 11 (117 refusals and 219 admissions); and
+    `whole/crafted/committee-conflict-expiry`, the crafted committee update removing and adding a member whose
+    term has ended, 1 refusal;
+  - `predicates/`, 89 lines: the failures of the predicates ported one by one (the bootstrap phase's proposal
+    check, the well-formedness and guardrails of a proposal, the unelected committee voters from version 11) on
+    each of those 84 cases and on five crafted cases (`predicates/crafted/…`: a treasury withdrawal in the
+    bootstrap phase, an update setting the maximum transaction size to zero, two proposals under another
+    guardrails script, and unelected committee voters with the key's vote first and the script's first), 1 cell
+    each: `-` for none, or the refusal cell of each failure on its own, sorted, each as often as it was reported
+    (16 cases with failures, the 68 others none), as the flat rule's failures were compared, a multiset. The
+    crafted cases are made from the case `conway-bootstrap-attributes/utxo-bootstrap-attributes-too-big`, named.
+
+  Recorded at Scarab commit `e6a61dfe5`, the parent of the flat GOV's deletion (the head of the pull request
+  that deleted the flat LEDGER, #1483, before it was merged: a squash leaves that commit on no branch). The
+  comparisons that had other oracles are not here: the unknown actions' votes listed in key order, where the
+  flat GOV listed them in the body's order (#85's item 7054122427, closed with it), and the unelected voters'
+  order, which keep their expected values from the reference's source; and the GOV-only refusals, held to the
+  reference's bytes.
 
 Commit `84bf3a1cd` is the base this work started from; `3aaa942aa` the last of it with the flat encoder. The
 tests that wrote these lines and their throwaway checkouts were removed after. The digests are Scarab's own,

@@ -5,8 +5,10 @@ import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.crypto.witness.VerificationError
-import xyz.kd5ujc.scarab.ledger.rules.{Gov, Test}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, Empty, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.era.EraGovRun
+import xyz.kd5ujc.scarab.ledger.era.rules.ConwayGov
+import xyz.kd5ujc.scarab.ledger.rules.{CertLens, Test}
+import xyz.kd5ujc.scarab.ledger.state.{CommitteeState, Conway, Empty, ShelleyBasedEra}
 
 /** The order of the items a refusal lists, where the reference lists the items of a set: the keys
   * of the vkey witnesses that do not verify (`validateVerifiedWits`,
@@ -46,9 +48,24 @@ class RefusalOrderSuite extends FunSuite:
       Voter.CommitteeHot(Credential.Key(filled(28, 2))),
       Voter.CommitteeHot(Credential.Script(filled(28, 5)))
     )
-    // with no committee every hot credential is unelected
+    // Conway's GOV on the era types (`ConwayGov.unelectedCommitteeVoters`), the votes read as
+    // Conway's decoder reads them; with no committee every hot credential is unelected
+    def unelected(vs: Vector[Voter]) =
+      EraGovRun
+        .signalFromFlat(vs.map(_ -> Vector.empty), Vector.empty, Vector.empty)
+        .fold(
+          e => fail(s"the votes: $e"),
+          signal =>
+            ConwayGov
+              .unelectedCommitteeVoters[Conway](
+                None,
+                CommitteeState(CertLens.committee.get(cert)),
+                signal.gsVotingProcedures
+              )
+              .toVector
+        )
     assertEquals(
-      Gov.unelected(None, cert, voters),
+      unelected(voters),
       Vector(
         Credential.Script(filled(28, 3)),
         Credential.Script(filled(28, 5)),
@@ -56,7 +73,7 @@ class RefusalOrderSuite extends FunSuite:
         Credential.Key(filled(28, 2))
       )
     )
-    assertEquals(Gov.unelected(None, cert, voters.reverse), Gov.unelected(None, cert, voters))
+    assertEquals(unelected(voters.reverse), unelected(voters))
 
   test("a verifier that fails is reported for the first witness in the reference's order"):
     val keys = Vector(1, 2, 3, 4).map(filled(32, _))
