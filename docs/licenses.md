@@ -150,7 +150,12 @@ is not vendored. Each file starts with the SPDX line of a source adapted from co
 the upstream notice it carries: `Apache-2.0 AND MIT`, and `Apache-2.0 AND MIT AND BSD-3-Clause` for
 `UnpackedScalar.java`, the arithmetic ported from curve25519-dalek (below). The portions from eddsa-java add no
 identifier: they are CC0, which asks for no notice, and elisabeth's `LICENSE` states them. The `package-info.java`
-of each package is Scarab's own (`Apache-2.0`). From then on they are Scarab's sources. `VartimeEd25519.java`, in
+of each package is Scarab's own (`Apache-2.0`). From then on they are Scarab's sources. Later in #1418 the decoders
+came to return an `Optional` instead of throwing, so `InvalidEncodingException.java`, which only they threw, was
+removed, and so were the `java.io.Serializable` hooks of five classes, which nothing in Scarab serializes. The
+ristretto255 group, which nothing in Scarab used, was removed after them: `CompressedRistretto.java`,
+`RistrettoElement.java` and `RistrettoGeneratorTable.java`, with the constants only they read (the generator and its
+table and five field constants in `Constants`, and the constant -1 of `FieldElement`). 13 of the 17 files remain. `VartimeEd25519.java`, in
 `xyz.kd5ujc.scarab.crypto.witness`, writes the field arithmetic, point formulas, decoding and double-scalar
 multiplication of `FieldElement`, `CompletedPoint`, `ProjectivePoint`, `EdwardsPoint`, the Niels points,
 `CompressedEdwardsY` and `Scalar.nonAdjacentForm` again over arrays its caller passes (#1418); it carries the same

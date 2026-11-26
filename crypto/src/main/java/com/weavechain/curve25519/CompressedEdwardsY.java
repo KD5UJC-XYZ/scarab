@@ -7,13 +7,8 @@
 
 package com.weavechain.curve25519;
 
-import java.io.IOException;
-import java.io.InvalidObjectException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.ObjectStreamException;
-import java.io.Serializable;
 import java.util.Arrays;
+import java.util.Optional;
 
 import com.weavechain.subtle.ConstantTime;
 
@@ -26,13 +21,11 @@ import com.weavechain.subtle.ConstantTime;
  * The first 255 bits of a CompressedEdwardsY represent the $y$-coordinate. The
  * high bit of the 32nd byte represents the sign of $x$.
  */
-public class CompressedEdwardsY implements Serializable {
-    private static final long serialVersionUID = 1L;
-
+public class CompressedEdwardsY {
     /**
      * The encoded point.
      */
-    private transient byte[] data;
+    private final byte[] data;
 
     public CompressedEdwardsY(byte[] data) {
         if (data.length != 32) {
@@ -42,33 +35,11 @@ public class CompressedEdwardsY implements Serializable {
     }
 
     /**
-     * Overrides class serialization to use the canonical encoded format.
-     */
-    private void writeObject(ObjectOutputStream out) throws IOException {
-        out.write(this.toByteArray());
-    }
-
-    /**
-     * Overrides class serialization to use the canonical encoded format.
-     */
-    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
-        byte[] encoded = new byte[32];
-        in.readFully(encoded);
-        this.data = encoded;
-    }
-
-    @SuppressWarnings("unused")
-    private void readObjectNoData() throws ObjectStreamException {
-        throw new InvalidObjectException("Cannot deserialize CompressedEdwardsY from no data");
-    }
-
-    /**
      * Attempts to decompress to an EdwardsPoint.
      *
-     * @return an EdwardsPoint, if this is a valid encoding.
-     * @throws InvalidEncodingException if this is an invalid encoding.
+     * @return the EdwardsPoint, if this is a valid encoding, and none if it is not (no x for its y).
      */
-    public EdwardsPoint decompress() throws InvalidEncodingException {
+    public Optional<EdwardsPoint> decompress() {
         FieldElement Y = FieldElement.fromByteArray(data);
         FieldElement YY = Y.square();
 
@@ -80,13 +51,13 @@ public class CompressedEdwardsY implements Serializable {
 
         FieldElement.SqrtRatioM1Result sqrt = FieldElement.sqrtRatioM1(u, v);
         if (sqrt.wasSquare != 1) {
-            throw new InvalidEncodingException("not a valid EdwardsPoint");
+            return Optional.empty();
         }
 
         FieldElement X = sqrt.result.negate().ctSelect(sqrt.result,
                 ConstantTime.equal(sqrt.result.isNegative(), ConstantTime.bit(data, 255)));
 
-        return new EdwardsPoint(X, Y, FieldElement.ONE, X.multiply(Y));
+        return Optional.of(new EdwardsPoint(X, Y, FieldElement.ONE, X.multiply(Y)));
     }
 
     /**

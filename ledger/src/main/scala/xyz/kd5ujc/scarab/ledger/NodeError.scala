@@ -851,6 +851,11 @@ enum ForgeError extends NodeError:
   /** A KES signing key was decoded, but its material is invalid. */
   case KesKey(file: String, cause: Sum6KesSigning.Failure)
 
+  /** Reading the pool's key files threw: a defect of the node, never a problem of the files, which
+    * the readers refuse with the cases above.
+    */
+  case KeyFilesDefect(cause: Throwable)
+
   /** The certificate names another KES key. */
   case KesKeyNotCertified(
       expected: Bytes,
@@ -896,6 +901,8 @@ enum ForgeError extends NodeError:
     case KesFileFailure(f, op, cause) =>
       s"KES key file $f during ${op.toString}: ${cause.message}"
     case KesKey(f, e) => s"key file $f: ${e.message}"
+    case KeyFilesDefect(e) =>
+      s"reading the key files failed: a defect (${e.getClass.getName})"
     case KesKeyNotCertified(_, _) =>
       "keys do not match: the operational certificate names another KES verification key"
     case CertificateFailure(e) => s"operational certificate: ${e.message}"

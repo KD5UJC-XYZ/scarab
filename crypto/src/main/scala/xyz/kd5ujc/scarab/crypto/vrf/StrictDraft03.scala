@@ -45,7 +45,10 @@ object StrictDraft03:
       alpha: Bytes,
       map: (Array[Byte], Array[Byte]) => Ed25519Point
   ): Result =
-    // each check in the order of the reference's verifier; the first that fails is the answer
+    // each check in the order of the reference's verifier; the first that fails is the answer. The
+    // Java math decodes without throwing and is handed the sizes it takes; what can throw is the
+    // JDK's SHA-512 (`Draft03Math.hash`), when no provider supplies it, an assertion of the hash to
+    // curve that no input reaches, or the seam: an internal failure
     Either
       .catchNonFatal {
         val checked: Either[Result, Result] =

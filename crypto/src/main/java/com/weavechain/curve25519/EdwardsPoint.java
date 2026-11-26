@@ -7,26 +7,17 @@
 
 package com.weavechain.curve25519;
 
-import java.io.IOException;
-import java.io.InvalidObjectException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
-import java.io.ObjectStreamException;
-import java.io.Serializable;
-
 /**
  * An EdwardsPoint represents a point on the Edwards form of Curve25519.
  */
-public class EdwardsPoint implements Serializable {
-    private static final long serialVersionUID = 1L;
-
+public class EdwardsPoint {
     public static final EdwardsPoint IDENTITY = new EdwardsPoint(FieldElement.ZERO, FieldElement.ONE, FieldElement.ONE,
             FieldElement.ZERO);
 
-    transient FieldElement X;
-    transient FieldElement Y;
-    transient FieldElement Z;
-    transient FieldElement T;
+    final FieldElement X;
+    final FieldElement Y;
+    final FieldElement Z;
+    final FieldElement T;
 
     /**
      * Only for internal use.
@@ -36,36 +27,6 @@ public class EdwardsPoint implements Serializable {
         this.Y = Y;
         this.Z = Z;
         this.T = T;
-    }
-
-    /**
-     * Overrides class serialization to use the canonical encoded format.
-     */
-    private void writeObject(ObjectOutputStream out) throws IOException {
-        out.write(this.compress().toByteArray());
-    }
-
-    /**
-     * Overrides class serialization to use the canonical encoded format.
-     */
-    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
-        byte[] encoded = new byte[32];
-        in.readFully(encoded);
-
-        try {
-            EdwardsPoint point = new CompressedEdwardsY(encoded).decompress();
-            this.X = point.X;
-            this.Y = point.Y;
-            this.Z = point.Z;
-            this.T = point.T;
-        } catch (InvalidEncodingException iee) {
-            throw new InvalidObjectException(iee.getMessage());
-        }
-    }
-
-    @SuppressWarnings("unused")
-    private void readObjectNoData() throws ObjectStreamException {
-        throw new InvalidObjectException("Cannot deserialize EdwardsPoint from no data");
     }
 
     /**

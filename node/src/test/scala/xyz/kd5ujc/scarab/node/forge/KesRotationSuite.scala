@@ -1901,3 +1901,141 @@ class KesRotationSuite extends CatsEffectSuite with FailsOnUncaught with ForgeFi
       )
       assertEquals(events, Vector.empty, "failed evolution emits no reload success")
   }
+
+  test("a defect in the read of the key file or its stage leaves both files, and is the answer") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 5, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(9)
+        assertEquals(KesFiles.stage(f.kes, evolved), Right(()))
+        val key = Files.readAllBytes(f.kes).toVector
+        val stage = Files.readAllBytes(f.next).toVector
+        val defect = ForgeError.KesKey(
+          f.next.toString,
+          Sum6KesSigning.Failure.Sha512Unavailable(
+            new java.security.NoSuchAlgorithmException("no SHA-512 here")
+          )
+        )
+        def stageDefect(path: Path) =
+          if path == f.next then Left(defect) else KeyFiles.kesSigningKey(path)
+        assertEquals(
+          KesFiles.recoverWith(f.kes, new Renaming {}, stageDefect).map(_.period),
+          Left(defect),
+          "a defect in the stage's read"
+        )
+        assertEquals(
+          KesFiles.recoverWith(f.kes, new Renaming {}, _ => Left(defect)).map(_.period),
+          Left(defect),
+          "a defect in both reads, as a JDK without SHA-512 gives"
+        )
+        assertEquals(Files.readAllBytes(f.kes).toVector, key, "the key file is as it was")
+        assertEquals(Files.readAllBytes(f.next).toVector, stage, "the stage is as it was")
+        // once the reads are judged, the replacement completes as before
+        assertEquals(KesFiles.recover(f.kes).map(_.period), Right(9))
+        assert(!Files.exists(f.next))
+      }
+    }
+  }
+
+  test("a key read for a recovery is forgotten when a later step fails or throws") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 5, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(9)
+        assertEquals(KesFiles.stage(f.kes, evolved), Right(()))
+        val refuseReadback = new Renaming:
+          override def readStage(s: Scratch, file: Path): s.Buffer =
+            throw new IOException("injected stage readback refusal")
+        val read = f.onDisk
+        def withRead(path: Path) =
+          if path == f.kes then Right(read) else KeyFiles.kesSigningKey(path)
+        KesFiles.recoverWith(f.kes, refuseReadback, withRead) match
+          case Left(ForgeError.KesFileFailure(_, KesFileOperation.StageReadback, _)) => ()
+          case other => fail(s"expected the stage readback's failure, found $other")
+        assert(read.isForgotten, "the key read was kept after the recovery failed")
+        val again = f.onDisk
+        val broken = new IllegalStateException("a stage read that threw")
+        def throwing(path: Path) = if path == f.kes then Right(again) else throw broken
+        assertEquals(
+          intercept[IllegalStateException](KesFiles.recoverWith(f.kes, new Renaming {}, throwing)),
+          broken
+        )
+        assert(again.isForgotten, "the key read was kept after the recovery threw")
+      }
+    }
+  }
+
+  test("a stage that is not UTF-8 beside a valid key is destroyed, and the key is read") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 5, 0, 0))
+        Files.write(f.next, Array[Byte](0x7b, 0xff.toByte, 0x7d))
+        assertEquals(KesFiles.recover(f.kes).map(_.period), Right(0))
+        assert(!Files.exists(f.next), "the stage that is no key file is gone")
+      }
+    }
+  }
+
+  test("a key file that is not UTF-8 is replaced by its valid stage") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 5, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(9)
+        assertEquals(KesFiles.stage(f.kes, evolved), Right(()))
+        Files.write(f.kes, Array[Byte](0xc3.toByte, 0x28))
+        assertEquals(KesFiles.recover(f.kes).map(_.period), Right(9))
+        assert(!Files.exists(f.next))
+        assertEquals(f.onDisk.period, 9)
+      }
+    }
+  }
+
+  test("a stage that cannot be read leaves both files, and the read's failure is the answer") {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 5, 0, 0))
+        val key = Files.readAllBytes(f.kes).toVector
+        // a directory where the stage would be: its read fails (EISDIR) for every user, root too
+        Files.createDirectory(f.next)
+        KesFiles.recover(f.kes) match
+          case Left(ForgeError.KeyFile(_, ForgeKeyProblem.Io(_: IOException))) => ()
+          case other => fail(s"expected the stage read's I/O failure, found $other")
+        assertEquals(Files.readAllBytes(f.kes).toVector, key, "the key file is as it was")
+        assert(Files.isDirectory(f.next), "the stage is as it was")
+      }
+    }
+  }
+
+  test(
+    "a key file back by the time the replacement reads it is not replaced, and its key is forgotten"
+  ) {
+    withDir { f =>
+      IO {
+        f.install(hotFor(TestLedger.key(), 5, 0, 0))
+        val evolved = f.onDisk
+        evolved.evolveTo(9)
+        assertEquals(KesFiles.stage(f.kes, evolved), Right(()))
+        // the key file goes when the replacement starts, and a key is read from it again after
+        val goes = new Renaming:
+          override def exchange(next: Path, file: Path): KesFiles.Exchange =
+            Files.delete(file)
+            super.exchange(next, file)
+        val reads = new java.util.concurrent.atomic.AtomicInteger(0)
+        val appeared = f.onDisk
+        def readAgain(path: Path) =
+          if path == f.kes && reads.incrementAndGet() > 1 then Right(appeared)
+          else KeyFiles.kesSigningKey(path)
+        KesFiles.recoverWith(f.kes, goes, readAgain) match
+          case Left(
+                ForgeError.KeyFile(_, ForgeKeyProblem.Io(_: java.nio.file.NoSuchFileException))
+              ) =>
+            ()
+          case other => fail(s"expected the missing key file's failure, found $other")
+        assert(appeared.isForgotten, "the key read from the file that came back was kept")
+        assert(Files.exists(f.next), "the stage is kept, not taken as installed")
+      }
+    }
+  }

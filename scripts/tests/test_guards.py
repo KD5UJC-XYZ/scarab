@@ -31,7 +31,8 @@ class RegistryTest(unittest.TestCase):
         registered, trouble = guards.load(ROOT)
         self.assertEqual(trouble, [])
         self.assertEqual(FORMER - {g.argv for g in registered}, set())
-        for script in ('scripts/check_pinned_citations.py', 'scripts/check_parameter_comments.py'):
+        for script in ('scripts/check_pinned_citations.py', 'scripts/check_parameter_comments.py',
+                       'scripts/check_java_sources.py'):
             self.assertIn(script, {g.argv[0] for g in registered})
 
     def test_preflight_and_ci_run_the_registry_and_name_no_registered_guard_of_their_own(self):

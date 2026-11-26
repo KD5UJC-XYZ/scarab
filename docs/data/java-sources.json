@@ -1,0 +1,23 @@
+{
+ "_comment": "The Java main sources: every tracked .java file under a src/main/ directory, of any module. They are an exception of FUN-2 (f) (docs/design-rules.md); scripts/check_java_sources.py refuses a Java main source that is not listed here and a listed path that is none. The list is changed by hand, in the change that adds or removes the source.",
+ "sources": [
+  "crypto/src/main/java/com/weavechain/curve25519/AffineNielsPoint.java",
+  "crypto/src/main/java/com/weavechain/curve25519/CompletedPoint.java",
+  "crypto/src/main/java/com/weavechain/curve25519/CompressedEdwardsY.java",
+  "crypto/src/main/java/com/weavechain/curve25519/Constants.java",
+  "crypto/src/main/java/com/weavechain/curve25519/EdwardsBasepointTable.java",
+  "crypto/src/main/java/com/weavechain/curve25519/EdwardsPoint.java",
+  "crypto/src/main/java/com/weavechain/curve25519/FieldElement.java",
+  "crypto/src/main/java/com/weavechain/curve25519/ProjectiveNielsPoint.java",
+  "crypto/src/main/java/com/weavechain/curve25519/ProjectivePoint.java",
+  "crypto/src/main/java/com/weavechain/curve25519/Scalar.java",
+  "crypto/src/main/java/com/weavechain/curve25519/StrUtils.java",
+  "crypto/src/main/java/com/weavechain/curve25519/UnpackedScalar.java",
+  "crypto/src/main/java/com/weavechain/curve25519/package-info.java",
+  "crypto/src/main/java/com/weavechain/subtle/ConstantTime.java",
+  "crypto/src/main/java/com/weavechain/subtle/package-info.java",
+  "crypto/src/main/java/xyz/kd5ujc/scarab/crypto/vrf/Draft03Math.java",
+  "crypto/src/main/java/xyz/kd5ujc/scarab/crypto/vrf/Ed25519Point.java",
+  "crypto/src/main/java/xyz/kd5ujc/scarab/crypto/witness/VartimeEd25519.java"
+ ]
+}

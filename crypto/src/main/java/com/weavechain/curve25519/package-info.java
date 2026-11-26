@@ -9,12 +9,7 @@
  *   <li>FUN-2 (a), a performance-critical path: the limb arithmetic of {@link FieldElement}, {@link Scalar} and
  *       {@link UnpackedScalar} and the point formulas loop over, and assign, arrays and locals made for the
  *       computation. They are the inner loop of every Ed25519 verification and VRF proof, the largest cost the
- *       profiles show (performance sections 1 and 13). Outside the hooks below, a value's fields are assigned only
- *       by its constructor.</li>
- *   <li>FUN-2 (c), a callback whose contract keeps its state by mutation and signals failure by exception: the
- *       {@code java.io.Serializable} hooks ({@code writeObject}, {@code readObject}, {@code readObjectNoData}) of
- *       {@link EdwardsPoint}, {@link RistrettoElement}, {@link CompressedEdwardsY}, {@link CompressedRistretto} and
- *       {@link Scalar}, the only code that assigns their {@code transient} fields after construction.</li>
+ *       profiles show (performance sections 1 and 13). A value's fields are assigned only by its constructor.</li>
  *   <li>FUN-2 (d), secret material erased in place: {@code Scalar.reduceWide}, {@code Scalar.multiplyAndAdd} and
  *       {@code Scalar.toRadix16} over byte arrays, and {@code multiplyRadix16} of {@link EdwardsBasepointTable} and
  *       {@link EdwardsPoint}, read and write arrays their caller owns and allocate none of their own, so that the VRF
@@ -23,10 +18,13 @@
  *       {@code toRadix16()}, {@code multiply(Scalar)}) compute through them.</li>
  * </ul>
  *
- * <p>The decoders throw on a malformed encoding ({@link InvalidEncodingException} from {@code decompress},
- * {@link IllegalArgumentException} from {@code Scalar.fromCanonicalBytes}), as their upstream does: ERR-4 lists
- * these sources among its exceptions, and the interfaces of {@code xyz.kd5ujc.scarab.crypto} that pass them
- * outside input catch where they call. No wart or guard of FUN-1, FUN-3 or ERR-4 reads these sources: they are
- * FUN-2 (f), review only. A typed result from the decoders is an open item of #1418.
+ * <p>The decoders return a result and throw on no byte input, of any length and content (null is no input, and
+ * no caller passes it): {@link CompressedEdwardsY#decompress()} gives an empty {@code Optional} for bytes that
+ * encode no point, and {@link Scalar#fromCanonicalBytes(byte[])} for bytes that are not the 32-byte encoding of a
+ * scalar below the group order. The {@code throw} statements left check the caller's
+ * arguments, which the callers in {@code xyz.kd5ujc.scarab.crypto} never fail: an array of another length than a
+ * constructor or a method takes, a radix-16 digit outside [-8, 8], a NAF digit that is even or above 15, an exponent
+ * below 1, and the high bit of a 32-byte {@link Scalar}. Their count may only go down
+ * ({@code scripts/check_java_sources.py}).
  */
 package com.weavechain.curve25519;

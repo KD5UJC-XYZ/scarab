@@ -26,6 +26,11 @@ object Draft03Prover:
     case MissingSeed, MissingSigningKey, PublicKeyMismatch
     case SeedLength(actual: Int)
     case SigningKeyLength(actual: Int)
+
+    /** The encoding of H, the hash to curve of the public key and alpha, is no point's: a defect of
+      * the hash to curve, which yields points of the curve only.
+      */
+    case HashToCurveEncoding
     case InternalFailure(cause: Throwable)
 
   /** A proof and the 64-byte VRF output it certifies. */
@@ -62,6 +67,8 @@ object Draft03Prover:
     private def hashed(alpha: Bytes): Either[Failure, Bytes] =
       if key.isForgotten then Left(Failure.MissingSigningKey)
       else
+        // the hash to curve throws only when the JDK has no SHA-512 (`Draft03Math.hash`), or on the
+        // assertion that the map's point decodes, which no input reaches: a defect, typed here
         Either
           .catchNonFatal(
             Bytes.fromArray(Draft03Math.h2c(publicKey.toArray, alpha.toArray).encode())

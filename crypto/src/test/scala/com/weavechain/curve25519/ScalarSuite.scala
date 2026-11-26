@@ -2,7 +2,7 @@
 package com.weavechain.curve25519
 
 import org.scalacheck.Prop.forAllNoShrink
-import scala.util.Try
+import scala.jdk.OptionConverters.*
 
 import Curve25519Gen.*
 
@@ -18,7 +18,7 @@ class ScalarSuite extends munit.ScalaCheckSuite:
 
   private def value(s: Scalar): BigInt = fromLe(s.toByteArray)
 
-  private def canonical(v: BigInt): Scalar = Scalar.fromCanonicalBytes(le(v, 32))
+  private def canonical(v: BigInt): Scalar = Scalar.fromCanonicalBytes(le(v, 32)).toScala.get
 
   /** Any value below 2^255, the domain of `Scalar`'s representation, reduced or not. */
   private def unreduced(v: BigInt): Scalar = Scalar.fromBits(le(v, 32))
@@ -37,12 +37,9 @@ class ScalarSuite extends munit.ScalaCheckSuite:
 
   property("fromCanonicalBytes accepts exactly the values below L") {
     forAllNoShrink(scalar256) { v =>
-      val parsed = Try(Scalar.fromCanonicalBytes(le(v, 32))).toEither
-      if v < L then assertEquals(parsed.map(value), Right(v), v.toString(16))
-      else
-        parsed match
-          case Left(_: IllegalArgumentException) => ()
-          case other => fail(s"${v.toString(16)} is at least L and was read as $other")
+      val parsed = Scalar.fromCanonicalBytes(le(v, 32)).toScala
+      if v < L then assertEquals(parsed.map(value), Some(v), v.toString(16))
+      else assertEquals(parsed.map(value), None, s"${v.toString(16)} is at least L")
     }
   }
 

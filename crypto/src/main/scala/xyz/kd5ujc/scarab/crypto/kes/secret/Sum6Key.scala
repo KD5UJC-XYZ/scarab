@@ -6,7 +6,7 @@ import java.util.Arrays
 import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.{Failure, SeedState}
-import xyz.kd5ujc.scarab.crypto.secret.Scratch
+import xyz.kd5ujc.scarab.crypto.secret.{Scratch, Sha512}
 
 /** The secret half of a Sum6 KES signing key (cardano-base `SumKES` over `Ed25519`, Blake2b-256),
   * in the binary layout of `kes.skey`: a key of depth `d` is `subKey(d-1) || r1 (32) || vk0 (32) ||
@@ -39,10 +39,20 @@ import xyz.kd5ujc.scarab.crypto.secret.Scratch
   * a moving collector made of an array before it was zeroed, a payload copied into a caller's
   * scratch ([[payloadIn]]), which is the caller's to erase, and [[toBytes]], a copy its caller
   * owns.
+  *
+  * The key keeps the SHA-512 digest its maker found ([[Sha512.Digests]]), a copy of which every
+  * leaf it computes hashes with: a JDK without one refuses the key when it is made or read
+  * ([[Sum6KesSigning]]), and a key that exists signs and evolves with no failure of that kind.
   */
 @SuppressWarnings(Array("org.wartremover.warts.Var"))
-private[kes] final class Sum6Key private (material: Array[Byte], start: Int):
+private[kes] final class Sum6Key private (
+    material: Array[Byte],
+    start: Int,
+    digests: Sha512.Digests
+):
   import Sum6Key.*
+
+  private given Sha512.Digests = digests
 
   // FUN-2 (d): the key evolves in place, zeroing the periods it leaves, and forget zeroes it all;
   // the array, the period and the flag are read and written under this monitor
@@ -138,7 +148,7 @@ private[kes] final class Sum6Key private (material: Array[Byte], start: Int):
 
   /** A key with its own array, at the same period, forgotten if this one is. */
   def copy: Sum6Key = synchronized {
-    val other = new Sum6Key(material.clone(), current)
+    val other = new Sum6Key(material.clone(), current, digests)
     if forgotten then other.forget()
     other
   }
@@ -217,10 +227,10 @@ private[kes] object Sum6Key:
   /** `genKeyKES`: the key for period 0 of the 32-byte seed at `seed(from, from + 32)`. The tree is
     * built in a scratch and copied into the key's array once it is complete.
     */
-  def generated(seed: Array[Byte], from: Int): Sum6Key =
+  def generated(seed: Array[Byte], from: Int)(using digests: Sha512.Digests): Sum6Key =
     val material = new Array[Byte](KeyBytes)
     Scratch.within(s => generatedIn(s, seed, from, material))
-    new Sum6Key(material, 0)
+    new Sum6Key(material, 0, digests)
 
   /** [[generated]] in the scratch `s`, into `material`. */
   private[secret] def generatedIn(
@@ -228,7 +238,7 @@ private[kes] object Sum6Key:
       seed: Array[Byte],
       from: Int,
       material: Array[Byte]
-  ): Unit =
+  )(using Sha512.Digests): Unit =
     val built = s.buffer(KeyBytes)
     gen(s)(seed, from, s.array(built), 0, Depth)
     System.arraycopy(s.array(built), 0, material, 0, KeyBytes)
@@ -238,9 +248,13 @@ private[kes] object Sum6Key:
     * bytes are checked in a scratch and copied into the key's array only once they pass, so a
     * refused payload leaves no copy.
     */
-  def loaded(payload: Array[Byte], from: Int, at: Option[Int]): Either[Failure, Sum6Key] =
+  def loaded(payload: Array[Byte], from: Int, at: Option[Int])(using
+      digests: Sha512.Digests
+  ): Either[Failure, Sum6Key] =
     val material = new Array[Byte](KeyBytes)
-    Scratch.within(s => loadedIn(s, payload, from, at, material)).map(new Sum6Key(material, _))
+    Scratch
+      .within(s => loadedIn(s, payload, from, at, material))
+      .map(new Sum6Key(material, _, digests))
 
   /** [[loaded]] in the scratch `s`: the period, with the payload copied into `material` once it
     * passes the checks.
@@ -251,7 +265,7 @@ private[kes] object Sum6Key:
       from: Int,
       at: Option[Int],
       material: Array[Byte]
-  ): Either[Failure, Int] =
+  )(using Sha512.Digests): Either[Failure, Int] =
     val m = s.buffer(KeyBytes)
     System.arraycopy(payload, from, s.array(m), 0, KeyBytes)
     val period = at.getOrElse(periodOf(s.array(m)))
@@ -262,13 +276,14 @@ private[kes] object Sum6Key:
 
   /** The verification key of the depth-`depth` tree of the 32-byte seed at `seed(from, from + 32)`.
     */
-  def rootOf(seed: Array[Byte], from: Int, depth: Int): Bytes = Scratch.within { s =>
-    val tree = s.buffer(size(depth))
-    gen(s)(seed, from, s.array(tree), 0, depth)
-    val vk = s.buffer(32)
-    vkInto(s)(s.array(tree), 0, depth, s.array(vk), 0)
-    s.publish(vk)
-  }
+  def rootOf(seed: Array[Byte], from: Int, depth: Int)(using Sha512.Digests): Bytes =
+    Scratch.within { s =>
+      val tree = s.buffer(size(depth))
+      gen(s)(seed, from, s.array(tree), 0, depth)
+      val vk = s.buffer(32)
+      vkInto(s)(s.array(tree), 0, depth, s.array(vk), 0)
+      s.publish(vk)
+    }
 
   /** The period a key's bytes stand at, read from which levels' right-half seeds are erased: an
     * evolution erases a level's `r1` exactly when it moves into that level's right half, so the
@@ -296,7 +311,7 @@ private[kes] object Sum6Key:
       depth: Int,
       out: Array[Byte],
       outAt: Int
-  ): Unit =
+  )(using Sha512.Digests): Unit =
     if depth == 0 then Leaf.publicKey(s)(m, offset, out, outAt)
     else Blake2b256.hash(s)(m, vk0At(offset, depth), 64, out, outAt)
 
@@ -324,7 +339,7 @@ private[kes] object Sum6Key:
       m: Array[Byte],
       offset: Int,
       depth: Int
-  ): Unit =
+  )(using Sha512.Digests): Unit =
     if depth == 0 then System.arraycopy(seed, at, m, offset, SeedBytes)
     else
       val (r0, r1) = expand(s)(seed, at)
@@ -345,7 +360,7 @@ private[kes] object Sum6Key:
       message: Array[Byte],
       out: Array[Byte],
       outAt: Int
-  ): Unit =
+  )(using Sha512.Digests): Unit =
     if depth == 0 then Leaf.sign(s)(m, offset, message, out, outAt)
     else
       signAt(s)(m, offset, depth - 1, message, out, outAt)
@@ -366,7 +381,7 @@ private[kes] object Sum6Key:
       depth: Int,
       period: Int,
       erased: () => Unit
-  ): Unit =
+  )(using Sha512.Digests): Unit =
     val half = 1 << (depth - 1)
     if period + 1 < half then update(s)(m, offset, depth - 1, period, erased)
     else if period + 1 == half then
@@ -388,7 +403,7 @@ private[kes] object Sum6Key:
       offset: Int,
       depth: Int,
       period: Int
-  ): Either[Failure, Unit] =
+  )(using Sha512.Digests): Either[Failure, Unit] =
     if depth == 0 then Right(())
     else
       val half = 1 << (depth - 1)
@@ -423,7 +438,7 @@ private[kes] object Sum6Key:
       depth: Int,
       m: Array[Byte],
       storedAt: Int
-  ): Boolean =
+  )(using Sha512.Digests): Boolean =
     val vk = s.buffer(32)
     val stored = s.buffer(32)
     vkInto(s)(tree, offset, depth, s.array(vk), 0)
@@ -433,7 +448,9 @@ private[kes] object Sum6Key:
   /** Does the right half's seed stored at this level generate the stored `vk1`? Its tree is a
     * buffer of `s`.
     */
-  private def rightSeedGenerates(s: Scratch)(m: Array[Byte], offset: Int, depth: Int): Boolean =
+  private def rightSeedGenerates(s: Scratch)(m: Array[Byte], offset: Int, depth: Int)(using
+      Sha512.Digests
+  ): Boolean =
     val right = s.buffer(size(depth - 1))
     gen(s)(m, r1At(offset, depth), s.array(right), 0, depth - 1)
     holds(s)(s.array(right), 0, depth - 1, m, vk1At(offset, depth))

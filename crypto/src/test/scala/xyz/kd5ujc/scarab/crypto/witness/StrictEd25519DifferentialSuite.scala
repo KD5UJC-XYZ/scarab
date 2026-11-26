@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.crypto.witness
 
-import com.weavechain.curve25519.{
-  CompressedEdwardsY,
-  EdwardsPoint,
-  InvalidEncodingException,
-  Scalar
-}
+import com.weavechain.curve25519.{CompressedEdwardsY, EdwardsPoint, Scalar}
 import java.security.MessageDigest
 import java.util.Arrays
 import org.bouncycastle.math.ec.rfc8032.Ed25519
+import scala.jdk.OptionConverters.*
 import scala.util.Random
 import xyz.kd5ujc.scarab.codec.Bytes
 
@@ -23,17 +19,13 @@ class StrictEd25519DifferentialSuite extends munit.FunSuite:
 
   private object Reference:
     def point(bytes: Array[Byte]): Option[EdwardsPoint] =
-      val decoded =
-        try Some(new CompressedEdwardsY(bytes.clone()).decompress())
-        catch case _: InvalidEncodingException => None
+      val decoded = new CompressedEdwardsY(bytes.clone()).decompress().toScala
       decoded.filter(p => Arrays.equals(p.compress().toByteArray, bytes) && !p.isSmallOrder)
 
     def verify(key: Array[Byte], signature: Array[Byte], message: Array[Byte]): Boolean =
       val rBytes = Arrays.copyOfRange(signature, 0, 32)
       val sBytes = Arrays.copyOfRange(signature, 32, 64)
-      val s =
-        try Some(Scalar.fromCanonicalBytes(sBytes))
-        catch case _: IllegalArgumentException => None
+      val s = Scalar.fromCanonicalBytes(sBytes).toScala
       (for
         a <- point(key)
         _ <- point(rBytes)
@@ -93,6 +85,22 @@ class StrictEd25519DifferentialSuite extends munit.FunSuite:
     assert(!StrictEd25519.canonicalY(le(p + 18)))
     assert(!StrictEd25519.canonicalY(le(BigInt(2).pow(255) - 1)))
     assert(StrictEd25519.canonicalY(le(BigInt(0))))
+  }
+
+  test("bytes of another length than 32 are neither canonical nor a key, and nothing throws") {
+    val random = new Random(1418)
+    val lengths = (0 to 100) ++ Vector(447, 448, 449, 4096)
+    lengths.foreach { n =>
+      val random1 = new Array[Byte](n)
+      random.nextBytes(random1)
+      Vector(Array.fill[Byte](n)(0), Array.fill[Byte](n)(-1), random1).foreach { e =>
+        val canonical = StrictEd25519.canonicalY(e)
+        val accepted = StrictEd25519.acceptsKey(e)
+        if n != 32 then
+          assert(!canonical, s"$n bytes read as a canonical encoding")
+          assert(!accepted, s"$n bytes read as a key")
+      }
+    }
   }
 
   test("an encoding is accepted as a point exactly when it was before: random bytes") {

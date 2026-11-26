@@ -539,10 +539,28 @@ object KesFiles:
     )
 
   /** Recovery's ending of a valid stage. A key file that is not there is not made from the stage:
-    * the read fails, as the reference's does on a missing key file, and the stage is kept.
+    * the read of it by `parsed` fails, as the reference's does on a missing key file, and the stage
+    * is kept. A key file there again by the time it is read was not replaced either: its key is
+    * forgotten, and the failure is the missing file's.
     */
-  private def finish(file: Path, ops: FileOps): Either[ForgeError, Unit] =
-    replace(file, ops).flatMap(_.fold(parse(file).void)(_ => Right(())))
+  private def finish(
+      file: Path,
+      ops: FileOps,
+      parsed: Path => Either[ForgeError, Sum6KesSigning.SigningKey]
+  ): Either[ForgeError, Unit] =
+    replace(file, ops).flatMap(
+      _.fold(
+        parsed(file).flatMap { appeared =>
+          appeared.forget()
+          Left(
+            ForgeError.KeyFile(
+              file.toString,
+              ForgeKeyProblem.Io(new NoSuchFileException(file.toString))
+            )
+          )
+        }
+      )(_ => Right(()))
+    )
 
   /** The write-back's ending of a stage it has just written. A key file that is not there is not
     * made again: the stage, the new key, is destroyed.
@@ -635,39 +653,112 @@ object KesFiles:
   /** The key of `file` after any replacement that a crash interrupted is put right. */
   def recover(file: Path): Either[ForgeError, Sum6KesSigning.SigningKey] = recoverWith(file, Nio)
 
+  /** [[recover]] through `ops`, each key file read by `parsed`, a seam for the suites. With both
+    * the key file and its stage there, the stage replaces the key when it is the key's own, at the
+    * same period or later, or when the key file's content is refused; a stage of another key, or
+    * one at an earlier period, is destroyed, and so is a stage whose content is refused. A file
+    * that is not judged ([[Read.Unjudged]]: it could not be read, or its reader met a defect)
+    * leaves both files as they are, and its error is the answer. A key read here and not returned
+    * is forgotten however the recovery ends, by an error or by an exception
+    * ([[KeyFiles.erasedUnless]]).
+    */
   private[forge] def recoverWith(
       file: Path,
-      ops: FileOps
+      ops: FileOps,
+      parsed: Path => Either[ForgeError, Sum6KesSigning.SigningKey] = parse
   ): Either[ForgeError, Sum6KesSigning.SigningKey] =
     val next = nextOf(file)
-    val main = parse(file)
+    def read(path: Path): Read = parsed(path).fold(judged, Read.Key(_))
     // a key file that is not there is not made from a stage (#918); the read fails as it is
-    if !Files.exists(next) || !Files.exists(file) then main
+    if !Files.exists(next) || !Files.exists(file) then parsed(file)
     else
-      parse(next) match
-        case Right(n) if main.fold(_ => true, m => same(m, n) && m.period <= n.period) =>
-          val completed = validateStage(file, n, ops).flatMap(_ => finish(file, ops))
-          completed match
-            case Left(error) =>
-              n.forget()
-              main.foreach(_.forget())
-              Left(error)
-            case Right(_) =>
-              main.foreach(_.forget())
-              Right(n)
-        case Right(n) =>
-          n.forget()
-          destroy(next, ops) match
-            case Left(error) =>
-              main.foreach(_.forget())
-              Left(error)
-            case Right(_) => main
-        case Left(_) =>
-          destroy(next, ops) match
-            case Left(error) =>
-              main.foreach(_.forget())
-              Left(error)
-            case Right(_) => main
+      read(file) match
+        case Read.Key(main) =>
+          KeyFiles.erasedUnless(main, recoveredFrom(file, read(next), main, ops, parsed))(_ eq main)
+        case Read.Refused(refused) =>
+          read(next) match
+            case Read.Key(staged) => completed(file, staged, ops, parsed)
+            case Read.Refused(_)  => destroy(next, ops).flatMap(_ => Left(refused))
+            case Read.Unjudged(e) => Left(e)
+        case Read.Unjudged(error) => Left(error)
+
+  /** The recovery of `file`, whose key `main` was read, with its stage read as `stage`. */
+  private def recoveredFrom(
+      file: Path,
+      stage: => Read,
+      main: Sum6KesSigning.SigningKey,
+      ops: FileOps,
+      parsed: Path => Either[ForgeError, Sum6KesSigning.SigningKey]
+  ): Either[ForgeError, Sum6KesSigning.SigningKey] =
+    stage match
+      case Read.Key(staged) if same(main, staged) && main.period <= staged.period =>
+        completed(file, staged, ops, parsed)
+      case Read.Key(staged) =>
+        KeyFiles.erasedUnless(staged, destroy(nextOf(file), ops).map(_ => main))(_ eq staged)
+      case Read.Refused(_)  => destroy(nextOf(file), ops).map(_ => main)
+      case Read.Unjudged(e) => Left(e)
+
+  /** The stage `staged` of `file`, checked and put in place of the key file; forgotten unless it is
+    * the answer.
+    */
+  private def completed(
+      file: Path,
+      staged: Sum6KesSigning.SigningKey,
+      ops: FileOps,
+      parsed: Path => Either[ForgeError, Sum6KesSigning.SigningKey]
+  ): Either[ForgeError, Sum6KesSigning.SigningKey] =
+    KeyFiles.erasedUnless(
+      staged,
+      validateStage(file, staged, ops).flatMap(_ => finish(file, ops, parsed)).map(_ => staged)
+    )(_ eq staged)
+
+  /** How the read of a key file or its stage ended, for the recovery: a stage is destroyed, and a
+    * key file replaced, only when its content is refused.
+    */
+  private enum Read:
+    case Key(key: Sum6KesSigning.SigningKey)
+
+    /** The file's content is not a key file's: a torn or damaged file. */
+    case Refused(error: ForgeError)
+
+    /** The file is not judged: it could not be read, or its reader met a defect. */
+    case Unjudged(error: ForgeError)
+
+  /** Whether `error`, from the read of a KES key file, refuses the file's content. Every case is
+    * named, so that a new one is placed here before it compiles; those a KES key file's read does
+    * not give are not a refusal of its content.
+    */
+  private def judged(error: ForgeError): Read = error match
+    case ForgeError.KeyFile(_, problem) =>
+      problem match
+        case ForgeKeyProblem.Json(_) | ForgeKeyProblem.Field(_, _) | ForgeKeyProblem.Hex(_) |
+            ForgeKeyProblem.EnvelopeType(_, _) | ForgeKeyProblem.Cbor(_) |
+            ForgeKeyProblem.ExpectedByteString(_) | ForgeKeyProblem.CertificateEnvelope(_) |
+            ForgeKeyProblem.CertificateFields(_) | ForgeKeyProblem.FixedBytes(_, _) |
+            ForgeKeyProblem.UnsignedInteger(_) | ForgeKeyProblem.NotUtf8(_) =>
+          Read.Refused(error)
+        case ForgeKeyProblem.Io(_) | ForgeKeyProblem.Vrf(_) | ForgeKeyProblem.Bls(_) |
+            ForgeKeyProblem.OtherPermissions(_) | ForgeKeyProblem.InstanceLocked(_) =>
+          Read.Unjudged(error)
+    case ForgeError.KesKey(_, failure) =>
+      failure match
+        case Sum6KesSigning.Failure.MissingSeed | Sum6KesSigning.Failure.InvalidSeedLength(_) |
+            Sum6KesSigning.Failure.MissingKey | Sum6KesSigning.Failure.InvalidKeyLength(_) |
+            Sum6KesSigning.Failure.PeriodOutOfRange(_) |
+            Sum6KesSigning.Failure.SeedStateMismatch(_, _, _) |
+            Sum6KesSigning.Failure.VerificationKeyMismatch(_) |
+            Sum6KesSigning.Failure.RightSeedMismatch(_) =>
+          Read.Refused(error)
+        case Sum6KesSigning.Failure.Forgotten | Sum6KesSigning.Failure.Sha512Unavailable(_) =>
+          Read.Unjudged(error)
+    case ForgeError.KesFileFailure(_, _, _) | ForgeError.KeyFilesDefect(_) |
+        ForgeError.KesKeyNotCertified(_, _) | ForgeError.CertificateFailure(_) |
+        ForgeError.CertificateSignatureRejected | ForgeError.KeyPeriodOutOfRange(_, _, _) |
+        ForgeError.KesUpdateInterrupted | ForgeError.KesEvolution(_) | ForgeError.VrfInput(_) |
+        ForgeError.VrfProof(_) | ForgeError.LeaderThreshold(_) | ForgeError.NotLeader(_) |
+        ForgeError.LedgerViewUnavailable(_, _) | ForgeError.UnsupportedProtocol(_) |
+        ForgeError.Assembly(_) | ForgeError.Certify(_) =>
+      Read.Unjudged(error)
 
   private def same(a: Sum6KesSigning.SigningKey, b: Sum6KesSigning.SigningKey): Boolean =
     a.verificationKey == b.verificationKey

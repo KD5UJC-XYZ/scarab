@@ -78,6 +78,7 @@ account, and not the person an agent works for unless that person holds the role
 | Python guards | `scripts/check_*.py`, run by `scripts/preflight` and the CI `scripts` job | as each rule says | as each rule says; each script's docstring has its detail |
 | Documentation check | `scripts/check_docs.py`, a guard like the others | `docs/**/*.md`, `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `changes/README.md`, outside fenced code; the other `changes/*.md` for relative links only | a new broken link or anchor, missing path or symbol, unregistered pin or stale "current" version. A finding listed in `docs/data/docs-check-baseline.json` passes, and one fixed must leave it; accepting a new one means rewriting the baseline, a diff a reviewer sees |
 | Crypto guards | `.github/workflows/security.yml`: semgrep with `.semgrep/scarab-crypto.yaml`, and `scripts/check_crypto_guard.py` | semgrep: every Scala and Java source but `tools`, `target` and `fixtures`; the containment guard: every Scala and Java source but `target`, `.git`, `.cache` and `fixtures`, so that it sees a reference that escapes its package | [CRY-1](#cry-1) |
+| Java sources guard | `scripts/check_java_sources.py`, a guard like the others, against `docs/data/java-sources.json` and `docs/data/java-throw-baseline.json` | every tracked `.java` file under a `src/main/` directory, `tools` included | a Java main source that is not on the list or a listed one that is gone ([FUN-2](#fun-2) (f)); a Unicode escape in one, or a character javac ignores inside a token; and a count of `throw` in one, comments and literals aside, above the baseline ([ERR-4](#err-4)), which only shrinks, so a count cannot rise unless the change rewrites the baseline, a diff a reviewer sees |
 | Secret scan | gitleaks with `.gitleaks.toml`, in CI and `scripts/preflight` | full history | committed secrets ([FMT-3](#fmt-3)) |
 | SPDX step | `.github/workflows/ci.yml`, "SPDX header on every script and workflow" | `.py`, `.yml` and `sbtw` under `scripts/` and `.github/workflows/` | a file without the header ([CMT-4](#cmt-4)) |
 | PR policy | `scripts/pr_policy.py`, on every pull request event | pull request title, body and changed paths; when the storage format guard changes, its `ONE_OFF_PATHS` as the pull request leaves it and the states of the pull requests it names | a missing level, a level below its floor, or a missing or malformed "Deviations from the reference" or "Gaps" section ([REF-7](#ref-7)); a storage format change whose title, paths or "Storage format change" section do not follow [FMT-1](#fmt-1); a change of the guard whose one-off exceptions name a merged pull request ([FMT-1](#fmt-1)) |
@@ -229,21 +230,44 @@ unavailable".
 
 - **Scope:** main.
 - **Exceptions:** tests and tools ([TST-1](#tst-1)); a callback whose contract signals failure by
-  exception ([FUN-2](#fun-2) (c)); the Java sources of [FUN-2](#fun-2) (f), which throw on input they
-  refuse (the vendored arithmetic as its upstream does) and are a library in this rule's sense: the Scala
-  interfaces that pass them outside input (signature and VRF verification, VRF proving) catch at the call
-  and return a typed case, and a caller that passes storage of a size it fixed itself (KES signing and key
-  generation) has no catch.
+  exception ([FUN-2](#fun-2) (c)); the Java sources of [FUN-2](#fun-2) (f), a library in this rule's sense,
+  whose decoders return a result (`Optional`) and whose `throw`s are left only where no input reaches them:
+  checks of an argument their callers fix (an array's length, the range of a digit or an integer, an
+  exponent), a constant that decodes, the decoding of the Elligator map's point, and a JDK without
+  SHA-512. The Scala entry points of `crypto` that reach them (signature, VRF and KES verification, VRF
+  proving, KES signing, evolution and key loading) take sized types or check sizes first, and are total over
+  byte input: for bytes of any length and content they return a verdict, a refusal or a typed case (null is
+  no input; no caller passes it). The verifiers and the VRF prover's hash to curve keep a catch at the
+  boundary, typed as a defect, for what the JDK can throw there (no provider of SHA-512) and a null
+  argument. The KES and VRF signing keys find the JDK's SHA-512 digest once, where they are made or read,
+  and refuse with a typed case when none is supplied or it cannot be copied
+  (`Sum6KesSigning.Failure.Sha512Unavailable`, `Draft03Prover.Failure.InternalFailure`); every hash of
+  their secrets after that works on a copy of the digest found, made without asking the JDK again
+  (`Sha512.Digests`), so a key that exists signs, proves and evolves with no failure of that kind, and with
+  no catch. That holds for a digest whose copy depends on its class only, as the JDK's does; a provider
+  whose copy could fail later would throw beneath them, and the node types that as a defect where it calls
+  the key (`HotKeys`' `Fibers.scoped` when it signs, evolves or proves, `KeyGuard.loaded` when it starts).
+  The VRF prover's hash to curve, of public inputs, asks the JDK for SHA-512 on each proof
+  (`Draft03Math.hash`), and its catch types the JDK's refusal as `InternalFailure`. A start types what
+  reading the key files throws (`ForgeError.KeyFilesDefect`).
 - **Enforcement:** `Wart.Throw`, and `SystemTimeAndUnsafeRun` in main: `sys.error`, `require`, `assume`,
   `assert`, and `raiseError`, `raiseWhen`, `raiseUnless`, `fromOption` and `fromEither` of a `Throwable` made
   for it (by `new`, by a factory, in a `val` or in a `Left` made for `fromEither`) or of a value of one of
   our types (kinds `raise-constructed` and `raise-domain-error`); its Scaladoc lists what it does not see. The wart refuses a defect too (a
   precondition of the caller, the failure of one of our own constants), which is not a domain error: such
   a site is kept with `@SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))` and its
-  reason. The rest is review only.
+  reason. In the Java sources of [FUN-2](#fun-2) (f), `scripts/check_java_sources.py` refuses a source whose
+  count of `throw` is above its baseline, `docs/data/java-throw-baseline.json`, which only shrinks, so a
+  count cannot rise unless the change rewrites the baseline as well, a diff a reviewer sees; a `throw`
+  replaced by another in the same file is not seen. It refuses a Unicode escape in them too, and a
+  character javac ignores inside a token, either of which could hide one. `EntryPointTotalitySuite` (crypto tests) feeds every entry point that reaches them bytes of every
+  length and content, one input past each size limit they check, and inputs one bit from accepted ones,
+  and fails on an exception. That no remaining `throw` is reached from outside input is review only, and so
+  is the rest.
 - **Why:** [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md);
   [ADR 0017](adr/0017-fibers-end-with-values.md); the owner's ruling of 2026-11-14 (a domain error goes
-  through `Raise`, not `raiseError`).
+  through `Raise`, not `raiseError`); for the Java sources of [FUN-2](#fun-2) (f), the owner's decisions of
+  2026-11-26 ([decisions register](decisions.md#code)).
 
 <a id="err-5"></a>
 ### ERR-5. No partial accessors
@@ -332,8 +356,9 @@ too, and fall under the same rule.
   `Wart.EitherProjectionPartial`, `Wart.IterableOps`, `Wart.TripleQuestionMark`, `Wart.ThreadSleep` and
   `Wart.GlobalExecutionContext` (`disallowedWarts` in `build.sbt`). `scripts/check_imperative.py` refuses a
   new `try`, `catch` or `finally` in the same sources, against `docs/data/imperative-baseline.json`, which
-  only shrinks. Java's mutable types, `synchronized` and `@volatile` are review only, and so is a Java
-  source as a whole: no wart or guard of this rule reads one ([FUN-2](#fun-2) (f)).
+  only shrinks. Java's mutable types, `synchronized` and `@volatile` are review only, and so is the style of
+  a Java source: no wart and no guard of this rule reads Java; the guard of [FUN-2](#fun-2) (f) holds which
+  Java sources there are, and [ERR-4](#err-4)'s their `throw`s.
 - **Why:** owner's decision, 2026-10-15 ([decisions register](decisions.md#code));
   [#650](https://github.com/KD5UJC-XYZ/scarab/issues/650).
 
@@ -358,9 +383,12 @@ Imperative, side-effecting code is kept only for:
 
 - **Scope:** main.
 - **Exceptions:** this list is the whole of them.
-- **Enforcement:** review only: a reviewer checks that a kept site names one of (a) to (f).
-- **Why:** owner's decision, 2026-10-15, and for (f) 2026-11-25 ([decisions register](decisions.md#code));
-  [performance.md](performance.md) holds the measurements.
+- **Enforcement:** review only: a reviewer checks that a kept site names one of (a) to (f), except that for
+  (f) `scripts/check_java_sources.py` refuses a Java main source (a tracked `.java` under any `src/main/`
+  directory of the repository, `tools` included) that `docs/data/java-sources.json` does not list, and a
+  listed one that is gone: the list changes, by hand, in the change that adds or removes the source.
+- **Why:** owner's decision, 2026-10-15, and for (f) 2026-11-25 and 2026-11-26
+  ([decisions register](decisions.md#code)); [performance.md](performance.md) holds the measurements.
 
 <a id="fun-3"></a>
 ### FUN-3. A kept site is marked and contained

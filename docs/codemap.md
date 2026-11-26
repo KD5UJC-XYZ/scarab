@@ -48,7 +48,7 @@ Hashes, signatures, VRF, KES, BLS (jblst, with its start-up check), operational 
 
 | Package | Responsibility | Entry points | Suites | Decisions |
 |---|---|---|---|---|
-| crypto | Blake2b hashing and transaction ids | `Hasher`, `Blake2b`, `TransactionId` | `HashingSuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md) |
+| crypto | Blake2b hashing and transaction ids | `Hasher`, `Blake2b`, `TransactionId` | `HashingSuite`, `EntryPointTotalitySuite` | [ADR 0001](adr/0001-haskell-node-as-reference.md) |
 | crypto/bls | BLS12-381 min-sig keys, signatures and the Leios committee certificate; the start-up check of the jblst native library | `MinSig`, `Committee`, `Certificate`, `Vote`, `Seat`, `BlsError`, `Blst`, `BlstReport`, `BlstProblem`, `CpuSupport` | `MinSigVectorSuite`, `LeiosCertificateSuite`, `BlstSuite` | [leios](leios.md), [ADR 0025](adr/0025-jblst.md) |
 | crypto/kes | Sum6 KES verify, sign and evolve | `Sum6Kes`, `Sum6KesSigning` | `Sum6KesSuite`, `Sum6KesSigningSuite`, `Sum6KesSigningDifferentialSuite` | [ADR 0015](adr/0015-kes-key-written-back-and-checked-reload.md) |
 | crypto/kes/secret | The secret steps of KES signing: the key's 608 bytes, its period and its evolution, and what is computed from its seeds (the hashes of the seed halves, the leaves' Ed25519 keys, scalars and nonces), in working storage | `Sum6Key`, `Blake2b256`, `Leaf` | `Sum6KeySuite`, `Sum6KesSigningDifferentialSuite` | [threat-model](security/threat-model.md) |

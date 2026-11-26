@@ -197,3 +197,21 @@ class KeyGuardSuite extends CatsEffectSuite:
         assertEquals(held, Some(d.resolve(".current.kes.skey.scarab-lock")))
       }
   }
+
+  /** What [[KeyGuard.loaded]] of `load` ends with: `Right` when it gives credentials, or the error
+    * raised.
+    */
+  private def loadedOf(load: => Either[ForgeError, PoolCredentials]): IO[Either[ForgeError, Unit]] =
+    Handle
+      .allow[ForgeError](KeyGuard.loaded[IO](load).as[Either[ForgeError, Unit]](Right(())))
+      .rescue(error => IO.pure(Left(error)))
+
+  test("a read of the credentials that throws fails the start with a typed defect") {
+    val broken = new IllegalStateException("a reader that threw")
+    loadedOf(throw broken).map(r => assertEquals(r, Left(ForgeError.KeyFilesDefect(broken))))
+  }
+
+  test("a read of the credentials that refuses fails the start with its own error") {
+    val refused = ForgeError.KeyFile("kes", ForgeKeyProblem.Io(new java.io.IOException("gone")))
+    loadedOf(Left(refused)).map(r => assertEquals(r, Left(refused)))
+  }

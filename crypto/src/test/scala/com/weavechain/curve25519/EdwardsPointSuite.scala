@@ -3,7 +3,7 @@ package com.weavechain.curve25519
 
 import org.scalacheck.Gen
 import org.scalacheck.Prop.forAllNoShrink
-import scala.util.Try
+import scala.jdk.OptionConverters.*
 import xyz.kd5ujc.scarab.crypto.witness.Ed25519Model as M
 
 import Curve25519Gen.*
@@ -23,11 +23,8 @@ class EdwardsPointSuite extends munit.ScalaCheckSuite:
   private def value(fe: FieldElement): BigInt = fromLe(fe.toByteArray)
 
   private def decompressed(encoding: Array[Byte]): Option[EdwardsPoint] =
-    // an invalid encoding is an InvalidEncodingException; any other exception fails the test
-    Try(new CompressedEdwardsY(encoding.clone()).decompress()).toEither match
-      case Right(point)                      => Some(point)
-      case Left(_: InvalidEncodingException) => None
-      case Left(other)                       => throw other
+    // an invalid encoding is none; an exception fails the test
+    new CompressedEdwardsY(encoding.clone()).decompress().toScala
 
   private def point(m: M.Point): EdwardsPoint = decompressed(m.encode).get
 

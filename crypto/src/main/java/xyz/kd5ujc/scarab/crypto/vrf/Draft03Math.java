@@ -30,7 +30,10 @@ final class Draft03Math {
         return new BigInteger(1, reversed);
     }
 
-    /** A non-negative integer below 2^256 as 32 little-endian bytes. */
+    /**
+     * A non-negative integer below 2^256 as 32 little-endian bytes. The range check is an assertion: the callers
+     * here pass residues modulo P or L.
+     */
     public static byte[] scalar(BigInteger x) {
         if (x.signum() < 0 || x.bitLength() > 256) {
             throw new IllegalArgumentException("scalar range");
@@ -43,7 +46,10 @@ final class Draft03Math {
         return result;
     }
 
-    /** SHA-512 of the concatenated pieces. */
+    /**
+     * SHA-512 of the concatenated pieces. It throws only if no provider of the JDK supplies SHA-512, which the
+     * Scala callers type as a defect ({@code StrictDraft03}, {@code Draft03Prover}).
+     */
     public static byte[] hash(byte[]... pieces) {
         try {
             var sha = MessageDigest.getInstance("SHA-512");
@@ -56,7 +62,11 @@ final class Draft03Math {
         }
     }
 
-    /** The Elligator 2 map of 32 uniform bytes to a point in the prime-order subgroup. */
+    /**
+     * The Elligator 2 map of 32 uniform bytes to a point in the prime-order subgroup. The length check is an
+     * assertion ({@link #h2c} passes 32 bytes), and so is the decoding of the map's point: y is the image of a
+     * point of the Montgomery curve, or 1, so it is canonical and has an x.
+     */
     public static Ed25519Point uniform(byte[] input) {
         if (input.length != 32) {
             throw new IllegalArgumentException("uniform length");
