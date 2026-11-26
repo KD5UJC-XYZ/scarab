@@ -9,7 +9,7 @@ implemented aggregation and reconstruction: every typed result/failure, ordered 
 
 ## Evidence
 
-Released-source unchanged API oracle: 25 cases, all eight three-script patterns in V1/V2/V3; `ScriptResultOracleSuite`, 50 BBODY/defect/outage controls in `ScriptResultBlockSuite`, 73 request reconstruction byte comparisons in `ScriptResultWireSuite`, wide-redeemer small-stack control; source `63a629bc`: Docker check 4,921 passed/16 skipped, 220 Python tests, e2e 1,650 block applications/66 equal projected ledger comparisons, NtC 932/932 query comparisons under existing masks and 20/20 raw-byte/text refusals; [contract and evidence](../design/script-results.md)
+Released-source unchanged API oracle: 25 cases, all eight three-script patterns in V1/V2/V3; `ScriptResultOracleSuite`, 50 BBODY/defect/outage controls in `ScriptResultBlockSuite` (V1/V2 on Babbage's flat body, V3 on Conway's era run), 73 request reconstruction byte comparisons in `ScriptResultWireSuite`, wide-redeemer small-stack control; source `63a629bc`: Docker check 4,921 passed/16 skipped, 220 Python tests, e2e 1,650 block applications/66 equal projected ledger comparisons, NtC 932/932 query comparisons under existing masks and 20/20 raw-byte/text refusals; [contract and evidence](../design/script-results.md)
 
 ## Explicitly unchecked or unconfirmed
 

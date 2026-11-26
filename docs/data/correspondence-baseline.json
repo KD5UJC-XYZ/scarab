@@ -754,9 +754,7 @@
    "class ledger.mempack.MemPack.Unpacker": null,
    "class ledger.mempack.RefScript": null,
    "class ledger.mempack.TxOutParts": null,
-   "class ledger.rules.BbodyEnv": null,
    "class ledger.rules.BbodySignal": null,
-   "class ledger.rules.BbodyState": null,
    "class ledger.rules.BodyCommitment": null,
    "class ledger.rules.CertEnv": null,
    "class ledger.rules.CertsEnv": null,
@@ -2228,9 +2226,6 @@
    "def ledger.mempack.TxOutMemPack.parts": null,
    "def ledger.mempack.TxOutMemPack.toTxOut": null,
    "def ledger.mempack.TxOutMemPack.withNativeReference": null,
-   "def ledger.rules.Bbody.exUnitsExceeded": null,
-   "def ledger.rules.Bbody.refScriptsSize": null,
-   "def ledger.rules.Bbody.transition": null,
    "def ledger.rules.Cert.transition": null,
    "def ledger.rules.CertOps.dRepCredential": null,
    "def ledger.rules.CertOps.delegate": null,
@@ -2267,7 +2262,6 @@
    "def ledger.rules.EraBlock.Plan#batches": null,
    "def ledger.rules.EraBlock.Plan#execute": null,
    "def ledger.rules.EraBlock.Plan#resolve": null,
-   "def ledger.rules.EraBlock.apply": null,
    "def ledger.rules.EraBlock.body": null,
    "def ledger.rules.EraBlock.decode": null,
    "def ledger.rules.EraBlock.program": null,
@@ -3076,7 +3070,6 @@
    "given ledger.json.Scientific.given_Ordering_Scientific": null,
    "given ledger.json.Scientific.given_Show_Scientific": null,
    "given ledger.mempack.MemPack.Failure.given_Show_Failure": null,
-   "given ledger.rules.Bbody.given_Embed_ConwayLedger_BbodyState_LedgerFailure_BlockFailure": null,
    "given ledger.rules.Cert.poolEmbed": null,
    "given ledger.rules.Embed.refl": null,
    "given ledger.rules.Ledger.certsEmbed": null,
@@ -3491,18 +3484,6 @@
    "object ledger.mempack.MemPack.Unpacker": null,
    "object ledger.mempack.MultiAssetRep": null,
    "object ledger.mempack.TxOutMemPack": null,
-   "object ledger.rules.Bbody": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs",
-     "symbol": "alonzoBbodyTransition",
-     "lines": [
-      169,
-      214
-     ]
-    }
-   ],
    "object ledger.rules.Cert": [
     {
      "repository": "IntersectMBO/cardano-ledger",

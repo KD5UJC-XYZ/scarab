@@ -42,10 +42,14 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxLevel
 }
 import xyz.kd5ujc.scarab.ledger.era.rules.{
+  BbodyEnv,
+  BbodyPredFailure,
+  ConwayBlockRun,
   ConwayGovPredFailure,
   ConwayUtxo,
   ConwayUtxowPredFailure,
   LedgerEnv,
+  ShelleyBbodyState,
   UtxoContext
 }
 import xyz.kd5ujc.scarab.ledger.rules.{
@@ -449,6 +453,74 @@ object ConwayTestKit extends munit.Assertions:
       case Left(defect)             => fail(s"the era LEDGER: $defect")
       case Right(Left(failures))    => Left(failures.toChain.toVector)
       case Right(Right((after, _))) => Right(after)
+
+  /** Conway's BBODY on the era types as the node runs it ([[ConwayBlockRun]];
+    * `conwayBbodyTransition >> alonzoBbodyTransition`, `Conway/Rules/Bbody.hs:268`, cardano-ledger
+    * f649f975) on a block of the one transaction `tx` from `nes` under `ctx`, the transaction read
+    * from its original parts: the block's header at the slot of `ctx` and at the major version of
+    * the parameters in force, committing to its body as the Imp's does ([[ConwayImp.blockOf]]), the
+    * run's network, clock and epoch information those of `ctx`. Its failures in the reference's
+    * order, or the ledger state after it; a defect, or a run stopped by one, fails the test.
+    */
+  def eraBbody(
+      nes: NewEpochState[Conway],
+      tx: Tx,
+      ctx: TxEnv
+  ): Either[Vector[BbodyPredFailure[Conway]], LedgerState[Conway]] =
+    assertEquals(tx.auxiliary, None, "a block of auxiliary data is not built here")
+    val globals = NativeRules.globalsOf(ctx)
+    val ls = nes.es.ls
+    val stored = ls.utxo.gov.curPParams
+    val pp = PParams[Conway](
+      ConwayPParams.fromStored(stored).fold(e => fail(s"parameters: $e"), identity)
+    )
+    val clock = ctx.clock.getOrElse(fail("the environment has no clock"))
+    val raw = ConwayImp.blockOf(
+      stored.protocolMajor.toInt,
+      Vector(
+        ConwayImp.Built(
+          tx.body.raw,
+          tx.witnesses.raw.getOrElse(fail("the transaction holds no original witness bytes")),
+          tx.isValid
+        )
+      ),
+      _.updated(1, ConwayImp.encoded(xyz.kd5ujc.scarab.codec.Value.UInt(ctx.slot)))
+    )
+    ConwayBlockRun
+      .program(
+        globals,
+        BbodyEnv[Conway](pp, nes.es.chainAccount),
+        ConwayImp.decoded(raw),
+        xyz.kd5ujc.scarab.ledger.SystemStart(
+          java.time.Instant
+            .ofEpochMilli(clock.posix(0).fold(e => fail(s"the system start: $e"), identity).toLong)
+        ),
+        epochInfo(globals),
+        ShelleyBbodyState[Conway](ls, nes.bcur),
+        ctx.evaluator,
+        ctx.verdicts,
+        ctx.decoder,
+        clock.posix
+      )
+      .serial match
+      case Left(defect)                                         => fail(s"the era BBODY: $defect")
+      case Right(Left(ConwayBlockRun.Refusal.Failed(failures))) => Left(failures.toChain.toVector)
+      case Right(Left(stopped))                                 => fail(s"the era BBODY: $stopped")
+      case Right(Right(applied))                                => Right(applied.state.ls)
+
+  /** The failures of LEDGERS among BBODY's `failures`, in order ([[eraBbody]]): LEDGER's, each of
+    * one transaction; a BBODY failure of the block's own fails the test.
+    */
+  def ledgersFailures(
+      failures: Vector[BbodyPredFailure[Conway]]
+  ): Vector[xyz.kd5ujc.scarab.ledger.era.rules.LedgerPredFailure[Conway]] =
+    failures.map {
+      case xyz.kd5ujc.scarab.ledger.era.rules.ConwayBbodyPredFailure.LedgersFailure(
+            xyz.kd5ujc.scarab.ledger.era.rules.ShelleyLedgersPredFailure.LedgerFailure(f)
+          ) =>
+        f
+      case other => fail(s"a failure of the block's own: $other")
+    }
 
   /** Conway's LEDGER on the era types on `built` from `nes` under `ctx`, at the root, every failure
     * accumulated: the state after it, or its refusal with its failures in the node's flat form

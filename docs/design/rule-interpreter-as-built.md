@@ -149,7 +149,7 @@ are recorded in [performance.md](../performance/cast-erasure-interpreter.md#type
 
 ## Verification
 
-`StsSuite` explicitly runs `MonadTests` alongside the MTL laws; it and `TickRulesSuite`/`BbodySuite` retain the original semantics, including
+`StsSuite` explicitly runs `MonadTests` alongside the MTL laws; it and `TickRulesSuite` retain the original semantics (`BbodySuite` did too until the flat Conway BBODY went, #85), including
 rollback and scoped globals on success and failure. The production interpreter is unchanged
 since the reviewed implementation. No persisted format or rule change is part of this work.
 

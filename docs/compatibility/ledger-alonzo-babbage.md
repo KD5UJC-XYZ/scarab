@@ -91,4 +91,4 @@ within the current size limits reaches the bound, so no recorded chain evidence 
 
 ## Explicitly unchecked or unconfirmed
 
-block execution-unit limits are validated (protocol >= 5) but only by unit tests (`ShelleyBbodySuite`, `BbodySuite`) and the sync; no Alonzo-era transaction with datums and no redeemers exists on Preview, so that case of the integrity hash (`0x80` redeemers) has no chain evidence of its own (the Babbage case is the same code)
+block execution-unit limits are validated (protocol >= 5) but only by unit tests (`ShelleyBbodySuite`) and the sync; no Alonzo-era transaction with datums and no redeemers exists on Preview, so that case of the integrity hash (`0x80` redeemers) has no chain evidence of its own (the Babbage case is the same code)

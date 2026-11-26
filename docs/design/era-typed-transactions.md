@@ -2629,8 +2629,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     build (`HeaderProtVerGate`), as `WithdrawalsRule` is. The second clause never fails: from 12 the version after it
     is 13, `MaxVersion`, past which no header's major decodes. `ConwayBbodyPredFailure` is the same at both pins but
     for derived `Ord` and the units' `OrdExUnits` at 9df9f98c.
-  - `ConwayBbodySuite` (node) runs the era BBODY and the flat BBODY (`EraBlock.body`) from the state `MirrorRules`
-    ticks: on the 53 recorded Conway blocks of `fixtures/eras` and `fixtures/chain-dep`, which the reference accepted,
+  - `ConwayBbodySuite` (node) runs the era BBODY and, until stage 3 deleted it, the flat BBODY (`EraBlock.body`)
+    from the state `MirrorRules` ticks: on the 53 recorded Conway blocks of `fixtures/eras` and `fixtures/chain-dep`, which the reference accepted,
     both admit each with the same ledger state and blocks made, and as on mainnet both refuse each for its header's
     version (the clusters' headers declare major 11 over parameters at 9), the flat side in its envelope; crafted from
     a recorded block's bytes, another declared size, another declared hash and a major past the next on mainnet are
@@ -2689,7 +2689,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     failing after it, so no script runs and the run observes nothing more (`Observed.Ended`); a prepared block
     records the observation in order beside its deferred scripts and tells it at its place
     ([parallel Plutus](parallel-plutus.md#era-block-runs)). Observing changes no rule's result.
-  - `ConwayBbodySuite` compares each with the flat rules: the counters on the 53 recorded blocks (zero on both, as no
+  - `ConwayBbodySuite` compared each with the flat rules until stage 3 deleted them, and keeps the era side's
+    values as its expectations: the counters on the 53 recorded blocks (zero on both, as no
     script runs in them) and on built blocks of valid and invalid script transactions and a datum-only integrity
     hash; the naming of each of the four scripts of a block of a valid and an invalid transaction, with the
     evaluator giving no verdict on each in turn, and of two V1 scripts of one transaction with equal requests at
@@ -2758,7 +2759,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     stored tail back, and in the immutable replay it stops the start; no verdict stops the start, as for every
     cause of no verdict.
   - The flat BBODY and MEMPOOL stay (owner decision 4) and the comparison stays in the tests: `ConwayBodiesReplaySuite`
-    asserts the era run's state and counters equal to the flat rules' on every Conway block of the preprod window,
+    asserts the era run's state and counters equal to the flat rules' on every Conway block of the preprod window
+    (its last run, on the parent of the stage-3 change that deleted the flat Conway BBODY, agreed on all 5,683
+    blocks; the suite is now `EraBodiesReplaySuite`, the era run's serial, parallel and prepared ways alone),
     and `SessionFailureSuite` pins each outcome's route through the follower. The forger selects with the era rules
     since its switch (below).
 - **The mempool's switch: the pool, local submission and TxSubmission2 on Conway's era rules**

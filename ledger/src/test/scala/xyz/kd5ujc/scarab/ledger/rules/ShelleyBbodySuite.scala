@@ -23,10 +23,9 @@ import xyz.kd5ujc.scarab.ledger.state.*
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 /** BBODY of the eras before Conway on its own (the transactions themselves are `ShelleyLedgerSuite`
-  * 's): what the rule says of a block before and after its transactions, as [[BbodySuite]] does for
-  * Conway: the commitment of the body, the limit of the execution units of the block (Alonzo on),
-  * and the block counted for its issuer unless its slot is one of the overlay schedule
-  * (`incrBlocks`, `isOverlaySlot`).
+  * 's): what the rule says of a block before and after its transactions: the commitment of the
+  * body, the limit of the execution units of the block (Alonzo on), and the block counted for its
+  * issuer unless its slot is one of the overlay schedule (`incrBlocks`, `isOverlaySlot`).
   */
 class ShelleyBbodySuite extends FunSuite:
   private val geometry =
@@ -158,8 +157,10 @@ class ShelleyBbodySuite extends FunSuite:
     val pp = params(5)
     val half = ExUnits(pp.maxBlockExUnits.mem / 2 + 1, 1)
     val txs = Vector(redeeming(half, "a"), redeeming(half, "b"), redeeming(half, "c"))
-    assertEquals(Bbody.exUnitsExceeded(pp, txs), Some(half + half + half))
-    assertEquals(Bbody.exUnitsExceeded(pp, txs.take(1)), None)
+    assertEquals(ShelleyBbody.exUnitsExceeded[Alonzo](pp, txs), Some(half + half + half))
+    assertEquals(ShelleyBbody.exUnitsExceeded[Alonzo](pp, txs.take(1)), None)
+    // Shelley's BBODY has no such check
+    assertEquals(ShelleyBbody.exUnitsExceeded[Shelley](pp, txs), None)
   }
 
   test("from Alonzo a block LEDGERS accepts is refused for the units of the whole block") {

@@ -55,7 +55,15 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ShelleyBbodyState,
   UtxoStateDefect
 }
-import xyz.kd5ujc.scarab.ledger.rules.{EraBlock, EraNes, FromByron, Globals, Handover, TickFailure}
+import xyz.kd5ujc.scarab.ledger.rules.{
+  EraBlock,
+  EraNes,
+  FromByron,
+  Globals,
+  Handover,
+  PreConway,
+  TickFailure
+}
 import xyz.kd5ujc.scarab.ledger.state.LeiosCommitteeError
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
@@ -785,17 +793,32 @@ object MirrorRules:
       checked <- front.checked(block, context)
       (ticked, praos, leader) = checked
       txs = prepared.fold(EraBlock.decode(block))(_.txs)
-    yield Ready.Running[EraBlock.Outcome](
-      EraBlock.program(context)(ticked, announced, block, txs, front.pre.plutus),
-      outcome =>
-        (outcome match
-          case EraBlock.Outcome.Applied(nes, plutus) =>
-            front.stepped(block, nes, praos, leader, plutus)
-          case EraBlock.Outcome.Refused(failure) => Left(failure)
-          case EraBlock.Outcome.NotInEra(era) =>
-            Left(BlockFailure.LedgerEra(era, announced.era))
-        ).asRight[xyz.kd5ujc.scarab.ledger.ChainError]
-    )
+    yield ticked match
+      case i: EraNes.InEra[e] =>
+        PreConway.of(i.era) match
+          case Some(pre) =>
+            given PreConway[e] = pre
+            Ready.Running[EraBlock.Outcome](
+              EraBlock.program(context)(i.nes, announced, block, txs, front.pre.plutus),
+              outcome =>
+                (outcome match
+                  case EraBlock.Outcome.Applied(nes, plutus) =>
+                    front.stepped(block, nes, praos, leader, plutus)
+                  case EraBlock.Outcome.Refused(failure) => Left(failure)
+                  case EraBlock.Outcome.NotInEra(era) =>
+                    Left(BlockFailure.LedgerEra(era, announced.era))
+                ).asRight[xyz.kd5ujc.scarab.ledger.ChainError]
+            )
+          // the combinator has brought the state into Conway or Dijkstra, whose blocks no flat
+          // body applies: refused for it, after a transaction that does not decode, as the body
+          // refuses one before it looks at the era
+          case None =>
+            Ready.refused(
+              block.transactions
+                .zip(txs)
+                .collectFirst { case (t, Left(error)) => BlockFailure.TxDecode(t.id, error) }
+                .getOrElse(BlockFailure.LedgerEra(EraNes.eraOf(i.era), announced.era))
+            )
     ready.fold(Ready.refused, identity)
 
   /** A Conway block by Conway's era rules ([[ConwayBlockRun]], #85): the block read into the era's

@@ -163,11 +163,12 @@ class AuxiliaryScriptsSuite extends FunSuite:
       transactions: Vector[Tx],
       valid: Boolean,
       decoder: ScriptDecoder[Id]
-  ): EraBlock.Body =
+  ): EraBlock.Body[xyz.kd5ujc.scarab.ledger.state.Babbage] =
+    // the flat body is Babbage's (the eras before Conway); Conway's blocks are the era run's
     val fixture = PreparedBlockFixture
     val block = Block.Shelley(
-      Era.Conway,
-      fixture.header,
+      Era.Babbage,
+      fixture.babbageHeader,
       transactions.map(tx => Block.Transaction(tx.body.raw, Bytes.empty, tx.auxiliary, tx.isValid)),
       100,
       Bytes.empty
@@ -180,7 +181,7 @@ class AuxiliaryScriptsSuite extends FunSuite:
         evaluator = TestLedger.scripted(valid),
         decoder = decoder
       )
-    )(fixture.state, fixture.header, block, transactions.map(Right(_)), PlutusStats.zero)
+    )(fixture.state, fixture.babbageHeader, block, transactions.map(Right(_)), PlutusStats.zero)
 
   test(
     "late auxiliary failure refuses full BBODY in serial/prepared paths without publishing its prefix"
