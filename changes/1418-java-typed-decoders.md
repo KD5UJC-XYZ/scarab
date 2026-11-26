@@ -7,6 +7,11 @@
 - VRF proving refuses a hash-to-curve point that does not decode with its own defect case,
   `Draft03Prover.Failure.HashToCurveEncoding`, which stops the node as other internal failures of the forge do,
   instead of an `InternalFailure` caught from the decoder's exception. No input reaches it.
+- A JDK without SHA-512 no longer leaves KES signing, evolution and key loading to throw: the KES and VRF signing
+  keys find the JDK's SHA-512 once, where they are made or read, and refuse with
+  `Sum6KesSigning.Failure.Sha512Unavailable` or `Draft03Prover.Failure.InternalFailure`, which stop the node as
+  defects. A start whose reading of the key files throws fails with `ForgeError.KeyFilesDefect`, logged as a refusal
+  of the files is, instead of a stack trace.
 
 ### Removed (crypto, #1418)
 

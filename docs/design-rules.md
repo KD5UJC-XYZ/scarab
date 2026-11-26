@@ -236,10 +236,12 @@ unavailable".
   exponent), a constant that decodes, the decoding of the Elligator map's point, and a JDK without SHA-512. The Scala entry points
   of `crypto` that reach them (signature, VRF and KES verification, VRF proving, KES signing, evolution and
   key loading) take sized types or check sizes first, and are total: for any input they return a verdict, a
-  refusal or a typed case. The verifiers and VRF proving keep a catch at the boundary, typed as a defect,
-  for what the JDK can throw there (no provider of SHA-512) and a null argument. KES signing, evolution and
-  key loading have no catch and no defect case: a JDK without SHA-512 is the one failure that leaves them
-  as an exception, an open item of [#1418](https://github.com/KD5UJC-XYZ/scarab/issues/1418).
+  refusal or a typed case. The verifiers and the VRF prover's hash to curve keep a catch at the boundary,
+  typed as a defect, for what the JDK can throw there (no provider of SHA-512) and a null argument. The KES
+  and VRF signing keys find the JDK's SHA-512 once, where they are made or read, and refuse with a typed case
+  when it is missing (`Sum6KesSigning.Failure.Sha512Unavailable`, `Draft03Prover.Failure.InternalFailure`):
+  a key that exists signs, proves and evolves with no failure of that kind, and with no catch. A start types
+  what reading the key files throws (`ForgeError.KeyFilesDefect`).
 - **Enforcement:** `Wart.Throw`, and `SystemTimeAndUnsafeRun` in main: `sys.error`, `require`, `assume`,
   `assert`, and `raiseError`, `raiseWhen`, `raiseUnless`, `fromOption` and `fromEither` of a `Throwable` made
   for it (by `new`, by a factory, in a `val` or in a `Left` made for `fromEither`) or of a value of one of
@@ -253,7 +255,8 @@ unavailable".
   review only, and so is the rest.
 - **Why:** [ADR 0002](adr/0002-tagless-final-and-cats-mtl.md);
   [ADR 0017](adr/0017-fibers-end-with-values.md); the owner's ruling of 2026-11-14 (a domain error goes
-  through `Raise`, not `raiseError`).
+  through `Raise`, not `raiseError`); for the Java sources of [FUN-2](#fun-2) (f), the owner's decisions of
+  2026-11-26 ([decisions register](decisions.md#code)).
 
 <a id="err-5"></a>
 ### ERR-5. No partial accessors
@@ -373,8 +376,8 @@ Imperative, side-effecting code is kept only for:
   (f) `scripts/check_java_sources.py` refuses a Java main source, of any module and `tools` included, that
   `docs/data/java-sources.json` does not list, and a listed one that is gone: the list changes, by hand, in
   the change that adds or removes the source.
-- **Why:** owner's decision, 2026-10-15, and for (f) 2026-11-25 ([decisions register](decisions.md#code));
-  [performance.md](performance.md) holds the measurements.
+- **Why:** owner's decision, 2026-10-15, and for (f) 2026-11-25 and 2026-11-26
+  ([decisions register](decisions.md#code)); [performance.md](performance.md) holds the measurements.
 
 <a id="fun-3"></a>
 ### FUN-3. A kept site is marked and contained
