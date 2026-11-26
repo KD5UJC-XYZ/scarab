@@ -14,7 +14,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraPParams,
   EraBlockBody,
   EraBlockHeader,
-  EraLedgerRun,
   EraTx,
   EraTxBody,
   IsPhase2Valid,
@@ -40,12 +39,17 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayBbodyPredFailure,
   ConwayBlockRun,
   ConwayPhase2,
+  ConwayLedgerPredFailure,
   ConwayRuleDefect,
+  ConwayUtxoPredFailure,
+  ConwayUtxosPredFailure,
+  ConwayUtxowPredFailure,
   HeaderProtVerGate,
   InjectBbodyFailure,
   ShelleyBbody,
   ShelleyBbodyPredFailure,
   ShelleyBbodyState,
+  LedgerPredFailure,
   ShelleyLedgersPredFailure,
   UtxoStateDefect
 }
@@ -170,7 +174,14 @@ class ConwayBbodySuite extends FailsOnUncaught:
   /** What a BBODY made of a block: its failures in the node's flat form, or the ledger state and
     * the blocks made after it.
     */
-  private type Verdict = Either[Vector[BlockFailure], (LedgerState[Conway], BlocksMade)]
+  /** A failure of the era BBODY as the suite compares it: one of the block's own in the node's
+    * form, or LEDGERS's, the failures of the block's one transaction, in the era's.
+    */
+  private enum Refused:
+    case Block(failure: BlockFailure)
+    case Ledgers(failures: NonEmptyChain[LedgerPredFailure[Conway]])
+
+  private type Verdict = Either[Vector[Refused], (LedgerState[Conway], BlocksMade)]
 
   /** The ticked Conway state of a block and what is read of the era run on it: the era BBODY's own
     * failures as well as their form in the node's vocabulary, and the scripts its evaluator ran.
@@ -493,7 +504,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
       }
     val judged = run.toOption
     val era: Either[ConwayRuleDefect, Verdict] = run.map {
-      case Left(refusal) => Left(flatOf(before.name, refusal.failures, block))
+      case Left(refusal) => Left(refusedOf(refusal.failures, block))
       case Right(after)  => Right((after.state.ls, after.state.blocksMade))
     }
     Judged(
@@ -510,25 +521,23 @@ class ConwayBbodySuite extends FailsOnUncaught:
       () => eraEvaluator.replaying
     )
 
-  /** The era BBODY's failures in the node's flat form, in their order; LEDGERS's, which the flat
-    * form holds by the transaction refused, as that of the block's one transaction, in the place of
-    * the first of them (none in a block of more transactions).
+  /** The era BBODY's failures as the suite compares them ([[Refused]]), in their order: the block's
+    * own in the node's form, LEDGERS's as those of the block's one transaction, in the place of the
+    * first of them (none in a block of more transactions).
     */
-  private def flatOf(
-      name: String,
+  private def refusedOf(
       fs: NonEmptyChain[BbodyPredFailure[Conway]],
       block: FlatBlock.Shelley
-  ): Vector[BlockFailure] =
+  ): Vector[Refused] =
     val all = fs.toChain.toVector
     val ledgers = all.collect {
-      case ConwayBbodyPredFailure.LedgersFailure(ShelleyLedgersPredFailure.LedgerFailure(f)) =>
-        ok(s"$name: flat")(EraLedgerRun.flat(f, _ => None, _ => None))
+      case ConwayBbodyPredFailure.LedgersFailure(ShelleyLedgersPredFailure.LedgerFailure(f)) => f
     }
-    // a block of more transactions has no flat form here: the era's failures do not say which
-    // transaction each is of
+    // a block of more transactions has none here: the era's failures do not say which transaction
+    // each is of
     lazy val rejected = NonEmptyChain.fromSeq(ledgers).flatMap { fs =>
       block.transactions match
-        case Vector(t) => Some(BlockFailure.Tx(LedgerFailure.Rejected(t.id, fs)))
+        case Vector(_) => Some(Refused.Ledgers(fs))
         case _         => None
     }
     val firstLedgers = all.indexWhere {
@@ -538,15 +547,18 @@ class ConwayBbodySuite extends FailsOnUncaught:
     all.zipWithIndex.flatMap {
       case (ConwayBbodyPredFailure.WrongBlockBodySizeBBODY(_), _) |
           (ConwayBbodyPredFailure.InvalidBodyHashBBODY(_), _) =>
-        Vector(BlockFailure.BodyCommitment)
+        Vector(Refused.Block(BlockFailure.BodyCommitment))
       case (ConwayBbodyPredFailure.TooManyExUnits(m), _) =>
-        Vector(BlockFailure.BlockExUnitsTooBig(m.supplied, m.expected))
+        Vector(Refused.Block(BlockFailure.BlockExUnitsTooBig(m.supplied, m.expected)))
       case (ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig(m), _) =>
-        Vector(BlockFailure.RefScriptsTooLarge(m.stored))
+        Vector(Refused.Block(BlockFailure.RefScriptsTooLarge(m.stored)))
       case (ConwayBbodyPredFailure.HeaderProtVerTooHigh(m), _) =>
         Vector(
-          BlockFailure.Envelope(
-            EnvelopeError.HeaderProtVerTooHigh(BigInt(m.supplied.value), BigInt(m.expected.value))
+          Refused.Block(
+            BlockFailure.Envelope(
+              EnvelopeError
+                .HeaderProtVerTooHigh(BigInt(m.supplied.value), BigInt(m.expected.value))
+            )
           )
         )
       case (ConwayBbodyPredFailure.LedgersFailure(_), i) =>
@@ -710,7 +722,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     onMainnet.foreach(v =>
       assertEquals(
         v,
-        Left(Vector(BlockFailure.Envelope(EnvelopeError.HeaderProtVerTooHigh(11, 10))))
+        Left(Vector(Refused.Block(BlockFailure.Envelope(EnvelopeError.HeaderProtVerTooHigh(11, 10)))))
       )
     )
   }
@@ -735,7 +747,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     assertEquals(committed, first.raw, "the recorded header commits to its body")
     Vector("size" -> size, "hash" -> hash).foreach { (what, raw) =>
       val j = judge(first, raw)
-      assertEquals(j.era, Left(Vector(BlockFailure.BodyCommitment)), what)
+      assertEquals(j.era, Left(Vector(Refused.Block(BlockFailure.BodyCommitment))), what)
     }
     // the era predicates' own failures, with the reference's mismatches: the body's (supplied)
     // and the header's (expected)
@@ -774,7 +786,10 @@ class ConwayBbodySuite extends FailsOnUncaught:
           .updated(7, encoded(Value.ByteString(Bytes(Vector.fill(32)(7.toByte)))))
     )
     val j = judge(first, both)
-    assertEquals(j.era, Left(Vector(BlockFailure.BodyCommitment, BlockFailure.BodyCommitment)))
+    assertEquals(
+      j.era,
+      Left(Vector(Refused.Block(BlockFailure.BodyCommitment), Refused.Block(BlockFailure.BodyCommitment)))
+    )
     // the era rule's own failures, before their flat form: the size is checked before the hash, and
     // the root's list is the reverse of the order its predicates recorded (each failure put in
     // front, `Extended.hs:708`, cardano-ledger f649f975; `Judgment.flatten`), so the hash's first,
@@ -818,7 +833,11 @@ class ConwayBbodySuite extends FailsOnUncaught:
       assertEquals(
         tooHigh.era,
         Left(
-          Vector(BlockFailure.Envelope(EnvelopeError.HeaderProtVerTooHigh(major + 2, major + 1)))
+          Vector(
+            Refused.Block(
+              BlockFailure.Envelope(EnvelopeError.HeaderProtVerTooHigh(major + 2, major + 1))
+            )
+          )
         ),
         s"$build"
       )
@@ -974,7 +993,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
       val refused = judge(third, blockOf(txs), change = world)
       assertEquals(
         refused.era,
-        Left(Vector(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))),
+        Left(Vector(Refused.Block(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit))))),
         s"$major"
       )
       // with another declared body size too, both recorded: the reference scripts' check
@@ -1100,7 +1119,10 @@ class ConwayBbodySuite extends FailsOnUncaught:
         new ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig[Conway](EraMismatch(total, limit))
       )
     )
-    assertEquals(at11.era, Left(Vector(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))))
+    assertEquals(
+      at11.era,
+      Left(Vector(Refused.Block(BlockFailure.RefScriptsTooLarge(Mismatch(total, limit)))))
+    )
   }
 
   test(
@@ -1169,7 +1191,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
       val refused = judge(third, raw, change = holding(utxo, _.copy(maxBlockExUnits = below)))
       assertEquals(
         refused.era,
-        Left(Vector(BlockFailure.BlockExUnitsTooBig(units, below))),
+        Left(Vector(Refused.Block(BlockFailure.BlockExUnitsTooBig(units, below)))),
         s"$below"
       )
     }
@@ -1909,12 +1931,28 @@ class ConwayBbodySuite extends FailsOnUncaught:
     val tx = txs(1)
     val raw = blockOf(Vector(tx))
     val j = judge(third, raw, change = holding(utxo))
+    // a V1 context cannot show an output with an inline datum (`Babbage/TxInfo.hs:119-123`,
+    // cardano-ledger f649f975), of the transaction's first output
     val refusal = Left(
       Vector(
-        BlockFailure.Tx(
-          LedgerFailure.Rejected(
-            tx.id,
-            PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.CollectErrors(inlineDatumRefused)))
+        Refused.Ledgers(
+          NonEmptyChain.one(
+            ConwayLedgerPredFailure.ConwayUtxowFailure(
+              ConwayUtxowPredFailure.UtxoFailure(
+                ConwayUtxoPredFailure.UtxosFailure(
+                  ConwayUtxosPredFailure.CollectErrors(
+                    cats.data.NonEmptyList.one(
+                      xyz.kd5ujc.scarab.ledger.era.CollectError.BadTranslation(
+                        xyz.kd5ujc.scarab.ledger.era.conway.ConwayContextError.BabbageContextError(
+                          xyz.kd5ujc.scarab.ledger.era.BabbageContextError
+                            .InlineDatumsNotSupported(TxOutSource.TxOutFromOutput(0))
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+            )
           )
         )
       )
@@ -2022,7 +2060,7 @@ class ConwayBbodySuite extends FailsOnUncaught:
     )
     assert(
       j.era match {
-        case Left(Vector(xyz.kd5ujc.scarab.ledger.BlockFailure.Tx(_))) => true
+        case Left(Vector(Refused.Ledgers(_))) => true
         case _                                                         => false
       },
       s"${j.era}"
