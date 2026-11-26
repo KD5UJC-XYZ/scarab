@@ -229,7 +229,9 @@ unavailable".
 
 - **Scope:** main.
 - **Exceptions:** tests and tools ([TST-1](#tst-1)); a callback whose contract signals failure by
-  exception ([FUN-2](#fun-2) (c)).
+  exception ([FUN-2](#fun-2) (c)); the Java sources of [FUN-2](#fun-2) (f), which throw on input they
+  refuse (the vendored arithmetic as its upstream does) and are a library in this rule's sense: their Scala
+  callers catch at the call and return a typed case.
 - **Enforcement:** `Wart.Throw`, and `SystemTimeAndUnsafeRun` in main: `sys.error`, `require`, `assume`,
   `assert`, and `raiseError`, `raiseWhen`, `raiseUnless`, `fromOption` and `fromEither` of a `Throwable` made
   for it (by `new`, by a factory, in a `val` or in a `Left` made for `fromEither`) or of a value of one of
@@ -328,7 +330,8 @@ too, and fall under the same rule.
   `Wart.EitherProjectionPartial`, `Wart.IterableOps`, `Wart.TripleQuestionMark`, `Wart.ThreadSleep` and
   `Wart.GlobalExecutionContext` (`disallowedWarts` in `build.sbt`). `scripts/check_imperative.py` refuses a
   new `try`, `catch` or `finally` in the same sources, against `docs/data/imperative-baseline.json`, which
-  only shrinks. Java's mutable types, `synchronized` and `@volatile` are review only.
+  only shrinks. Java's mutable types, `synchronized` and `@volatile` are review only, and so is a Java
+  source as a whole: no wart or guard of this rule reads one ([FUN-2](#fun-2) (f)).
 - **Why:** owner's decision, 2026-10-15 ([decisions register](decisions.md#code));
   [#650](https://github.com/KD5UJC-XYZ/scarab/issues/650).
 
@@ -344,13 +347,17 @@ Imperative, side-effecting code is kept only for:
 - (d) secret key material that must be erased in place, so that no copy outlives its use (a KES signing key
   evolves by zeroing the periods it leaves, `Sum6KesSigning.SigningKey`);
 - (e) the timed region of a measurement tool, where a wrapper would add allocation to what is timed
-  (`TimingProbeMain`).
+  (`TimingProbeMain`);
+- (f) the Java main sources of `crypto`: the vendored curve arithmetic (`com.weavechain.curve25519` and
+  `com.weavechain.subtle`), kept in its upstream's imperative form, and the kernels written against it, which
+  compute in place for (a)'s reason (`VartimeEd25519`, `Draft03Math`, `Ed25519Point`). They are the whole of the
+  Java in main, and another Java main source is a change to this list.
 
 - **Scope:** main.
 - **Exceptions:** this list is the whole of them.
-- **Enforcement:** review only: a reviewer checks that a kept site names one of (a) to (e).
-- **Why:** owner's decision, 2026-10-15 ([decisions register](decisions.md#code)); [performance.md](performance.md)
-  holds the measurements.
+- **Enforcement:** review only: a reviewer checks that a kept site names one of (a) to (f).
+- **Why:** owner's decision, 2026-10-15, and for (f) 2026-11-25 ([decisions register](decisions.md#code));
+  [performance.md](performance.md) holds the measurements.
 
 <a id="fun-3"></a>
 ### FUN-3. A kept site is marked and contained
@@ -362,8 +369,9 @@ the implementation style only: typed errors ([ERR](#err)), capability scope ([FI
 ([BYT-1](#byt-1)) still apply.
 
 - **Scope:** main.
-- **Exceptions:** none. `scripts/check_imperative.py` refuses a new `try`, `catch` or `finally` whatever its
-  reason.
+- **Exceptions:** a Java source of [FUN-2](#fun-2) (f) carries no annotation, since no wart reads it; the
+  containment binds it all the same. `scripts/check_imperative.py` refuses a new `try`, `catch` or `finally`
+  in Scala whatever its reason.
 - **Enforcement:** the warts refuse an unmarked site. The comment and the containment are review only.
 - **Why:** [#650](https://github.com/KD5UJC-XYZ/scarab/issues/650).
 
