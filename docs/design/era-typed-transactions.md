@@ -833,6 +833,11 @@ Conway's rules on the classes follow as the rest of stage 2.
     `AlonzoEraUTxO` (`getBabbageSpendingDatum`), its spending purpose read through the script class's
     `toSpendingPurpose`; its datum is `Data`, an inline datum read as data where it is asked for, as the
     reference's strict `SJust` forces it, and its failure returned where the reference raises `error`.
+  - The flat translation (`ScriptContexts`) stays beside the typed one, its V3 part included
+    (`EraPlutusTxInfo 'PlutusV3 ConwayEra`, `Conway/TxInfo.hs:482-534`, cardano-ledger f649f975): its
+    `txInfo` and `arguments` choose the language at run time, and the flat collection (`Phase2.collect`,
+    which the eras before Conway run through `Utxos.scripts`) is generic in its era, so no type tells the
+    V3 part unreached. The comparisons below with it stay until it goes, in stage 4.
   - `EraPlutusContextSuite`: on every Conway row of the reference's recorded contexts, context matrix,
     context errors and script results (432 transactions), the typed V3 `TxInfo` equals the flat one, or both
     refuse alike, at the row's version and at 9, 10 and 11, whatever the languages its scripts use. Each of
