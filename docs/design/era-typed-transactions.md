@@ -1714,7 +1714,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     encoder gave the same bytes; on every refusal of the Conway refusal corpus, at each version, build, policy and
     depth, none left out, the bytes of the flat form's encoder; and `ConwayFailureCborSuite` held every constructor
     of the LEDGER tree to the flat form's bytes (mixed credentials and networks, collections past 23 items, signed
-    integers), and the failures the bridge cannot project to the flat form's bytes of the same values. Those
+    integers), and the failures the bridge cannot project to the flat form's bytes of the same values. The
+    comparisons with the reference's bytes hold the era encoder to those bytes directly. The corpus and constructor
     comparisons ran once more before the deletion and recorded the digests of the bytes both encoders wrote
     (`fixtures/conway-flat-refusals`: `ledger-checks.jsonl`, `mempool-run.jsonl`, `failure-constructors.jsonl`),
     which the era encoder is held to since. `ConwayFailureCborSuite` still holds the reference node's recorded
