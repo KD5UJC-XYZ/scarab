@@ -7,7 +7,7 @@ import io.circe.syntax.*
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.security.SecureRandom
-import java.util.UUID
+import java.util.{SplittableRandom, UUID}
 import org.bouncycastle.math.ec.rfc7748.X25519Field
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
@@ -37,11 +37,11 @@ import xyz.kd5ujc.scarab.crypto.vrf.secret.Draft03Key
   * before the timing starts. Each class draws its inputs from a pool of 1024 entries of its own
   * (the fixed pool holds copies of the fixed value), the i-th measurement the entry i mod 1024; the
   * two pools of a target are made in one loop, an entry of each in turn, and held as one vector of
-  * pairs, the class first in a pair alternating ([[Pools]]), so that they lie in memory alike even
-  * after a collector has moved them; an array input is copied, untimed, into the one buffer that
-  * every measurement of its target then passes. The two classes run the same code over the same
-  * memory and differ only in their values. Every result is consumed after the second clock read,
-  * all of its bytes folded into a sink printed at the end (an evolution's, the evolved key's
+  * pairs, the class first in a pair drawn pair by pair ([[Pools]]), so that they lie in memory
+  * alike even after a collector has moved them; an array input is copied, untimed, into the one
+  * buffer that every measurement of its target then passes. The two classes run the same code over
+  * the same memory and differ only in their values. Every result is consumed after the second clock
+  * read, all of its bytes folded into a sink printed at the end (an evolution's, the evolved key's
   * bytes), so that no work is dead.
   *
   * Four controls frame them: `random/random`, the `[k]H` multiplication with one pool of random
@@ -79,12 +79,14 @@ import xyz.kd5ujc.scarab.crypto.vrf.secret.Draft03Key
   * entry whose fastest is the slowest, printed when it is at least [[SlowEntryFactor]] times the
   * median of all entries' fastest. A delay confined to rare secrets lands in a few measurements,
   * which the crops remove and the mean hardly moves; an entry that is slow every time it is
-  * measured shows here, if it is in the pool. It cannot show constant time: the JIT compiles what
-  * it measures and may compile it differently on another JVM, flags or input history; the timer
-  * resolves tens of nanoseconds; collections and other threads add noise that cropping only partly
-  * removes; and a leak smaller than the noise at this sample size, one confined to secrets the
-  * pools do not hold, or one through the cache that this machine's timing does not expose, is not
-  * seen.
+  * measured shows here, if it is in the pool. An entry counts from [[MinEntrySamples]]
+  * measurements, which the default sizes give every entry; at smaller sizes no entry may reach it,
+  * and the program says which targets the diagnostic was not computed for. It cannot show constant
+  * time: the JIT compiles what it measures and may compile it differently on another JVM, flags or
+  * input history; the timer resolves tens of nanoseconds; collections and other threads add noise
+  * that cropping only partly removes; and a leak smaller than the noise at this sample size, one
+  * confined to secrets the pools do not hold, or one through the cache that this machine's timing
+  * does not expose, is not seen.
   *
   * Run in the JDK image, on an idle machine, in a JVM of its own:
   * `java -XX:+UseSerialGC -Xbatch -cp <tools runtime classpath> xyz.kd5ujc.scarab.crypto.vrf.SecretPathTiming [measurements [report]]`
@@ -346,6 +348,7 @@ object SecretPathTiming:
     */
   private def report(
       run: UUID,
+      layoutSeed: Long,
       n: Int,
       proofs: Int,
       measured: Vector[(Target[?, ?], Result)],
@@ -367,6 +370,7 @@ object SecretPathTiming:
       "tool" -> "SecretPathTiming".asJson,
       "version" -> ReportVersion.asJson,
       "run_id" -> run.toString.asJson,
+      "layout_seed" -> layoutSeed.toString.asJson,
       "measurements" -> n.asJson,
       "proofs" -> proofs.asJson,
       "calibration_share" -> CalibrationShare.asJson,
@@ -398,30 +402,36 @@ object SecretPathTiming:
       "sink" -> f"0x$sink%08x".asJson
     )
 
-  /** The two pools of a target, held as one vector of pairs, an entry of each class in each pair
-    * and the class held first alternating from pair to pair. A copying collector moves what it
-    * finds in the order it finds it: two vectors of 1,024 entries each ended in two regions of
-    * memory, one class's objects in each, and keys of one and the same seed then read as a
-    * difference between the classes, since a key is used where it lies. Held in pairs, the classes
-    * stay interleaved.
+  /** The two pools of a target, held as one vector of pairs, an entry of each class in each pair;
+    * `fixedFirst` says, pair by pair, whether the fixed class's entry was made and is held first,
+    * drawn for each pair. A copying collector moves what it finds in the order it finds it: two
+    * vectors of 1,024 entries each ended in two regions of memory, one class's objects in each, and
+    * keys of one and the same seed then read as a difference between the classes, since a key is
+    * used where it lies. Held in pairs, the classes stay interleaved. The order within a pair is
+    * drawn, not alternated: alternation puts the fixed class at the same positions of every four
+    * objects made, and a cost tied to those positions would fall on one class.
     */
-  private final class Pools[A](pairs: Vector[(A, A)]):
-    private def first(i: Int): Boolean = (i % Pool) % 2 == 0
-
+  private final class Pools[A](pairs: Vector[(A, A)], fixedFirst: Vector[Boolean]):
     /** The i-th measurement's entry of the fixed class. */
-    def fixed(i: Int): A = if first(i) then pairs(i % Pool)._1 else pairs(i % Pool)._2
+    def fixed(i: Int): A =
+      if fixedFirst(i % Pool) then pairs(i % Pool)._1 else pairs(i % Pool)._2
 
     /** The i-th measurement's entry of the random class. */
-    def random(i: Int): A = if first(i) then pairs(i % Pool)._2 else pairs(i % Pool)._1
+    def random(i: Int): A =
+      if fixedFirst(i % Pool) then pairs(i % Pool)._2 else pairs(i % Pool)._1
 
-    /** `f` of every entry, the pairs kept as they are. */
-    def map[B](f: A => B): Pools[B] = Pools(pairs.map((a, b) => (f(a), f(b))))
+    /** `f` of every entry, the pairs and their order kept as they are. */
+    def map[B](f: A => B): Pools[B] = Pools(pairs.map((a, b) => (f(a), f(b))), fixedFirst)
 
   def main(args: Array[String]): Unit =
     val n = args.headOption.flatMap(_.toIntOption).getOrElse(100000)
     val reportPath = args.lift(1).map(Paths.get(_))
     val run = UUID.randomUUID()
     val random = new SecureRandom
+    // which class's entry each pair of a pool makes first, from a seed of its own that the report
+    // gives, so that the layout of a run can be made again
+    val layoutSeed = random.nextLong()
+    val layout = new SplittableRandom(layoutSeed)
     def bytes(k: Int): Array[Byte] =
       val out = new Array[Byte](k)
       random.nextBytes(out)
@@ -447,16 +457,20 @@ object SecretPathTiming:
       val moved = k.copy
       moved.evolve().fold(e => sys.error(e.message), _ => moved)
     // the fixed and the random pool of a target, made in one loop, an entry of each in turn, the
-    // class made and held first alternating (Pools)
+    // class made and held first in each pair drawn from the layout's generator (Pools)
     def paired[A](fixed: => A, random: => A): Pools[A] =
-      Pools(Vector.tabulate(Pool) { i =>
-        if i % 2 == 0 then
-          val first = fixed
-          (first, random)
-        else
-          val first = random
-          (first, fixed)
-      })
+      val fixedFirst = Vector.fill(Pool)(layout.nextBoolean())
+      Pools(
+        fixedFirst.map { first =>
+          if first then
+            val made = fixed
+            (made, random)
+          else
+            val made = random
+            (made, fixed)
+        },
+        fixedFirst
+      )
     // an array input copied into the target's one buffer, which every measurement then passes
     def staged(size: Int): Array[Byte] => Array[Byte] =
       val buffer = new Array[Byte](size)
@@ -659,7 +673,7 @@ object SecretPathTiming:
       )
     )
     println(
-      s"SecretPathTiming $run: $n measurements a multiplication, $proofs a proof, output, signature or evolution, each after a calibration batch of a tenth; $Crops crops, each counted from $MinCropClass a class"
+      s"SecretPathTiming $run (layout seed $layoutSeed): $n measurements a multiplication, $proofs a proof, output, signature or evolution, each after a calibration batch of a tenth; $Crops crops, each counted from $MinCropClass a class"
     )
     println(
       f"${"operation"}%-52s ${"fixed"}%8s ${"random"}%8s ${"ns fixed"}%10s ${"ns random"}%10s ${"t all"}%8s ${"max |t|"}%8s ${"crop"}%5s ${"crops"}%5s  verdict"
@@ -674,6 +688,11 @@ object SecretPathTiming:
     }
     val sink = measured.foldLeft(0)(_ ^ _._2.sink)
     println(f"sink 0x$sink%08x")
+    val uncomputed = measured.collect { case (target, r) if r.slowest.isEmpty => target.name }
+    if uncomputed.nonEmpty then
+      println(
+        s"diagnostic not computed, no pool entry measured $MinEntrySamples times at this size: ${uncomputed.mkString(", ")}"
+      )
     measured.foreach { (target, r) =>
       r.slowest.filter(_.flagged).foreach { e =>
         println(
@@ -696,7 +715,7 @@ object SecretPathTiming:
     reportPath.foreach(path =>
       Files.writeString(
         path,
-        report(run, n, proofs, measured, found, sink).spaces2,
+        report(run, layoutSeed, n, proofs, measured, found, sink).spaces2,
         StandardCharsets.UTF_8
       )
     )
