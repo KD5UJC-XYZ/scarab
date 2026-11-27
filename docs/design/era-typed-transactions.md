@@ -3385,29 +3385,40 @@ Conway's rules on the classes follow as the rest of stage 2.
     - every Babbage transaction the repository holds: the 13 of the recorded blocks and the 86 of the reference's
       refusal (32), v1-context (22, six invalid) and Plutus admission (32) corpora. An accepted transaction is
       compared whole: its body (the update proposal both as the bytes the node stores and as its values), witness
-      set, phase-two flag, fee size and auxiliary data (metadata by label, native and Plutus scripts), each against
-      the flat readers' reading of the same bytes. Three faults that the parts' comparison alone passes (lost
-      auxiliary data, a false flag read as true, a lost metadata label) are named by it;
+      set (each native script's tree as well as its bytes, each datum's value as well as its hash), phase-two flag,
+      fee size and auxiliary data (metadata by label, native scripts' trees, each language's Plutus scripts in
+      order, repeats kept), each against the flat readers' reading of the same bytes. Six faults that a comparison
+      by parts, bytes, hashes or sets alone passes (lost auxiliary data, a false flag read as true, a lost metadata
+      label, a wrong script tree, a wrong datum under its hash, a lost repeated Plutus script) are named by it;
     - 27,712 byte mutants of those 99 transactions: alike in verdict, an accepted one compared whole, a refused one
       by verdict only;
     - 576 Babbage rows of the reference's decoder corpora, three of them witness sets recorded at protocol version 8
       and read at it. Left out are the rows of later eras' versions (`bootstrap-duplicates` at 9 to 12) and the
       kinds that are not a transaction's part (block bodies, single bootstrap witnesses, addresses, accounts);
-    - the reference's 140 verdicts on Babbage auxiliary data (`auxiliary-scripts`).
+    - the reference's 140 verdicts on Babbage auxiliary data (`auxiliary-scripts`), 70 at each of Babbage's
+      protocol versions and each read at it.
 
     The two accept and refuse alike everywhere, and as the reference does where it recorded a verdict. A refused
     row is refused with the case the recording names, except two repeated parameter keys, which the era's refusal
-    names as the reference's does. Compared whole, 57 refusals of the 576 rows differ from the flat decoder's:
+    names as the reference's does. Compared whole, 61 refusals of the 576 rows differ from the flat decoder's:
     - 51 refuse an update proposal's value with the flat decoder's refusal at the site of the typed update's
       decoder of stage 4's first part (the update, or the execution units), where the flat decoder names the
       parameter; the reference names neither;
     - the two repeated parameter keys;
-    - three envelopes of four items whose third is not a flag, refused by the record's size as the reference
-      refuses them ("Size mismatch when decoding Record AlonzoTx"; "Excess terms in array" for the indefinite
-      one), where the flat decoder asks for a flag;
+    - seven envelopes refused as the reference refuses them, each pinned against its recorded cause: three of four
+      items whose third is not a flag, refused by the record's size ("Size mismatch when decoding Record AlonzoTx";
+      "Excess terms in array" for the indefinite one) where the flat decoder asks for a flag, and four that lack
+      an item, refused where the reference reads it: past a definite list's end ("end of input") or at an
+      indefinite list's break, which the auxiliary data's reader refuses ("Failed to decode AlonzoTxAuxData"),
+      where the flat decoder refuses the list's length;
     - one redeemer's units that are a record taking the next items as its fields, which the reference reads and runs
       out of input on; the detached-record walk does not find it, so the era decoder refuses the units, read first
       as the reference reads them, and the flat decoder the native scripts' key, which it reads first.
+
+    Three more refused envelopes keep the flat decoder's refusal, which is not the reference's: the whole item is
+    parsed before the record is read, so a head of four over three items ends the input and a head of three over
+    four items or a detached record leaves bytes after it, where the reference, reading the record from the
+    stream, refuses the record's size or the body's shape. The verdict is the reference's.
 
     The tally leaves out PlutusV4's key 5 in tagged auxiliary data, which the era decoder refuses as the reference
     does and the flat reader as an unknown key (`BabbageTxSuite`), as are the written orders no recording holds: an
