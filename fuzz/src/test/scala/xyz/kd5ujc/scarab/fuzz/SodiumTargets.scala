@@ -253,8 +253,9 @@ object SodiumTargets:
   /** A proof valid under the mixed-order key Y + T: proved with that key's bytes, and alpha
     * extended until the challenge c is congruent to L modulo the order of T. U is computed as [L -
     * c]Y + [s]B, the negation of c taken modulo L (IntersectMBO/libsodium dbb48cce
-    * `src/libsodium/crypto_vrf/ietfdraft03/verify.c:86-88`, and `Draft03Math.equation`), so its
-    * torsion part is [L - c]T, which vanishes then and not when c is a multiple of the order.
+    * `src/libsodium/crypto_vrf/ietfdraft03/verify.c:86-88`, and the verification equation of
+    * Scarab's VRF math), so its torsion part is [L - c]T, which vanishes then and not when c is a
+    * multiple of the order.
     */
   private def mixedProof(
       oracle: Sodium.Oracle,
