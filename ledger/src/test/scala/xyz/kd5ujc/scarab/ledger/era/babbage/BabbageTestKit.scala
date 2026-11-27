@@ -2,8 +2,14 @@
 package xyz.kd5ujc.scarab.ledger.era.babbage
 
 import scala.collection.immutable.SortedSet
-import xyz.kd5ujc.scarab.codec.Bytes
+import cats.syntax.all.*
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{
+  CborRead,
+  DecodeField,
+  DetachedRecords,
+  LedgerDecodeError,
+  Metadatum,
   TxIn,
   TxOut,
   AuxiliaryScripts,
@@ -20,6 +26,8 @@ import xyz.kd5ujc.scarab.ledger.{
   Witnesses as FlatWitnesses
 }
 import xyz.kd5ujc.scarab.ledger.era.{
+  IsPhase2Valid,
+  KeptUpdate,
   GenesisDelegCert,
   MIRCert,
   MIRPot,
@@ -33,7 +41,8 @@ import xyz.kd5ujc.scarab.ledger.era.{
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
 import xyz.kd5ujc.scarab.ledger.rules.Convert
-import xyz.kd5ujc.scarab.ledger.state.Coin
+import xyz.kd5ujc.scarab.ledger.state.{Babbage, Coin}
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** Builders for Babbage transactions whose bytes are true: a body and its witnesses are written in
@@ -160,9 +169,7 @@ object BabbageTestKit extends munit.Assertions:
     val flat = Tx.fromBlock(parts, Era.Babbage).fold(e => fail(s"flat decoder: $e"), identity)
     val babbage = layouts.map { l =>
       val tx = BabbageTx.decode(parts, l).fold(e => fail(s"Babbage's decoder at $l: $e"), identity)
-      sameBody(tx.body, flat.body, l.toString)
-      sameWits(tx.wits, flat.witnesses, l.toString)
-      tx.auxData.foreach(a => sameAux(a, a.raw, l.toString))
+      sameTx(tx, flat, l.toString)
       l -> tx
     }.toMap
     Built(parts, flat, babbage)
@@ -225,60 +232,176 @@ object BabbageTestKit extends munit.Assertions:
             Right(rewards.map((cred, delta) => Convert.back(cred) -> delta.value))
       )
 
-  /** The body projected onto the flat body's fields, each asserted equal. */
-  def sameBody(era: BabbageTxBody, flat: FlatTxBody, what: String): Unit =
-    assertEquals(era.raw, flat.raw, what)
-    assertEquals(era.id, flat.id, what)
-    assertEquals(era.spendInputs, SortedSet.from(flat.inputs), what)
-    assertEquals(era.outputs.map(o => BabbageTxOut.toStored(o.value)), flat.outputs, what)
-    assertEquals(era.outputs.map(_.size), flat.outputs.map(_.ledgerSize.toLong), what)
-    assertEquals(era.fee, Coin(flat.fee), what)
-    assertEquals(era.validity, ValidityInterval(flat.validityStart, flat.ttl), what)
-    assertEquals(era.certs.map(flatCert), flat.certificates, what)
-    assertEquals(Right(era.withdrawals), Convert.withdrawals(flat.withdrawals), what)
-    assertEquals(era.update.map(_.stored), flat.update, what)
-    assertEquals(era.auxDataHash, flat.auxDataHash, what)
-    assertEquals(era.mint, flat.mint, what)
-    assertEquals(era.scriptIntegrityHash, flat.scriptDataHash, what)
-    assertEquals(era.collateralInputs, SortedSet.from(flat.collateral), what)
-    assertEquals(era.reqSignerHashes, SortedSet.from(flat.requiredSigners), what)
-    assertEquals(era.networkId, flat.networkId.flatMap(Network.of), what)
-    assertEquals(
-      era.collateralReturn.map(o => BabbageTxOut.toStored(o.value)),
-      flat.collateralReturn
-    )
-    assertEquals(era.collateralReturn.map(_.size), flat.collateralReturn.map(_.ledgerSize.toLong))
-    assertEquals(era.totalCollateral, flat.totalCollateral.map(Coin(_)), what)
-    assertEquals(era.referenceInputs, SortedSet.from(flat.referenceInputs), what)
-    // the fields of Conway's a Babbage body has not
-    assert(!flat.hasGovernance && flat.donation == 0 && flat.currentTreasury.isEmpty, what)
+  /** One field of the era's value against the flat value's, a difference named by the field. */
+  private def check[A](field: String, era: A, flat: A): Vector[String] =
+    if era == flat then Vector.empty else Vector(s"$field: era $era, flat $flat")
 
-  def sameWits(era: BabbageTxWits, flat: FlatWitnesses, what: String): Unit =
-    assertEquals(Some(era.raw), flat.raw, what)
-    assertEquals(era.vkeys, SortedSet.from(flat.vkeys.map(WitVKey(_, _))), what)
-    assertEquals(era.bootstrap, flat.bootstrap, what)
-    assertEquals(era.scripts.keySet, flat.scriptsByHash.keySet, what)
-    assertEquals(era.scriptArrival, flat.scripts.map(_.hash).distinct, what)
-    era.scripts.foreach((h, s) =>
-      assertEquals(BabbageScript.instance.originalBytes(s), flatScriptBytes(flat, h), what)
-    )
-    assertEquals(era.datums.raw, flat.datumsRaw, what)
-    assertEquals(era.datums.datums.keySet, flat.datumHashes, what)
-    assertEquals(era.redeemers.raw, flat.redeemersRaw, what)
-    assertEquals(
-      era.redeemers.entries.toVector.map((p, v) => (p.tag, p.ix.value, v._1.originalBytes, v._2)),
-      flat.redeemers
-        .map(r => (r.tag, r.index, r.data, r.exUnits))
-        .sortBy(r => (r._1, r._2))
-    )
+  /** Where the body projected onto the flat body's fields differs from it, the update proposal both
+    * as the bytes the node stores and as its values read from them by the typed update's stored
+    * reader ([[KeptUpdate.fromStored]]).
+    */
+  def bodyDifferences(era: BabbageTxBody, flat: FlatTxBody): Vector[String] =
+    Vector(
+      check("raw", era.raw, flat.raw),
+      check("id", era.id, flat.id),
+      check("inputs", era.spendInputs, SortedSet.from(flat.inputs)),
+      check("outputs", era.outputs.map(o => BabbageTxOut.toStored(o.value)), flat.outputs),
+      check("output sizes", era.outputs.map(_.size), flat.outputs.map(_.ledgerSize.toLong)),
+      check("fee", era.fee, Coin(flat.fee)),
+      check("validity", era.validity, ValidityInterval(flat.validityStart, flat.ttl)),
+      check("certificates", era.certs.map(flatCert), flat.certificates),
+      check("withdrawals", Right(era.withdrawals), Convert.withdrawals(flat.withdrawals)),
+      check("update bytes", era.update.map(_.stored), flat.update),
+      check(
+        "update values",
+        era.update.map(u => Right(u.update)),
+        flat.update.map(KeptUpdate.fromStored[Babbage](_).map(_.update))
+      ),
+      check("auxiliary data hash", era.auxDataHash, flat.auxDataHash),
+      check("mint", era.mint, flat.mint),
+      check("script integrity hash", era.scriptIntegrityHash, flat.scriptDataHash),
+      check("collateral", era.collateralInputs, SortedSet.from(flat.collateral)),
+      check("required signers", era.reqSignerHashes, SortedSet.from(flat.requiredSigners)),
+      check("network", era.networkId, flat.networkId.flatMap(Network.of)),
+      check(
+        "collateral return",
+        era.collateralReturn.map(o => BabbageTxOut.toStored(o.value)),
+        flat.collateralReturn
+      ),
+      check(
+        "collateral return size",
+        era.collateralReturn.map(_.size),
+        flat.collateralReturn.map(_.ledgerSize.toLong)
+      ),
+      check("total collateral", era.totalCollateral, flat.totalCollateral.map(Coin(_))),
+      check("reference inputs", era.referenceInputs, SortedSet.from(flat.referenceInputs)),
+      check(
+        "Conway's fields",
+        (false, BigInt(0), Option.empty[BigInt]),
+        (flat.hasGovernance, flat.donation, flat.currentTreasury)
+      )
+    ).flatten
+
+  /** Where the witness set projected onto the flat witnesses differs from them. */
+  def witsDifferences(era: BabbageTxWits, flat: FlatWitnesses): Vector[String] =
+    Vector(
+      check("raw", Some(era.raw), flat.raw),
+      check("key witnesses", era.vkeys, SortedSet.from(flat.vkeys.map(WitVKey(_, _)))),
+      check("bootstrap witnesses", era.bootstrap, flat.bootstrap),
+      check("scripts", era.scripts.keySet, flat.scriptsByHash.keySet),
+      check("script arrival", era.scriptArrival, flat.scripts.map(_.hash).distinct),
+      check(
+        "script bytes",
+        era.scripts.toVector.map((h, s) => h -> Some(BabbageScript.instance.originalBytes(s))),
+        era.scripts.keys.toVector.map(h => h -> flatScriptBytes(flat, h))
+      ),
+      check("datums' bytes", era.datums.raw, flat.datumsRaw),
+      check("datums", era.datums.datums.keySet, flat.datumHashes),
+      check("redeemers' bytes", era.redeemers.raw, flat.redeemersRaw),
+      check(
+        "redeemers",
+        era.redeemers.entries.toVector.map((p, v) => (p.tag, p.ix.value, v._1.originalBytes, v._2)),
+        flat.redeemers.map(r => (r.tag, r.index, r.data, r.exUnits)).sortBy(r => (r._1, r._2))
+      )
+    ).flatten
 
   // the bytes of a flat witness script: a native one's encoding, a Plutus one's binary
-  private def flatScriptBytes(flat: FlatWitnesses, hash: Bytes): Bytes =
-    val s = flat.scriptsByHash(hash)
-    s.encoding.orElse(s.plutus).getOrElse(fail(s"script $hash keeps no bytes"))
+  private def flatScriptBytes(flat: FlatWitnesses, hash: Bytes): Option[Bytes] =
+    flat.scriptsByHash.get(hash).flatMap(s => s.encoding.orElse(s.plutus))
+
+  /** The auxiliary data's fields as the flat readers read them from its bytes, independently of
+    * Babbage's decoder: the metadata by label (a label written twice its last metadatum, below
+    * version 9), each read by the flat metadatum reader; the native scripts' bytes; and the Plutus
+    * scripts with their languages in the order they arrived ([[AuxiliaryScripts.read]]).
+    */
+  private final case class FlatAux(
+      metadata: Map[BigInt, Metadatum],
+      native: Vector[Bytes],
+      plutus: Vector[(PlutusLanguage, Bytes)]
+  )
+
+  private def flatAux(raw: Bytes): Either[LedgerDecodeError, FlatAux] =
+    given ByteStrings = ByteStrings.of(DecoderVersion.of(Era.Babbage))
+    def metadata(n: Node) =
+      CborRead
+        .map(n, DecodeField.Metadata)
+        .flatMap(
+          _.traverse((k, v) =>
+            (CborRead.uint(k, DecodeField.MetadataLabel), Metadatum.read(v, true)).tupled
+          )
+        )
+        .map(_.toMap)
+    def native(n: Node) =
+      CborRead.array(n, DecodeField.AuxiliaryNativeScripts).map(_.map(_.original))
+    for
+      plutus <- AuxiliaryScripts.read(raw, Era.Babbage, 7)
+      parts <- DetachedRecords.read(
+        raw,
+        Cbor.Limits.Unbounded,
+        DetachedRecords.Shapes.auxiliaryDataAt(Era.Babbage, 7)
+      )(LedgerDecodeError.Syntax(_)) { root =>
+        root.value match
+          case Value.Map(_) => metadata(root).map((_, Vector.empty[Bytes]))
+          case Value.Arr(xs) =>
+            (metadata(xs(0)), native(xs(1))).tupled
+          case Value.Tag(_, inner) =>
+            CborRead.map(inner, DecodeField.AuxiliaryData).flatMap { kvs =>
+              val byKey = kvs.collect {
+                case (k, v) if k.value == Value.UInt(0) => 0 -> v
+                case (k, v) if k.value == Value.UInt(1) => 1 -> v
+              }.toMap
+              (
+                byKey.get(0).traverse(metadata).map(_.getOrElse(Map.empty)),
+                byKey.get(1).traverse(native).map(_.orEmpty)
+              ).tupled
+            }
+          case other =>
+            Left(
+              LedgerDecodeError
+                .Expected(DecodeField.AuxiliaryData, LedgerDecodeError.Shape.ArrayOrMap, other)
+            )
+      }
+    yield FlatAux(parts._1, parts._2, plutus.map(p => p.language -> p.code))
+
+  /** Where the auxiliary data differs from its fields as the flat readers read them from `raw`. */
+  def auxDifferences(era: BabbageTxAuxData, raw: Bytes): Vector[String] =
+    flatAux(raw) match
+      case Left(e) => Vector(s"the flat readers refuse the auxiliary data: $e")
+      case Right(flat) =>
+        Vector(
+          check("raw", era.raw, raw),
+          check("metadata", era.metadata.map((k, v) => k.value -> v), flat.metadata),
+          check("native scripts", era.nativeScripts.map(_.rep.raw), flat.native),
+          check("Plutus arrival", era.plutusArrival, flat.plutus),
+          check(
+            "Plutus scripts",
+            era.plutusScripts.toVector.flatMap((l, ss) => ss.toVector.map(l -> _)).toSet,
+            flat.plutus.toSet
+          )
+        ).flatten
+
+  /** Where the whole transaction differs from the flat one: its body, witness set, phase-two flag,
+    * fee size and auxiliary data.
+    */
+  def txDifferences(era: BabbageTx, flat: Tx): Vector[String] =
+    bodyDifferences(era.body, flat.body).map("body " + _) ++
+      witsDifferences(era.wits, flat.witnesses).map("witnesses " + _) ++
+      check("phase-two flag", era.isValid, IsPhase2Valid.of(flat.isValid)) ++
+      check("fee size", era.sizeTxForFeeCalculation, flat.size) ++
+      check("auxiliary data's bytes", era.auxData.map(_.raw), flat.auxiliary) ++
+      era.auxData
+        .zip(flat.auxiliary)
+        .toVector
+        .flatMap((a, raw) => auxDifferences(a, raw).map("auxiliary data " + _))
+
+  def sameBody(era: BabbageTxBody, flat: FlatTxBody, what: String): Unit =
+    assertEquals(bodyDifferences(era, flat), Vector.empty, what)
+
+  def sameWits(era: BabbageTxWits, flat: FlatWitnesses, what: String): Unit =
+    assertEquals(witsDifferences(era, flat), Vector.empty, what)
 
   def sameAux(era: BabbageTxAuxData, raw: Bytes, what: String): Unit =
-    given ByteStrings = ByteStrings.of(DecoderVersion.of(Era.Babbage))
-    val flat = AuxiliaryScripts.read(raw, Era.Babbage, 7).fold(e => fail(s"$what: $e"), identity)
-    assertEquals(era.raw, raw, what)
-    assertEquals(era.plutusArrival, flat.map(p => p.language -> p.code), what)
+    assertEquals(auxDifferences(era, raw), Vector.empty, what)
+
+  def sameTx(era: BabbageTx, flat: Tx, what: String): Unit =
+    assertEquals(txDifferences(era, flat), Vector.empty, what)

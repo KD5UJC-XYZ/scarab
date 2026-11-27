@@ -328,3 +328,51 @@ class BabbageTxSuite extends FunSuite:
       )
     )
   }
+
+  test("an output's map is read as written: a value is refused before a later address") {
+    // `bodyFields` of the output's `SparseKeyed "TxOut"`, read as written
+    // (`eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs:605-662`, cardano-ledger f649f975):
+    // the value of key 1 is read, and refused, before the address of key 0 written after it
+    val output = map(uint(1) -> text("x"), uint(0) -> bytes(hash(0, 1)))
+    val outputs = refusals(bodyOf(Vector(0 -> base(0)._2, 1 -> arr(output), 2 -> uint(1))))
+    val collateralReturn = refusals(bodyOf(base :+ (16 -> output)))
+    // the flat output reader reads the address first, and refuses it
+    val flatAddress =
+      Some(LedgerDecodeError.AddressLength(DecodeField.PaymentCredential, 29, 1))
+    val eraValue = Some(
+      EraTxError.Decode(
+        LedgerDecodeError.Expected(
+          DecodeField.OutputValue,
+          LedgerDecodeError.Shape.Array,
+          xyz.kd5ujc.scarab.codec.Value.Text("x")
+        )
+      )
+    )
+    assertEquals(outputs, (flatAddress, eraValue))
+    assertEquals(collateralReturn, (flatAddress, eraValue))
+  }
+
+  test("a witness set's PlutusV3 list is refused at its first script, before a later item") {
+    // `scriptDecoder` of `decodePlutusScript` (`Alonzo/TxWits.hs:753-761`, `Alonzo/Scripts.hs:658-665`,
+    // cardano-ledger f649f975): the first item's bytes are read and refused as no Babbage script
+    // before the second is read
+    val raw = map(uint(7) -> arr(bytes(Bytes.empty), uint(0)))
+    assertEquals(
+      FlatWitnesses.decode(raw, Era.Babbage).left.toOption,
+      Some(
+        LedgerDecodeError.Expected(
+          DecodeField.PlutusScript,
+          LedgerDecodeError.Shape.Bytes,
+          xyz.kd5ujc.scarab.codec.Value.UInt(0)
+        )
+      )
+    )
+    assertEquals(
+      BabbageTxWits.decode(raw).left.toOption,
+      Some(
+        EraTxError.Decode(
+          LedgerDecodeError.UnsupportedLanguage(ScriptKind.PlutusV3, ScriptKind.PlutusV2)
+        )
+      )
+    )
+  }

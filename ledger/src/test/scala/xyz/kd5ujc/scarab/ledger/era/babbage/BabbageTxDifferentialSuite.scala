@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import io.circe.{Json, parser}
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{
   AuxiliaryScripts,
   Block,
@@ -27,32 +27,28 @@ import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
   * flat decoder at Babbage (`Tx.fromBlock`, `TxBody.decode`, `Witnesses.decode`,
   * `AuxiliaryScripts.read`, `Tx.fromEnvelope`), the path the node runs for Babbage, at every
   * layout: on every Babbage transaction the repository holds (the recorded blocks, the reference's
-  * refusal, v1-context and Plutus admission corpora) and byte mutants of them, on every Babbage row
-  * of the reference's decoder corpora and on the reference's verdicts on Babbage auxiliary data,
-  * the two accept and refuse alike; an accepted transaction has the same id, body hash and original
-  * bytes, and projects to the flat values field by field (the projection of [[BabbageTestKit]]); a
-  * refused row is refused with the case the reference's recording names, where it names one. The
-  * refusals that differ from the flat decoder's, compared whole, are listed, each with the
-  * reference's own failure.
+  * refusal, v1-context and Plutus admission corpora) and byte mutants of them, on the Babbage rows
+  * of the reference's decoder corpora (those recorded at a version of Babbage's, read at it) and on
+  * the reference's verdicts on Babbage auxiliary data, the two accept and refuse alike. An accepted
+  * transaction is compared whole ([[BabbageTestKit.txDifferences]]): its body, witness set, flag,
+  * fee size and auxiliary data, against the flat readers' reading of the same bytes; a refused
+  * mutant by its verdict alone. A refused row is refused with the case the reference's recording
+  * names, where it names one, and the refusals that differ from the flat decoder's, compared whole,
+  * are listed, each with the reference's own failure.
   */
 class BabbageTxDifferentialSuite extends FunSuite:
-  import BabbageTestKit.{sameAux, sameBody, sameWits}
+  import BabbageTestKit.{sameAux, sameBody, sameTx, sameWits, txDifferences}
 
   private val layouts: Vector[StateLayout] = StateLayout.values.toVector
 
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
 
   /** A transaction of a block read both ways, at every layout. */
-  private def sameTx(t: Block.Transaction, what: String): Unit =
+  private def sameParts(t: Block.Transaction, what: String): Unit =
     val flat = FlatTx.fromBlock(t, Era.Babbage).fold(e => fail(s"$what: flat $e"), identity)
     layouts.foreach { l =>
       val era = BabbageTx.decode(t, l).fold(e => fail(s"$what at $l: $e"), identity)
-      sameBody(era.body, flat.body, what)
-      sameWits(era.wits, flat.witnesses, what)
-      assertEquals(era.auxData.map(_.raw), t.auxiliaryData, what)
-      era.auxData.foreach(sameAux(_, t.auxiliaryData.get, what))
-      assertEquals(era.isValid, xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid.of(flat.isValid), what)
-      assertEquals(era.sizeTxForFeeCalculation, flat.size, what)
+      sameTx(era, flat, s"$what at $l")
       // the same transaction submitted whole, as the mempool holds it
       val whole = FlatTx.envelope(t)
       assert(FlatTx.fromEnvelope(whole, Era.Babbage).isRight, what)
@@ -79,7 +75,7 @@ class BabbageTxDifferentialSuite extends FunSuite:
       "fixtures/preview/deeply-nested-datum.hex"
     ).map { f =>
       val txs = babbageTxs(f)
-      txs.zipWithIndex.foreach((t, i) => sameTx(t, s"$f transaction $i"))
+      txs.zipWithIndex.foreach((t, i) => sameParts(t, s"$f transaction $i"))
       f -> txs.size
     }.toMap
     // every Babbage transaction the repository's blocks hold, thirteen distinct ones (the Preview
@@ -131,9 +127,7 @@ class BabbageTxDifferentialSuite extends FunSuite:
     val flat = FlatTx.fromEnvelope(raw, Era.Babbage).fold(e => fail(s"$what: $e"), identity)
     layouts.foreach { l =>
       val era = BabbageTx.fromEnvelope(raw, l).fold(e => fail(s"$what at $l: $e"), identity)
-      sameBody(era.body, flat.body, what)
-      sameWits(era.wits, flat.witnesses, what)
-      assertEquals(era.isValid, xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid.of(flat.isValid), what)
+      sameTx(era, flat, s"$what at $l")
     }
 
   test("the Babbage transactions of the reference's refusal corpora read alike both ways") {
@@ -192,7 +186,7 @@ class BabbageTxDifferentialSuite extends FunSuite:
   test(
     "the Babbage transactions of the v1-context and Plutus admission corpora read alike both ways"
   ) {
-    contextTxs.zipWithIndex.foreach((t, i) => sameTx(t, s"v1-context transaction $i"))
+    contextTxs.zipWithIndex.foreach((t, i) => sameParts(t, s"v1-context transaction $i"))
     admissionTxs.zipWithIndex.foreach((raw, i) => sameWhole(raw, s"admission transaction $i"))
     assertEquals(
       (contextTxs.size, contextTxs.count(!_.isValid), admissionTxs.size),
@@ -255,7 +249,8 @@ class BabbageTxDifferentialSuite extends FunSuite:
       raw: Bytes,
       accepted: Boolean,
       expect: Option[Refusal],
-      failure: Option[String]
+      failure: Option[String],
+      version: DecoderVersion
   )
 
   private val typed: Vector[Corpus] = Corpus.values.toVector
@@ -271,7 +266,16 @@ class BabbageTxDifferentialSuite extends FunSuite:
             case Kind.Body        => Part.Body
             case Kind.Witnesses   => Part.Witnesses
             case Kind.Transaction => Part.Transaction
-          Row(c.directory, r.name, part, r.raw, r.accepted, r.expect, r.failure.map(_.toString))
+          Row(
+            c.directory,
+            r.name,
+            part,
+            r.raw,
+            r.accepted,
+            r.expect,
+            r.failure.map(_.toString),
+            DecoderVersion.of(Era.Babbage)
+          )
         )
     )
 
@@ -289,13 +293,11 @@ class BabbageTxDifferentialSuite extends FunSuite:
   private def untypedRows: Vector[Row] =
     untyped.flatMap(c =>
       lines(s"fixtures/reference/$c/cases.jsonl")
-        // a row recorded at another decoder version than Babbage's blocks are read at is not one
-        // the era decoders read
-        .filter(j =>
-          j.hcursor.get[String]("era").toOption.contains("babbage") &&
-            j.hcursor.get[Int]("version").toOption.forall(_ == 7)
-        )
-        .flatMap(j =>
+        .filter(j => j.hcursor.get[String]("era").toOption.contains("babbage"))
+        // a row recorded at a decoder version of Babbage's (7 or 8) is read at it; one recorded
+        // at a later era's version (9 to 12) is not Babbage's to read
+        .flatMap(j => recorded(j).map(j -> _))
+        .flatMap((j, version) =>
           j.hcursor
             .get[String]("kind")
             .toOption
@@ -313,11 +315,26 @@ class BabbageTxDifferentialSuite extends FunSuite:
                 hex(str(j, "bytes")),
                 j.hcursor.get[Boolean]("accepted").fold(e => fail(e.message), identity),
                 None,
-                j.hcursor.get[String]("failure").toOption
+                j.hcursor.get[String]("failure").toOption,
+                version
               )
             )
         )
     )
+
+  /** The decoder version a row was recorded at, Babbage's blocks' when it names none; none when it
+    * is a later era's. A version that is not a number fails the test.
+    */
+  private def recorded(j: Json): Option[DecoderVersion] =
+    j.hcursor.downField("version").success match
+      case None => Some(DecoderVersion.of(Era.Babbage))
+      case Some(c) =>
+        val major = c.as[Int].fold(e => fail(s"${str(j, "name")}: version ${e.message}"), identity)
+        DecoderVersion.at(Era.Babbage, major) match
+          case Right(v) => Some(v)
+          case Left(_) =>
+            assert(major > 8 && major <= 12, s"${str(j, "name")}: version $major")
+            None
 
   /** The refusal of each way, or none. */
   private def refusals(row: Row): (Option[LedgerDecodeError], Vector[Option[EraTxError]]) =
@@ -326,25 +343,17 @@ class BabbageTxDifferentialSuite extends FunSuite:
       case Part.Body =>
         val flat = FlatTxBody.decode(row.raw, Era.Babbage)
         val era = layouts.map(BabbageTxBody.decode(row.raw, _))
-        (flat, era) match
-          case (Right(f), Right(e) +: _) => sameBody(e, f, row.name)
-          case _                         => ()
+        flat.foreach(f => era.foreach(_.foreach(sameBody(_, f, row.name))))
         (flat.left.toOption, era.map(_.left.toOption))
       case Part.Witnesses =>
-        val flat = FlatWitnesses.decode(row.raw, Era.Babbage)
-        val era = BabbageTxWits.decode(row.raw)
-        (flat, era) match
-          case (Right(f), Right(e)) => sameWits(e, f, row.name)
-          case _                    => ()
+        val flat = FlatWitnesses.decode(row.raw, Era.Babbage, row.version)
+        val era = BabbageTxWits.decodeAt(row.raw, row.version)
+        flat.foreach(f => era.foreach(sameWits(_, f, row.name)))
         (flat.left.toOption, Vector(era.left.toOption))
       case Part.Transaction =>
         val flat = FlatTx.fromEnvelope(row.raw, Era.Babbage)
         val era = layouts.map(BabbageTx.fromEnvelope(row.raw, _))
-        (flat, era) match
-          case (Right(f), Right(e) +: _) =>
-            sameBody(e.body, f.body, row.name)
-            sameWits(e.wits, f.witnesses, row.name)
-          case _ => ()
+        flat.foreach(f => era.foreach(_.foreach(sameTx(_, f, row.name))))
         (flat.left.toOption, era.map(_.left.toOption))
       case Part.Auxiliary =>
         val flat = AuxiliaryScripts.read(row.raw, Era.Babbage, 7)
@@ -389,30 +398,26 @@ class BabbageTxDifferentialSuite extends FunSuite:
     // an update proposal's value is read by the typed update's decoder, which names the site of a
     // refused value as the update's or the units', where the flat decoder names the parameter; the
     // reference names neither ("expected word"), and the refusal's case is the same
-    val sites = differ.filter((name, d) =>
-      !updateKeys.contains(name) && name != countedUnits && d._2.flatMap(Refusal.of) == Refusal.of(
-        d._1
-      )
+    val sites = differ.filter((name, _) =>
+      !updateKeys.contains(name) && name != countedUnits && !envelopeNulls.contains(name)
     )
     assert(sites.keys.forall(_.startsWith("babbage update value: ")), sites.keys.toString)
-    assert(
-      sites.values.forall(d =>
-        d._2.exists {
-          case LedgerDecodeError.Expected(DecodeField.ParameterUpdate | DecodeField.ExUnits, _, _) |
-              LedgerDecodeError
-                .NumberOutOfRange(DecodeField.ParameterUpdate | DecodeField.ExUnits, _, _, _) |
-              LedgerDecodeError.RationalOutOfBounds(DecodeField.ParameterUpdate, _) |
-              LedgerDecodeError.ExpectedTag(DecodeField.ParameterUpdate, _, _) |
-              LedgerDecodeError.ZeroDenominator(DecodeField.ParameterUpdate) | LedgerDecodeError
-                .ArrayLength(DecodeField.ParameterUpdate | DecodeField.ExUnits, _, _) |
-              LedgerDecodeError.IndefiniteLength(DecodeField.ExUnits) =>
-            true
-          case _ => false
-        }
-      ),
-      sites.toString
+    // each the flat decoder's refusal, its site the update's
+    sites.foreach { (name, d) =>
+      assertEquals(d._2, Some(atUpdate(d._1)), name)
+    }
+    assertEquals(differ.keySet -- sites.keySet, updateKeys + countedUnits ++ envelopeNulls)
+    // four items whose third is not a flag: the reference reads the third as the auxiliary data
+    // and then refuses the record's size ("Size mismatch when decoding Record AlonzoTx. Expected
+    // 4, but found 3", "Excess terms in array" for the indefinite one), where the flat decoder
+    // asks for a flag in its place
+    envelopeNulls.foreach(name =>
+      assertEquals(
+        differ(name)._2,
+        Some(LedgerDecodeError.ArrayLength(DecodeField.Transaction, 3, 4)),
+        name
+      )
     )
-    assertEquals(differ.keySet -- sites.keySet, updateKeys + countedUnits)
     assertEquals(sites.size, 51)
     val differCause = differ.map((name, d) => name -> d._2)
     // the update's own decoder refuses a parameter written twice with the reference's key
@@ -443,13 +448,18 @@ class BabbageTxDifferentialSuite extends FunSuite:
       differCause(countedUnits),
       Some(LedgerDecodeError.IndefiniteLength(DecodeField.ExUnits))
     )
+    // the rows recorded at Babbage's protocol version 8, read at it: three witness sets
+    assertEquals(
+      rows.filter(_.version != DecoderVersion.of(Era.Babbage)).map(_.part),
+      Vector.fill(3)(Part.Witnesses)
+    )
     // the rows read, by part and verdict
     assertEquals(
       rows.groupMapReduce(r => (r.part, r.accepted))(_ => 1)(_ + _),
       Map(
         (Part.Body, true) -> 190,
         (Part.Body, false) -> 216,
-        (Part.Witnesses, true) -> 60,
+        (Part.Witnesses, true) -> 63,
         (Part.Witnesses, false) -> 41,
         (Part.Transaction, true) -> 49,
         (Part.Transaction, false) -> 14,
@@ -459,6 +469,49 @@ class BabbageTxDifferentialSuite extends FunSuite:
     )
   }
 
+  /** A refusal of an update proposal's value with its site the typed update decoder's: the update
+    * (`parameter update`), or the units (`ex units`) of an execution-units value.
+    */
+  private def atUpdate(e: LedgerDecodeError): LedgerDecodeError =
+    val update = DecodeField.ParameterUpdate
+    e match
+      case LedgerDecodeError.Expected(
+            DecodeField.MaxTxExUnits | DecodeField.MaxBlockExUnits,
+            shape,
+            v
+          ) =>
+        LedgerDecodeError.Expected(DecodeField.ExUnits, shape, v)
+      case LedgerDecodeError.Expected(_, shape, v) => LedgerDecodeError.Expected(update, shape, v)
+      case LedgerDecodeError.NumberOutOfRange(
+            DecodeField.MaxTxExUnits | DecodeField.MaxBlockExUnits,
+            v,
+            lo,
+            hi
+          ) =>
+        LedgerDecodeError.NumberOutOfRange(DecodeField.ExUnits, v, lo, hi)
+      case LedgerDecodeError.NumberOutOfRange(_, v, lo, hi) =>
+        LedgerDecodeError.NumberOutOfRange(update, v, lo, hi)
+      case LedgerDecodeError.RationalOutOfBounds(_, b) =>
+        LedgerDecodeError.RationalOutOfBounds(update, b)
+      case LedgerDecodeError.ExpectedTag(_, t, v) => LedgerDecodeError.ExpectedTag(update, t, v)
+      case LedgerDecodeError.ZeroDenominator(_)   => LedgerDecodeError.ZeroDenominator(update)
+      case LedgerDecodeError.ArrayLength(
+            DecodeField.MaxTxExUnits | DecodeField.MaxBlockExUnits,
+            x,
+            y
+          ) =>
+        LedgerDecodeError.ArrayLength(DecodeField.ExUnits, x, y)
+      case LedgerDecodeError.ArrayLength(_, x, y) => LedgerDecodeError.ArrayLength(update, x, y)
+      case LedgerDecodeError.IndefiniteLength(_) =>
+        LedgerDecodeError.IndefiniteLength(DecodeField.ExUnits)
+      case other => other
+
+  private val envelopeNulls: Set[String] = Set(
+    "babbage transaction four items with null third",
+    "babbage transaction four items with auxiliary data third",
+    "babbage transaction indefinite four items with null third"
+  )
+
   private val updateKeys: Set[String] = Set(
     "babbage update: repeated key, same value",
     "babbage update: repeated key, other value, written wide"
@@ -466,6 +519,85 @@ class BabbageTxDifferentialSuite extends FunSuite:
 
   private val countedUnits: String =
     "babbage witnesses redeemer units in a witness set that counts their fields"
+
+  // ---- what the comparison sees
+
+  /** Three faults of a decoder that the parts' comparison alone (the body and the witness set)
+    * passes, each made by reading bytes that differ from the recorded ones only where the fault is:
+    * the whole transaction's comparison ([[BabbageTestKit.txDifferences]]) names each.
+    */
+  test("the comparison sees a lost auxiliary data, a forced flag and a lost metadata label") {
+    import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit.Cb.*
+    def envelope(name: String): Bytes =
+      lines("fixtures/reference/tx-envelope/cases.jsonl")
+        .find(j => str(j, "name") == name)
+        .map(j => hex(str(j, "bytes")))
+        .getOrElse(fail(s"no row $name"))
+    def items(raw: Bytes): Vector[Node] =
+      Cbor.decode(raw).toOption.map(_.value) match
+        case Some(Value.Arr(xs)) => xs
+        case other               => fail(s"not a list: $other")
+    // the faulty reading against the flat decoder's of the recorded bytes, at every layout: the
+    // differences of the parts, and of the whole transaction
+    def differences(recorded: Bytes, faulty: Bytes): Vector[(Vector[String], Vector[String])] =
+      val flat = FlatTx.fromEnvelope(recorded, Era.Babbage).fold(e => fail(e.toString), identity)
+      layouts.map { l =>
+        val era = BabbageTx.fromEnvelope(faulty, l).fold(e => fail(e.toString), identity)
+        (
+          BabbageTestKit.bodyDifferences(era.body, flat.body) ++
+            BabbageTestKit.witsDifferences(era.wits, flat.witnesses),
+          txDifferences(era, flat)
+        )
+      }
+    def seen(recorded: Bytes, faulty: Bytes, field: String): Unit =
+      assert(differences(recorded, recorded).forall(_ == (Vector.empty, Vector.empty)))
+      differences(recorded, faulty).foreach { (parts, whole) =>
+        assertEquals(parts, Vector.empty)
+        assert(whole.exists(_.startsWith(field)), whole.toString)
+      }
+    // the tagged auxiliary data of a transaction of three items, dropped
+    val tagged = envelope("babbage transaction without its flag with tagged auxiliary data")
+    val xs = items(tagged)
+    assert(xs(2).value.isInstanceOf[Value.Tag], xs(2).value.toString)
+    seen(tagged, arr(xs(0).original, xs(1).original, `null`), "auxiliary data's bytes")
+    // the false flag read as true
+    val invalid = envelope("babbage transaction with its flag false")
+    val ys = items(invalid)
+    assertEquals(ys(2).value, Value.Bool(false))
+    seen(invalid, arr(ys(0).original, ys(1).original, `true`, ys(3).original), "phase-two flag")
+    // the first label of a recorded transaction's metadata, dropped
+    val withMetadata = (recordedFiles.flatMap(babbageTxs) ++ contextTxs)
+      .find(t =>
+        BabbageTx.decode(t, StateLayout.Node11_1).exists(_.auxData.exists(_.metadata.nonEmpty))
+      )
+      .getOrElse(fail("no recorded transaction with metadata"))
+    val aux = Cbor.decode(withMetadata.auxiliaryData.get).toOption.get
+    def dropFirst(m: Node): Bytes = m.value match
+      case Value.Map(kvs) => map(kvs.tail.map((k, v) => k.original -> v.original)*)
+      case other          => fail(s"not a metadata map: $other")
+    val lost = aux.value match
+      case Value.Map(_)            => dropFirst(aux)
+      case Value.Arr(Vector(m, n)) => arr(dropFirst(m), n.original)
+      case Value.Tag(t, inner) =>
+        inner.value match
+          case Value.Map(kvs) =>
+            tag(
+              t.toInt,
+              map(
+                kvs.map((k, v) =>
+                  k.original -> (if k.value == Value.UInt(0) then dropFirst(v) else v.original)
+                )*
+              )
+            )
+          case other => fail(s"not a map: $other")
+      case other => fail(s"not auxiliary data: $other")
+    val whole = FlatTx.envelope(withMetadata)
+    seen(
+      whole,
+      FlatTx.envelope(withMetadata.copy(auxiliaryData = Some(lost))),
+      "auxiliary data metadata"
+    )
+  }
 
   // ---- mutants
 
@@ -503,11 +635,7 @@ class BabbageTxDifferentialSuite extends FunSuite:
       assert(era.forall(_.isRight == era.head.isRight), what)
       assertEquals(era.head.isRight, flat.isRight, s"$what: flat $flat, era ${era.head}")
       era.head.left.foreach(e => assert(cause(e).isDefined, s"$what: $e"))
-      (flat, era.head) match
-        case (Right(f), Right(e)) =>
-          sameBody(e.body, f.body, what)
-          sameWits(e.wits, f.witnesses, what)
-        case _ => ()
+      flat.foreach(f => era.foreach(_.foreach(sameTx(_, f, what))))
       flat.isRight
     }
     assertEquals(seeds.size, 99)
