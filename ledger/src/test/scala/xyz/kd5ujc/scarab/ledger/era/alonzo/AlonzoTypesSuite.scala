@@ -22,6 +22,7 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoScriptRep,
+  AlonzoTxOuts,
   Datum,
   EncCBOR,
   EraCorpus,
@@ -449,6 +450,33 @@ class AlonzoTypesSuite extends FunSuite:
       assertEquals(AlonzoTxOut.read(n, mode, values).isRight, accepted, what)
     )
     assertEquals((shapes.size, shapes.count(_._2)), (9, 4))
+  }
+
+  test("every recorded and crafted Alonzo output's least coin is the flat path's") {
+    val p = xyz.kd5ujc.scarab.ledger.TestLedger.params(6)
+    val pp = xyz.kd5ujc.scarab.ledger.era.PParams[xyz.kd5ujc.scarab.ledger.state.Alonzo](
+      right("parameters")(AlonzoPParams.fromStored(p))
+    )
+    val stored = (contextOutputs ++ utxoOutputs ++ matrixOutputs ++ crafted)
+      .map(raw => (node(raw), right("stored")(FlatTxOut.fromBytes(raw))))
+    val read = outputs.map((_, n, f) => (n, f)) ++ stored ++
+      corpusItems.flatMap((_, _, n) =>
+        FlatTxOut.decode(n, mode, forms, ScriptKind.newest(Era.Alonzo), values).toOption.map(n -> _)
+      )
+    val sizes = read.map { (n, f) =>
+      val era = right(n.original.hex)(AlonzoTxOut.read(n, mode, values))
+      assertEquals(
+        AlonzoTxOuts.getMinCoinTxOut[xyz.kd5ujc.scarab.ledger.state.Alonzo](pp, era).value,
+        xyz.kd5ujc.scarab.ledger.TxChecks
+          .minUTxO[xyz.kd5ujc.scarab.ledger.state.Alonzo](p, f)(using
+            xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra.SAlonzo
+          ),
+        n.original.hex
+      )
+      AlonzoTxOuts.utxoEntrySize[xyz.kd5ujc.scarab.ledger.state.Alonzo](era)
+    }
+    // the outputs, and the entry sizes among them
+    assertEquals((read.size, sizes.distinct.sorted[BigInt]), (226, Vector[BigInt](29, 39, 58)))
   }
 
   test("an output of another form is refused as the flat decoder refuses it") {

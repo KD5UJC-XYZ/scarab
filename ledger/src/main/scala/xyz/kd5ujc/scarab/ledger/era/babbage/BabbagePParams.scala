@@ -3,10 +3,11 @@ package xyz.kd5ujc.scarab.ledger.era.babbage
 
 import monocle.{Getter, Lens}
 import monocle.macros.GenLens
-import xyz.kd5ujc.scarab.ledger.{DecodeField, ProtocolParams, Unsigned}
+import xyz.kd5ujc.scarab.ledger.{DecodeField, Nonce, ProtocolParams, Unsigned}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32}
 import xyz.kd5ujc.scarab.ledger.era.*
-import xyz.kd5ujc.scarab.ledger.state.{Babbage, CompactCoin, EpochInterval}
+import xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoPParams
+import xyz.kd5ujc.scarab.ledger.state.{Babbage, Coin, CompactCoin, EpochInterval, VocabError}
 
 /** Babbage's protocol parameters as higher-kinded data (`data BabbagePParams f era`, cardano-ledger
   * f649f975 `eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs:89-136`): with `F` the
@@ -39,6 +40,12 @@ final case class BabbagePParams[F[_]](
     collateralPercentage: F[Unsigned[W16]],
     maxCollateralInputs: F[Unsigned[W16]]
 )
+
+/** What a downgrade to Alonzo gives back (`data DowngradeBabbagePParams f`,
+  * `Babbage/PParams.hs:167-170`, cardano-ledger f649f975): the decentralisation and the extra
+  * entropy, which Babbage dropped.
+  */
+final case class DowngradeBabbagePParams[F[_]](d: F[UnitInterval], extraEntropy: F[Nonce])
 
 object BabbagePParams:
   /** `emptyBabbagePParams` (`Babbage/PParams.hs:261-287`, cardano-ledger f649f975): zero, but for a
@@ -131,6 +138,107 @@ object BabbagePParams:
       ppu.collateralPercentage.getOrElse(pp.collateralPercentage),
       ppu.maxCollateralInputs.getOrElse(pp.maxCollateralInputs)
     )
+
+  // ---- the upgrade from Alonzo and the downgrade to it
+
+  /** `upgradeBabbagePParams True` (`Babbage/PParams.hs:316-353`, cardano-ledger f649f975), the
+    * class's `upgradePParamsHKD ()` at Babbage (`:180`): Alonzo's fields but the decentralisation
+    * and the extra entropy, and the cost per UTxO word made the cost per byte
+    * (`coinsPerUTxOWordToCoinsPerUTxOByte`, `:389-391`).
+    */
+  def upgrade[F[_]](a: AlonzoPParams[F])(using f: HKDFunctor[F]): BabbagePParams[F] =
+    upgraded(a, f.hkdMap(coinsPerUTxOWordToCoinsPerUTxOByte)(a.coinsPerUTxOWord))
+
+  /** `upgradeBabbagePParams False` (`Babbage/PParams.hs:316-353`, cardano-ledger f649f975), which
+    * the translation of a transaction's update proposal into Babbage uses: the cost per UTxO word
+    * taken as the cost per byte as it is (`coinsPerUTxOWordToCoinsPerUTxOByteInTx`, `:397-403`),
+    * through `toCompactPartial`, which throws on a coin outside `Word64`: here that is the refusal.
+    */
+  def upgradeInTx[F[_]](a: AlonzoPParams[F])(using
+      f: HKDApplicative[F]
+  ): Either[VocabError, BabbagePParams[F]] =
+    f.hkdSequence(
+      f.hkdMap((w: CoinPerWord) => CompactCoin.fromCoin(w.unCoinPerWord).map(CoinPerByte(_)))(
+        a.coinsPerUTxOWord
+      )
+    ).map(upgraded(a, _))
+
+  private def upgraded[F[_]](a: AlonzoPParams[F], coinsPerUTxOByte: F[CoinPerByte]) =
+    BabbagePParams[F](
+      a.txFeePerByte,
+      a.txFeeFixed,
+      a.maxBBSize,
+      a.maxTxSize,
+      a.maxBHSize,
+      a.keyDeposit,
+      a.poolDeposit,
+      a.eMax,
+      a.nOpt,
+      a.a0,
+      a.rho,
+      a.tau,
+      a.protocolVersion,
+      a.minPoolCost,
+      coinsPerUTxOByte,
+      a.costModels,
+      a.prices,
+      a.maxTxExUnits,
+      a.maxBlockExUnits,
+      a.maxValSize,
+      a.collateralPercentage,
+      a.maxCollateralInputs
+    )
+
+  /** `downgradeBabbagePParams` (`Babbage/PParams.hs:355-387`, cardano-ledger f649f975), the class's
+    * `downgradePParamsHKD` at Babbage (`:181`): Babbage's fields, the decentralisation and the
+    * extra entropy given back, and the cost per byte made the cost per word
+    * (`coinsPerUTxOByteToCoinsPerUTxOWord`, `:393-395`).
+    */
+  def downgrade[F[_]](d: DowngradeBabbagePParams[F], b: BabbagePParams[F])(using
+      f: HKDFunctor[F]
+  ): AlonzoPParams[F] =
+    AlonzoPParams[F](
+      b.txFeePerByte,
+      b.txFeeFixed,
+      b.maxBBSize,
+      b.maxTxSize,
+      b.maxBHSize,
+      b.keyDeposit,
+      b.poolDeposit,
+      b.eMax,
+      b.nOpt,
+      b.a0,
+      b.rho,
+      b.tau,
+      d.d,
+      d.extraEntropy,
+      b.protocolVersion,
+      b.minPoolCost,
+      f.hkdMap(coinsPerUTxOByteToCoinsPerUTxOWord)(b.coinsPerUTxOByte),
+      b.costModels,
+      b.prices,
+      b.maxTxExUnits,
+      b.maxBlockExUnits,
+      b.maxValSize,
+      b.collateralPercentage,
+      b.maxCollateralInputs
+    )
+
+  /** `coinsPerUTxOWordToCoinsPerUTxOByte` (`Babbage/PParams.hs:389-391`, cardano-ledger f649f975):
+    * the coin divided by 8, rounded down (`div`), and made a `Word64` by `fromIntegral`, which
+    * keeps the low 64 bits of the quotient, as here. A cost per word read by the update's or the
+    * genesis's decoder is a `Word64`, so its eighth fits and nothing wraps; only a coin the
+    * reference's type holds and no decoder gives (negative, or 2^67 and over) would.
+    */
+  private[era] def coinsPerUTxOWordToCoinsPerUTxOByte(w: CoinPerWord): CoinPerByte =
+    val c = w.unCoinPerWord.value
+    CoinPerByte(CompactCoin.fromUnsigned(((c - c.mod(8)) / 8).toLong))
+
+  /** `coinsPerUTxOByteToCoinsPerUTxOWord` (`Babbage/PParams.hs:393-395`, cardano-ledger f649f975):
+    * the `Word64` times 8, as an `Integer`.
+    */
+  private[era] def coinsPerUTxOByteToCoinsPerUTxOWord(b: CoinPerByte): CoinPerWord =
+    CoinPerWord(Coin(b.unCoinPerByte.toBigInt * 8))
 
   // ---- the parameters the node keeps
 
@@ -226,9 +334,11 @@ object BabbagePParams:
 
 /** Babbage's instances (`instance EraPParams BabbageEra` to
   * `instance BabbageEraPParams BabbageEra`, `Babbage/PParams.hs:172-247`, cardano-ledger f649f975),
-  * with the protocol version of the eras up to Babbage ([[EraPParamsToBabbage]]). Not here: the
-  * class's upgrade from Alonzo and downgrade to it (`upgradePParamsHKD () = upgradeBabbagePParams
-  * True`, `downgradePParamsHKD`, `:180-181`), which need Alonzo's record (#85).
+  * with the protocol version of the eras up to Babbage ([[EraPParamsToBabbage]]). The class's
+  * upgrade from Alonzo and downgrade to it (`upgradePParamsHKD () = upgradeBabbagePParams True`,
+  * `downgradePParamsHKD`, `:180-181`) are Babbage's functions ([[BabbagePParams.upgrade]],
+  * [[BabbagePParams.downgrade]]): the class's members wait for Mary's record, without which
+  * Alonzo's instance cannot give its own (#85).
   */
 private[era] object BabbageEraPParamsInstance
     extends BabbageEraPParams[Babbage]

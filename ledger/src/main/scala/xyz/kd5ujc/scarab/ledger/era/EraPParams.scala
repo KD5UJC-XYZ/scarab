@@ -3,12 +3,14 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import monocle.{Getter, Lens}
 import scala.collection.immutable.SortedSet
-import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError, Unsigned}
+import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError, Nonce, Unsigned}
+import xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoEraPParamsInstance
 import xyz.kd5ujc.scarab.ledger.era.babbage.BabbageEraPParamsInstance
 import xyz.kd5ujc.scarab.ledger.era.conway.{DRepVotingThresholds, PoolVotingThresholds}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraEraPParams, DijkstraEraPParamsInstance}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32}
 import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
   Babbage,
   CompactCoin,
   Conway,
@@ -27,12 +29,14 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * The reference's members confined to a range of eras (`hkdDL`, `hkdExtraEntropyL`,
   * `hkdProtocolVersionL`, `ppuProtocolVersionL` and `hkdMinUTxOValueCompactL`, `:459-484`) are not
   * here: each range is a class of its own with instances at the eras of the range (decided
-  * 2026-11-15, #85): the protocol version of the eras up to Babbage is [[EraPParamsToBabbage]], and
-  * the members of the eras up to Alonzo and Mary come with those eras' records. `ppDG` and
+  * 2026-11-15, #85): the protocol version of the eras up to Babbage is [[EraPParamsToBabbage]], the
+  * decentralisation and the extra entropy of the eras up to Alonzo [[EraPParamsToAlonzo]], and the
+  * minimum UTxO value of the eras up to Mary comes with Mary's record. `ppDG` and
   * `ppProtocolVersionL` are members of every era. Not yet here: `emptyUpgradePParamsUpdate`,
   * `upgradePParamsHKD` and `downgradePParamsHKD`, members over the previous era's record, which
-  * Babbage's instance cannot give before Alonzo's record exists (#85); Conway's upgrade from
-  * Babbage and downgrade to it are its functions ([[conway.ConwayPParams.upgrade]]).
+  * Alonzo's instance cannot give before Mary's record exists (#85); Babbage's upgrade from Alonzo
+  * and downgrade to it, and Conway's from Babbage, are those eras' functions
+  * ([[babbage.BabbagePParams.upgrade]], [[conway.ConwayPParams.upgrade]]).
   *
   * The class carries the union of the reference builds' members: `ppMaxPledgeLeverageG` and
   * `ppMinPoolMarginG` are members at the Leios build's pin (cardano-ledger 9df9f98c
@@ -84,7 +88,7 @@ trait EraPParams[E <: EraTag]:
 
 /** `class EraPParams era => AlonzoEraPParams era` (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/
   * PParams.hs:132-150`, cardano-ledger f649f975), without `hkdCoinsPerUTxOWordL`, which is Alonzo's
-  * alone (`ExactEra AlonzoEra`) and comes with Alonzo's record in a class of its own.
+  * alone (`ExactEra AlonzoEra`) and a class of its own ([[AlonzoEraPParamsExactAlonzo]]).
   */
 trait AlonzoEraPParams[E <: EraTag] extends EraPParams[E]:
   def hkdCostModelsL[F[_]: HKDFunctor]: Lens[PParamsHKD[F, E], F[CostModels]]
@@ -94,6 +98,27 @@ trait AlonzoEraPParams[E <: EraTag] extends EraPParams[E]:
   def hkdMaxValSizeL[F[_]: HKDFunctor]: Lens[PParamsHKD[F, E], F[Unsigned[W32]]]
   def hkdCollateralPercentageL[F[_]: HKDFunctor]: Lens[PParamsHKD[F, E], F[Unsigned[W16]]]
   def hkdMaxCollateralInputsL[F[_]: HKDFunctor]: Lens[PParamsHKD[F, E], F[Unsigned[W16]]]
+
+/** The cost per UTxO word, of Alonzo alone (`hkdCoinsPerUTxOWordL`, `ExactEra AlonzoEra`,
+  * `Alonzo/PParams.hs:133-135`, cardano-ledger f649f975): a member the reference confines to a
+  * range of eras is a class of its own with instances at exactly those eras (#85, 2026-11-15), so
+  * Babbage, which has the cost per UTxO byte instead, has none.
+  */
+trait AlonzoEraPParamsExactAlonzo[E <: EraTag] extends AlonzoEraPParams[E]:
+  def hkdCoinsPerUTxOWordL[F[_]: HKDFunctor]: Lens[PParamsHKD[F, E], F[CoinPerWord]]
+
+/** The decentralisation and the extra entropy as fields of the record, in the eras up to Alonzo
+  * (`hkdDL` and `hkdExtraEntropyL`, `AtMostEra "Alonzo"`, `Core/PParams.hs:459-468`, cardano-ledger
+  * f649f975): a member the reference confines to a range of eras is a class of its own with
+  * instances at exactly those eras (#85, 2026-11-15). The decentralisation of every era
+  * ([[EraPParams.ppDG]]) is this field here, as the class's default is (`:463-465`).
+  */
+trait EraPParamsToAlonzo[E <: EraTag] extends EraPParams[E]:
+  def hkdDL[F[_]: HKDFunctor]: Lens[PParamsHKD[F, E], F[UnitInterval]]
+  def hkdExtraEntropyL[F[_]: HKDFunctor]: Lens[PParamsHKD[F, E], F[Nonce]]
+
+  final def ppDG: Getter[PParams[E], UnitInterval] =
+    PParams.lensHKD[E].andThen(hkdDL[Identity])
 
 /** `class AlonzoEraPParams era => BabbageEraPParams era`
   * (`eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs:76-77`, cardano-ledger f649f975).
@@ -140,6 +165,7 @@ trait ConwayEraPParams[E <: EraTag] extends BabbageEraPParams[E]:
   def ppRefScriptCostStrideG: Getter[PParams[E], NonZero[Unsigned[W32]]]
 
 object EraPParams:
+  given alonzo: EraPParams[Alonzo] = AlonzoEraPParamsInstance
   given babbage: EraPParams[Babbage] = BabbageEraPParamsInstance
   given conway: ConwayEraPParams[Conway] = ConwayEraPParamsInstance
   given dijkstra: DijkstraEraPParams[Dijkstra] = DijkstraEraPParamsInstance
@@ -246,6 +272,7 @@ object EraPParams:
     )
 
 object AlonzoEraPParams:
+  given alonzo: AlonzoEraPParams[Alonzo] = AlonzoEraPParamsInstance
   given babbage: AlonzoEraPParams[Babbage] = BabbageEraPParamsInstance
   given conway: AlonzoEraPParams[Conway] = ConwayEraPParamsInstance
   given dijkstra: AlonzoEraPParams[Dijkstra] = DijkstraEraPParamsInstance
@@ -273,7 +300,7 @@ object AlonzoEraPParams:
     PParams.lensHKD[E].andThen(p.hkdCollateralPercentageL[Identity])
 
   // The descriptions of Alonzo's parameters (`Alonzo/PParams.hs:667-728`, cardano-ledger f649f975),
-  // but `ppCoinsPerUTxOWord`, Alonzo's alone, whose class is not here.
+  // but `ppCoinsPerUTxOWord`, Alonzo's alone, which is its class's ([[AlonzoEraPParamsExactAlonzo]]).
 
   /** `ppCostModels` (`Alonzo/PParams.hs:667-674`, cardano-ledger f649f975). */
   def ppCostModels[E <: EraTag](using p: AlonzoEraPParams[E]): PParam[E] =
@@ -343,7 +370,61 @@ object BabbageEraPParams:
       p.hkdCoinsPerUTxOByteL[StrictMaybe]
     )
 
+object AlonzoEraPParamsExactAlonzo:
+  given alonzo: AlonzoEraPParamsExactAlonzo[Alonzo] = AlonzoEraPParamsInstance
+
+  /** `ppCoinsPerUTxOWordL` (`Alonzo/PParams.hs:151-155`, cardano-ledger f649f975). */
+  def ppCoinsPerUTxOWordL[E <: EraTag](using
+      p: AlonzoEraPParamsExactAlonzo[E]
+  ): Lens[PParams[E], CoinPerWord] =
+    PParams.lensHKD[E].andThen(p.hkdCoinsPerUTxOWordL[Identity])
+
+  /** `ppuCoinsPerUTxOWordL` (`Alonzo/PParams.hs:178-182`, cardano-ledger f649f975). */
+  def ppuCoinsPerUTxOWordL[E <: EraTag](using
+      p: AlonzoEraPParamsExactAlonzo[E]
+  ): Lens[PParamsUpdate[E], StrictMaybe[CoinPerWord]] =
+    PParamsUpdate.lensHKD[E].andThen(p.hkdCoinsPerUTxOWordL[StrictMaybe])
+
+  /** `ppCoinsPerUTxOWord` (`Alonzo/PParams.hs:658-665`, cardano-ledger f649f975): named
+    * `utxoCostPerByte`, as the reference names it, under tag 17. Its value as Plutus data is the
+    * reference's unsupported one ([[ToPlutusData.unsupportedCoinPerWord]]).
+    */
+  def ppCoinsPerUTxOWord[E <: EraTag](using p: AlonzoEraPParamsExactAlonzo[E]): PParam[E] =
+    PParam.field[E, CoinPerWord](
+      "utxoCostPerByte",
+      17,
+      p.hkdCoinsPerUTxOWordL[Identity],
+      p.hkdCoinsPerUTxOWordL[StrictMaybe]
+    )(using ToPlutusData.unsupportedCoinPerWord, EncCBOR.coinPerWord, DecCBOR.coinPerWord)
+
+object EraPParamsToAlonzo:
+  given alonzo: EraPParamsToAlonzo[Alonzo] = AlonzoEraPParamsInstance
+
+  /** `ppDL` (`Core/PParams.hs:584-585`, cardano-ledger f649f975). */
+  def ppDL[E <: EraTag](using p: EraPParamsToAlonzo[E]): Lens[PParams[E], UnitInterval] =
+    PParams.lensHKD[E].andThen(p.hkdDL[Identity])
+
+  /** `ppExtraEntropyL` (`Core/PParams.hs:588-589`, cardano-ledger f649f975). */
+  def ppExtraEntropyL[E <: EraTag](using p: EraPParamsToAlonzo[E]): Lens[PParams[E], Nonce] =
+    PParams.lensHKD[E].andThen(p.hkdExtraEntropyL[Identity])
+
+  /** `ppD` (`Shelley/PParams.hs:454-461`, cardano-ledger f649f975). */
+  def ppD[E <: EraTag](using p: EraPParamsToAlonzo[E]): PParam[E] =
+    PParam.field("decentralization", 12, p.hkdDL[Identity], p.hkdDL[StrictMaybe])
+
+  /** `ppExtraEntropy` (`Shelley/PParams.hs:463-470`, cardano-ledger f649f975): its value as Plutus
+    * data is the reference's unsupported one ([[ToPlutusData.unsupportedNonce]]).
+    */
+  def ppExtraEntropy[E <: EraTag](using p: EraPParamsToAlonzo[E]): PParam[E] =
+    PParam.field[E, Nonce](
+      "extraPraosEntropy",
+      13,
+      p.hkdExtraEntropyL[Identity],
+      p.hkdExtraEntropyL[StrictMaybe]
+    )(using ToPlutusData.unsupportedNonce, EncCBOR.nonce, DecCBOR.nonce)
+
 object EraPParamsToBabbage:
+  given alonzo: EraPParamsToBabbage[Alonzo] = AlonzoEraPParamsInstance
   given babbage: EraPParamsToBabbage[Babbage] = BabbageEraPParamsInstance
 
   /** `ppuProtocolVersionL` (`Core/PParams.hs:479-480`, cardano-ledger f649f975). */

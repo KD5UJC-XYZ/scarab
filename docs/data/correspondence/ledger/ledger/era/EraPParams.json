@@ -386,6 +386,81 @@
     }
    ]
   },
+  "def ledger.era.AlonzoEraPParamsExactAlonzo#hkdCoinsPerUTxOWordL": {
+   "class": "Mirror",
+   "digest": "a1992660d72d98dd",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      133,
+      135
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCoinsPerUTxOWordL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParamsExactAlonzo.ppCoinsPerUTxOWord": {
+   "class": "Mirror",
+   "digest": "63347a58fea8c625",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "named utxoCostPerByte under tag 17, as the reference names it; its Plutus data the reference's unsupported instance",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      658,
+      665
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppCoinsPerUTxOWord"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParamsExactAlonzo.ppCoinsPerUTxOWordL": {
+   "class": "Mirror",
+   "digest": "55191189be62095a",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      151,
+      155
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppCoinsPerUTxOWordL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParamsExactAlonzo.ppuCoinsPerUTxOWordL": {
+   "class": "Mirror",
+   "digest": "0f050a6dff720e84",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      178,
+      182
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppuCoinsPerUTxOWordL"
+    }
+   ]
+  },
   "def ledger.era.BabbageEraPParams#hkdCoinsPerUTxOByteL": {
    "class": "Mirror",
    "digest": "22f981a570de8d96",
@@ -2512,6 +2587,138 @@
     }
    ]
   },
+  "def ledger.era.EraPParamsToAlonzo#hkdDL": {
+   "class": "Mirror",
+   "digest": "43fefd1398a43cc2",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      459,
+      460
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdDL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParamsToAlonzo#hkdExtraEntropyL": {
+   "class": "Mirror",
+   "digest": "a863f2508cb5d60a",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      467,
+      468
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdExtraEntropyL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParamsToAlonzo#ppDG": {
+   "class": "Mirror",
+   "digest": "032577f9e794e1c7",
+   "note": "the default of the eras up to Alonzo",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      462,
+      465
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppDG"
+    }
+   ]
+  },
+  "def ledger.era.EraPParamsToAlonzo.ppD": {
+   "class": "Mirror",
+   "digest": "b7d8d82ab30051b9",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      454,
+      461
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppD"
+    }
+   ]
+  },
+  "def ledger.era.EraPParamsToAlonzo.ppDL": {
+   "class": "Mirror",
+   "digest": "0476e7beac7ce965",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      584,
+      585
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppDL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParamsToAlonzo.ppExtraEntropy": {
+   "class": "Mirror",
+   "digest": "3173f98f4adf9473",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "its Plutus data the reference's unsupported instance",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      463,
+      470
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppExtraEntropy"
+    }
+   ]
+  },
+  "def ledger.era.EraPParamsToAlonzo.ppExtraEntropyL": {
+   "class": "Mirror",
+   "digest": "b2c44053c4b1ba0a",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      588,
+      589
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppExtraEntropyL"
+    }
+   ]
+  },
   "def ledger.era.EraPParamsToBabbage#hkdProtocolVersionL": {
    "class": "Mirror",
    "digest": "990ed746e965efaa",
@@ -2596,6 +2803,24 @@
     }
    ]
   },
+  "given ledger.era.AlonzoEraPParams.alonzo": {
+   "class": "Mirror",
+   "digest": "26faf2e62fc2a6d6",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      371,
+      387
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraPParams AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.AlonzoEraPParams.babbage": {
    "class": "Mirror",
    "digest": "ba4e85f4bc063ee2",
@@ -2644,6 +2869,24 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "AlonzoEraPParams"
+    }
+   ]
+  },
+  "given ledger.era.AlonzoEraPParamsExactAlonzo.alonzo": {
+   "class": "Mirror",
+   "digest": "5ce3bb1219cf9a02",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      372,
+      372
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCoinsPerUTxOWordL"
     }
    ]
   },
@@ -2732,6 +2975,24 @@
     }
    ]
   },
+  "given ledger.era.EraPParams.alonzo": {
+   "class": "Mirror",
+   "digest": "f9f77d7c6c163d5e",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      314,
+      369
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPParams AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.EraPParams.babbage": {
    "class": "Mirror",
    "digest": "c72faa63acd1f12c",
@@ -2780,6 +3041,42 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "EraPParams"
+    }
+   ]
+  },
+  "given ledger.era.EraPParamsToAlonzo.alonzo": {
+   "class": "Mirror",
+   "digest": "ec7c56e4e7792358",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      338,
+      339
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdDL"
+    }
+   ]
+  },
+  "given ledger.era.EraPParamsToBabbage.alonzo": {
+   "class": "Mirror",
+   "digest": "16e3e3c10ab7ae26",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      340,
+      340
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdProtocolVersionL"
     }
    ]
   },
@@ -2876,6 +3173,27 @@
     }
    ]
   },
+  "trait ledger.era.AlonzoEraPParamsExactAlonzo": {
+   "class": "Mirror",
+   "digest": "59374323c94b40a4",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "the member of AlonzoEraPParams confined to Alonzo (`ExactEra AlonzoEra`) as a class of its own, with Alonzo's instance alone (#85, 2026-11-15)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      132,
+      135
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCoinsPerUTxOWordL"
+    }
+   ]
+  },
   "trait ledger.era.BabbageEraPParams": {
    "class": "Mirror",
    "digest": "ed7be4da09e905dd",
@@ -2930,6 +3248,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "EraPParams"
+    }
+   ]
+  },
+  "trait ledger.era.EraPParamsToAlonzo": {
+   "class": "Mirror",
+   "digest": "635d93999135283c",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "the members of EraPParams confined to the eras up to Alonzo (`AtMostEra \"Alonzo\"`) as a class of their own, with instances at exactly those eras that have a record, Alonzo's (#85, 2026-11-15)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      459,
+      468
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdDL"
     }
    ]
   },
@@ -3128,9 +3467,11 @@
   {
    "definitions": [
     "object ledger.era.AlonzoEraPParams",
+    "object ledger.era.AlonzoEraPParamsExactAlonzo",
     "object ledger.era.BabbageEraPParams",
     "object ledger.era.ConwayEraPParams",
     "object ledger.era.EraPParams",
+    "object ledger.era.EraPParamsToAlonzo",
     "object ledger.era.EraPParamsToBabbage"
    ],
    "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
