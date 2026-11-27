@@ -70,8 +70,10 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
   *     by the top level), a sub-transaction's reference script and one two share counted towards
   *     the batch (`LedgerSpec.hs:122`, `:138`), the size before the treasury (`:195`), and
   *     MEMPOOL's look at the top level's inputs alone (`MempoolSpec.hs:44`, `:91`);
-  *   - the batch's reference-script total (LEDGER's) and a block's (BBODY's) past `Int.MaxValue`
-  *     and past `Word32` 's range, against the limits at and below them, on the predicates alone;
+  *   - the batch's reference-script total (LEDGER's) and a block's (BBODY's), each at 3 GiB or 2
+  *     GiB (past `Int.MaxValue`) against the limits at and below it, and each at 4 GiB (exactly
+  *     2^32, past `Word32` 's range) against the greatest limit, `Word32` 's maximum, on the
+  *     predicates alone;
   *   - LEDGERS as LEDGER one level down and LEDGER after LEDGER over a block's transactions, each
   *     annotated against the state the one before left (a chain block, and a built one whose second
   *     transaction spends the script output the first pays); MEMPOOL as LEDGER one level down, and
@@ -1235,7 +1237,7 @@ class DijkstraLedgerSuite extends FunSuite:
     val refTxId = xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array.fill[Byte](32)(0x60))
     val refs = Vector.tabulate(1024)(i => B.In(refTxId, i))
     val referencing = 18 -> B.set(refs.map(_.node)*)
-    val ins = Vector.tabulate(7)(i => B.fresh(0x61 + i))
+    val ins = Vector.tabulate(9)(i => B.fresh(0x61 + i))
     def referencingBatch(top: B.In, subIns: Vector[B.In]) = batch(
       Vector(top),
       10000000 * (1 + subIns.size) - fee,
@@ -1299,6 +1301,30 @@ class DijkstraLedgerSuite extends FunSuite:
       )
     )
     assertEquals(blockRefused(blockTotal), Vector.empty)
+    // a block of four such top levels, 4 GiB, exactly 2^32: refused under the greatest limit, the
+    // `Word32` maximum 2^32 - 1, with the exact `Mismatch`; a total narrowed to an unsigned 32 bits
+    // would read as 0 and be admitted. No limit admits it, as none does in the reference
+    val wideBlock = Vector(tx, other) ++ ins.slice(7, 9).map(referencingBatch(_, Vector.empty))
+    val wideTotal = ConwayBbody.totalRefScriptSizeInBlock[Dijkstra](
+      EraPParams.dijkstra.ppProtocolVersionL.get(pp),
+      wideBlock,
+      utxo
+    )
+    assertEquals(wideTotal, 1L << 32)
+    assertEquals(
+      ConwayBbody
+        .validateBodyRefScriptsSizeTooBig[Dijkstra](
+          maxRefScriptSizePerBlock((1L << 32) - 1),
+          wideBlock,
+          utxo
+        )
+        .fold(_.toChain.toVector, _ => Vector.empty),
+      Vector(
+        new ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig[Dijkstra](
+          Mismatch(wideTotal, (1L << 32) - 1)
+        )
+      )
+    )
     // a batch total past `Word32`'s range, the top level and three sub-transactions, 4 GiB, is
     // refused under the greatest limit: narrowed to 32 bits it would read as 0
     val four = referencingBatch(ins(3), ins.slice(4, 7))
