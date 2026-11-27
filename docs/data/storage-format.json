@@ -7,7 +7,7 @@
  "approval": {
   "question": "Asked 2026-11-27T15:59:06Z: storage format change (FMT-1): may the state reader refuse a registered pool's metadata that the reference refuses, reading it as DecCBOR PoolMetadata does (a record of two items, the URL bounded by the version), with the function the future parameters' metadata already uses? The writer is unchanged and the node's own saved states pass. Which state layouts should it cover: both the Leios and the 11.1 layout, the Leios layout only, or neither for now?",
   "asked_at": "2026-11-27T15:59:06Z",
-  "decision": "Approved for both layouts, as its own storage-format pull request: an in-place change of the V10 state codecs' reader for a registered pool's metadata (StakePoolState in the 11.1 and Leios layouts), with no new version and no migration and the writer unchanged; the approval is recorded here.",
+  "decision": "Approved for both layouts, as its own storage-format pull request: an in-place change of the V10 state codecs' reader for a registered pool's metadata (StakePoolState in the 11.1 and Leios layouts), with no new version and no migration and the writer unchanged; the approval is recorded here. Noted after the independent review, 2026-11-27: the question's premise that the node's own saved states pass holds for pools registered by certificates; a state holding a genesis pool whose metadata URL is over 64 bytes below version 9 or over 128 from it, which the writer accepts from the genesis JSON, is refused on reading, as the reference refuses it. No genesis of mainnet, preprod, preview or the Leios testnet gives a pool metadata.",
   "decided_at": "2026-11-27T16:10:20Z",
   "surface_sha256": "0bb04edbc12ee447b8339c6a5d4e52c19f7692bbb43fb52b434c4b0770a3a796"
  },

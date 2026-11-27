@@ -39,14 +39,15 @@ class StakePoolStateMetadataSuite extends FunSuite:
   private val key28 = "01" * 28
 
   /** A `StakePoolState` with metadata `metadata` (`StrictMaybe`, a list of zero or one): ten items
-    * in the 11.1 layout, eleven in the Leios layout with no voting key after the VRF key hash.
+    * in the 11.1 layout, eleven in the Leios layout with no voting key after the VRF key hash; its
+    * empty sets tagged 258 (from version 9) or not (`set`).
     */
-  private def pool(layout: StateLayout, metadata: String): Bytes =
+  private def pool(layout: StateLayout, metadata: String, set: String = "d9010280"): Bytes =
     val (head, key) = layout match
       case StateLayout.Node11_1 => ("8a", "")
       case StateLayout.Leios    => ("8b", "80")
     hex(
-      s"$head 5820${"02" * 32} $key 00 00 d81e820102 8200581c$key28 d9010280 80 $metadata 00 d9010280"
+      s"$head 5820${"02" * 32} $key 00 00 d81e820102 8200581c$key28 $set 80 $metadata 00 $set"
     )
 
   private val families: Vector[(String, LedgerFileCodecs, Long)] = Vector(
@@ -113,4 +114,19 @@ class StakePoolStateMetadataSuite extends FunSuite:
       read(HaskellStateCodecs, 12, pool(StateLayout.Node11_1, chunkedUrl)).left.map(_.kind),
       Left(refused(node.LedgerDecodeError.IndefiniteLength(node.DecodeField.PoolMetadataURL)))
     )
+  }
+
+  test("below version 9 the metadata's URL is at most 64 bytes, in both layouts") {
+    Vector(HaskellStateCodecs, NativeStateCodecs, LeiosStateCodecs).foreach { family =>
+      val layout = family.stateLayout
+      val ok = pool(layout, s"81 82 ${text("u" * 64)} 4100", set = "80")
+      assert(read(family, 2, ok).isRight, family.toString)
+      assertEquals(
+        read(family, 2, pool(layout, s"81 82 ${text("u" * 65)} 4100", set = "80")).left.map(_.kind),
+        Left(
+          refused(node.LedgerDecodeError.TextTooLong(node.DecodeField.PoolMetadataURL, 64, 65))
+        ),
+        family.toString
+      )
+    }
   }
