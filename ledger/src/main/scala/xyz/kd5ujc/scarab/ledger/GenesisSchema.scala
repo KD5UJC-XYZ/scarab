@@ -261,17 +261,17 @@ object GenesisSchema:
         .filter(_ == Json.fromString("Nonce"))
         .traverse_(_ => obj(req("contents", hash(32)))(json))
 
+  /** `FromJSON ProtVer` (`libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:230-235`,
+    * cardano-ledger f649f975): the major a [[version]], the minor `pvMinor :: Word32` (`:211`).
+    */
+  private val protVer: Check = obj(req("major", version), req("minor", word(32)))
+
   /** The Shelley genesis parameters (`instance FromJSON LegacyJSONPParams`,
     * `Shelley/Genesis.hs:403-425`, cardano-ledger f649f975). The fees, deposits and minimums are
     * read into `CompactForm Coin` and `CoinPerByte`, both `FromJSON Word64` (`Coin.hs:150, 222`): a
     * negative value or one above `Word64` refuses the file, so no deposit of the ledger state can
     * leave that range (#573).
     */
-  /** `FromJSON ProtVer` (`libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:230-235`,
-    * cardano-ledger f649f975): the major a [[version]], the minor `pvMinor :: Word32` (`:211`).
-    */
-  private val protVer: Check = obj(req("major", version), req("minor", word(32)))
-
   private val shelleyParams: Check = obj(
     req("minFeeA", word64),
     req("minFeeB", word64),
