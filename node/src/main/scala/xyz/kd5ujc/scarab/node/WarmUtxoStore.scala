@@ -211,8 +211,7 @@ object WarmUtxoStore:
 
     /** The budget when `--utxo-warm-mb` is not given, for a maximum heap of `maxHeap` bytes: a
       * sixteenth of it, at most [[Default]] (192 MiB at `-Xmx3g`, 256 MiB from 4 GiB up), so that a
-      * small heap gives the tier no more of itself than a large one (the owner's choice, 2026-11-27,
-      * #1484).
+      * small heap is not asked for the full default (decided 2026-11-27, #1484).
       */
     def forHeap(maxHeap: Long): Budget = bytes(math.min(Default.bytes, maxHeap / 16))
 
