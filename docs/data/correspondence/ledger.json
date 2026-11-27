@@ -50388,7 +50388,7 @@
    "evidence": [
     "BabbagePParamsSuite"
    ],
-   "note": "the evaluation context is the evaluator's to make, as for every model here (`CostModel`)",
+   "note": "the evaluation context is the evaluator's to make, as for every model here; the reference's `mkCostModel` refuses no list of Int64 (`tagWithParamNames` names the parameters by the language's own enumeration and only warns on a length; the remaining failures are internal)",
    "digest": "31fa479988d344a4"
   },
   "def ledger.era.CostModels.singleton": {
@@ -50471,7 +50471,7 @@
    "evidence": [
     "BabbagePParamsSuite"
    ],
-   "note": "a deposit outside Word64, on which the reference's `compactCoinOrError` throws, is the upgrade's refusal; the class member `upgradePParamsHKD` waits for every era with a record to have its upgrade (#85)",
+   "note": "BabbagePParamsSuite shows the fields' places, the PlutusV3 model merged over Babbage's models by this tree's `CostModels.updated` (a model made by this tree's `CostModel.mkCostModel`), the deposit outside Word64 refused, and at StrictMaybe the merge of both models, none where the update sets no models, and the empty upgrade; it is not a differential against the reference. A deposit outside Word64, on which the reference's `compactCoinOrError` throws, is the upgrade's refusal. The class member `upgradePParamsHKD` waits for every era with a record to have its upgrade (#85)",
    "digest": "6cd38bd27ac64b27"
   },
   "def ledger.era.conway.ConwayPParams.downgrade": {

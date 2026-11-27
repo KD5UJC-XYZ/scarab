@@ -187,6 +187,19 @@ class BabbagePParamsSuite extends ScalaCheckSuite:
     }
 
   test(
+    "an update's upgrade merges the PlutusV3 model into the update's models only when both are set"
+  ):
+    val base = right("models")(CostModels.from(Map(0 -> Vector(BigInt(4)), 1 -> Vector(BigInt(5)))))
+    val withModels = BabbagePParams.emptyUpdate.copy(costModels = Some(base))
+    val withV3 = UpgradeConwayPParams.emptyUpdate.copy(plutusV3CostModel = Some(v3))
+    def models(u: UpgradeConwayPParams[StrictMaybe], b: BabbagePParams[StrictMaybe]) =
+      right("upgrade")(ConwayPParams.upgrade(u, b)).costModels.unTHKD
+    assertEquals(models(withV3, withModels), Some(base.updated(CostModels.singleton(v3))))
+    assertEquals(models(withV3, withModels).map(_.models.keySet), Some(Set(0, 1, 2)))
+    assertEquals(models(withV3, BabbagePParams.emptyUpdate), None)
+    assertEquals(models(UpgradeConwayPParams.emptyUpdate, withModels), None)
+
+  test(
     "the upgrade written over the stored parameters sets the governance fields and the PlutusV3 model"
   ):
     val p = TestLedger.params(8)
