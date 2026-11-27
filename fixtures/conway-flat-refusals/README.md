@@ -2,7 +2,7 @@
 
 Status: Current — the expected values of `ConwayLedgerChecksSuite`, `ConwayFailureCborSuite`,
 `ConwayMempoolRunSuite`, `EraUtxoSuite`, `PreviewConwayBlockLedgersSuite`, `PreviewConwayRulesSuite`,
-`ConwayGovChecksSuite` and `ConwayCertsChecksSuite` (#85). Licence: Apache-2.0, this project's (see `NOTICE`).
+`ConwayGovChecksSuite`, `ConwayCertsChecksSuite` and `ConwayPlutusCasesSuite` (#85). Licence: Apache-2.0, this project's (see `NOTICE`).
 
 Before Scarab deleted its flat Conway rules (the flat MEMPOOL, then its LEDGER and LEDGERS, then its GOV, then its CERTS) and
 the flat rules' Conway refusal encoder (`PredicateFailureCbor`), the suites that held Conway's era rules and their encoder (`ConwayFailureCbor`)
@@ -136,6 +136,17 @@ digits of the SHA-256 of the bytes it names.
   the reference's 11.2 and Leios builds do so in LEDGER (#85's item 7055304484, closed with it). One case here is
   judged under a build other than 11.1, the Leios build's
   `conway-bootstrap-attributes-leios-b004fe0c/utxo-bootstrap-attributes-too-big`, and on it the two rules agreed.
+
+- `plutus-case-files.jsonl`: one line for each case file the `--plutus-cases` observation of a Conway transaction
+  writes from the era's observation (`PlutusCases.observeConway`) in `ConwayPlutusCasesSuite`, 120 lines, each file
+  once: `file`, its set and its name (`<set>/slot<slot>-<id>.json`); and `bytes`, the digest of its bytes. The sets
+  are the 40 recorded Plutus cases Conway's decoder reads (`fixtures/preview/plutus`): with their scripts evaluated
+  (`evaluated/`), with their collection failed by every context error and by a certificate's, a pointer's, the
+  votes' and the proposals' where the transaction has them (`uncollected/`), and by no redeemer and no context for
+  each purpose its scripts need (`purposes/`). The failures are named in the flat collection's vocabulary
+  (`ConwayPhase2.storedErrors`, through `ConwayUtxowPredFailure.storedPurposes` and `ConwayTxCert.toStored`), and
+  the flat observation of the same transaction wrote the same bytes (#85's item 7152417866). Recorded at Scarab
+  commit `c187e8b90`, before the flat Conway UTXO, UTXOW and UTXOS were deleted.
 
 Commit `84bf3a1cd` is the base this work started from; `3aaa942aa` the last of it with the flat encoder. The
 tests that wrote these lines and their throwaway checkouts were removed after. The digests are Scarab's own,

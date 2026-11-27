@@ -111,6 +111,13 @@ object FlatRecordings:
     keyed("certs-judgments.jsonl", "id")(field("certs-judgments.jsonl", _, "r"))
       .map((k, v) => k -> v.split(' ').toVector)
 
+  /** The case files `--plutus-cases` writes of the recorded Conway Plutus cases from the era's
+    * observation (`ConwayPlutusCasesSuite`, `plutus-case-files.jsonl`): each file, by its set and
+    * name, to the digest of its bytes.
+    */
+  lazy val plutusCaseFiles: Map[String, String] =
+    keyed("plutus-case-files.jsonl", "file")(field("plutus-case-files.jsonl", _, "bytes"))
+
   /** A CERTS refusal's cell: `R:` and the digest of the `ApplyTxErr` bytes of its failures in their
     * order, each under LEDGER's `ConwayCertsFailure`, as the node sends CERTS's refusal.
     */
