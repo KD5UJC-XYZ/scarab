@@ -787,3 +787,96 @@ class DijkstraUtxowSuite extends FunSuite:
     )
     assertEquals(judged(TxEnv.Validation.NonStatic), Right(Left(Vector(malformed, missing))))
   }
+
+  test("top-level UTXOW under NonStatic still runs every check the reference runs with runTest") {
+    // the seven checks `dijkstraUtxowTransition` runs with `runTest` (`Dijkstra/Rules/Utxow.hs:260,
+    // 277, 281, 290, 297, 310, 321`, cardano-ledger 9df9f98c), each failing on one transaction: a
+    // needed native script that does not hold (its input at the script's address, the script
+    // requiring the owner's signature), a script witness no level needs, a datum no output or
+    // input allows, a redeemer pointing at no input, the owner's key not signing, no script
+    // integrity hash where the redeemers and datum need one, and a key's required guard with a
+    // datum. The signer's signature is the body's. Under `All` the required guard is also missing
+    // from the guards, on the signal (`:318`); under `NonStatic` every other failure stays, and so
+    // do UTXO's, which the redeemers ask collateral of
+    val failing = B.arr(B.uint(0), B.bytes(owner.hash))
+    val extra = B.arr(B.uint(1), B.arr())
+    val failingHash = B.scriptHash(0, B.encode(failing))
+    val scriptIn = B.fresh(0x73)
+    val guardKey = Bytes(Vector.fill(28)(0x74.toByte))
+    val body = B.body(
+      0 -> B.set(builtIn.node, scriptIn.node),
+      1 -> B.arr(B.out(B.keyAddress(signer), BigInt(30000000) - builtFee)),
+      2 -> B.uint(builtFee),
+      24 -> B.cmap(B.arr(B.uint(0), B.bytes(guardKey)) -> B.uint(0))
+    )
+    val datum = B.uint(42)
+    val datums = B.set(datum)
+    // `{[0, 5] => [0, [0, 0]]}`: a spending redeemer at index 5, of the datum 0 and no units
+    val redeemers =
+      B.cmap(B.arr(B.uint(0), B.uint(5)) -> B.arr(B.uint(0), B.arr(B.uint(0), B.uint(0))))
+    val wits = B.cmap(
+      B.uint(0) -> B.set(B.arr(B.bytes(signer.vkey), B.bytes(signer.sign(B.id(body))))),
+      B.uint(1) -> B.set(failing, extra),
+      B.uint(4) -> datums,
+      B.uint(5) -> redeemers
+    )
+    val tx = B.topTx(body, wits)
+    val spent = UTxO[Dijkstra](
+      held(owner).unUTxO ++
+        B.utxo(scriptIn -> B.out(B.scriptAddress(failingHash), 10000000)).unUTxO
+    )
+    def judged(validation: TxEnv.Validation) =
+      builtUtxow(tx, spent, validation).map(_.left.map(_.toChain.toVector))
+    given cats.Order[Bytes] = cats.Order.fromOrdering
+    val guard = NonEmptySet.one[Credential[Guard]](
+      Credential.KeyHashObj[Guard](
+        KeyHash.fromBytes[Guard](guardKey).fold(e => fail(e.toString), identity)
+      )
+    )(using cats.Order[Credential[Guard]])
+    // the bytes the integrity hash is over (`hashScriptIntegrity`): the redeemers, the datums and
+    // the language views, of no language
+    val integrity = B.encode(redeemers) ++ B.encode(datums) ++ hex("a0")
+    val five = Unsigned.from[Unsigned.Width.W32](BigInt(5)).getOrElse(fail("5"))
+    val utxo = Vector[UtxowPredFailure[Dijkstra]](
+      DijkstraUtxowPredFailure.UtxoFailure[Dijkstra](
+        DijkstraUtxoPredFailure.InsufficientCollateral[Dijkstra](DeltaCoin(0), Coin(1500000))
+      ),
+      DijkstraUtxowPredFailure.UtxoFailure[Dijkstra](
+        DijkstraUtxoPredFailure.NoCollateralInputs[Dijkstra]()
+      )
+    )
+    // at the root in the reverse of the order the rule records them: UTXO's block first, then the
+    // guards' datums, last checked, to the failing native script, first
+    val runTests = Vector[UtxowPredFailure[Dijkstra]](
+      DijkstraUtxowPredFailure.MalformedGuardDatums[Dijkstra](guard),
+      DijkstraUtxowPredFailure.ScriptIntegrityHashMismatch[Dijkstra](
+        Mismatch(None, Some(Blake2b.hash256.hash(integrity))),
+        Some(integrity)
+      ),
+      DijkstraUtxowPredFailure.MissingVKeyWitnessesUTXOW[Dijkstra](NonEmptySet.one(owner.hash)),
+      DijkstraUtxowPredFailure.ExtraRedeemers[Dijkstra](
+        NonEmptyList.one(DijkstraPlutusPurpose.DijkstraSpending[AsIx](AsIx(five)))
+      ),
+      DijkstraUtxowPredFailure.NotAllowedSupplementalDatums[Dijkstra](
+        NonEmptySet.one(B.dataHash(datum)),
+        Set.empty
+      ),
+      DijkstraUtxowPredFailure.ExtraneousScriptWitnessesUTXOW[Dijkstra](
+        NonEmptySet.one(B.scriptHash(0, B.encode(extra)))
+      ),
+      DijkstraUtxowPredFailure.ScriptWitnessNotValidatingUTXOW[Dijkstra](
+        NonEmptySet.one(failingHash)
+      )
+    )
+    assertEquals(judged(TxEnv.Validation.NonStatic), Right(Left(utxo ++ runTests)))
+    assertEquals(
+      judged(TxEnv.Validation.All),
+      Right(
+        Left(
+          utxo ++ runTests.take(1) ++
+            Vector(DijkstraUtxowPredFailure.MissingRequiredGuards[Dijkstra](guard)) ++
+            runTests.drop(1)
+        )
+      )
+    )
+  }
