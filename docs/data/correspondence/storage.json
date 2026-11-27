@@ -2650,7 +2650,7 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
-   "note": "as scheduleGC: the entry at the time now plus the delay rounded up to the interval, in place of the last entry for the same time, else after it. Where it differs: it hands the entry back and its caller emits the ScheduledGC trace, where scheduleGC traces it itself; no differential comparison covers it (#1261). Both trace right after their enqueue (scheduleGC, Background.hs 576, ouroboros-consensus 82ecba329), so a tracer that fails propagates out of the step that copied the blocks in both; the reference has signalled its ledger maintenance by then, where Scarab brings its backing store forward after the trace. It is called once for each persisted extension that copies blocks to the immutable store, where the reference's copy runner copies the whole prefix then eligible and schedules once: a Gap, #1262",
+   "note": "as scheduleGC: the entry at the time now plus the delay rounded up to the interval, in place of the last entry for the same time, else after it. Where it differs: it hands the entry back and its caller emits the ScheduledGC trace, where scheduleGC traces it itself; no differential comparison covers it (#1261). Both trace right after their enqueue (scheduleGC, Background.hs 576, ouroboros-consensus 82ecba329), so a tracer that fails propagates out of the step that copied the blocks in both; the reference has signalled its ledger maintenance by then, where Scarab brings its backing store forward after the trace. It is called once for each round of the copy runner, which copies the whole prefix the published chain aged past k and not yet copied, as the reference's copy runner does and schedules once (#1499)",
    "digest": "81173512dc7f0c7d"
   },
   "def storage.GcSchedule.scheduled": {
@@ -2938,6 +2938,30 @@
     "AllegraRedeemMirrorSuite"
    ],
    "digest": "a3c8148f88b748a3"
+  },
+  "def storage.ChainPersistence#published": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "symbol": "copyToImmutableDBRunner",
+     "lines": [
+      266,
+      284
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "ChainStorageSuite",
+    "ReceivedCollectionSuite",
+    "LeiosBackgroundSuite",
+    "ChainServerSuite"
+   ],
+   "note": "the copy runner's wake-up: the reference's runner waits until the chain its chain selection writes (cdbChain) is longer than its volatile suffix; here the follower, once it has published a chain, hands the runner the blocks that chain aged past k, and the runner waits for them (#1499). Either way nothing is copied before the chain that aged it is the one readers see",
+   "digest": "44bfd6a58d48d346"
   }
  },
  "glue": [
@@ -3188,9 +3212,20 @@
    ]
   },
   {
-   "reason": "why the received log's collections stopped, carried as a value across the runner fiber's boundary (ADR 0017) for the node to stop on; the reference's runner throws in a thread linked to the ChainDB's (launch, Storage/ChainDB/Impl/Background.hs 116-121 and 140-142 at ouroboros-consensus 82ecba329)",
+   "reason": "why the copy runner or the received log's collections stopped, carried as a value across the runner fibers' boundary (ADR 0017) for the node to stop on; the reference's runners throw in threads linked to the ChainDB's (launch, Storage/ChainDB/Impl/Background.hs 116-125 and 140-142 at ouroboros-consensus 82ecba329)",
    "definitions": [
-    "enum storage.ChainStorage.CollectionStopped"
+    "enum storage.ChainStorage.BackgroundStopped"
+   ]
+  },
+  {
+   "reason": "the hand-over from the block-selection worker to the copy runner (#1499): the blocks one extension aged past k with the chain's new immutable boundary and its state, staged until the chain is published, and the runner's queue of them with whether it is copying. The reference's copy runner reads the blocks to copy from the chain its chain selection writes, cdbChain, which holds them until each is appended (copyToImmutableDB and copyToImmutableDBRunner, Storage/ChainDB/Impl/Background.hs 160-209 and 257-296 at ouroboros-consensus 82ecba329), and its LedgerDB holds the states (getVolatileSuffix, Storage/LedgerDB/V2.hs); the steps of a round are named for the suites that stand in for a kill before each",
+   "definitions": [
+    "class storage.ChainStorage.Aged",
+    "class storage.ChainStorage.Copier",
+    "def storage.ChainStorage.Copier#idle",
+    "object storage.ChainStorage.Copier",
+    "def storage.ChainStorage.Copier.idle",
+    "enum storage.ChainStorage.CopyStep"
    ]
   },
   {

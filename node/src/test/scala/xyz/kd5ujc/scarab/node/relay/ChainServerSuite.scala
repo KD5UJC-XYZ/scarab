@@ -269,6 +269,47 @@ class ChainServerSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
+  test("a block aged past `k` is served from the chain until the store holds it (#1499)") {
+    // the copy runner works behind the chain: blocks 5 to 7 are aged but not yet copied, and the
+    // served chain keeps them, as the reference's followers read the whole of `cdbChain`, whose
+    // blocks its copy runner removes only once they are appended (`Storage/ChainDB/Impl/
+    // Follower.hs` 462-465, `Background.hs` 199-206, ouroboros-consensus 82ecba329)
+    tempDir.use { dir =>
+      ok {
+        FileImmutableStore.open[IO](dir, 30L).use { (store, _) =>
+          def extend(server: ChainServer[IO], i: Int) =
+            val immutable = if i > k then Vector(ref(i - k)) else Vector.empty
+            server
+              .persistence[Unit]
+              .extended(ref(i), raw(i), immutable, Anchor[Unit](immutable.headOption, ()))
+          for
+            server <- ChainServer
+              .open[IO](Some(store), None, headerOf, fatal, ChainServer.Held.none)
+            _ <- (1 to 4).toList.traverse_(i => store.append(ref(i), raw(i)))
+            _ <- (1 to 10).toList.traverse_(extend(server, _))
+            fromOrigin <- server.source.use { source =>
+              source.intersect(Vector(Point.Origin)) *> readAll(source)
+            }
+            fromAged <- server.source.use { source =>
+              source.intersect(Vector(ref(5).point)) *> readAll(source)
+            }
+            blocks <- got(server.blocks.range(ref(4).point, ref(6).point))
+            // the copy reaches block 7; the next extension drops what the store holds
+            _ <- (5 to 7).toList.traverse_(i => store.append(ref(i), raw(i)))
+            _ <- extend(server, 11)
+            afterCopy <- server.source.use { source =>
+              source.intersect(Vector(ref(5).point)) *> readAll(source)
+            }
+          yield
+            assertEquals(fromOrigin, (1 to 10).toList)
+            assertEquals(fromAged, (6 to 10).toList, "an aged block not yet copied is on our chain")
+            assertEquals(blocks, Got.Blocks(raws(4 to 6)), "from the store, then the chain")
+            assertEquals(afterCopy, (6 to 11).toList)
+        }
+      }
+    }
+  }
+
   test("the node-to-client cursor serves the stored block bytes, immutable and volatile") {
     tempDir.use { dir =>
       ok {

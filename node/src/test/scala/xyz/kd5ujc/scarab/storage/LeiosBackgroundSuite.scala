@@ -178,10 +178,13 @@ class LeiosBackgroundSuite extends FailsOnUncaught:
       yield result
     }
 
-  /** The blocks, each applied and made immutable in the extension that applies it. */
+  /** The blocks, each applied and made immutable in the extension that applies it, and published,
+    * which hands them to the copy runner.
+    */
   private def copied(blocks: Vector[(BlockRef, Bytes)]): Step = (recovered, _) =>
     typed(blocks.zipWithIndex.traverse_ { case ((ref, raw), i) =>
-      recovered.persistence.extended(ref, raw, Vector(ref), Anchor(Some(ref), i))
+      recovered.persistence.extended(ref, raw, Vector(ref), Anchor(Some(ref), i)) *>
+        recovered.persistence.published
     })
 
   /** Both blocks made immutable in the one extension of the certifying block. */
@@ -193,7 +196,7 @@ class LeiosBackgroundSuite extends FailsOnUncaught:
           certifying,
           Vector(announcerRef, certifierRef),
           Anchor(Some(certifierRef), 1)
-        )
+        ) *> recovered.persistence.published
     )
 
   private def read(into: Ref[IO, Option[Held]]): Step = (_, leios) =>
@@ -336,30 +339,28 @@ class LeiosBackgroundSuite extends FailsOnUncaught:
           )(ReceivedBlockRecovery.startUp(epochSlots))
         for
           // the first run: both blocks are copied, and the certifier's promotion fails after its
-          // append, which stops the storage
+          // append, which stops the copy runner and so the storage
           failed <- leiosStore.use { leios =>
             stored(seeds.traverse_ { p =>
               leios.writeEbPoint(p, word32(1)) *> leios.writeEbBody(p, body(1), Vector.empty) *>
                 leios.writeTxs(p, Vector(0 -> tx(0)))
-            }) *> Handle
-              .allow[NodeError](
-                opened(failing(leios))
-                  .use(recovered =>
-                    recovered.persistence.extended(
-                      announcerRef,
-                      announcing,
-                      Vector(announcerRef),
-                      Anchor(Some(announcerRef), 0)
-                    ) *> recovered.persistence.extended(
-                      certifierRef,
-                      certifying,
-                      Vector(certifierRef),
-                      Anchor(Some(certifierRef), 1)
-                    )
-                  )
-                  .as(Option.empty[NodeError])
-              )
-              .rescue(e => IO.pure(Some(e)))
+            }) *> typed(
+              opened(failing(leios))
+                .use(recovered =>
+                  recovered.persistence.extended(
+                    announcerRef,
+                    announcing,
+                    Vector(announcerRef),
+                    Anchor(Some(announcerRef), 0)
+                  ) *> recovered.persistence.published *> recovered.persistence.extended(
+                    certifierRef,
+                    certifying,
+                    Vector(certifierRef),
+                    Anchor(Some(certifierRef), 1)
+                  ) *> recovered.persistence.published *>
+                    recovered.backgroundStopped.timeout(60.seconds)
+                )
+            )
           }
           _ <- snapshotsDropped(dir)
           // the next run opens both stores again, then the store is collected past the certifier
@@ -369,7 +370,10 @@ class LeiosBackgroundSuite extends FailsOnUncaught:
             )
           }
         yield
-          assertEquals(failed, Some(StorageError.LeiosStore(LeiosStoreError.Io(boom))))
+          assertEquals(
+            failed,
+            ChainStorage.BackgroundStopped.Failed(StorageError.LeiosStore(LeiosStoreError.Io(boom)))
+          )
           assertEquals(reopened._1, Some(certifierRef), "the certifier was copied before it failed")
           // the certified endorser block's body and closure are in the immutable partition
           assertEquals(reopened._2, expected)

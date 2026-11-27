@@ -70,11 +70,9 @@ one scheduled replaces it, and nothing of the schedule survives a restart, where
 collection covers it (`cdbsGcDelay`, `cdbsGcInterval`, `Storage/ChainDB/Impl/Args.hs` 119-124;
 `copyToImmutableDBRunner`, `scheduleGC` and `gcScheduleRunner`, `Storage/ChainDB/Impl/Background.hs`
 257-296 and 466-652, ouroboros-consensus `82ecba329`; the same code at `808e40054`). The copy that
-schedules a collection is not the reference's: Scarab copies, and schedules, for each persisted extension
-that ages blocks past `k`, where the reference's copy runner copies the whole prefix then eligible and
-schedules once, so under a backlog the two can schedule other cutoffs at other times, a Gap
-([#1262](https://github.com/KD5UJC-XYZ/scarab/issues/1262)). The same Gap covers when known-invalid
-blocks are forgotten: Scarab prunes them as the selected chain's anchor passes their slots
+schedules a collection is the reference's: a copy runner in a fiber of its own copies the whole prefix
+the published chain has aged past `k` and not yet copied, and schedules once (#1499). When known-invalid
+blocks are forgotten is a Gap ([#1262](https://github.com/KD5UJC-XYZ/scarab/issues/1262)): Scarab prunes them as the selected chain's anchor passes their slots
 (`InvalidBlocks.pruneBefore`), where the reference prunes them at each collection, 60 s or more after
 the copy that schedules it, below its slot (`garbageCollectBlocks`, `Background.hs` 446-447 at
 `82ecba329`, 456-457 at `808e40054`). Each schedule and each collection is logged

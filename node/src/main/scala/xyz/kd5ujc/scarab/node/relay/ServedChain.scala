@@ -94,6 +94,15 @@ final case class ServedChain(
       generation = generation + 1
     )
 
+  /** Append a block, and drop the blocks up to `stored`, the immutable store's tip, when the chain
+    * holds it: those the store holds, which become the immutable part. A tip the chain does not
+    * hold (its anchor, or none yet) drops nothing.
+    */
+  def extendStored(block: Served, stored: Option[BlockRef]): ServedChain =
+    stored.flatMap(tip => position(tip.point).map(tip -> _)) match
+      case Some((tip, i)) => extend(block, i + 1, Some(tip))
+      case None           => extend(block, 0, None)
+
   /** Roll the chain back to `to` (the anchor or a retained block). */
   def rollback(to: Point): Option[ServedChain] =
     val keep =

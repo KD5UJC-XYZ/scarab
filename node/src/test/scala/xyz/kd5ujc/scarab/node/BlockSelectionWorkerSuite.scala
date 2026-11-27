@@ -581,6 +581,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
   ) {
     val failure = StorageError.Io("worker-commit", new java.io.IOException("commit test fault"))
     val failing = new xyz.kd5ujc.scarab.storage.ChainPersistence[IO, BigInt]:
+      def published = IO.unit
       def extended(
           @scala.annotation.unused block: xyz.kd5ujc.scarab.consensus.BlockRef,
           @scala.annotation.unused raw: Bytes,

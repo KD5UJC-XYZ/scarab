@@ -161,6 +161,15 @@ trait ChainPersistence[F[_], S]:
       to: ChainSync.Point
   )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]): F[Unit]
 
+  /** The chain the extensions and rollbacks since the last call made is now the selected chain the
+    * node's readers see: the blocks those extensions aged past `k` may be copied to the immutable
+    * store from now on, as the reference's copy runner copies only once chain selection has written
+    * the chain it waits on (`cdbChain`, `copyToImmutableDBRunner`,
+    * `Storage/ChainDB/Impl/Background.hs` 266-284, ouroboros-consensus 82ecba329; 267-285 at
+    * 808e40054).
+    */
+  def published: F[Unit]
+
 object ChainPersistence:
   /** No block storage, but the backing store still follows the immutable tip. */
   def backingOnly[F[_]: cats.Monad, S](backing: StateBacking[F, S]): ChainPersistence[F, S] =
@@ -173,6 +182,7 @@ object ChainPersistence:
       def rolledBack(
           to: ChainSync.Point
       )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]) = cats.Monad[F].unit
+      def published = cats.Monad[F].unit
 
   def none[F[_]: cats.Applicative, S]: ChainPersistence[F, S] = new ChainPersistence[F, S]:
     def extended(ref: BlockRef, raw: Bytes, immutable: Vector[BlockRef], anchor: Anchor[S])(using
@@ -184,6 +194,7 @@ object ChainPersistence:
         to: ChainSync.Point
     )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]) =
       cats.Applicative[F].unit
+    def published = cats.Applicative[F].unit
 
 /** The ChainDB: an [[ImmutableStore]], [[LedgerSnapshots]] and a [[VolatileStore]] under one
   * directory, and the network identity the database was created for ([[NetworkIdentityFile]]).
@@ -308,9 +319,13 @@ object ChainStorage:
     *   blocks, and cut the log back to them.
     * @param snapshotsWritten
     *   Completes once no snapshot is being written in the background.
-    * @param collectionsStopped
-    *   Completes when a collection of the received log has failed: no other runs after it, and the
-    *   persistence refuses the next block with the failure. The node stops on it.
+    * @param copied
+    *   Completes once every block the published chain aged past `k` is copied to the immutable
+    *   store and the ledger's work after its copy is done ([[Persistence]]): the copy runner is
+    *   idle.
+    * @param backgroundStopped
+    *   Completes when the copy runner or a collection of the received log has failed: neither runs
+    *   after it, and the persistence refuses the next block with the failure. The node stops on it.
     */
   final case class Recovered[F[_], S](
       anchor: Option[BlockRef],
@@ -321,7 +336,8 @@ object ChainStorage:
       adopt: Vector[(BlockRef, Bytes)] => F[Unit],
       received: ReceivedBlocks[F],
       snapshotsWritten: F[Unit],
-      collectionsStopped: F[CollectionStopped]
+      copied: F[Unit],
+      backgroundStopped: F[BackgroundStopped]
   )
 
   /** A volatile block rebuilt by [[resume]]. */
@@ -391,6 +407,9 @@ object ChainStorage:
     *   store at that slot, as the reference prunes its cache first (`cdbsLeiosEvictTxCache`,
     *   `Storage/ChainDB/Impl/Args.hs:98-105`, `Background.hs:551-559` at ouroboros-consensus
     *   2416493b). None: no cache.
+    * @param beforeCopyStep
+    *   Run by the copy runner before each step of a round ([[CopyStep]]), for the suites that stand
+    *   in for a kill at that point. None: nothing.
     * @param receivedCheck
     *   The start-up check of each record of the received log as it is opened: its file is cut at
     *   the first one refused ([[ReceivedBlocks.Check]]).
@@ -407,7 +426,8 @@ object ChainStorage:
       snapshotMigration: Option[SnapshotMigration[F]] = None,
       reopen: Option[Reopen[F, S]] = None,
       leios: Option[LeiosStore[F]] = None,
-      leiosEvictTxCache: Option[BigInt => F[Unit]] = None
+      leiosEvictTxCache: Option[BigInt => F[Unit]] = None,
+      beforeCopyStep: Option[CopyStep => F[Unit]] = None
   )(receivedCheck: ReceivedBlocks.Check)(using
       SnapshotFormat[F, S],
       Raise[F, StorageError],
@@ -553,7 +573,9 @@ object ChainStorage:
       snapshotLock <- Resource.eval(Mutex[F])
       advancedAt <- Resource.eval(Ref.of[F, BigInt](BigInt(-1)))
       collections <- Resource.eval(GcSchedule[F](config.receivedCollection))
-      stopped <- Resource.eval(Deferred[F, CollectionStopped])
+      stopped <- Resource.eval(Deferred[F, BackgroundStopped])
+      copier <- Resource.eval(SignallingRef[F, Copier[S]](Copier.idle[S]))
+      staged <- Resource.eval(Ref.of[F, Vector[Aged[S]]](Vector.empty))
       persistence = new Persistence[F, S](
         store,
         snapshots,
@@ -574,7 +596,10 @@ object ChainStorage:
         advancedAt,
         collections,
         stopped,
-        leios
+        leios,
+        staged,
+        copier,
+        beforeCopyStep.getOrElse((_: CopyStep) => F.unit)
       )
       // Released before the stores: a graceful stop leaves a snapshot at the immutable tip.
       _ <- Resource.onFinalize(persistence.shutdownSnapshot)
@@ -591,10 +616,17 @@ object ChainStorage:
       _ <- collections
         .run(
           collected(store, received, leios, leiosEvictTxCache, events),
-          CollectionStopped.Defect(_)
+          BackgroundStopped.Defect(_)
         )
         .flatMap(stopped.complete(_).void)
         .background
+      // the copy runner, in a fiber of its own as the reference's (`launchBgTasks`,
+      // `Storage/ChainDB/Impl/Background.hs` 106-139, ouroboros-consensus 82ecba329; 107-140 at
+      // 808e40054): it copies the blocks the published chain aged past `k` and does the work that
+      // follows each copy ([[Persistence.copies]]). As the collections, its failure is raised by
+      // the next block the persistence stores, and whatever ends it ends it with a value. It is
+      // released before the shutdown snapshot is written, which then sees what it copied last
+      _ <- persistence.copies.flatMap(stopped.complete(_).void).background
       end <- Resource.eval(store.tip)
       _ <- Resource.eval(events.emit(StorageEvent.ReplayStarted(start._1, end)))
       began <- Resource.eval(Clock[F].monotonic)
@@ -612,6 +644,7 @@ object ChainStorage:
       persistence.adopt,
       received,
       persistence.snapshotsWritten,
+      persistence.copied,
       stopped.get
     )
 
@@ -791,12 +824,44 @@ object ChainStorage:
       _ <- events.emit(StorageEvent.VolatileResumed(resumed.size, dropped, (done - began).toMillis))
     yield resumed
 
-  /** Why the received log's collections stopped: a collection failed with a storage error, or the
-    * runner, waiting for a collection's time or running one, with an exception that is not ours.
+  /** Why the background runners stopped: the copy runner or a collection of the received log failed
+    * with a storage error, a block the copy runner copied could not be read for the endorser-block
+    * promotion (`Undecodable`, a block an earlier verdict admitted), or a runner, waiting for work
+    * or doing it, ended with an exception that is not ours. The first to stop is the cause.
     */
-  enum CollectionStopped:
+  enum BackgroundStopped:
     case Failed(error: StorageError)
+    case Undecodable(error: ChainError)
     case Defect(cause: Throwable)
+
+  /** A step of the copy runner's round ([[Persistence]]): the append of a block, the promotion of
+    * the endorser blocks the copied blocks certify, the collection scheduled, the ledger's work for
+    * one aged extension, the collection of the selected-chain log.
+    */
+  enum CopyStep:
+    case Append(ref: BlockRef)
+    case Promote
+    case Schedule(slot: BigInt)
+    case Advance(ref: BlockRef)
+    case Collect
+
+  /** The blocks one extension of the selected chain aged past `k`, oldest first, and the chain's
+    * new immutable boundary with its state: what the copy runner copies and then advances the
+    * ledger's stores to ([[Persistence]]).
+    */
+  private[storage] final case class Aged[S](
+      blocks: cats.data.NonEmptyVector[BlockRef],
+      anchor: Anchor[S]
+  )
+
+  /** The copy runner's work: the aged extensions of the published chain it has not taken yet
+    * (`queued`), and whether it is copying the ones it took (`copying`).
+    */
+  private[storage] final case class Copier[S](queued: Vector[Aged[S]], copying: Boolean):
+    def idle: Boolean = queued.isEmpty && !copying
+
+  private[storage] object Copier:
+    def idle[S]: Copier[S] = Copier(Vector.empty, copying = false)
 
   /** One scheduled collection of the received log, in an error scope of its own: the immutable
     * store is forced to disk first, so that every block below `slot` it holds is durable, then the
@@ -818,7 +883,7 @@ object ChainStorage:
       leios: Option[LeiosStore[F]],
       evictTxCache: Option[BigInt => F[Unit]],
       events: StorageEvents[F]
-  )(slot: BigInt): F[Either[CollectionStopped, Unit]] =
+  )(slot: BigInt): F[Either[BackgroundStopped, Unit]] =
     Async[F].defer(
       Handle
         .allow[StorageError](
@@ -830,9 +895,9 @@ object ChainStorage:
                 .from(slot)
                 .fold(_ => Async[F].unit, eb.garbageCollect(_)(using LeiosBackground.lifted[F]))
             ) *> events.emit(StorageEvent.PerformedGC(slot)))
-            .map(_.asRight[CollectionStopped])
+            .map(_.asRight[BackgroundStopped])
         )
-        .rescue(e => Async[F].pure(CollectionStopped.Failed(e).asLeft[Unit]))
+        .rescue(e => Async[F].pure(BackgroundStopped.Failed(e).asLeft[Unit]))
     )
 
   /** Re-apply the stored blocks after `from`, with no network. */
@@ -885,7 +950,29 @@ object ChainStorage:
           .as((acc.anchor, acc.state))
       }
 
-  /** @param previousSlot
+  /** The chain database's writes: the worker's, which log each block of the selected chain and hand
+    * the blocks it ages past `k` over, and the copy runner's, which copies them to the immutable
+    * store and does the work that follows each copy, in a fiber of its own.
+    *
+    * The reference's structure (ouroboros-consensus 82ecba329,
+    * `Storage/ChainDB/Impl/Background.hs`; the same at 808e40054, one line later from 99): chain
+    * selection writes a block to the VolatileDB and the selected chain to `cdbChain`, and returns;
+    * `copyToImmutableDBRunner` (257-296) waits until `cdbChain` holds more than its volatile
+    * suffix, copies the whole prefix then eligible to the ImmutableDB one block at a time, removing
+    * each from `cdbChain` after its append (`copyToImmutableDB`, 160-209), then triggers the
+    * LedgerDB's work (snapshot and collection, `triggerLedgerDbTasks`, 283 and 302-340) and
+    * schedules one collection of the VolatileDB for the slot of the new ImmutableDB tip
+    * (`scheduleGC`, 284 and 557-576). Here the worker's [[extended]] logs the block (the
+    * VolatileDB's write) and stages what it ages; [[published]], once the follower has published
+    * the chain, makes the staged blocks the copy runner's ([[copies]]), which copies them, promotes
+    * the endorser blocks they certify, schedules one collection of the received log, and then
+    * advances the backing store and takes a snapshot for each aged extension in order
+    * ([[advanced]]), before it collects the selected-chain log. The selected chain's blocks that
+    * are aged but not yet copied stay in `pending`, in front of the ones still volatile, and the
+    * served chain keeps them until the immutable store holds them, as the reference's followers
+    * read `cdbChain`.
+    *
+    * @param previousSlot
     *   The slot of the immutable tip before the block being advanced to.
     * @param lastTaken
     *   When (monotonic) the previous snapshot was requested; none yet since the start.
@@ -900,9 +987,15 @@ object ChainStorage:
     * @param collections
     *   The received log's collections, one scheduled after each copy to the immutable store.
     * @param stopped
-    *   Completed when the received log's collections stopped on a failure.
+    *   Completed when the copy runner or the received log's collections stopped on a failure.
     * @param leios
     *   The run's endorser-block store, in which each copy promotes what it certifies.
+    * @param staged
+    *   The extensions since the chain was last published that aged blocks past `k`, oldest first.
+    * @param copier
+    *   The published aged extensions the copy runner has to copy, and whether it is copying.
+    * @param beforeStep
+    *   Run before each step of the copy runner's round (the suites' stand-in for a kill there).
     */
   private final class Persistence[F[_]: Async, S](
       store: ImmutableStore[F],
@@ -923,26 +1016,34 @@ object ChainStorage:
       backing: StateBacking[F, S],
       advancedAt: Ref[F, BigInt],
       collections: GcSchedule[F],
-      stopped: Deferred[F, CollectionStopped],
-      leios: Option[LeiosStore[F]]
+      stopped: Deferred[F, BackgroundStopped],
+      leios: Option[LeiosStore[F]],
+      staged: Ref[F, Vector[Aged[S]]],
+      copier: SignallingRef[F, Copier[S]],
+      beforeStep: CopyStep => F[Unit]
   ) extends ChainPersistence[F, S]:
     private val F = Async[F]
 
-    /** A failed collection of the received log, raised here, in the caller's fiber: the storage
-      * stops at the next block, as the failure of the reference's collection ends the thread it is
-      * linked to (`launch`, `Storage/ChainDB/Impl/Background.hs` 116-121 and 140-142,
+    /** A failed background runner, raised here, in the caller's fiber: the storage stops at the
+      * next block, as the failure of the reference's copy runner or collection ends the thread it
+      * is linked to (`launch`, `Storage/ChainDB/Impl/Background.hs` 116-121 and 140-142,
       * ouroboros-consensus 82ecba329).
       */
-    private def collectionsGoing(using cats.mtl.Raise[F, StorageError]): F[Unit] =
+    private def backgroundGoing(using
+        cats.mtl.Raise[F, StorageError],
+        cats.mtl.Raise[F, ChainError]
+    ): F[Unit] =
       stopped.tryGet.flatMap {
-        case None                                  => F.unit
-        case Some(CollectionStopped.Failed(error)) => error.raise[F, Unit]
-        case Some(CollectionStopped.Defect(cause)) => F.raiseError(cause)
+        case None                                         => F.unit
+        case Some(BackgroundStopped.Failed(error))        => error.raise[F, Unit]
+        case Some(BackgroundStopped.Undecodable(problem)) => problem.raise[F, Unit]
+        case Some(BackgroundStopped.Defect(cause))        => F.raiseError(cause)
       }
 
-    /** Log the block, keep it pending, and move aged blocks into the immutable and backing stores.
-      * Cancellation is masked across this sequence so a graceful stop cannot interrupt a block's
-      * storage transition. Storage errors still propagate; this is not a multi-store transaction.
+    /** Log the block, keep it pending, and stage the blocks it ages past `k` for the copy runner,
+      * which takes them once the chain is [[published]]. Cancellation is masked across this
+      * sequence so a graceful stop cannot interrupt a block's storage transition. Storage errors
+      * still propagate; this is not a multi-store transaction.
       */
     def extended(
         ref: BlockRef,
@@ -951,36 +1052,114 @@ object ChainStorage:
         anchor: Anchor[S]
     )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]): F[Unit] =
       F.uncancelable { _ =>
-        collectionsGoing *> volatile.append(ref, raw) *>
+        backgroundGoing *> volatile.append(ref, raw) *>
           pending.update(_ :+ (ref -> raw)) *>
-          F.whenA(immutable.nonEmpty) {
-            for
-              batch <- pending.modify(p => (p.drop(immutable.size), p.take(immutable.size)))
-              _ <- F.unlessA(batch.map(_._1) == immutable)(
-                StorageError
-                  .OutOfOrder(StorageStructureError.VolatileImmutableMismatch)
-                  .raise[F, Unit]
-              )
-              // the immutable tip before the copy, the predecessor of its first block
-              previous <- leios.flatTraverse(_ => store.tip)
-              _ <- batch.traverse_((r, b) => store.append(r, b))
-              _ <- leios.traverse_(promoted(_, previous, batch))
-              // the copy is done: the received log is collected below the new immutable tip on the
-              // reference's schedule, timed from now, before the backing store and the selected-chain
-              // log are brought forward, as the reference's copy runner schedules its collection
-              // once the copy returns and leaves the ledger's work to another thread
-              // (`copyToImmutableDBRunner`, `Background.hs` 257-296, ouroboros-consensus 82ecba329).
-              // The copy here is of the blocks this extension ages past `k`, where the reference's
-              // runner copies the whole prefix then eligible, a Gap (#1262)
-              _ <- anchor.block.traverse_(tip =>
-                collections
-                  .schedule(tip.slot)
-                  .flatMap(entry => events.emit(StorageEvent.ScheduledGC(entry.slot, entry.at)))
-              )
-              _ <- anchor.block.traverse_(advanced(_, anchor.state))
-              _ <- collect(batch.size, anchor.block)
-            yield ()
-          }
+          cats.data.NonEmptyVector
+            .fromVector(immutable)
+            .traverse_(blocks => staged.update(_ :+ Aged(blocks, anchor)))
+      }
+
+    /** The staged aged extensions become the copy runner's, in order. */
+    def published: F[Unit] =
+      staged.getAndSet(Vector.empty).flatMap { aged =>
+        F.whenA(aged.nonEmpty)(copier.update(c => c.copy(queued = c.queued ++ aged)))
+      }
+
+    /** Completes once the copy runner has nothing to copy and is not copying. */
+    def copied: F[Unit] = copier.waitUntil(_.idle)
+
+    /** The copy runner: each round takes every published aged extension queued so far and copies
+      * them ([[copyAndTrigger]]), until a round fails; it ends with why, whatever ended it (FIB-2),
+      * in an error scope of its own (FIB-1).
+      */
+    def copies: F[BackgroundStopped] =
+      F.defer(
+        Handle
+          .allow[StorageError](
+            Handle
+              .allow[ChainError](round.foreverM[BackgroundStopped])
+              .rescue(problem => F.pure(BackgroundStopped.Undecodable(problem)))
+          )
+          .rescue(error => F.pure(BackgroundStopped.Failed(error)))
+      ).handleError(BackgroundStopped.Defect(_))
+
+    /** One round of the copy runner: wait until the published chain has aged blocks it has not
+      * copied (the reference waits until `cdbChain` is longer than its volatile suffix,
+      * `Background.hs` 272-275), take them all, and copy them.
+      */
+    private def round(using
+        cats.mtl.Raise[F, StorageError],
+        cats.mtl.Raise[F, ChainError]
+    ): F[Unit] =
+      copier.waitUntil(_.queued.nonEmpty) *>
+        copier
+          .modify(c => (Copier(Vector.empty, copying = true), c.queued))
+          .flatMap(aged =>
+            cats.data.NonEmptyVector
+              .fromVector(aged)
+              .traverse_(copyAndTrigger)
+              .guarantee(copier.update(_.copy(copying = false)))
+          )
+
+    /** Copy the blocks of `aged`, oldest first, and then do what follows a copy, in the reference's
+      * order (`copyAndTrigger`, `Storage/ChainDB/Impl/Background.hs` 270-284, ouroboros-consensus
+      * 82ecba329): the copy ([[copiedOne]], one block at a time), the endorser blocks the copied
+      * blocks certify promoted (`copyToImmutableDB` at 2416493b, 230-292), one collection of the
+      * received log scheduled for the slot of the new immutable tip, timed from now, then the
+      * ledger's work for each aged extension in order (the backing store brought to it and a
+      * snapshot when one is due, [[advanced]]), as the reference triggers its LedgerDB's snapshot
+      * and collection once the copy returns, and last the collection of the selected-chain log.
+      * Each step is masked, so a stop lands between steps.
+      */
+    private def copyAndTrigger(aged: cats.data.NonEmptyVector[Aged[S]])(using
+        cats.mtl.Raise[F, StorageError],
+        cats.mtl.Raise[F, ChainError]
+    ): F[Unit] =
+      val blocks = aged.toVector.flatMap(_.blocks.toVector)
+      val tip = aged.last.anchor.block
+      for
+        // the immutable tip before the copy, the predecessor of its first block
+        previous <- leios.flatTraverse(_ => store.tip)
+        batch <- blocks.traverse(ref => beforeStep(CopyStep.Append(ref)) *> copiedOne(ref))
+        _ <- leios.traverse_(eb =>
+          beforeStep(CopyStep.Promote) *> F.uncancelable(_ => promoted(eb, previous, batch))
+        )
+        _ <- tip.traverse_(t =>
+          beforeStep(CopyStep.Schedule(t.slot)) *> F.uncancelable(_ =>
+            collections
+              .schedule(t.slot)
+              .flatMap(entry => events.emit(StorageEvent.ScheduledGC(entry.slot, entry.at)))
+          )
+        )
+        _ <- aged.traverse_(a =>
+          a.anchor.block.traverse_(t =>
+            beforeStep(CopyStep.Advance(t)) *> F.uncancelable(_ => advanced(t, a.anchor.state))
+          )
+        )
+        _ <- beforeStep(CopyStep.Collect) *> F.uncancelable(_ => collect(blocks.size, tip))
+      yield ()
+
+    /** Copy `ref`, the oldest pending block, to the immutable store, and then drop it from the
+      * pending blocks, as the reference appends a block to its ImmutableDB and then removes it from
+      * `cdbChain` (`copyToImmutableDB`, `Background.hs` 188-206, ouroboros-consensus 82ecba329).
+      * The pending blocks begin with the aged ones in the order they aged, so a block that is not
+      * there is a defect of the storage's order.
+      */
+    private def copiedOne(ref: BlockRef)(using
+        cats.mtl.Raise[F, StorageError]
+    ): F[(BlockRef, Bytes)] =
+      F.uncancelable { _ =>
+        pending.get.map(_.headOption).flatMap {
+          case Some((oldest, raw)) if oldest == ref =>
+            store.append(ref, raw) *>
+              pending
+                .update(p => if p.headOption.exists(_._1 == ref) then p.drop(1) else p)
+                .as(ref -> raw)
+          case _ =>
+            StorageError
+              .OutOfOrder(StorageStructureError.VolatileImmutableMismatch)
+              .raise[F, (BlockRef, Bytes)]
+        }
       }
 
     /** Promote in `eb` the endorser blocks that the copied `batch` certifies, in one call, once the
@@ -1032,7 +1211,7 @@ object ChainStorage:
         to: ChainSync.Point
     )(using cats.mtl.Raise[F, StorageError], cats.mtl.Raise[F, ChainError]): F[Unit] =
       F.uncancelable { _ =>
-        collectionsGoing *> volatile.rollback(to) *> pending.update { p =>
+        backgroundGoing *> volatile.rollback(to) *> pending.update { p =>
           val index = p.indexWhere(_._1.point == to)
           if index >= 0 then p.take(index + 1) else Vector.empty
         }

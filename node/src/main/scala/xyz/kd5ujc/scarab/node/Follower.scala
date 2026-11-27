@@ -736,7 +736,14 @@ final class Follower[F[_]: Async, S] private (
             .of(finalChain, viewOf(known ++ steps.toVector.map(a => a.ref.hash -> a.view)))
         )
       )(F.pure)
-      _ <- F.uncancelable(_ => chain.set(finalChain) *> publishWindow(finalChain, selected))
+      // once the chain is published, the blocks it aged past `k` are the copy runner's, as the
+      // reference's copy runner waits on the chain its chain selection writes (`cdbChain`,
+      // Storage/ChainDB/Impl/Background.hs:270-284, ouroboros-consensus 82ecba329): a reader under
+      // the chain lock never sees the stores moved past the published chain's anchor
+      _ <- F.uncancelable(_ =>
+        chain.set(finalChain) *> publishWindow(finalChain, selected) *>
+          persistence.traverse_(_.published)
+      )
       _ <- invalidBlocks.get.flatMap(
         _.traverse_(registry =>
           finalChain.anchor.block.traverse_(anchor => registry.pruneBefore(anchor.slot))
