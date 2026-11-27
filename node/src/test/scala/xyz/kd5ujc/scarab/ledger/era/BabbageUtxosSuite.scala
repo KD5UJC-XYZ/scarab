@@ -853,13 +853,12 @@ class BabbageUtxosSuite extends FunSuite:
     "PPUP: a minor version that wraps at Word32, which the reference's pvCanFollow follows (#1514)"
   ) {
     // the parameters at (8, 2^32 - 1): the reference's `curMinor + 1` is a `Word32` sum
-    // (`Shelley/PParams.hs:305-307`, cardano-ledger f649f975), so (8, 0) follows; the flat check
-    // (`UpdateChecks.canFollow`) adds without the wrap and refuses it, a difference #1514 tracks
+    // (`Shelley/PParams.hs:305-307`, cardano-ledger f649f975), so (8, 0) follows, on the era rule
+    // and on the flat check (`UpdateChecks.canFollow`, which calls `pvCanFollow` since #1514)
     val atMax = pp8.copy(protocolMinor = (BigInt(1) << 32) - 1)
     val c = crafted("wrap", 510, update(5, 1 -> proposal(protVer(8, 0))))(using atMax)
       .copy(gov = emptyGov(atMax))
-    assert(typedPpup(c).isRight, "the era rule follows the reference")
-    assertEquals(flatPpup(c), Left(List(PpupFailure.PVCannotFollow(8, 0))))
+    assert(ppupBoth(c).isRight, "both follow the reference")
     // (9, 0) follows on both
     assert(ppupBoth(c.copy(u = update(5, 1 -> proposal(protVer(9, 0))))).isRight)
   }

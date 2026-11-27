@@ -3570,9 +3570,8 @@ Conway's rules on the classes follow as the rest of stage 2.
       deregistration's refund. `BabbageUpdateSuite` checks that each delegate's kept update is the typed update's and
       the stored form's, a delegate proposing twice among them.
 
-    Every comparison agrees. One crafted case differs from the flat path: at a minor version of 2^32 - 1, the era rule
-    lets `(major, 0)` follow, as the reference does, and the flat check refuses it
-    ([#1514](https://github.com/KD5UJC-XYZ/scarab/issues/1514)). The corpora hold no `PVCannotFollowPPUP`, no
+    Every comparison agrees, a crafted case at a minor version of 2^32 - 1 among them, where both let `(major, 0)`
+    follow as the reference does ([#1514](https://github.com/KD5UJC-XYZ/scarab/issues/1514)). The corpora hold no `PVCannotFollowPPUP`, no
     `PPUpdateWrongEpoch` and no refund. Nothing in the node runs these rules yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.

@@ -7,6 +7,5 @@
     classes.
 
   On the recorded Babbage submissions, the refusal corpora's cases with their states, the era-walking capture's
-  proposals and crafted cases, they give the flat rules' verdicts, failures and states, and the reference's verdicts.
-  The one exception is a minor version that wraps at `Word32`, where they follow the reference and the flat check does
-  not (#1514). The node does not run them yet, so neither behaviour nor the persisted format changes.
+  proposals and crafted cases, they give the flat rules' verdicts, failures and states, and the reference's verdicts,
+  a minor version that wraps at `Word32` among them (#1514). The node does not run them yet, so neither behaviour nor the persisted format changes.
