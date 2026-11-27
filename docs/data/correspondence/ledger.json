@@ -10281,7 +10281,9 @@
    "structure": "same",
    "evidence": [
     "ConwayUtxowChecksSuite",
-    "EraUtxowSuite"
+    "EraUtxowSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "each purpose built through the script class's builder (`mkSpendingPurpose` and the others, `AlonzoEraScript`); the same at 9df9f98c",
    "digest": "9d32f3bc17e30a67"
@@ -10303,7 +10305,9 @@
    "structure": "same",
    "evidence": [
     "ConwayUtxowChecksSuite",
-    "EraUtxowSuite"
+    "EraUtxowSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "each purpose built through the script class's builder (`mkSpendingPurpose` and the others, `AlonzoEraScript`); the same at 9df9f98c",
    "digest": "e0a19c719ad22bd4"
@@ -10325,7 +10329,9 @@
    "structure": "same",
    "evidence": [
     "ConwayUtxowChecksSuite",
-    "EraUtxowSuite"
+    "EraUtxowSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "each purpose built through the script class's builder (`mkSpendingPurpose` and the others, `AlonzoEraScript`); the same at 9df9f98c",
    "digest": "be8ab57311f3947d"
@@ -13590,7 +13596,9 @@
    "structure": "differs",
    "evidence": [
     "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
+    "ConwayPlutusContextRefusalsSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the shape of 9df9f98c and 29a7d656 (decided 2026-11-20, #85), with no change of behaviour: the level, the scripts used and the level's information, which f649f975's `LedgerTxInfo era` (`Context.hs:92-103`) lacks; the epoch information and the system start as one clock, the flat translation's, whose failure is typed where the reference's is Text",
    "digest": "db45c59729172fed"
@@ -13653,7 +13661,9 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "digest": "ea56f069744ebe0f"
   },
@@ -14170,15 +14180,27 @@
       300,
       300
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "ContextError BabbageEra",
+     "lines": [
+      232,
+      232
+     ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
-   "note": "Conway's case and Dijkstra's; Dijkstra's, `DijkstraContextError`, has no translation that gives it yet (#85's item on Dijkstra's script contexts)",
-   "digest": "179a89b5868e7c2b"
+   "note": "Babbage's case, Conway's and Dijkstra's; Dijkstra's, `DijkstraContextError`, has no translation that gives it yet (#85's item on Dijkstra's script contexts)",
+   "digest": "21eabf4183134642"
   },
   "type ledger.era.PlutusTxCert": {
    "upstream": [
@@ -14869,7 +14891,9 @@
    "structure": "differs",
    "evidence": [
     "EraPlutusContextSuite",
-    "EraConwaySuite"
+    "EraConwaySuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the spending purpose read through the script class's `toSpendingPurpose`, an `AlonzoEraScript` member; the output's inline datum is read as data first, as the reference's `<|>` forces its strict `SJust`, and its failure returned where the reference raises `error`: only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach it",
    "digest": "b997c7dfd352d32f"
@@ -19907,16 +19931,28 @@
       302,
       307
      ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "TxInfoResult BabbageEra",
+     "lines": [
+      233,
+      236
+     ]
     }
    ],
    "class": "Mirror",
    "structure": "same",
    "evidence": [
     "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
+    "ConwayPlutusContextRefusalsSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
-   "note": "Conway's case and Dijkstra's; Dijkstra's has no translation that gives it yet (#85's item on Dijkstra's script contexts)",
-   "digest": "8b02b525087d82b7"
+   "note": "Babbage's case, Conway's and Dijkstra's; Dijkstra's has no translation that gives it yet (#85's item on Dijkstra's script contexts)",
+   "digest": "cc6bb8cf7689fb40"
   },
   "class ledger.era.SupportedLanguage": {
    "upstream": [
@@ -20455,7 +20491,9 @@
    "structure": "same",
    "evidence": [
     "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
+    "ConwayPlutusContextRefusalsSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "each purpose read through the script class's readers (`AlonzoEraScript`), as 9df9f98c reads them; f649f975 matches Alonzo's purpose, Babbage's, itself (`Alonzo/Plutus/TxInfo.hs:381-392`), and its Conway writes its V1 and V2 purposes itself (`Conway/TxInfo.hs:724-739`), with the same results",
    "digest": "5cc43ed6f519572b"
@@ -20517,7 +20555,9 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "digest": "a7214f09d74120fc",
    "note": "the spending datum, through `spendingDatum`, read before the purpose, whose translation cannot fail for the one purpose that has a datum"
@@ -20558,7 +20598,9 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the spending datum the arguments' `where` clauses read (`getSpendingDatum ltiUTxO ltiTx`), written once, at the transaction's level; its failure, which only an inline datum taken unread reaches, is the node's own `Undecodable` where the reference raises error",
    "digest": "9f8b53d69dbe9474"
@@ -20610,7 +20652,9 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "digest": "31d21f15a2c2910b",
    "note": "the spending datum, through `AlonzoTxInfo.spendingDatum`, read before the purpose, whose translation cannot fail for the one purpose that has a datum"
@@ -22054,7 +22098,9 @@
    "structure": "same",
    "evidence": [
     "EraPlutusContextSuite",
-    "ConwayUtxowChecksSuite"
+    "ConwayUtxowChecksSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
    "digest": "6ed9feb6cbac2fce"
@@ -22137,7 +22183,9 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "digest": "ba39e7f3e491e2a3"
   },
@@ -22167,7 +22215,9 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "with its `merge`, the successes and the failures each in reverse order; the redeemers and the cost models read only for a script the information uses, as the reference's lazy `redeemers` and its lookup of each script's model (`Map.lookup lang (costModelsValid costModels)`, `Evaluate.hs:145, 155`), so a transaction that uses none reads neither",
    "digest": "127262fb2685b21b"
@@ -22198,7 +22248,9 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the epoch information and the system start as the one clock function of `LedgerTxInfo` (#85's item on its two fields); of a top-level transaction only, without the reference's empty memo of sub-transactions' contexts (`ltiMemoizedSubTransactions = mempty`), which only Dijkstra fills (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123)",
    "digest": "9326cc5943ba4148"
@@ -22558,7 +22610,9 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "EraPlutusContextSuite"
+    "EraPlutusContextSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the epoch information and the system start as the one clock function of `LedgerTxInfo` (#85's item on its two fields); a function, which `ApplyTx`'s member `mkStAnnTx` is for Conway when the mempool comes",
    "digest": "56f0b1088423fc43"
@@ -25433,7 +25487,9 @@
    "evidence": [
     "EraConwaySuite",
     "DijkstraPlutusPurposeSuite",
-    "DijkstraTxSuite"
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
    "digest": "7c3b6d98680a53d5"
@@ -25466,7 +25522,9 @@
    "evidence": [
     "EraConwaySuite",
     "DijkstraPlutusPurposeSuite",
-    "DijkstraTxSuite"
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
    "digest": "a194635483800660"
@@ -25499,7 +25557,9 @@
    "evidence": [
     "EraConwaySuite",
     "DijkstraPlutusPurposeSuite",
-    "DijkstraTxSuite"
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
    "digest": "a6e1d243eea75034"
@@ -25532,7 +25592,9 @@
    "evidence": [
     "EraConwaySuite",
     "DijkstraPlutusPurposeSuite",
-    "DijkstraTxSuite"
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
    "digest": "efc1b3cfa2af2ffc"
@@ -25565,7 +25627,9 @@
    "evidence": [
     "EraConwaySuite",
     "DijkstraPlutusPurposeSuite",
-    "DijkstraTxSuite"
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
    "digest": "7815b889f7b40c16"
@@ -25598,7 +25662,9 @@
    "evidence": [
     "EraConwaySuite",
     "DijkstraPlutusPurposeSuite",
-    "DijkstraTxSuite"
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
    "digest": "5cc70afb32f03680"
@@ -25631,7 +25697,9 @@
    "evidence": [
     "EraConwaySuite",
     "DijkstraPlutusPurposeSuite",
-    "DijkstraTxSuite"
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
    "digest": "1c599dfc447360dc"
@@ -25664,7 +25732,9 @@
    "evidence": [
     "EraConwaySuite",
     "DijkstraPlutusPurposeSuite",
-    "DijkstraTxSuite"
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
    ],
    "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
    "digest": "802cfd177073160f"
@@ -51857,6 +51927,72 @@
    "note": "the auxiliary data's decoder at a version of Babbage's, 7 or 8, as `decodeFull'` reads at any version: the reference's verdicts at protocol version 8 are read at it",
    "digest": "fd605e998047eb80"
   },
+  "class ledger.era.BabbageTxInfoResult": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "BabbageTxInfoResult",
+     "lines": [
+      233,
+      236
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "each field computed when first read, as the reference keeps them lazy",
+   "digest": "c70908c27f5994e2"
+  },
+  "val ledger.era.BabbageTxInfoResult#tirPlutusV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "lookupTxInfoResult SPlutusV1",
+     "lines": [
+      252,
+      252
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the field the reference's lookup matches",
+   "digest": "0bef8bd13064b81d"
+  },
+  "val ledger.era.BabbageTxInfoResult#tirPlutusV2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "lookupTxInfoResult SPlutusV2",
+     "lines": [
+      253,
+      253
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the field the reference's lookup matches",
+   "digest": "c9a7ddff2b47cd9e"
+  },
   "def ledger.era.AlonzoPlutusPurpose.hoistPlutusPurpose": {
    "upstream": [
     {
@@ -51882,6 +52018,10 @@
    ],
    "class": "Mirror",
    "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
    "note": "Babbage's instance's, and Alonzo's, written once over Alonzo's purpose, which both eras' are",
    "digest": "504ab18c21b009cf"
   },
@@ -51900,6 +52040,10 @@
    ],
    "class": "Mirror",
    "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
    "note": "Babbage's instance's reader, written once over Alonzo's purpose (Alonzo's the same, `Alonzo/Scripts.hs:588-589`)",
    "digest": "e6ef37f65f53e4ed"
   },
@@ -51918,6 +52062,10 @@
    ],
    "class": "Mirror",
    "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
    "note": "Babbage's instance's reader, written once over Alonzo's purpose (Alonzo's the same)",
    "digest": "2a6c3fd826a158bb"
   },
@@ -51936,6 +52084,10 @@
    ],
    "class": "Mirror",
    "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
    "note": "Babbage's instance's reader, written once over Alonzo's purpose (Alonzo's the same)",
    "digest": "e52644053c372372"
   },
@@ -51954,8 +52106,483 @@
    ],
    "class": "Mirror",
    "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
    "note": "Babbage's instance's reader, written once over Alonzo's purpose (Alonzo's the same)",
    "digest": "001b0f5c0ff88034"
+  },
+  "def ledger.era.AlonzoTxInfo.transTxCert": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transTxCert",
+     "lines": [
+      423,
+      432
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transTxCert",
+     "lines": [
+      353,
+      362
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the eras up to Babbage (`AtMostEra \"Babbage\"`) as their own certificate class, ShelleyEraTxCertToBabbage; f649f975 tries the common form first, with the same results",
+   "digest": "86cbde062a335d99"
+  },
+  "def ledger.era.AlonzoTxInfo.transValidityInterval": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transValidityInterval",
+     "lines": [
+      319,
+      341
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "symbol": "transValidityInterval",
+     "lines": [
+      252,
+      274
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the epoch information and the system start as the one clock function of `LedgerTxInfo`, whose failure is typed where the reference's is Text; an end alone closed (`PV1.to`), unlike Conway's",
+   "digest": "23b02991a010f7d2"
+  },
+  "def ledger.era.AlonzoUTxO.getAlonzoScriptsNeeded": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "getAlonzoScriptsNeeded",
+     "lines": [
+      313,
+      362
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "a certificate a script witnesses that occurs again takes the index of its first occurrence, the seen certificates compared by value as the reference's derived Ord compares them; the same at 9df9f98c",
+   "digest": "70cd0cca9ec64cb9"
+  },
+  "def ledger.era.AlonzoUTxO.getAlonzoWitsVKeyNeeded": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "symbol": "getAlonzoWitsVKeyNeeded",
+     "lines": [
+      413,
+      429
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "of a top-level body, the genesis delegations given where the reference reads them from the certificate state, as Babbage's state classes (EraCertState) are not among the era types yet (#85)",
+   "digest": "323cfa5f1c5d8910"
+  },
+  "def ledger.era.BabbageTxInfo.transTxInInfoV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "transTxInInfoV1",
+     "lines": [
+      161,
+      174
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "digest": "0b0417a623f792ce"
+  },
+  "def ledger.era.BabbageTxInfo.transTxOutV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "transTxOutV1",
+     "lines": [
+      112,
+      128
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "transTxOutV1",
+     "lines": [
+      110,
+      126
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "whether there is an inline datum asked through `dataTxOutF`, which reads it as data, as the reference's strict `SJust` forces `binaryDataToData`; an inline datum taken unread that does not read is the node's own Undecodable where the reference raises error",
+   "digest": "3f8a88e08cdce73d"
+  },
+  "def ledger.era.PV1.Interval.to": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "symbol": "to",
+     "lines": [
+      361,
+      362
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "digest": "eee651c46d20fa5d"
+  },
+  "def ledger.era.PV1.upperBound": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "symbol": "upperBound",
+     "lines": [
+      304,
+      305
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "digest": "5fd39086cd1c9363"
+  },
+  "def ledger.era.ShelleyUTxO.getShelleyMinFeeTxUtxo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "symbol": "getShelleyMinFeeTxUtxo",
+     "lines": [
+      181,
+      183
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "digest": "102b695e20b5a1f5"
+  },
+  "def ledger.era.ShelleyUTxO.getShelleyWitsVKeyNeeded": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "symbol": "getShelleyWitsVKeyNeeded",
+     "lines": [
+      253,
+      263
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "of a top-level body, the genesis delegations given where the reference reads them from the certificate state (`dsGenDelegs (certState ^. certDStateL)`), as Babbage's state classes are not among the era types yet (#85)",
+   "digest": "72921b761cbbea36"
+  },
+  "def ledger.era.ShelleyUTxO.witsVKeyNeededGenDelegs": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "symbol": "witsVKeyNeededGenDelegs",
+     "lines": [
+      188,
+      201
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "digest": "cddb85141bb35748"
+  },
+  "def ledger.era.babbage.BabbageEraUTxO.mkStAnnTx": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage.hs",
+     "symbol": "mkStAnnTx",
+     "lines": [
+      65,
+      65
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "mkAlonzoStAnnTx at Babbage, a function as Conway's is until its mempool",
+   "digest": "a755d6fb89efc07f"
+  },
+  "val ledger.era.babbage.BabbageEraUTxO.instance": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs",
+     "symbol": "EraUTxO BabbageEra",
+     "lines": [
+      43,
+      59
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs",
+     "symbol": "AlonzoEraUTxO BabbageEra",
+     "lines": [
+      61,
+      72
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "every member of the reference's EraUTxO and AlonzoEraUTxO instances; getWitsVKeyNeeded reads the genesis delegations from Babbage's certificate state itself",
+   "digest": "1f2da1538bd9f13f"
+  },
+  "val ledger.era.BabbageTxInfo.plutusV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 BabbageEra",
+     "lines": [
+      359,
+      396
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "a body's outputs are zipped with the transaction indices, as the reference zips them with [minBound ..] :: [TxIx] (TxIx.enumerate), so none past 65,535 is translated",
+   "digest": "d9210dd5879bf644"
+  },
+  "val ledger.era.BabbageTxInfo.plutusV2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 BabbageEra",
+     "lines": [
+      398,
+      435
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "a body's outputs are zipped with the transaction indices, as the reference zips them with [minBound ..] :: [TxIx] (TxIx.enumerate), so none past 65,535 is translated",
+   "digest": "0dbb9f4ab2a32a68"
+  },
+  "val ledger.era.BabbageTxInfo.context": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "EraPlutusContext BabbageEra",
+     "lines": [
+      231,
+      254
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "each language's information computed when first looked up",
+   "digest": "3fdd26de2621db14"
+  },
+  "given ledger.era.EraPlutusContext.babbage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "EraPlutusContext BabbageEra",
+     "lines": [
+      231,
+      254
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "digest": "7bd7c339d034dc08"
+  },
+  "given ledger.era.EraPlutusTxInfo.babbagePlutusV1": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 BabbageEra",
+     "lines": [
+      359,
+      396
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "digest": "f4fe308b5b1842e2"
+  },
+  "given ledger.era.EraPlutusTxInfo.babbagePlutusV2": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 BabbageEra",
+     "lines": [
+      398,
+      435
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "digest": "f91ea622d89e30ac"
+  },
+  "given ledger.era.Inject.babbageAlonzo": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "Inject (AlonzoContextError era) (BabbageContextError era)",
+     "lines": [
+      284,
+      285
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "digest": "44f004df5a189361"
   }
  },
  "glue": [
@@ -52164,6 +52791,7 @@
     "given ledger.era.EraTxAuxData.dijkstra",
     "given ledger.era.EraTxBody.dijkstra",
     "given ledger.era.EraTxWits.dijkstra",
+    "given ledger.era.EraUTxO.babbage",
     "given ledger.era.EraUTxO.conway",
     "given ledger.era.EraUTxO.dijkstra",
     "given ledger.era.GovPurposeId.ordering",
@@ -52262,7 +52890,9 @@
   {
    "reason": "the reading of the outputs the node keeps as an era's UTxO, refused only for an output a damaged store holds; the reference keeps the UTxO at its era's type and has no counterpart (#85)",
    "definitions": [
+    "def ledger.era.babbage.BabbageEraUTxO.fromStored",
     "def ledger.era.conway.ConwayUTxO.fromStored",
+    "object ledger.era.babbage.BabbageEraUTxO",
     "object ledger.era.conway.ConwayUTxO"
    ]
   },

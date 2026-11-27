@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{TranslationError, TxIn, Unsigned}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag, TxIx}
+import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway, Dijkstra, EraTag, TxIx}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
 // The translation of a transaction to the script context of a Plutus language
@@ -21,6 +21,12 @@ trait Inject[A, B]:
 object Inject:
   /** `instance Inject a a` (`BaseTypes.hs:1035-1036`, cardano-ledger f649f975). */
   given self[A]: Inject[A, A] = a => a
+
+  /** `instance Inject (AlonzoContextError era) (BabbageContextError era)`
+    * (`Babbage/TxInfo.hs:284-285`, cardano-ledger 9df9f98c), Babbage's context error being its own.
+    */
+  given babbageAlonzo: Inject[AlonzoContextError[Babbage], ContextError[Babbage]] =
+    BabbageContextError.AlonzoContextError(_)
 
   /** `instance Inject (BabbageContextError era) (ConwayContextError era)`
     * (`Conway/TxInfo.hs:209-210`, cardano-ledger f649f975).
@@ -67,11 +73,13 @@ object Inject:
     )
 
 /** The context error of era `E` (`type ContextError era`, `Context.hs:198`, cardano-ledger
-  * f649f975): Conway's is `ConwayContextError ConwayEra` (`Conway/TxInfo.hs:150`), Dijkstra's
-  * `DijkstraContextError DijkstraEra`
+  * f649f975): Babbage's is `BabbageContextError BabbageEra` (`Babbage/TxInfo.hs:232`,
+  * cardano-ledger 9df9f98c), Conway's is `ConwayContextError ConwayEra` (`Conway/TxInfo.hs:150`),
+  * Dijkstra's `DijkstraContextError DijkstraEra`
   * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:300`, cardano-ledger 9df9f98c).
   */
 type ContextError[E <: EraTag] = E match
+  case Babbage  => BabbageContextError[Babbage]
   case Conway   => conway.ConwayContextError[Conway]
   case Dijkstra => dijkstra.DijkstraContextError[Dijkstra]
 
@@ -307,12 +315,15 @@ trait EraPlutusTxInfo[L <: Language, E <: EraTag]:
     */
   def lookupTxInfoResult(result: TxInfoResult[E]): PlutusTxInfoResult[L, E]
 
-/** The instances of each era and language, the one place that lists them: Conway's for Plutus V1 to
-  * V3 (`Conway/TxInfo.hs:420-547`, cardano-ledger 9df9f98c) and Dijkstra's for Plutus V1 to V4
+/** The instances of each era and language, the one place that lists them: Babbage's for Plutus V1
+  * and V2 (`Babbage/TxInfo.hs:359-435`, cardano-ledger 9df9f98c), Conway's for Plutus V1 to V3
+  * (`Conway/TxInfo.hs:420-547`, cardano-ledger 9df9f98c) and Dijkstra's for Plutus V1 to V4
   * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:333-484, 568-629`, cardano-ledger
   * 9df9f98c).
   */
 object EraPlutusTxInfo:
+  given babbagePlutusV1: EraPlutusTxInfo[Language.PlutusV1, Babbage] = BabbageTxInfo.plutusV1
+  given babbagePlutusV2: EraPlutusTxInfo[Language.PlutusV2, Babbage] = BabbageTxInfo.plutusV2
   given conwayPlutusV1: EraPlutusTxInfo[Language.PlutusV1, Conway] =
     conway.ConwayTxInfo.plutusV1
   given conwayPlutusV2: EraPlutusTxInfo[Language.PlutusV2, Conway] =
@@ -329,11 +340,12 @@ object EraPlutusTxInfo:
     dijkstra.DijkstraTxInfo.plutusV4
 
 /** The memoised transaction information of every language era `E` supports (`data TxInfoResult
-  * era`, `Context.hs:234`, cardano-ledger 9df9f98c): Conway's of Plutus V1 to V3
-  * (`Conway/TxInfo.hs:160-164`), Dijkstra's of V1 to V4
-  * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:302-307`).
+  * era`, `Context.hs:234`, cardano-ledger 9df9f98c): Babbage's of Plutus V1 and V2
+  * (`Babbage/TxInfo.hs:233-236`), Conway's of Plutus V1 to V3 (`Conway/TxInfo.hs:160-164`),
+  * Dijkstra's of V1 to V4 (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:302-307`).
   */
 type TxInfoResult[E <: EraTag] = E match
+  case Babbage  => BabbageTxInfoResult
   case Conway   => conway.ConwayTxInfoResult
   case Dijkstra => dijkstra.DijkstraTxInfoResult
 
@@ -396,11 +408,13 @@ trait EraPlutusContext[E <: EraTag]:
       t: EraPlutusTxInfo[L, E]
   ): PlutusTxInfoResult[L, E] = t.lookupTxInfoResult(result)
 
-/** The instances of each era, the one place that lists them: Conway's (`Conway/TxInfo.hs:157-187`,
+/** The instances of each era, the one place that lists them: Babbage's
+  * (`Babbage/TxInfo.hs:231-254`, cardano-ledger 9df9f98c), Conway's (`Conway/TxInfo.hs:157-187`,
   * cardano-ledger 9df9f98c) and Dijkstra's
   * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:299-331`, cardano-ledger 9df9f98c).
   */
 object EraPlutusContext:
+  given babbage: EraPlutusContext[Babbage] = BabbageTxInfo.context
   given conway: EraPlutusContext[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxInfo.context
   given dijkstra: EraPlutusContext[Dijkstra] =
     xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxInfo.context

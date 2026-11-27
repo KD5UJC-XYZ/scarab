@@ -3,16 +3,18 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Address, TxIn, Unsigned}
+import xyz.kd5ujc.scarab.ledger.{Address, GenDelegPair, TxIn, Unsigned}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.ledger.state.{
   Accounts,
+  Babbage,
   CertState,
   Coin,
   Conway,
   Credential,
   Dijkstra,
   EraTag,
+  Genesis,
   KeyHash,
   PState,
   StakePool,
@@ -267,6 +269,49 @@ object AlonzoUTxO:
     case Address.Kind.Shelley(_, payment, _, _) => credScriptHash(payment)
     case Address.Kind.Byron(_)                  => None
 
+  /** `getAlonzoScriptsNeeded` (`Alonzo/UTxO.hs:313-362`, cardano-ledger f649f975, the same at
+    * 9df9f98c), the scripts needed of Alonzo and Babbage: the spending, withdrawing, certifying and
+    * minting needs. A certificate a script witnesses takes the index of its first occurrence when
+    * it occurs again (equal as the reference's derived `Ord` compares it), keeping its own place in
+    * the sequence; the index goes on counting every certificate.
+    */
+  def getAlonzoScriptsNeeded[E <: EraTag, L <: TxLevel](utxo: UTxO[E], body: TxBody[L, E])(using
+      b: MaryEraTxBody[E],
+      l: b.Level[L],
+      s: AlonzoEraScript[E]
+  ): AlonzoScriptsNeeded[E] =
+    type Seen = (Map[TxCert[E], Ix], Long, List[(PlutusPurpose[AsIxItem, E], Bytes)])
+    val (_, _, certPurposes) = b
+      .certs[L](body)
+      .foldLeft[Seen]((Map.empty, 0L, Nil)) { case ((seenTxCerts, ix, purposes), txCert) =>
+        b.certsOf.getScriptWitnessTxCert(txCert) match
+          case None => (seenTxCerts, ix + 1, purposes)
+          case Some(scriptHash) =>
+            seenTxCerts.get(txCert) match
+              case None =>
+                val index = Unsigned.wrapping[Unsigned.Width.W32](BigInt(ix))
+                val purpose = s.mkCertifyingPurpose(AsIxItem(index, txCert))
+                (seenTxCerts.updated(txCert, index), ix + 1, (purpose, scriptHash) :: purposes)
+              case Some(first) =>
+                val purpose = s.mkCertifyingPurpose(AsIxItem(first, txCert))
+                (seenTxCerts, ix + 1, (purpose, scriptHash) :: purposes)
+      }
+    getSpendingScriptsNeeded[E, L](utxo, body) ++
+      getWithdrawingScriptsNeeded[E, L](body) ++
+      AlonzoScriptsNeeded(certPurposes.reverse.toVector) ++
+      getMintingScriptsNeeded[E, L](body)
+
+  /** `getAlonzoWitsVKeyNeeded` (`Alonzo/UTxO.hs:413-429`, cardano-ledger f649f975): Shelley's keys,
+    * the genesis delegates of the body's update among them, and the required signers.
+    */
+  def getAlonzoWitsVKeyNeeded[E <: EraTag](
+      genDelegs: Map[KeyHash[Genesis], GenDelegPair],
+      utxo: UTxO[E],
+      body: TxBody[TxLevel.Top, E]
+  )(using b: ShelleyEraTxBody[E] & AlonzoEraTxBody[E]): Set[Bytes] =
+    ShelleyUTxO.getShelleyWitsVKeyNeeded[E](genDelegs, utxo, body) ++
+      b.reqSignerHashes[TxLevel.Top](body)(using b.top)
+
   /** `getAlonzoScriptsHashesNeeded` (`Alonzo/UTxO.hs:241-242`, cardano-ledger f649f975). */
   def getAlonzoScriptsHashesNeeded[E <: EraTag](scriptsNeeded: AlonzoScriptsNeeded[E]): Set[Bytes] =
     scriptsNeeded.unAlonzoScriptsNeeded.map(_._2).toSet
@@ -309,6 +354,41 @@ object UTxOs:
   * cardano-ledger f649f975).
   */
 object ShelleyUTxO:
+  /** `getShelleyMinFeeTxUtxo` (`Shelley/UTxO.hs:181-183`, cardano-ledger f649f975): the minimum fee
+    * with no reference scripts counted, as before Conway.
+    */
+  def getShelleyMinFeeTxUtxo[E <: EraTag, L <: TxLevel](pp: PParams[E], tx: Tx[L, E])(using
+      t: EraTx[E],
+      l: t.bodyOf.Level[L]
+  ): Coin =
+    t.getMinFeeTx[L](pp, tx, 0L)
+
+  /** `witsVKeyNeededGenDelegs` (`Shelley/UTxO.hs:188-201`, cardano-ledger f649f975): the delegate
+    * of each genesis key whose update the body proposes, of the genesis delegations `genDelegs`
+    * (`Map.intersection`).
+    */
+  def witsVKeyNeededGenDelegs[E <: EraTag](
+      body: TxBody[TxLevel.Top, E],
+      genDelegs: Map[KeyHash[Genesis], GenDelegPair]
+  )(using b: ShelleyEraTxBody[E]): Set[Bytes] =
+    b.update(body)
+      .fold(Set.empty[Bytes])(
+        _.proposals.updates.keySet.flatMap(genesis => genDelegs.get(genesis).map(_.delegate))
+      )
+
+  /** `getShelleyWitsVKeyNeeded` (`Shelley/UTxO.hs:253-263`, cardano-ledger f649f975), of a
+    * top-level body: the keys without the governance ones, and the genesis delegates of its update.
+    * The genesis delegations are the certificate state's (`dsGenDelegs (certState ^.
+    * certDStateL)`), which the caller reads.
+    */
+  def getShelleyWitsVKeyNeeded[E <: EraTag](
+      genDelegs: Map[KeyHash[Genesis], GenDelegPair],
+      utxo: UTxO[E],
+      body: TxBody[TxLevel.Top, E]
+  )(using b: ShelleyEraTxBody[E]): Set[Bytes] =
+    getShelleyWitsVKeyNeededNoGov[E, TxLevel.Top](utxo, body)(using b, b.top) ++
+      witsVKeyNeededGenDelegs[E](body, genDelegs)
+
   /** `getShelleyWitsVKeyNeededNoGov` (`Shelley/UTxO.hs:203-251`, cardano-ledger f649f975): the keys
     * of the certificates that a key must witness, of the outputs the spendable inputs spend (a
     * key's payment address, or a bootstrap address's root, `bootstrapKeyHash`), of the owners of
@@ -527,12 +607,15 @@ object BabbageUTxO:
     val ins: Set[TxIn] = b.referenceInputs[L](txBody)(using lb) ++ b.inputs[L](txBody)(using lb)
     ScriptsProvided(t.witsOf.scriptTxWits(t.wits[L](tx)) ++ getReferenceScripts(utxo, ins))
 
-/** The instances of each era, the one place that lists them: Conway's (`instance EraUTxO ConwayEra`
-  * and `instance AlonzoEraUTxO ConwayEra`,
-  * `eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs:119-147`, cardano-ledger f649f975) and
+/** The instances of each era, the one place that lists them: Babbage's (`instance EraUTxO
+  * BabbageEra` and `instance AlonzoEraUTxO BabbageEra`,
+  * `eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs:43-72`, cardano-ledger f649f975), Conway's
+  * (`eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs:119-147`, cardano-ledger f649f975) and
   * Dijkstra's (`Dijkstra/UTxO.hs:148-163, 200-211, 291-298`, cardano-ledger 9df9f98c).
   */
 object EraUTxO:
+  given babbage: (AlonzoEraUTxO[Babbage] { val txOf: EraTx.babbage.type }) =
+    xyz.kd5ujc.scarab.ledger.era.babbage.BabbageEraUTxO.instance
   given conway: AlonzoEraUTxO[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayUTxO.instance
   given dijkstra: (DijkstraEraUTxO[Dijkstra] { val txOf: EraTx.dijkstra.type }) =
     xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraUTxO.instance
