@@ -140,3 +140,85 @@ Also without a target, and outside #200's list:
 - The HTTP query server and the metrics server.
 - The multiplexer's runtime (`network.Mux`, its ingress and egress). The `mux-header-and-sdu` and
   `mux-stream` targets fuzz the pure codec, `protocol.Mux`.
+
+### Differential targets against the reference's libsodium (#1418)
+
+Three targets compare Scarab's answers with those of the native code the reference node takes them from, live,
+on the same inputs (`fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/SodiumTargets.scala`, the binding in
+`fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Sodium.scala`):
+
+- `sodium-ed25519`: `StrictEd25519.verify` against `crypto_sign_ed25519_verify_detached`, the verifier of
+  cardano-base's `Ed25519DSIGN` (transaction witnesses from Shelley on, operational certificates, KES leaves).
+- `sodium-vrf-verify`: `StrictDraft03.verify` against `crypto_vrf_ietfdraft03_verify`, verdict and output; the
+  output of every proof that verifies against `crypto_vrf_ietfdraft03_proof_to_hash`; and
+  `PraosVrfCertificate.verifyAlpha` against the reference's verify-then-compare of a claimed output.
+- `sodium-vrf-prove`: for one seed and alpha, `Draft03Prover`'s public key, proof and output against
+  `crypto_vrf_ietfdraft03_keypair_from_seed`, `_prove` and `_proof_to_hash` (proofs are deterministic), the
+  output of alpha alone, and for the Praos input `PraosVrfCertificate.alpha` against Blake2b-256 of
+  `crypto_generichash_blake2b` and the certificate verified.
+
+A fuzz input is read as the choices of one case: a mutation, two arguments and a mode, then the bytes the mode
+takes. The modes are bytes chosen by the fuzzer, a signature or proof the oracle makes from a seed, and one valid
+under a mixed-order key: the key plus a point T of small order, signed or proved with that key's bytes, the message
+or alpha extended until the equation leaves nothing of T (for Ed25519 the challenge h a multiple of T's order; for
+the VRF the challenge c congruent to L modulo it, since U is computed as [L - c]Y + [s]B, in libsodium's
+`crypto_vrf/ietfdraft03/verify.c:86-88` as in `Draft03Math.equation`). The mutations bring in what the two sides might
+decide differently: every small-order point in both signs, every non-canonical y, a small-order point added to a
+key, R or Gamma, flipped sign bits, scalars at and above L (S + kL, L, L - 1, 2^252, the top bits set) and bit flips.
+The seeds are those cases and the committed corpora of `fixtures/witness`, `fixtures/wycheproof-ed25519` and
+`fixtures/vrf`. A disagreement fails the target with the key, signature or proof and message in hex and both
+answers. Each run must see a case both sides accept, and each verifier's run one both refuse and one both accept
+under a mixed-order key; the line a target prints counts them. A case costs these targets up to two milliseconds
+against a decoder's microseconds, so they take a share of the run's cases (a half, an eighth and a twentieth); the
+printed count is what ran.
+
+Not compared: the batch-compatible draft-13 VRF (Scarab has none); `ByronEd25519`, because the reference verifies
+Byron signatures with ed25519-donna through cardano-crypto's `Cardano.Crypto.Wallet.verify`, not with libsodium
+(cardano-crypto-wrapper 1.7.0.0 and 1.8.0.0, at the commits CHaP records for them: `verifySignatureRaw` is
+`CC.verify`, `Cardano/Crypto/Signing/Signature.hs:233`; `ByronEd25519` cites the rest of the path);
+KES signing and the Sum6 tree; and the output of a proof that does not verify, which Scarab's main sources never
+compute. The oracle is a source build of the pinned commit, not the release binary, so the agreement is with that
+source compiled by gcc, not with the shipped compiler's output.
+
+**Which native code the reference uses.** Both reference releases take Ed25519 and the VRF from the Cardano fork of
+libsodium, IntersectMBO/libsodium at `dbb48cce5429cb6585c9034f002568964f1ce567`:
+
+- cardano-node 11.1.3 and 11.2.1, at the release revisions [reference-image.md](../reference-image.md) names:
+  `flake.lock`'s root input `iohkNix` is the node `iohkNix_2` (iohk-nix `74bae4f8` and `dc79d0c8`), whose input
+  `sodium` is `sodium_2`, input-output-hk/libsodium `dbb48cce`; `nix/haskell.nix` (lines 194-196 and 246-248)
+  sets the pkg-config dependency of cardano-crypto-praos and of cardano-crypto-class to `pkgs.libsodium-vrf`.
+- iohk-nix at both revisions builds `libsodium-vrf` from that input (`overlays/crypto/default.nix:9`) with
+  `--enable-static` and nothing that defines `ED25519_COMPAT` (`overlays/crypto/libsodium.nix:11`).
+- Both binaries link cardano-crypto-praos 2.2.4.0 (cardano-base `060819b5`), whose flag `external-libsodium-vrf`
+  defaults to true (`cardano-crypto-praos.cabal:54-61`) and is not set by the node: the VRF code it bundles in
+  `cbits` is compiled only without the flag (`:96-106`). cardano-crypto-class 2.5.1.0 and 2.6.0.0 (cardano-base
+  `060819b5` and `12168e4b`) verify with `c_crypto_sign_ed25519_verify_detached`
+  (`Cardano/Crypto/DSIGN/Ed25519.hs:205`).
+- The `cardano-node` executables of the two reference images (built as [reference-image.md](../reference-image.md)
+  says) are statically linked and keep their symbol tables. They hold the fork's `crypto_vrf_ietfdraft03_*` and
+  its draft-13 functions and none of the `cardano_ge25519_*` functions of the bundled `cbits`; their
+  `_crypto_sign_ed25519_verify_detached` calls `sc25519_is_canonical`, `ge25519_has_small_order`,
+  `ge25519_is_canonical` and `ge25519_has_small_order` before decoding the key, which is the branch built
+  without `ED25519_COMPAT` (libsodium `dbb48cce`, `src/libsodium/crypto_sign/ed25519/ref10/open.c:30-39`).
+
+Being static, the images hold no library to take out, so the oracle is built from source.
+`scripts/sodium_oracle.py` fetches GitHub's archive of that commit (`codeload.github.com/IntersectMBO/libsodium`,
+2,073,757 bytes, SHA-256 `e4f29ae3c16037e484bb69e3fa22a5565c42adf497f8f88e61ff8d9486ab863e`, the archive
+`fixtures/witness/archive/pinned-source-oracle/provenance.json` records), verifies it before use, builds it with the
+configure flags and `CFLAGS` recorded there, checks that `open.c` was compiled without `ED25519_COMPAT`, and prints
+the library's SHA-256, which depends on the compiler and is not pinned. On loading it, the targets check the
+version (1.0.18) and a self-test: the RFC 8032 test-1 signature verifies and is refused with L added to S (a build
+with `ED25519_COMPAT` accepts that), and the draft-03 example 10 gives its key, proof and output. Nothing of
+libsodium is vendored, and the node, `crypto` and every other suite never load it.
+
+**Where they run.** The variable `SCARAB_SODIUM_ORACLE` names the library. Without it the three targets are
+skipped, with that reason (CI's test shards list them in `scripts/ci_test_skips.json`); with it, a library that is
+missing, does not load or fails the self-test fails them. The fuzz gate and the nightly campaign build the library
+before the run and fail unless each of the three printed its count. To run them by hand, build the library in an
+image whose C library is no newer than the JDK image's (the CI runner's Ubuntu 24.04, for example), mount it into
+the JDK container and name it there:
+
+```sh
+python3 scripts/sodium_oracle.py --download --out /oracle      # in that image: needs gcc, make and Python 3
+SCARAB_SODIUM_ORACLE=/oracle/libsodium.so scripts/sbtw "fuzz 100000 1 4 sodium"
+```
