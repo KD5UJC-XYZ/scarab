@@ -130,54 +130,78 @@ object ChainSelection:
 
   /** Our chain as selection sees it: the immutable tip (never rolled back) and the volatile blocks
     * after it, oldest first.
+    *
+    * The places of the blocks by the hash of their point are looked up by a header's search for its
+    * intersection with our chain (issue 1394), by chain selection for each block it walks (#810),
+    * and by the Genesis projection of each candidate (#1499). A window of distinct blocks keeps
+    * them in an [[AnchoredFragment]] of its points, which [[extended]] and [[rolledBackTo]] carry
+    * along at the cost of the blocks they add and remove, as the reference's selection is an
+    * `AnchoredFragment` that ChainSel extends and rolls back. A window built whole, by
+    * [[Local.apply]] or [[copy]], indexes its blocks in one pass on its first lookup, and one that
+    * holds a hash twice, or Origin as a block, keeps the places of every such block aside.
     */
-  final case class Local(anchor: Point, anchorView: SelectView, blocks: Vector[LocalBlock]):
+  final class Local private (
+      val anchor: Point,
+      val anchorView: SelectView,
+      val blocks: Vector[LocalBlock],
+      carried: Option[AnchoredFragment[Point.Block]]
+  ):
     def tipView: SelectView = blocks.lastOption.fold(anchorView)(_.view)
-    // the places of the blocks by the hash of their point, built on the first lookup: a header's
-    // search for its intersection with our chain asks once for each of its points (issue 1394), and
-    // chain selection once for each block it walks (#810). The first place of each hash, built in
-    // one pass; the places of a hash held more than once, and those of Origin, aside.
-    private lazy val first: Map[Bytes, Int] =
-      Map.from(
-        blocks.indices.reverseIterator.flatMap(i =>
-          blocks.lift(i).flatMap(b => pointHash(b.point)).map(_ -> i)
-        )
-      )
-    private lazy val origins: Vector[Int] =
-      blocks.iterator.zipWithIndex.collect { case (b, i) if b.point == Point.Origin => i }.toVector
-    private lazy val repeated: Map[Bytes, Vector[Int]] =
-      // every block of its own hash, none at Origin: the ordinary window, read once
-      if blocks.sizeIs == first.size || blocks.sizeIs == first.size + origins.size then Map.empty
-      else
-        blocks.iterator.zipWithIndex
-          .flatMap((b, i) => pointHash(b.point).map(_ -> i))
-          .toVector
-          .groupMap(_._1)(_._2)
-          .filter(_._2.sizeIs > 1)
+
+    private lazy val index: Local.Index =
+      carried.fold(Local.Index.of(anchor, blocks))(Local.Index.Chain(_))
+
     def contains(point: Point): Boolean =
-      point == anchor || placesOf(pointHash(point)).exists(i =>
-        blocks.lift(i).exists(_.point == point)
-      )
+      point == anchor || (index match
+        case Local.Index.Chain(fragment) => fragment.pointOnFragment(point)
+        case irregular: Local.Index.Irregular =>
+          irregular.placesOf(pointHash(point)).exists(i => blocks.lift(i).exists(_.point == point)))
 
     /** The indices in `blocks` of the blocks whose point has `hash` (`None`: Origin), oldest first.
       */
-    def placesOf(hash: Option[Bytes]): Vector[Int] = hash.fold(origins)(h =>
-      repeated.get(h).orElse(first.get(h).map(Vector(_))).getOrElse(Vector.empty)
-    )
+    def placesOf(hash: Option[Bytes]): Vector[Int] = index match
+      case Local.Index.Chain(fragment) =>
+        hash.flatMap(fragment.offsetOfHash).filter(_ > 0).map(_ - 1).toVector
+      case irregular: Local.Index.Irregular => irregular.placesOf(hash)
+
+    /** The index in `blocks` of the newest block at `point`, if one is. */
+    private def lastPlace(point: Point): Option[Int] =
+      placesOf(pointHash(point)).findLast(i => blocks.lift(i).exists(_.point == point))
+
+    /** The first index in `blocks` of a block at `point`, if one is. */
+    private def firstPlace(point: Point): Option[Int] = index match
+      case Local.Index.Chain(fragment) => fragment.offsetOf(point).filter(_ > 0).map(_ - 1)
+      case _: Local.Index.Irregular    => Option(blocks.indexWhere(_.point == point)).filter(_ >= 0)
+
+    /** The points of the blocks that are blocks, oldest first: the selection as a Genesis fragment
+      * reads it.
+      */
+    def blockPoints: Vector[Point.Block] = index match
+      case Local.Index.Chain(fragment) => fragment.toOldestFirst
+      case _: Local.Index.Irregular =>
+        blocks.map(_.point).collect { case block: Point.Block => block }
 
     /** Blocks that rolling back to `point` removes. */
     def depthTo(point: Point): Int =
-      if point == anchor then blocks.size else blocks.size - 1 - blocks.indexWhere(_.point == point)
+      if point == anchor then blocks.size else blocks.size - 1 - firstPlace(point).getOrElse(-1)
 
     /** The window after rolling back to `point` (the anchor or one of the blocks), none if it is
       * neither.
       */
     def rolledBackTo(point: Point): Option[Local] =
-      if point == anchor then Some(copy(blocks = Vector.empty))
-      else
-        blocks.indexWhere(_.point == point) match
-          case -1 => None
-          case i  => Some(copy(blocks = blocks.take(i + 1)))
+      if point == anchor then Some(firstBlocks(0))
+      else firstPlace(point).map(i => firstBlocks(i + 1))
+
+    /** This window with only its first `count` blocks, its index cut with them. */
+    private def firstBlocks(count: Int): Local =
+      new Local(
+        anchor,
+        anchorView,
+        blocks.take(count),
+        index match
+          case Local.Index.Chain(fragment) => Some(fragment.headAt(count))
+          case _: Local.Index.Irregular    => None
+      )
 
     /** The window after a block is appended at the tip and the `immutable` oldest blocks (counting
       * the new one, which only happens for a `k` of zero) become the anchor: the same window
@@ -186,9 +210,51 @@ object ChainSelection:
     def extended(block: LocalBlock, immutable: Int): Local =
       // nothing leaves the window unless `immutable` is positive (then `gone` holds the new anchor)
       val (gone, kept) = (blocks :+ block).splitAt(immutable)
-      gone.lastOption.fold(copy(blocks = kept))(anchor => Local(anchor.point, anchor.view, kept))
+      val carriedOn = (index, block.point) match
+        // a block already in the window, or at its anchor, makes the window irregular
+        case (Local.Index.Chain(fragment), added: Point.Block)
+            if fragment.offsetOfHash(added.hash).isEmpty =>
+          Some(fragment.addBlock(added).anchorNewest(kept.size))
+        case _ => None
+      gone.lastOption.fold(new Local(anchor, anchorView, kept, carriedOn))(newAnchor =>
+        new Local(newAnchor.point, newAnchor.view, kept, carriedOn)
+      )
+
+    /** The newest point of `candidate` on this window, as its index in the candidate's points (0
+      * the base, `i + 1` the header at index `i`) and its place in the window (0 the anchor,
+      * `i + 1` the block at index `i`, the newest such block); none when no point of the candidate
+      * is on it. Searched from the candidate's tip, each point looked up in the window's index, so
+      * the search costs the candidate's headers after the window, not the window (#1499).
+      */
+    def intersection(candidate: Candidate): Option[(Int, Int)] =
+      def pointAt(i: Int): Point =
+        if i == 0 then candidate.base else candidate.headers(i - 1).point
+      Iterator
+        .range(candidate.headers.size, -1, -1)
+        .find(i => contains(pointAt(i)))
+        .map(common => (common, lastPlace(pointAt(common)).fold(0)(_ + 1)))
+
+    /** A window like this one, its index built afresh on its first lookup. */
+    def copy(
+        anchor: Point = this.anchor,
+        anchorView: SelectView = this.anchorView,
+        blocks: Vector[LocalBlock] = this.blocks
+    ): Local = Local(anchor, anchorView, blocks)
+
+    override def equals(other: Any): Boolean = other match
+      case that: Local =>
+        (this eq that) ||
+        (anchor == that.anchor && anchorView == that.anchorView && blocks == that.blocks)
+      case _ => false
+
+    override def hashCode: Int = (anchor, anchorView, blocks).##
+
+    override def toString: String = s"Local($anchor, $anchorView, $blocks)"
 
   object Local:
+    def apply(anchor: Point, anchorView: SelectView, blocks: Vector[LocalBlock]): Local =
+      new Local(anchor, anchorView, blocks, None)
+
     /** Build the window from the whole chain: one pass over its `k` blocks. This is the reference
       * that the incremental updates [[Local.rolledBackTo]] and [[Local.extended]] must equal.
       */
@@ -198,6 +264,60 @@ object ChainSelection:
         chain.anchor.block.fold(SelectView(-1, 0, None, 0, None))(view),
         chain.blocks.map((r, _) => LocalBlock(r.point, view(r)))
       )
+
+    /** Where a window's blocks are by hash. */
+    private sealed trait Index
+
+    private object Index:
+      /** Distinct blocks, none at Origin, none at the anchor's hash: the fragment of their points.
+        */
+      final case class Chain(fragment: AnchoredFragment[Point.Block]) extends Index
+
+      /** Any other window: the first place of each hash, the places of a hash held more than once,
+        * and those of Origin.
+        */
+      final case class Irregular(
+          first: Map[Bytes, Int],
+          origins: Vector[Int],
+          repeated: Map[Bytes, Vector[Int]]
+      ) extends Index:
+        def placesOf(hash: Option[Bytes]): Vector[Int] =
+          hash.fold(origins)(h =>
+            repeated.get(h).orElse(first.get(h).map(Vector(_))).getOrElse(Vector.empty)
+          )
+
+      /** Index `blocks` in one pass. */
+      def of(anchor: Point, blocks: Vector[LocalBlock]): Index =
+        val points = blocks.collect { case LocalBlock(point: Point.Block, _) => point }
+        val fragment = AnchoredFragment.fromOldestFirst(anchor, points)
+        if points.sizeIs == blocks.size && fragment.indexSize == points.size + anchorKeys(anchor)
+        then Chain(fragment)
+        else irregular(blocks)
+
+      private def anchorKeys(anchor: Point): Int = anchor match
+        case Point.Block(_, _) => 1
+        case Point.Origin      => 0
+
+      private def irregular(blocks: Vector[LocalBlock]): Irregular =
+        val first: Map[Bytes, Int] = Map.from(
+          blocks.indices.reverseIterator.flatMap(i =>
+            blocks.lift(i).flatMap(b => pointHash(b.point)).map(_ -> i)
+          )
+        )
+        val origins: Vector[Int] =
+          blocks.iterator.zipWithIndex.collect {
+            case (b, i) if b.point == Point.Origin => i
+          }.toVector
+        val repeated: Map[Bytes, Vector[Int]] =
+          if blocks.sizeIs == first.size || blocks.sizeIs == first.size + origins.size then
+            Map.empty
+          else
+            blocks.iterator.zipWithIndex
+              .flatMap((b, i) => pointHash(b.point).map(_ -> i))
+              .toVector
+              .groupMap(_._1)(_._2)
+              .filter(_._2.sizeIs > 1)
+        Irregular(first, origins, repeated)
 
   /** What a peer's chain looks like to us: the point where it joined our chain and the headers it
     * announced after it. The headers are contiguous.
