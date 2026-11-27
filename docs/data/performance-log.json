@@ -5920,6 +5920,110 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-76",
+   "section": "70",
+   "heading": "70. The own evaluator's time per script, the scope check kept with the program (#1499)",
+   "subject": "The own evaluator's time per script, the scope check kept with the program (#1499)",
+   "date": "2026-11-27",
+   "dateSource": "text",
+   "issues": [
+    "#1499"
+   ],
+   "commits": [
+    "66e6e98e9",
+    "85bef2ce9"
+   ],
+   "links": [],
+   "page": "rewards-and-evaluation",
+   "results": [
+    {
+     "id": "perf-76.t1",
+     "header": [
+      "Kept: the scope check made once per program, against `66e6e98e9`",
+      "Runs, both orders each",
+      "After / before, each run",
+      "Median",
+      "A round, before",
+      "A round, after",
+      "Per script, before",
+      "Per script, after"
+     ],
+     "separator": "|---|---:|---|---:|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "253 recorded Preview and preprod requests",
+       "4",
+       "0.837, 0.848, 0.852, 0.852",
+       "0.850",
+       "30.21 ms",
+       "25.20 ms",
+       "119 µs (8,375 a second)",
+       "100 µs (10,040 a second)"
+      ],
+      [
+       "3,997 uplc-turbo mainnet programs",
+       "5",
+       "0.912, 0.960, 0.897, 0.902, 0.949",
+       "0.912",
+       "1,390 ms",
+       "1,251 ms",
+       "348 µs (2,875 a second)",
+       "313 µs (3,195 a second)"
+      ]
+     ]
+    },
+    {
+     "id": "perf-76.t2",
+     "header": [
+      "Measured and not kept, against the build before it",
+      "Orders",
+      "Recorded requests",
+      "uplc-turbo programs"
+     ],
+     "separator": "|---|---|---:|---:|",
+     "rows": [
+      [
+       "a builtin's tables indexed by a field holding its `ordinal` (each case of `DefaultFun` is a class of its own), and the arguments of an application counted once",
+       "both",
+       "0.953, 0.976",
+       "1.066, 1.011, 1.018"
+      ],
+      [
+       "the step counted inside each case of the term's match (no `kindOf`), and `immediate`'s cases in order of frequency",
+       "one",
+       "1.055",
+       "0.937"
+      ],
+      [
+       "the step counted inside each case alone",
+       "one",
+       "1.050",
+       "1.040"
+      ],
+      [
+       "`immediate`'s cases in order of frequency alone",
+       "one",
+       "0.996",
+       "0.992"
+      ],
+      [
+       "the held forms and the unapplied builtins in an `IArray`",
+       "one",
+       "1.085",
+       "0.991"
+      ],
+      [
+       "the same build twice (the order's effect alone)",
+       "one",
+       "0.986",
+       ""
+      ]
+     ]
+    }
+   ],
+   "listings": []
   }
  ]
 }
