@@ -1,0 +1,3 @@
+### Added (era types, #85)
+
+- Babbage's protocol parameters have an era type of their own (`BabbagePParams`), mirroring the reference's higher-kinded record, with Babbage's instances of the parameter classes and a class of their own for the protocol version that updates of the eras up to Babbage set. Conway's upgrade of Babbage's parameters and its downgrade to them come as Conway's functions. The update proposal of the eras before Conway has an era type too (`Update`), read from a body with the bytes of each value, which is the form the node stores a proposal in. Generated updates and the recorded Babbage proposal store byte for byte as they do now. No rule uses these types yet, so behaviour and the persisted format do not change.

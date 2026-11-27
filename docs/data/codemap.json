@@ -776,13 +776,16 @@
     {
       "module": "ledger",
       "path": "ledger/era/babbage",
-      "responsibility": "Babbage's own types: its native, Plutus and script types and its output, opaque outside their file",
+      "responsibility": "Babbage's own types: its native, Plutus and script types and its output, opaque outside their file; its protocol-parameter record",
       "entryPoints": [
         "BabbageScript",
-        "BabbageTxOut"
+        "BabbageTxOut",
+        "BabbagePParams"
       ],
       "suites": [
-        "EraCoreSuite"
+        "EraCoreSuite",
+        "BabbagePParamsSuite",
+        "BabbageUpdateSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"
