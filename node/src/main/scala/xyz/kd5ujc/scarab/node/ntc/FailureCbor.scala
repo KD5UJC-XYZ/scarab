@@ -116,9 +116,10 @@ object FailureCbor:
   }
 
   /** A Plutus purpose as the ledger names it with the item it applies to (`PlutusPurpose AsItem`):
-    * `[tag, item]`. The certifying purpose is the exception: its item is the Conway certificate,
-    * which [[ContextFailureCbor.purpose]] writes, so no caller reaches the certifying arm below.
-    * The arm is kept only because the match is total.
+    * `[tag, item]`, for the pre-Conway purposes [[ContextFailureCbor.purpose]] writes. It writes a
+    * certifying purpose's certificate itself, and Alonzo and Babbage have no voting or proposing
+    * purpose (Conway's are written by [[ConwayFailureCbor]]), so no caller reaches those three arms
+    * below; they are kept only because the match is total.
     */
   private[ntc] def item(w: W, p: Purpose): Unit = p match
     case Purpose.Spending(_, input, _)  => w.array(2).uint(0); txIn(w, input)

@@ -103,7 +103,7 @@ object PreConwayFailureCbor:
     failures.traverse(ledger(shelleyUtxow(allegraUtxo), _))
 
   private def alonzo(failures: Vector[PredicateFailure])(using ProtVer): Encoding[Vector[Enc]] =
-    failures.traverse(ledger(alonzoUtxow(ContextEra.Alonzo, alonzoUtxo(ContextEra.Alonzo)), _))
+    failures.traverse(ledger(alonzoUtxow(alonzoUtxo(ContextEra.Alonzo)), _))
 
   private def babbage(failures: Vector[PredicateFailure])(using ProtVer): Encoding[Vector[Enc]] =
     failures.traverse(ledger(babbageUtxow, _))
@@ -167,13 +167,13 @@ object PreConwayFailureCbor:
     * writes them, a certifying one with its certificate; a purpose with no encoding in the era
     * (voting and proposing) leaves the failure without one.
     */
-  private def alonzoUtxow(era: ContextEra, utxo: UtxoFailure => Encoding[Enc])(u: UtxowFailure)(
-      using ProtVer
+  private def alonzoUtxow(utxo: UtxoFailure => Encoding[Enc])(u: UtxowFailure)(using
+      ProtVer
   ): Encoding[Enc] = u match
     case UtxowFailure.MissingRedeemers(ps) =>
       supported(
         ps
-          .traverse((purpose, script) => ContextFailureCbor.purpose(era, purpose).map(_ -> script))
+          .traverse((purpose, script) => ContextFailureCbor.purpose(purpose).map(_ -> script))
       )
         .map(entries =>
           sum(1)(w =>
@@ -208,7 +208,7 @@ object PreConwayFailureCbor:
     case UtxowFailure.Utxo(f)                       => babbageUtxo(f).map(e => sum(2)(e))
     case UtxowFailure.MalformedScriptWitnesses(hs)  => present(sum(3)(hashSet(_, hs)))
     case UtxowFailure.MalformedReferenceScripts(hs) => present(sum(4)(hashSet(_, hs)))
-    case other => alonzoUtxow(ContextEra.Babbage, babbageUtxo)(other).map(e => sum(1)(e))
+    case other => alonzoUtxow(babbageUtxo)(other).map(e => sum(1)(e))
 
   // ---- UTXO
 
