@@ -153,6 +153,12 @@ enum ReloadLabel derives LabelValue:
 enum SnapshotProblemLabel derives LabelValue:
   case Skipped, Failed, Refused, Unbound
 
+/** A population of the UTxO store's warm tier (`WarmUtxoStore.Kind`): written and not read since,
+  * or read.
+  */
+enum WarmPopulationLabel derives LabelValue:
+  case Young, Read
+
 /** The lateness above which a timer is counted as late. */
 enum LatenessLabel:
   case Over50Ms, Over100Ms
@@ -574,6 +580,44 @@ object Catalogue:
   val receivedUnreadable = CounterDef(
     MetricName("scarab_received_unreadable_total"),
     "Received-block records that failed their checksum when read back, and were dropped."
+  )
+  val utxoWarmEntries = GaugeDef(
+    MetricName("scarab_utxo_warm_entries"),
+    "UTxO entries the warm tier in front of the store holds."
+  )
+  val utxoWarmBytes = GaugeDef(
+    MetricName("scarab_utxo_warm_bytes"),
+    "Bytes charged to the warm tier's entries (encoding and per-entry overhead), by population.",
+    Labels.one[WarmPopulationLabel](LabelName("population"))
+  )
+  val utxoWarmLimit = GaugeDef(
+    MetricName("scarab_utxo_warm_limit_bytes"),
+    "The warm tier's budget, in bytes (--utxo-warm-mb)."
+  )
+  val utxoWarmServed = CounterDef(
+    MetricName("scarab_utxo_warm_served_total"),
+    "UTxO reads the warm tier answered without reading the store."
+  )
+  val utxoWarmMissed = CounterDef(
+    MetricName("scarab_utxo_warm_missed_total"),
+    "UTxO reads of keys the warm tier did not hold, read from the store."
+  )
+  val utxoWarmEvictions = CounterDef(
+    MetricName("scarab_utxo_warm_evictions_total"),
+    "Entries that left the warm tier for its budget, by population (they stay in the store).",
+    Labels.one[WarmPopulationLabel](LabelName("population"))
+  )
+  val utxoWarmRefused = CounterDef(
+    MetricName("scarab_utxo_warm_refused_total"),
+    "Entries read from the store that the warm tier did not take, as the store changed under the read."
+  )
+  val utxoReadAheadServed = CounterDef(
+    MetricName("scarab_utxo_read_ahead_served_total"),
+    "UTxO entries the block path took from what was read ahead of it."
+  )
+  val utxoReadAheadStale = CounterDef(
+    MetricName("scarab_utxo_read_ahead_stale_total"),
+    "UTxO entries read ahead and dropped, as read before the trim point of the state that asked."
   )
   val poolBodies = GaugeDef(
     MetricName("scarab_block_pool_bodies"),
@@ -1274,6 +1318,15 @@ object Catalogue:
     receivedEvictions,
     receivedReads,
     receivedUnreadable,
+    utxoWarmEntries,
+    utxoWarmBytes,
+    utxoWarmLimit,
+    utxoWarmServed,
+    utxoWarmMissed,
+    utxoWarmEvictions,
+    utxoWarmRefused,
+    utxoReadAheadServed,
+    utxoReadAheadStale,
     poolBodies,
     poolBodyBytes,
     replayedBlocks,

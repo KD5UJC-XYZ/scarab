@@ -278,7 +278,8 @@ back by the kernel under a limit. **Set `MALLOC_ARENA_MAX=2`** (the `scarab-jdk`
 devnet do): with glibc's default of one arena per thread the same sync grew by 0.9 GB in 30 minutes and
 had reached 5.66 GB in the uninterrupted run (roadmap K6, [performance.md](../performance.md) section 8).
 A container limit of `-Xmx` plus 2 GiB (5 GiB for `-Xmx3g`) is enough; `--utxo-cache-mb` is the other
-number that moves native memory. The page cache shows in `docker stats` only partly (as the cgroup's
+number that moves native memory. The UTxO warm tier (`--utxo-warm-mb`, 256 MiB by default) is on the
+heap, and counts towards `-Xmx`. The page cache shows in `docker stats` only partly (as the cgroup's
 active file pages) and in `memory.current` fully: bound `RssAnon`, not `memory.current`.
 
 ## Preprod

@@ -143,12 +143,12 @@ import scala.concurrent.duration.*
   * --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P]
   * [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>]
   * [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full]
-  * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds
-  * N] [--stall-minutes N] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N]
-  * [--header-first on|off] [--max-inbound N] [--max-outbound N] [--cpu-threads N] [--plutus-workers
-  * N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>]
-  * [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file>
-  * --opcert <file>]`
+  * [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--utxo-warm-mb N]
+  * [--memory-report-seconds N] [--stall-minutes N] [--read-ahead N] [--chain-sync-low N]
+  * [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--max-outbound N]
+  * [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at
+  * <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket
+  * <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file>]`
   *
   * With `--config` the node reads the Haskell node's `config.json` as `cardano-node run` does (the
   * genesis files it names, relative to it, with every hash it lists verified, the hard-fork epochs,
@@ -544,6 +544,9 @@ object Main extends IOApp:
     *   `--assertions-file <path>`: record the node's Antithesis assertions there, in the fallback
     *   SDK's lines ([[xyz.kd5ujc.scarab.node.assertions.Assertions.recording]], #1032). Off by
     *   default.
+    * @param utxoWarmMb
+    *   `--utxo-warm-mb N`: the heap budget, in MiB, of the warm tier in front of a RocksDB UTxO
+    *   store ([[WarmUtxoStore]], #1484); 0: no tier.
     */
   final case class Options(
       genesisDir: Option[Path],
@@ -587,7 +590,8 @@ object Main extends IOApp:
       referenceBuild: ReferenceBuild = ReferenceBuild.Default,
       startAsNonProducingNode: Boolean = false,
       assertionsFile: Option[Path] = None,
-      maxOutbound: Option[OutboundLimit.Connections] = None
+      maxOutbound: Option[OutboundLimit.Connections] = None,
+      utxoWarmMb: Int = 256
   ):
     /** `ncStartAsNonProducingNode` of the reference: the flags give `Just True` or nothing
       * (`Parsers.hs` 70-72), the configuration file's `StartAsNonProducingNode` a value or nothing
@@ -815,28 +819,40 @@ object Main extends IOApp:
   private def faulted(fatal: Fatal): (NodeEvent, ExitCode) =
     (NodeEvent.Faulted(fatal), FaultExitCode(fatal))
 
-  /** The UTxO store, and where the checkpoints that keep it in step with the snapshots live (none:
-    * the store is in memory and nothing is kept). The backing itself ([[backing]]) is of the form
-    * of the chain's state. A store on disk reads the queued blocks' entries ahead
-    * ([[ReadAheadStore]], #1484); one in memory has no disk to wait on, and reads nothing ahead.
+  /** The UTxO store, its warm tier if it has one, and where the checkpoints that keep it in step
+    * with the snapshots live (none: the store is in memory and nothing is kept). The backing itself
+    * ([[backing]]) is of the form of the chain's state. A store on disk has a warm tier of
+    * `--utxo-warm-mb` in front of it ([[WarmUtxoStore]], none for 0) and reads the queued blocks'
+    * entries ahead through it ([[ReadAheadStore]], #1484): the read-ahead store is the only handle
+    * on the store the node keeps, so that every change of the store passes the tier. One in memory
+    * has no disk to wait on, and has neither.
     */
-  private def utxoBacking(
-      options: Options
-  )(using Handle[IO, NodeError]): Resource[IO, (ReadAheadStore[IO], Option[fs2.io.file.Path])] =
+  private def utxoBacking(options: Options)(using
+      Handle[IO, NodeError]
+  ): Resource[
+    IO,
+    (ReadAheadStore[IO], Option[WarmUtxoStore[IO]], Option[fs2.io.file.Path])
+  ] =
     val kind = options.utxoStore.getOrElse(if options.db.isDefined then "rocksdb" else "memory")
     (kind, options.db) match
       case ("rocksdb", Some(dir)) =>
         val root = fs2.io.file.Path.fromNioPath(dir) / "utxo"
-        RocksUtxoStore
-          .resource[IO](root / "live", options.utxoCacheMb.toLong * 1024 * 1024)
-          .flatMap(s => ReadAheadStore.resource[IO](s))
-          .map(_ -> Option(root / "checkpoints"))
+        val budget = WarmUtxoStore.Budget.mib(options.utxoWarmMb)
+        for
+          rocks <- RocksUtxoStore
+            .resource[IO](root / "live", options.utxoCacheMb.toLong * 1024 * 1024)
+          warm <- Resource.eval(
+            if budget.bytes > 0 then WarmUtxoStore[IO](rocks, budget).map(Some(_))
+            else IO.pure(None)
+          )
+          reads <- ReadAheadStore.resource[IO](warm.getOrElse(rocks))
+        yield (reads, warm, Option(root / "checkpoints"))
       case (_, db) =>
         val root =
           db.fold(fs2.io.file.Path("utxo-memory"))(d => fs2.io.file.Path.fromNioPath(d) / "utxo")
         Resource
           .eval(MemoryUtxoStore[IO].flatMap(ReadAheadStore.idle[IO](_)))
-          .map(_ -> db.map(_ => root / "checkpoints"))
+          .map((_, None, db.map(_ => root / "checkpoints")))
 
   /** The backing of the UTxO set of the chain's state. */
   private def backing(
@@ -1391,13 +1407,17 @@ object Main extends IOApp:
         Supervisor[IO](await = false)
       ).tupled
     ).tupled.use {
-      case (hup, (leiosStore, (store, checkpoints), cache, scheduling, supervisor, settling)) =>
+      case (
+            hup,
+            (leiosStore, (store, warm, checkpoints), cache, scheduling, supervisor, settling)
+          ) =>
         followWith(
           options,
           cliPeers,
           setup,
           topology,
           store,
+          warm,
           leiosStore,
           backing(store, checkpoints),
           cache,
@@ -1421,6 +1441,7 @@ object Main extends IOApp:
       setup: NodeSetup,
       topology: Option[Topology],
       store: ReadAheadStore[IO],
+      warm: Option[WarmUtxoStore[IO]],
       leios: Option[LeiosStore[IO]],
       txCache: LeiosTxCache[IO],
       cache: VerificationCache,
@@ -1563,6 +1584,7 @@ object Main extends IOApp:
       loaded: NodeSetup,
       topology: Option[Topology],
       store: ReadAheadStore[IO],
+      warm: Option[WarmUtxoStore[IO]],
       leios: Option[LeiosStore[IO]],
       backing: StateBacking[IO, MirrorState],
       cache: VerificationCache,
@@ -1590,6 +1612,7 @@ object Main extends IOApp:
           setup,
           topology,
           store,
+          warm,
           leios,
           txCache,
           cache,
@@ -1660,6 +1683,7 @@ object Main extends IOApp:
         collectors <- Collectors.Registry.create[IO]
         _ <- collectors.add(Collectors.jvm[IO])
         _ <- collectors.add(Collectors.scheduling(scheduling.stats))
+        _ <- collectors.add(Collectors.utxoReads(run.store, run.warm))
       yield
         val followerLog = Log.follower[IO](Some(scheduling.stats))
         val events = new FollowerEvents[IO]:
@@ -3127,7 +3151,7 @@ object Main extends IOApp:
       values.find(r => argument == s"--${r.flag}")
 
   private val Usage =
-    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--max-outbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--shelley-bls-key <file>] [--key-lock on|off] [--producer-id scarab|opt-out]] [--start-as-non-producing-node] [--reference-build <build>] [--assertions-file <path>] " + LogSettings.Usage +
+    "usage: follow (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> [--peer ...] | --topology <topology.json>) [--listen <host>:<port>] [--seconds N] [--query-listen off|P] [--query-port P] [--metrics-listen <host>:<port>] [--plutus-cases <dir>] [--db <dir>] [--adopt-legacy-network-identity] [--snapshot-every <N|Nslots|Nepochs>] [--keep-snapshots N] [--snapshot-check structure|full] [--mempool-bytes N] [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--utxo-warm-mb N] [--memory-report-seconds N] [--stall-minutes N] [--stall-exit-after <Ns|Nm|Nh>] [--stall-dump <dir>] [--churn-interval <Ns|Nm>] [--read-ahead N] [--chain-sync-low N] [--chain-sync-high N] [--header-first on|off] [--max-inbound N] [--max-outbound N] [--cpu-threads N] [--plutus-workers N] [--dump-state <dir> [--dump-state-at <epoch-boundaries|epoch-boundaries/N|slot,slot,...>] [--dump-state-full]] [--local-socket <path>] [--forge --vrf-skey <file> --kes-skey <file> --opcert <file> [--shelley-bls-key <file>] [--key-lock on|off] [--producer-id scarab|opt-out]] [--start-as-non-producing-node] [--reference-build <build>] [--assertions-file <path>] " + LogSettings.Usage +
       "\n" + ReferenceBuildFlag.Help
 
   /** Flags that take a value and may repeat. */
@@ -3151,6 +3175,7 @@ object Main extends IOApp:
     "mempool-bytes",
     "utxo-store",
     "utxo-cache-mb",
+    "utxo-warm-mb",
     "memory-report-seconds",
     "stall-minutes",
     "stall-exit-after",
@@ -3312,6 +3337,9 @@ object Main extends IOApp:
           cacheMb <- flags
             .get("utxo-cache-mb")
             .fold(Right(256))(_.toIntOption.filter(_ > 0).toRight(invalid("utxo-cache-mb")))
+          warmMb <- flags
+            .get("utxo-warm-mb")
+            .fold(Right(256))(_.toIntOption.filter(_ >= 0).toRight(invalid("utxo-warm-mb")))
           memoryReport <- flags
             .get("memory-report-seconds")
             .fold(Right(0))(_.toIntOption.filter(_ >= 0).toRight(invalid("memory-report-seconds")))
@@ -3445,6 +3473,7 @@ object Main extends IOApp:
           startAsNonProducingNode =
             flags.contains("start-as-non-producing-node") || flags.contains("non-producing-node"),
           assertionsFile = flags.get("assertions-file").map(Path.of(_)),
-          maxOutbound = maxOutbound
+          maxOutbound = maxOutbound,
+          utxoWarmMb = warmMb
         )
       case _ => Left(usage)
