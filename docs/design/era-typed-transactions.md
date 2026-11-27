@@ -464,9 +464,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     five ranged members, and `AlonzoEraPParams` without `hkdCoinsPerUTxOWordL`; the protocol version of the
     eras up to Babbage came with Babbage's record in stage 4 (`EraPParamsToBabbage`, below), and the others
     come with the records of their eras. Of the bodies' ranged members, the required signers' field
-    (`reqSignerHashesTxBodyL`, of the eras Alonzo to Conway) is `AlonzoEraTxBodyToConway`. Its only
-    instance yet is Conway's, as Conway is the only era with a typed body; Alonzo's and Babbage's come
-    with their bodies. Dijkstra's body, whose field the reference fills with `notSupportedInThisEraL`,
+    (`reqSignerHashesTxBodyL`, of the eras Alonzo to Conway) is `AlonzoEraTxBodyToConway`. Its
+    instances are Babbage's and Conway's, the eras with a typed body; Alonzo's comes with its body. Dijkstra's body, whose field the reference fills with `notSupportedInThisEraL`,
     will have none. The getter of every era (`reqSignerHashesTxBodyG`) stays on `AlonzoEraTxBody`: the
     field up to Conway, and in the reference the guards' key hashes in Dijkstra
     (`Dijkstra/TxBody.hs:1419`, cardano-ledger 9df9f98c), of which there is no typed instance yet.
@@ -3362,6 +3361,33 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Found: the flat path merges an update's cost models into the parameters' at every era
     (`ProtocolParams.update`), where Babbage's and Alonzo's generic `applyPPUpdates` replace them whole
     ([#1495](https://github.com/KD5UJC-XYZ/scarab/issues/1495)).
+- **Babbage's transaction** (stage 4, second part; `era/babbage/BabbageTx*.scala`, `era/ShelleyTxCertRep.scala`,
+  `era/AlonzoPlutusPurpose.scala`; cardano-ledger f649f975 `Babbage/TxBody.hs:125-572`, `Babbage/Tx.hs:36-82`,
+  `Shelley/TxCert.hs:289-598`, `Alonzo/TxWits.hs:603-703`, `Alonzo/TxAuxData.hs:210-312`):
+  - Babbage's certificate is the representation Shelley to Babbage share (`ShelleyTxCertRep`, the reference's
+    `ShelleyTxCert era`), with the genesis delegation and the move of instantaneous rewards. Their readers and
+    builders, `AtMostEra "Babbage"` in the reference, are a class of their own (`ShelleyEraTxCertToBabbage`), as
+    decided 2026-11-15. Babbage's body keeps its certificates as the reference's `StrictSeq` does, repeats
+    included, and its update proposal as the typed one with the bytes the node stores it by (`KeptUpdate`);
+    `ShelleyEraTxBody.update` gives the typed `Update`. The witness set and auxiliary data are the shared
+    representations with Babbage's scripts, and the redeemers are keyed by Alonzo's purpose
+    (`AlonzoPlutusPurpose`, the reference's `AlonzoPlutusPurpose f era`), which is all of the purpose this part
+    brings: its builders and readers come with Babbage's Plutus side. The families `ScriptsNeeded`, `StAnnTx` and
+    `StAnnTxCache` have Babbage's cases, because `EraTx` and the auxiliary data's instance name them.
+  - The decoders read a map's keys as the reference's `decodeSparse` reads them: as written, a repeated key and then
+    an unknown one refused at its turn, and the required keys checked after the last. Conway's decoders keep the
+    flat decoder's fixed order instead. Each value is read by the flat decoder's reader of its field at decoder
+    version 7, so each refuses what the flat decoder refuses, with its error.
+  - Against the flat decoder at Babbage, at both layouts (`BabbageTxDifferentialSuite`): the 13 Babbage
+    transactions of the recorded blocks, the 32 transactions of the reference's Babbage refusal corpora, 573
+    Babbage rows of the reference's decoder corpora and 12,640 byte mutants of those transactions. The two accept
+    and refuse alike, and an accepted transaction has the flat id, body hash and original bytes and projects to the
+    flat values field by field. A refused row is refused with the case the recording names, except two repeated
+    parameter keys: there the era's refusal names the key, as the reference's does, and the recording names the
+    flat decoder's case. Three rows give a different first cause from the flat decoder's: those two, and a redeemer
+    whose units are a detached record that the walk does not find, refused at the units as the reference reads them
+    first. `fixtures/haskell-immutable/preview` holds Alonzo blocks only. Nothing in the node reads these types
+    yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

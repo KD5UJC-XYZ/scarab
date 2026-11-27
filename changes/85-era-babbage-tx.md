@@ -1,0 +1,3 @@
+### Added (era types, #85)
+
+- Babbage's transaction has era types of its own (`BabbageTx`, `BabbageTxBody`, `BabbageTxWits`, `BabbageTxAuxData`, `BabbageTxCert`), read by Babbage's decoders and mirroring the reference's, with the genesis-delegation and instantaneous-reward certificates and the update proposal. The decoders read a map's keys in the order they are written, as the reference does. Every recorded Babbage transaction and every Babbage case of the reference's decoder corpora reads the same as with the node's current decoder. Nothing in the node uses these types yet, so behaviour and the persisted format do not change.
