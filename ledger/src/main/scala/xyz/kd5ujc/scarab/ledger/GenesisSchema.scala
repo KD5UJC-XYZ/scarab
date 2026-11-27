@@ -267,6 +267,11 @@ object GenesisSchema:
     * negative value or one above `Word64` refuses the file, so no deposit of the ledger state can
     * leave that range (#573).
     */
+  /** `FromJSON ProtVer` (`libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:230-235`,
+    * cardano-ledger f649f975): the major a [[version]], the minor `pvMinor :: Word32` (`:211`).
+    */
+  private val protVer: Check = obj(req("major", version), req("minor", word(32)))
+
   private val shelleyParams: Check = obj(
     req("minFeeA", word64),
     req("minFeeB", word64),
@@ -282,7 +287,7 @@ object GenesisSchema:
     req("tau", bounded(BoundedRatio.Unit)),
     req("decentralisationParam", bounded(BoundedRatio.Unit)),
     req("extraEntropy", nonce),
-    req("protocolVersion", obj(req("major", version), req("minor", natural))),
+    req("protocolVersion", protVer),
     opt("minUTxOValue", word64),
     opt("minPoolCost", word64)
   )

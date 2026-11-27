@@ -124,6 +124,39 @@ class GenesisSchemaSuite extends FunSuite:
     assert(rows.exists(r => !accepted(r)))
   }
 
+  /** The preview Shelley genesis with `protocolParams.protocolVersion.minor` set to `minor`. */
+  private def withMinor(minor: BigInt): Json =
+    edit(
+      preview("shelley"),
+      List("protocolParams", "protocolVersion", "minor"),
+      Some(Json.fromBigInt(minor))
+    )
+
+  test("the protocol version's minor is a Word32: 4294967295 is read, 4294967296 is refused") {
+    // `FromJSON ProtVer` (`BaseTypes.hs:230-235`, cardano-ledger f649f975) reads `pvMinor ::
+    // Word32` (`:211`); the fixture's wrong-type case shows the reference parsing a `Word32` there
+    val word32Max = (BigInt(1) << 32) - 1
+    assertEquals(GenesisSchema.shelley(withMinor(word32Max)), Right(()))
+    GenesisSchema.shelley(withMinor(word32Max + 1)).left.map(_.problem) match
+      case Left(
+            ConfigProblem.GenesisField(
+              file,
+              at,
+              GenesisFieldError.Number(json.NumberError.NotWord(bits, value))
+            )
+          ) =>
+        assertEquals(
+          (file, at.toList, bits, value.toBoundedInteger(0, word32Max + 1)),
+          (
+            GenesisFile.Shelley,
+            List("protocolParams", "protocolVersion", "minor"),
+            32,
+            Some(word32Max + 1)
+          )
+        )
+      case other => fail(s"expected the minor refused as no Word32, got $other")
+  }
+
   for row <- rows do
     test(s"${field[String](row, "name")}: as the reference") {
       val scarab = read(row)

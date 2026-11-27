@@ -33,7 +33,8 @@ object UpdateChecks:
     * `(major, 0)` follows `(major, 4294967295)`. The proposed version is read as the reference's
     * `ProtVer` decoder reads it ([[ParamUpdate.protocolVersion]]): a major beyond `MaxVersion` or a
     * minor beyond a `Word32` is no `ProtVer`, and is unreadable. A version in force that is no
-    * `ProtVer` is followed by none.
+    * `ProtVer` is followed by none; no parsed genesis gives one, as [[GenesisSchema]] reads its
+    * major as a `Version` and its minor as a `Word32`, so that branch is unreachable from it.
     */
   def canFollow(params: ProtocolParams, u: ParamUpdate): Either[Refusal, Unit] =
     u.fields.get(14) match
