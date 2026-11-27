@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   BabbageUTxO,
   CollectError,
   Data,
+  EraCertState,
   EraScript,
   EraTx,
   EraTxError,
@@ -111,8 +112,8 @@ object BabbageEraUTxO:
 
       // `getWitsVKeyNeeded = getAlonzoWitsVKeyNeeded`, `Babbage/UTxO.hs:57`, cardano-ledger
       // f649f975: the genesis delegations read from the certificate state's delegation state
-      // (`dsGenDelegs (certState ^. certDStateL)`, `Shelley/UTxO.hs:263`), a body of the top level
-      // only
+      // through Babbage's certificate-state class (`dsGenDelegs (certState ^. certDStateL)`,
+      // `Shelley/UTxO.hs:263`), a body of the top level only
       override def getWitsVKeyNeeded[L <: TxLevel](
           certState: ShelleyCertState,
           utxo: UTxO[Babbage],
@@ -120,8 +121,12 @@ object BabbageEraUTxO:
       )(using l: txOf.bodyOf.Level[L]): Set[Bytes] =
         l match
           case TopOnly.Top =>
-            AlonzoUTxO.getAlonzoWitsVKeyNeeded[Babbage](certState.dState.genDelegs, utxo, body)(
-              using b
+            AlonzoUTxO.getAlonzoWitsVKeyNeeded[Babbage](
+              EraCertState.babbage.certDStateL.get(certState).genDelegs,
+              utxo,
+              body
+            )(using
+              b
             )
 
       // `getMinFeeTxUtxo pp tx _ = getShelleyMinFeeTxUtxo pp tx`, `Babbage/UTxO.hs:59`,

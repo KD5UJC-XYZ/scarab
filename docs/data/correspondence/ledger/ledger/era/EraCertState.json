@@ -331,6 +331,26 @@
     }
    ]
   },
+  "given ledger.era.EraCertState.babbage": {
+   "class": "Mirror",
+   "digest": "6816d1e1555e1eea",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/State/CertState.hs",
+     "lines": [
+      11,
+      11
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraCertState BabbageEra"
+    }
+   ]
+  },
   "given ledger.era.EraCertState.conway": {
    "class": "Mirror",
    "digest": "ae469aa35d02af70",

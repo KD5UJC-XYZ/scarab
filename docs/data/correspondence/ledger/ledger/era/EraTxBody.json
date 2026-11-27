@@ -489,6 +489,12 @@
  "glue": [
   {
    "definitions": [
+    "def ledger.era.ShelleyEraTxBody#keptUpdate"
+   ],
+   "reason": "an update proposal of the eras before Conway, and each delegate's proposed update the governance state keeps (KeptPParamsUpdate), with the bytes of its values, as the node stores it (ADR 0006), and its reading from that stored form; the reference stores the typed update and writes it canonically, so it has no counterpart; the kept bytes reproduce the stored record, and the reference's re-encoding differs from them in the Haskell-layout state answers for a non-canonical proposal (#85 item 7211463135); a stored proposal with a legacy unread field is refused (#85 item 7222565136); each delegate's update kept with its bytes in the read of a body's proposal (KeptPParamsUpdate.decode, KeptUpdate.proposed) and a body's proposal in that form (ShelleyEraTxBody.keptUpdate), which PPUP records"
+  },
+  {
+   "definitions": [
     "given ledger.era.EraTxBody.dijkstra"
    ],
    "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"

@@ -780,7 +780,7 @@
     {
       "module": "ledger",
       "path": "ledger/era/babbage",
-      "responsibility": "Babbage's own types: its native, Plutus and script types and its output, opaque outside their file; its protocol-parameter record; its certificate, witness set, auxiliary data, body and transaction, made by its decoders; its UTxO classes and annotated transaction; its instances of the accounts class",
+      "responsibility": "Babbage's own types: its native, Plutus and script types and its output, opaque outside their file; its protocol-parameter record; its certificate, witness set, auxiliary data, body and transaction, made by its decoders; its UTxO classes and annotated transaction; its instances of the accounts and certificate-state classes",
       "entryPoints": [
         "BabbageTx",
         "BabbageTxBody",
@@ -879,7 +879,7 @@
     {
       "module": "ledger",
       "path": "ledger/era/rules",
-      "responsibility": "The reference's rule predicates on the era types, each generic in its era over the reference's classes, in objects named after the reference's Rules modules (among them RATIFY, ENACT and Dijkstra's TICK, NEWEPOCH and EPOCH, which the node's tick of a Dijkstra state runs); their verdicts were compared with the flat rules' (#85, stage 2), and are held to the flat rules' recorded judgments where those were deleted (stage 3); Dijkstra's BBODY and closure application, run by the node on a block",
+      "responsibility": "The reference's rule predicates on the era types, each generic in its era over the reference's classes, in objects named after the reference's Rules modules (among them RATIFY, ENACT and Dijkstra's TICK, NEWEPOCH and EPOCH, which the node's tick of a Dijkstra state runs); their verdicts were compared with the flat rules' (#85, stage 2), and are held to the flat rules' recorded judgments where those were deleted (stage 3), and Babbage's UTXOS with its PPUP step, compared with the flat rules while they run; Dijkstra's BBODY and closure application, run by the node on a block",
       "entryPoints": [
         "ShelleyUtxo",
         "AllegraUtxo",
@@ -897,7 +897,9 @@
         "DijkstraNewEpoch",
         "NewEpochGovState",
         "ConwayBbody",
-        "ConwayBlockRun"
+        "ConwayBlockRun",
+        "ShelleyPpup",
+        "BabbageUtxos"
       ],
       "suites": [
         "ConwayUtxoChecksSuite",
@@ -913,7 +915,8 @@
         "ConwayBbodySuite",
         "ConwayBbodyImpSuite",
         "ConwayBlockRunSuite",
-        "DijkstraBbodyImpSuite"
+        "DijkstraBbodyImpSuite",
+        "BabbageUtxosSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"

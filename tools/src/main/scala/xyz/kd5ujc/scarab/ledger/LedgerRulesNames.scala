@@ -152,11 +152,13 @@ object LedgerRulesNames:
     case ConwayUtxowPredFailure.MalformedReferenceScripts(_)  => Vector(MalformedReferenceScripts)
     case ConwayUtxowPredFailure.ScriptIntegrityHashMismatch(_, _) => Vector.empty
 
-  private def utxo(u: ConwayUtxoPredFailure[Conway]): Vector[ReportName] = u match
-    case ConwayUtxoPredFailure.UtxosFailure(ConwayUtxosPredFailure.ValidationTagMismatch(_, _)) =>
-      Vector(ValidationTagMismatch)
-    case ConwayUtxoPredFailure.UtxosFailure(ConwayUtxosPredFailure.CollectErrors(errors)) =>
+  private def utxos(u: ConwayUtxosPredFailure[Conway]): Vector[ReportName] = u match
+    case ConwayUtxosPredFailure.ValidationTagMismatch(_, _) => Vector(ValidationTagMismatch)
+    case ConwayUtxosPredFailure.CollectErrors(errors) =>
       errors.toList.toVector.flatMap(collect).distinct
+
+  private def utxo(u: ConwayUtxoPredFailure[Conway]): Vector[ReportName] = u match
+    case ConwayUtxoPredFailure.UtxosFailure(f)  => utxos(f)
     case ConwayUtxoPredFailure.BadInputsUTxO(_) => Vector(BadInputsUTxO)
     case ConwayUtxoPredFailure.OutsideValidityIntervalUTxO(_, _) =>
       Vector(OutsideValidityIntervalUTxO)

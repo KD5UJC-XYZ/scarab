@@ -10,10 +10,9 @@ import xyz.kd5ujc.scarab.ledger.{
   DecodeField,
   DecoderVersion,
   LedgerDecodeError,
-  ParamUpdate,
   Update as StoredUpdate
 }
-import xyz.kd5ujc.scarab.ledger.state.{EpochNo, EraTag, Genesis, KeyHash}
+import xyz.kd5ujc.scarab.ledger.state.{EpochNo, EraTag, Genesis, KeyHash, Sorted}
 
 /** The updates of the parameters the genesis delegates propose (`newtype ProposedPPUpdates era`,
   * cardano-ledger f649f975 `eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs:270-272`), by
@@ -35,8 +34,13 @@ final case class Update[E <: EraTag](proposals: ProposedPPUpdates[E], epoch: Epo
   * writes them canonically; the node's stored form keeps the bytes, so the typed update is kept
   * beside them and both come from one read. Only [[KeptUpdate.decode]] and
   * [[KeptUpdate.fromStored]] make one, so the bytes are always those the values were read from.
+  * Each delegate's update is also kept with its own bytes ([[proposed]]), the form the governance
+  * state keeps a proposal in once PPUP records it; it is made in the same read, and two updates are
+  * equal by their values and stored form alone.
   */
-final case class KeptUpdate[E <: EraTag] private (update: Update[E], stored: StoredUpdate)
+final case class KeptUpdate[E <: EraTag] private (update: Update[E], stored: StoredUpdate)(
+    val proposed: KeptProposedPPUpdates[E]
+)
 
 object KeptUpdate:
   private def genesisKeyHash(n: Node)(using
@@ -56,18 +60,6 @@ object KeptUpdate:
       .leftMap(_ =>
         LedgerDecodeError.NumberOutOfRange(DecodeField.UpdateEpoch, n, 0, (BigInt(1) << 64) - 1)
       )
-
-  /** The stored form of an update's fields: each tag, one of the era's update keys, with the bytes
-    * of its value.
-    */
-  private def stored(fields: Vector[(BigInt, Node)]): Either[LedgerDecodeError, ParamUpdate] =
-    fields
-      .traverse((tag, v) =>
-        Either
-          .cond(tag.isValidInt, tag.toInt -> CborRead.kept(v), tag)
-          .leftMap(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, _))
-      )
-      .map(fs => ParamUpdate(fs.toMap))
 
   /** The decoder version of era `E` 's blocks, `eraProtVerLow` (`eraDecoder`, [[DecoderVersion]]),
     * which an update of the era is read at.
@@ -96,16 +88,15 @@ object KeptUpdate:
       proposals <- kvs.traverse((k, v) =>
         for
           (raw, hash) <- genesisKeyHash(k)
-          (update, fields) <- PParamsUpdate.decodeFields[E](v)
-          kept <- stored(fields)
-        yield (raw, hash, update, kept)
+          kept <- KeptPParamsUpdate.decode[E](v)
+        yield (raw, hash, kept)
       )
       epoch <- CborRead.uint(xs(1), DecodeField.UpdateEpoch)
       typed <- epochNo(epoch)
     yield KeptUpdate(
-      Update(ProposedPPUpdates(proposals.map((_, h, u, _) => h -> u).toMap), typed),
-      StoredUpdate(TreeMap.from(proposals.map((raw, _, _, kept) => raw -> kept)), epoch)
-    )
+      Update(ProposedPPUpdates(proposals.map((_, h, k) => h -> k.update).toMap), typed),
+      StoredUpdate(TreeMap.from(proposals.map((raw, _, k) => raw -> k.stored)), epoch)
+    )(KeptProposedPPUpdates(Sorted.map(proposals.map((_, h, k) => h -> k))))
 
   /** The update the node keeps, read into the era at its decoder version: each stored field's bytes
     * read by its field, as [[decode]] reads a value. A stored form [[decode]] did not give may be
@@ -116,18 +107,17 @@ object KeptUpdate:
       pp: EraPParamsToBabbage[E],
       era: Era[E]
   ): Either[LedgerDecodeError, KeptUpdate[E]] =
-    given DecodeAt = at[E]
     for
       proposals <- u.proposals.toVector.traverse((raw, fields) =>
         for
           hash <- KeyHash
             .fromBytes[Genesis](raw)
             .leftMap(_ => LedgerDecodeError.ByteLength(DecodeField.GenesisKeyHash, 28, raw.size))
-          (update, _) <- PParamsUpdate.readFields[E, (Int, Bytes), Unit](
-            fields.fields.toVector.sortBy(_._1),
-            ()
-          )((k, bytes) => CborRead.decode(bytes).map(BigInt(k) -> _), (_, _, _) => ())
-        yield hash -> update
+          kept <- KeptPParamsUpdate.fromStored[E](fields)
+        yield hash -> kept
       )
       epoch <- epochNo(u.epoch)
-    yield KeptUpdate(Update(ProposedPPUpdates(proposals.toMap), epoch), u)
+    yield KeptUpdate(
+      Update(ProposedPPUpdates(proposals.map((h, k) => h -> k.update).toMap), epoch),
+      u
+    )(KeptProposedPPUpdates(Sorted.map(proposals)))

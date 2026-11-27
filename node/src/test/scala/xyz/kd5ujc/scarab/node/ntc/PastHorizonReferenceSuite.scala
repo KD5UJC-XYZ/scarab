@@ -405,10 +405,11 @@ class PastHorizonReferenceSuite extends FunSuite:
       result match
         case Right(Left(failures)) =>
           failures.toChain.toList match
-            case ConwayUtxoPredFailure.UtxosFailure(
-                  ConwayUtxosPredFailure.CollectErrors(errors)
-                ) :: Nil =>
-              assertEquals(errors.toList, expected, r.label)
+            case ConwayUtxoPredFailure.UtxosFailure(utxos) :: Nil =>
+              (utxos: ConwayUtxosPredFailure[Conway]) match
+                case ConwayUtxosPredFailure.CollectErrors(errors) =>
+                  assertEquals(errors.toList, expected, r.label)
+                case other => fail(s"${r.label}: $other")
             case other => fail(s"${r.label}: $other")
         case other => fail(s"${r.label}: $other")
     }

@@ -127,10 +127,7 @@ object DijkstraPhase2:
               AlonzoUtxowEvent.WrappedShelleyEraEvent(ShelleyUtxowEvent.UtxoEvent(utxo))
             ) =>
           utxo match
-            case AlonzoUtxoEvent.UtxosEvent(ConwayUtxosEvent.SuccessfulPlutusScriptsEvent(ps)) =>
-              Some(ScriptsTold.Passed(ps.size))
-            case AlonzoUtxoEvent.UtxosEvent(ConwayUtxosEvent.FailedPlutusScriptsEvent(ps)) =>
-              Some(ScriptsTold.Failed(ps.size))
+            case AlonzoUtxoEvent.UtxosEvent(utxos)   => ScriptsTold.ofUtxos[Dijkstra](utxos)
             case AlonzoUtxoEvent.TotalDeposits(_, _) => Some(ScriptsTold.Applied)
             case AlonzoUtxoEvent.TxUTxODiff(_, _)    => None
         case DijkstraLedgerEvent.EntitiesEvent(_) | DijkstraLedgerEvent.GovEvent(_) |

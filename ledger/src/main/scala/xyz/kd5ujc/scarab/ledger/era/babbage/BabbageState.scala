@@ -4,21 +4,32 @@ package xyz.kd5ujc.scarab.ledger.era.babbage
 import monocle.{Getter, Lens}
 import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.Ptr
-import xyz.kd5ujc.scarab.ledger.era.ShelleyEraAccounts
+import xyz.kd5ujc.scarab.ledger.era.{
+  EraCertState,
+  EraTxBody,
+  Obligations,
+  PParams,
+  ShelleyEraAccounts,
+  TxBody,
+  TxLevel
+}
 import xyz.kd5ujc.scarab.ledger.state.{
   Babbage,
+  Coin,
   CompactCoin,
   Credential,
+  DState,
   KeyHash,
+  PState,
   ShelleyAccountState,
   ShelleyAccounts,
+  ShelleyCertState,
   StakePool,
   Staking
 }
 
-/** Babbage's instances of the state classes, over the records the node keeps ([[ShelleyAccounts]]).
-  * Its `EraCertState` instance names Babbage's body (`certsTotalDepositsTxBody`), so it comes with
-  * Babbage's transaction (#85).
+/** Babbage's instances of the state classes, over the records the node keeps ([[ShelleyAccounts]],
+  * [[ShelleyCertState]]).
   */
 object BabbageState:
   /** `instance EraAccounts BabbageEra` and `instance ShelleyEraAccounts BabbageEra`
@@ -63,3 +74,37 @@ object BabbageState:
 
     override val ptrAccountStateG: Getter[ShelleyAccountState, Ptr] =
       ShelleyAccountState.ptr.asGetter
+
+  /** `instance EraCertState BabbageEra`
+    * (`eras/babbage/impl/src/Cardano/Ledger/Babbage/State/CertState.hs:11-24`, cardano-ledger
+    * f649f975): Shelley's record, lenses and functions (`Shelley/State/CertState.hs:77-94`).
+    */
+  val certState: EraCertState[Babbage] = new EraCertState[Babbage]:
+    override def accountsOf: ShelleyEraAccounts[Babbage] = accounts
+
+    /** `certDStateL = shelleyCertDStateL`. */
+    override val certDStateL: Lens[ShelleyCertState, DState[ShelleyAccounts]] =
+      ShelleyCertState.dState
+
+    /** `certPStateL = shelleyCertPStateL`. */
+    override val certPStateL: Lens[ShelleyCertState, PState] = ShelleyCertState.pState
+
+    /** `obligationCertState = shelleyObligationCertState`. */
+    override def obligationCertState(certState: ShelleyCertState): Obligations =
+      EraCertState.shelleyObligationCertState[Babbage](certState)(using this)
+
+    /** `certsTotalDepositsTxBody = shelleyCertsTotalDepositsTxBody`. */
+    override def certsTotalDepositsTxBody(
+        pp: PParams[Babbage],
+        certState: ShelleyCertState,
+        body: TxBody[TxLevel.Top, Babbage]
+    )(using EraTxBody[Babbage]): Coin =
+      EraCertState.shelleyCertsTotalDepositsTxBody[Babbage](pp, certState, body)(using this)
+
+    /** `certsTotalRefundsTxBody = shelleyCertsTotalRefundsTxBody`. */
+    override def certsTotalRefundsTxBody[L <: TxLevel](
+        pp: PParams[Babbage],
+        accounts: ShelleyAccounts,
+        body: TxBody[L, Babbage]
+    )(using b: EraTxBody[Babbage], l: b.Level[L]): Coin =
+      EraCertState.shelleyCertsTotalRefundsTxBody[Babbage, L](pp, accounts, body)(using this)

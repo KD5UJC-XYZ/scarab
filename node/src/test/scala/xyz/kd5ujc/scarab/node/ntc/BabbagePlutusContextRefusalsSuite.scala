@@ -75,29 +75,8 @@ class BabbagePlutusContextRefusalsSuite extends FunSuite:
       Unsigned.from[Unsigned.Width.W32](BigInt(0)).getOrElse(fail("minor"))
     )
 
-  /** The flat failure a typed one is, case by case. */
-  private def asFlat(e: BabbageContextError[Babbage]): TranslationError = e match
-    case BabbageContextError.AlonzoContextError(a) =>
-      a match
-        case AlonzoContextError.TranslationLogicMissingInput(in) =>
-          TranslationError.UnresolvedInput(in)
-        case AlonzoContextError.TimeTranslationPastHorizon(cause) => cause
-        case AlonzoContextError.Undecodable(site, _) => TranslationError.Undecodable(site)
-        case AlonzoContextError.CertificateNotSupported(cert) =>
-          TranslationError.CertificateNotSupported(BabbageTestKit.flatCert(cert))
-        case AlonzoContextError.PlutusPurposeNotSupported(_) |
-            AlonzoContextError.ImpossibleContextError(_) =>
-          fail(s"no Babbage translation fails with $a")
-    case BabbageContextError.ByronTxOutInContext(source) =>
-      TranslationError.ByronTxOutInContext(source)
-    case BabbageContextError.RedeemerPointerPointsToNothing(ptr) =>
-      TranslationError.RedeemerPointerPointsToNothing(ptr.tag, ptr.ix.value)
-    case BabbageContextError.InlineDatumsNotSupported(source) =>
-      TranslationError.InlineDatumsNotSupported(source)
-    case BabbageContextError.ReferenceScriptsNotSupported(source) =>
-      TranslationError.ReferenceScriptsNotSupported(source)
-    case BabbageContextError.ReferenceInputsNotSupported(ins) =>
-      TranslationError.ReferenceInputsNotSupported(ins)
+  private def asFlat(e: BabbageContextError[Babbage]): TranslationError =
+    BabbageTestKit.flatContextError(e)
 
   /** One case: the transaction both ways, the outputs the set holds of it, its parameters, the
     * genesis delegations in force and its clock.

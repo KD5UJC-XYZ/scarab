@@ -35,7 +35,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TopOnly,
   TxBody,
   TxLevel,
-  Update,
   ValidityInterval
 }
 import xyz.kd5ujc.scarab.ledger.rules.Convert
@@ -353,9 +352,9 @@ object BabbageTxBody:
       ): Vector[BabbageTxCert] =
         l match
           case TopOnly.Top => body.certs
-      // `updateTxBodyL`, `Babbage/TxBody.hs:306-307`, cardano-ledger f649f975
-      override def update(body: BabbageTxBody): Option[Update[Babbage]] =
-        body.update.map(_.update)
+      // `updateTxBodyL`, `Babbage/TxBody.hs:306-307`, cardano-ledger f649f975, with the bytes
+      // the node keeps the proposal by
+      override def keptUpdate(body: BabbageTxBody): Option[KeptUpdate[Babbage]] = body.update
       override def vldt[L <: TxLevel](body: TxBody[L, Babbage])(using
           l: TopOnly[L]
       ): ValidityInterval =

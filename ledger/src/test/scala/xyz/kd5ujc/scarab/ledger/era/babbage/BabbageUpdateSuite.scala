@@ -66,6 +66,22 @@ class BabbageUpdateSuite extends ScalaCheckSuite:
           )
     )
 
+  /** Each delegate's update kept with its own bytes (`KeptUpdate.proposed`, the form PPUP records)
+    * is the typed update's of that delegate with the stored form's bytes of it, for every delegate
+    * of both and no other.
+    */
+  private def sameProposed(what: String, kept: KeptUpdate[Babbage]): Unit =
+    assertEquals(
+      kept.proposed.updates.keySet.map(_.bytes),
+      kept.stored.proposals.keySet.toSet,
+      what
+    )
+    assertEquals(kept.proposed.updates.keySet.toSet, kept.update.proposals.updates.keySet, what)
+    kept.proposed.updates.foreach { (genesis, p) =>
+      assertEquals(Some(p.update), kept.update.proposals.updates.get(genesis), what)
+      assertEquals(Some(p.stored), kept.stored.proposals.get(genesis.bytes), what)
+    }
+
   property(
     "a body's update read the typed way is stored as the flat decoder stores it, byte for byte"
   ):
@@ -81,6 +97,8 @@ class BabbageUpdateSuite extends ScalaCheckSuite:
       val back = right("from stored")(KeptUpdate.fromStored[Babbage](stored))
       assertEquals(back.update, kept.update)
       assertEquals(back.stored, stored)
+      sameProposed("decoded", kept)
+      sameProposed("from stored", back)
     }
 
   property("an update proposal's typed values are the encoder's, read again"):
@@ -103,6 +121,11 @@ class BabbageUpdateSuite extends ScalaCheckSuite:
     assertNotEquals(s.stored, w.stored)
     assertEquals(w.stored, right("flat")(flat(wide)))
     assertEquals(w.stored.proposals.values.head.fields(8), hex("1b00000000000001f4"))
+    sameProposed("wide", w)
+    assertEquals(
+      w.proposed.updates.values.map(_.stored.fields(8)).toList,
+      List(hex("1b00000000000001f4"))
+    )
 
   test("what the flat decoder refuses the typed decoder refuses, with the same refusal but two"):
     def one(fields: (String, String)*): String =
@@ -202,12 +225,30 @@ class BabbageUpdateSuite extends ScalaCheckSuite:
         )
       )
 
+  test("a delegate proposing twice keeps its last proposal, in the stored form and the kept one"):
+    val twice = array(
+      Seq(
+        map(
+          Seq(
+            genesisKey(4) -> map(Seq(uint(8) -> uint(1))),
+            genesisKey(4) -> map(Seq(uint(8) -> uint(2)))
+          )
+        ),
+        uint(5)
+      )
+    )
+    val kept = right("twice")(typed(twice))
+    sameProposed("twice", kept)
+    assertEquals(kept.proposed.updates.values.map(_.stored.fields(8)).toList, List(hex(uint(2))))
+
   test("at the edges of what they read, the two decoders accept alike and store alike"):
     edges.foreach { (what, u) =>
       (flat(u), typed(u)) match
-        case (Right(f), Right(t)) => assertEquals(t.stored, f, what)
-        case (Left(_), Left(_))   => ()
-        case (f, t)               => fail(s"$what: flat $f, typed ${t.map(_.stored)}")
+        case (Right(f), Right(t)) =>
+          assertEquals(t.stored, f, what)
+          sameProposed(what, t)
+        case (Left(_), Left(_)) => ()
+        case (f, t)             => fail(s"$what: flat $f, typed ${t.map(_.stored)}")
     }
 
   test("only an era whose update sets the protocol version reads an update proposal"):

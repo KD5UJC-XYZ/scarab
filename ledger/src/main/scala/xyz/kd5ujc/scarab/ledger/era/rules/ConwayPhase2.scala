@@ -20,7 +20,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayContextError, ConwayPlutusPurpose, ConwayTxCert}
 import xyz.kd5ujc.scarab.ledger.rules.TxDependencies
-import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, EraTag, LedgerState}
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, EvalResult}
 
 /** What of Conway's BBODY events the node's phase-2 counters read ([[ConwayPhase2.counted]]):
@@ -40,6 +40,14 @@ enum ScriptsTold:
   case Applied
 
 object ScriptsTold:
+  /** UTXOS's event of an era whose UTXOS is Conway's as the counters read it: the scripts that
+    * passed or failed. Typed at the era's event, so that a pattern on it narrows to Conway's
+    * events, which the family of the eras' UTXOS events (Babbage's among them) does not.
+    */
+  def ofUtxos[E <: EraTag](event: ConwayUtxosEvent[E]): Option[ScriptsTold] = event match
+    case ConwayUtxosEvent.SuccessfulPlutusScriptsEvent(ps) => Some(Passed(ps.size))
+    case ConwayUtxosEvent.FailedPlutusScriptsEvent(ps)     => Some(Failed(ps.size))
+
   /** The event of Conway's BBODY as the counters read it, if they read it. */
   def of(event: BbodyEvent[Conway]): Option[ScriptsTold] = event match
     case AlonzoBbodyEvent.ShelleyInAlonzoEvent(
@@ -50,10 +58,7 @@ object ScriptsTold:
               AlonzoUtxowEvent.WrappedShelleyEraEvent(ShelleyUtxowEvent.UtxoEvent(utxo))
             ) =>
           utxo match
-            case AlonzoUtxoEvent.UtxosEvent(ConwayUtxosEvent.SuccessfulPlutusScriptsEvent(ps)) =>
-              Some(Passed(ps.size))
-            case AlonzoUtxoEvent.UtxosEvent(ConwayUtxosEvent.FailedPlutusScriptsEvent(ps)) =>
-              Some(Failed(ps.size))
+            case AlonzoUtxoEvent.UtxosEvent(utxos)   => ofUtxos[Conway](utxos)
             case AlonzoUtxoEvent.TotalDeposits(_, _) => Some(Applied)
             case AlonzoUtxoEvent.TxUTxODiff(_, _)    => None
         case ConwayLedgerEvent.CertsEvent(_) | ConwayLedgerEvent.GovEvent(_) => None

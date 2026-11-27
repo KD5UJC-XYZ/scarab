@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era
 import cats.syntax.all.*
 import monocle.Lens
 import scala.collection.immutable.SortedMap
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Node}
 import xyz.kd5ujc.scarab.ledger.{
   CborRead,
   DecodeField,
@@ -37,7 +37,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * [[KeptUpdate]]). The reference keeps the values only; the node's stored form keeps the bytes, so
   * that a field submitted in a form other than the canonical one is stored as it came, and the
   * update read from them is kept beside them. Two are equal when their updates are, as the
-  * reference's `Eq` compares the values. Made only from the stored form ([[fromStored]]), so the
+  * reference's `Eq` compares the values. Made only by reading bytes, from the stored form
+  * ([[fromStored]]) or a body's update proposal ([[decode]], through [[KeptUpdate.decode]]), so the
   * bytes are always those the update was read from. The kept bytes reproduce the stored record; the
   * reference re-encodes the values, which a client sees in the Haskell-layout state answers
   * (`DebugEpochState`, `DebugNewEpochState`) for a proposal in a non-canonical form, a known
@@ -76,6 +77,27 @@ object KeptPParamsUpdate:
         (_, _, _) => ()
       )
       .map((update, _) => KeptPParamsUpdate(update, stored))
+
+  /** `DecCBOR (PParamsUpdate era)` ([[PParamsUpdate.decodeFields]]) of one delegate's proposed
+    * update in a body's update proposal, read at `at` ([[KeptUpdate.decode]]), and only at an era
+    * whose updates a genesis delegate proposes ([[EraPParamsToBabbage]]): each field's value kept
+    * as the bytes it was read from ([[CborRead.kept]]), the form a proposal is stored in (ADR
+    * 0006). A tag outside `Int` is refused as an unknown key of the update.
+    */
+  private[era] def decode[E <: EraTag](n: Node)(using
+      p: EraPParamsToBabbage[E],
+      at: DecodeAt
+  ): Either[LedgerDecodeError, KeptPParamsUpdate[E]] =
+    for
+      (update, fields) <- PParamsUpdate.decodeFields[E](n)
+      kept <- fields
+        .traverse((tag, v) =>
+          Either
+            .cond(tag.isValidInt, tag.toInt -> CborRead.kept(v), tag)
+            .leftMap(LedgerDecodeError.UnknownKey(DecodeField.ParameterUpdate, _))
+        )
+        .map(fs => ParamUpdate(fs.toMap))
+    yield KeptPParamsUpdate(update, kept)
 
 /** The proposed updates of the genesis delegates (`newtype ProposedPPUpdates era`,
   * `Shelley/PParams.hs:270-272`, cardano-ledger f649f975), each kept with its stored form
