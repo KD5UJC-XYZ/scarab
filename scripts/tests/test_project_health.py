@@ -67,10 +67,16 @@ class ProjectHealthTest(unittest.TestCase):
                         'pinned-citation': {'files': {'B.scala': 4}},
                         'test-sleep': {'files': {'C.scala': {'sleep': 2}}},
                         'parameter-comment': {'files': {'D.scala': 1}},
-                        'docs-check': {'entries': [{'kind': 'missing-symbol', 'count': 3}]},
-                        'correspondence': {'areas': {'ledger': {'a': None, 'b': None}}}}
+                        'docs-check': {'entries': [{'kind': 'missing-symbol', 'count': 3}]}}
             for name, data in examples.items():
                 (directory/f'{name}-baseline.json').write_text(json.dumps(data))
+            ledger = directory/'correspondence/ledger'
+            (ledger/'ledger').mkdir(parents=True)
+            (directory/'correspondence/_baseline.json').write_text('{}')
+            (ledger/'_area.json').write_text(json.dumps({'area': 'ledger', 'roots': ['ledger/src/main/scala']}))
+            (ledger/'ledger/A.json').write_text(json.dumps({'source': 'A.scala', 'baseline': {'a': None}}))
+            (ledger/'ledger/B.json').write_text(json.dumps({'source': 'B.scala', 'baseline': {'b': None},
+                                                            'entries': {'c': {}}}))
             result = health.baselines(root)
             self.assertEqual({k:v['count'] for k,v in result.items()},
                              {'imperative': 3, 'pinned-citation': 4, 'test-sleep': 2, 'parameter-comment': 1,
