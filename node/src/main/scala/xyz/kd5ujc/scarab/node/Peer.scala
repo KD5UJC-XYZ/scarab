@@ -394,7 +394,7 @@ object Peer:
     // the runs newest first, and whether the newest may still grow (no header not owned since)
     val (runs, _) = flagged.foldLeft((List.empty[NonEmptyVector[Header]], false)) {
       case ((current :: older, true), (header, true))
-          if header.prevHash.contains(current.last.hash) =>
+          if header.predecessor.contains(current.last.hash) =>
         (current.append(header) :: older, true)
       case ((runs, _), (header, true)) => (NonEmptyVector.one(header) :: runs, true)
       case ((runs, _), (_, false))     => (runs, false)

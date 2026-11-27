@@ -134,6 +134,19 @@ class GenesisNamingBoundarySuite extends FunSuite:
     assertEquals(predecessor(raws(1)), Some(ReceivedBlocks.Predecessor.Block(recorded(0).hash)))
   }
 
+  test("a fetch range never runs from a block into such a block: it starts after Origin") {
+    val (ebb, _) = forged(recorded(1).hash)
+    assertEquals(
+      Peer.ownedRuns(Vector(recorded(1) -> true, ebb -> true)).map(_.toVector),
+      Vector(Vector(recorded(1)), Vector(ebb))
+    )
+    // the recorded chain is one range
+    assertEquals(
+      Peer.ownedRuns(recorded.take(3).map(_ -> true)).map(_.toVector),
+      Vector(recorded.take(3))
+    )
+  }
+
   test("the header gate takes such a block after Origin, as the reference's envelope does") {
     // `validateEnvelope` compares `headerPrevHash`, genesis here, with Origin (ouroboros-consensus
     // 82ecba32 `Ouroboros/Consensus/HeaderValidation.hs:364-376`); a boundary header is not signed
