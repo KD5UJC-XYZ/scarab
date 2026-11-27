@@ -204,7 +204,7 @@ listed (self calls found with a script over `*/src/main`, `foldRight`, `reduceRi
 | `Cbor`, `PlutusData`, `Scripts` (native), `Tx`, `Block`, Byron decoders | depth of nested items | already iterative (B17, B18: `TreeFold`, `DeepNestingSuite`) |
 | `traverse`, `traverse_`, `flatTraverse`, `foldLeftM` over inputs, outputs, certificates, withdrawals, votes, proposals, redeemers, datums, UTxO entries (`Tx`, `ScriptContexts`, `*Rules`, `LedgerMirror`, `Governance`, `GenesisState`) | one element per step, library | safe: cats chunks the traversal for `Either`, `Option` and `IO`; `WideTxStackSuite` runs 100,000 elements and a transaction information of 5,000 inputs and 5,000 outputs (V1, V2, V3) on 256 KiB |
 | `Wire.Elements`, `Record`, `Params`, `Binary` (decoders of the Haskell state and our files) | one element per step | `@tailrec` already |
-| `TxChecks.tierRefScriptFee`, `GovState.withDescendants` | one step per 25 KiB of reference scripts; one per level of proposal lineage | `@tailrec` already |
+| `ConwayTx.tierRefScriptFee`, `GovState.withDescendants` | one step per 25 KiB of reference scripts; one per level of proposal lineage | `@tailrec` already |
 | `ByronTx.merkleRoot` | halves the transactions per level | depth is log2 of the count (at most about 17) |
 | `Handshake` parser and encoder | depth of a handshake term | iterative since #1029, when the local caps went: a `@tailrec` machine over the open containers and a pre-order writer; a term read is bounded only by the message's 5760 bytes, and one written by nothing (`HandshakeSuite`, 5,000 levels on 256 KiB; `ProtocolErrorSuite`, 100,000 written) |
 | `Sum6KesSigning` (`gen`, `signAt`, `update`, `checkLevel`, `size`) | levels of the KES tree | 6, by the format |

@@ -2,10 +2,11 @@
 
 Status: Current — the expected values of `ConwayLedgerChecksSuite`, `ConwayFailureCborSuite`,
 `ConwayMempoolRunSuite`, `EraUtxoSuite`, `PreviewConwayBlockLedgersSuite`, `PreviewConwayRulesSuite`,
-`ConwayGovChecksSuite` and `ConwayCertsChecksSuite` (#85). Licence: Apache-2.0, this project's (see `NOTICE`).
+`ConwayGovChecksSuite`, `ConwayCertsChecksSuite`, `ConwayUtxoChecksSuite`, `ConwayUtxowChecksSuite`, `EraUtxosSuite`,
+`DijkstraStateSuite` and `ConwayPlutusCasesSuite` (#85). Licence: Apache-2.0, this project's (see `NOTICE`).
 
-Before Scarab deleted its flat Conway rules (the flat MEMPOOL, then its LEDGER and LEDGERS, then its GOV, then its CERTS) and
-the flat rules' Conway refusal encoder (`PredicateFailureCbor`), the suites that held Conway's era rules and their encoder (`ConwayFailureCbor`)
+Before Scarab deleted its flat Conway rules (the flat MEMPOOL, then its LEDGER and LEDGERS, then its GOV, then its CERTS,
+then its UTXO, UTXOW and UTXOS) and the flat rules' Conway refusal encoder (`PredicateFailureCbor`), the suites that held Conway's era rules and their encoder (`ConwayFailureCbor`)
 to them ran once more, and each recorded, for every judgment it compared, what the era side gave after asserting
 that the flat side gave the same. The era side that stays must keep giving it. A digest is the first 16 hex
 digits of the SHA-256 of the bytes it names.
@@ -136,6 +137,85 @@ digits of the SHA-256 of the bytes it names.
   the reference's 11.2 and Leios builds do so in LEDGER (#85's item 7055304484, closed with it). One case here is
   judged under a build other than 11.1, the Leios build's
   `conway-bootstrap-attributes-leios-b004fe0c/utxo-bootstrap-attributes-too-big`, and on it the two rules agreed.
+
+- `utxo-judgments.jsonl`: one line for each judgment of Conway's era UTXO, UTXOW or one of their predicates that a
+  suite compared with the flat UTXO, UTXOW or predicate, 1,035 lines, each id once: `id`, the judgment's; and `r`, its
+  cells separated by spaces. A refusal's cell is `R:` and the digest of the `ApplyTxErr` bytes of its failures in their
+  order, each under LEDGER's `ConwayUtxowFailure` (a UTXO failure under UTXOW's `UtxoFailure`), as the node sends their
+  refusal; a predicate that found nothing is `-`; an admission's cell is `A:` and the digest of the UTxO state it
+  leaves in the form `UtxoRecordings.state` writes (every field of the UTxO set, its diff and stamps among them, the
+  deposits, fees, donation and instant stake; each output by its bytes, checked to read back as it is), then, under
+  `era-utxo/`, `/` and the counters of the scripts it ran: succeeded, failed, run; a judgment with no verdict for want
+  of a script's is `N`. A value is written as it is (a multi-asset value as its lovelace, then
+  `+<policy>.<name>=<quantity>` in key order). The flat rules gave the same failures in the same order, the same
+  values, or the same state (compared whole, through `Eq`) and the same counters. A script's failure was compared by
+  its error and trace and its request: the refusal's bytes hold the request, and the cause is checked instead to be
+  the evaluator's on that request (`EraUtxoRun.causesHeld`), since the reference's text of a script that ends at an
+  explicit `error` leaves the trace out. The encoding writes an output from its fields, and the state's form leaves
+  the governance state out: each output a refusal carries is checked to be the output its bytes read as, every field
+  (its value's size among them), and to be written as those bytes, and an admission's governance state to be the
+  one the rule started from. The file holds these three suites' judgments alone, under these prefixes:
+  - `utxo-checks/`, 488 lines, `ConwayUtxoChecksSuite`, on the Conway cases of the refusal corpus: `values/` (84, each
+    case of the eight corpora the flat predicates judged, `RecordedCorpora`: its minimum fee, the value it consumes
+    and produces, and its certificates' deposits and refunds); `predicates/` (84, each of UTXO's 15 predicates on its
+    own, in the suite's order: 31 refusals); `assembled/` (84, `babbageUtxoValidation` under each build, then each
+    policy: 123 refusals); `utxo/` and `utxow/` (112 each, every Conway corpus, `WholeCorpora`: the rule whole at the
+    root under each build, then each policy; 171 and 246 refusals, 501 and 426 admissions); and `crafted/` (12, the
+    crafted cases, by name);
+  - `utxow-checks/`, 92 lines, `ConwayUtxowChecksSuite`: `predicates/` (84, each of UTXOW's six predicates on each
+    case of the eight corpora: 15 refusals) and `crafted/` (8);
+  - `era-utxo/`, 455 lines, `EraUtxoSuite`, on its 70 submissions as submitted and with the flag flipped: `utxo/` and
+    `utxow/` (140 each, the rule at the root under each build, then each policy: 453 refusals and 387 admissions
+    each), `max-tx-size/` (140, with a maximum transaction size of one byte) and `utxow-no-integrity/` (35, an
+    accepted case without its script integrity hash).
+- `utxos-judgments.jsonl`: the same for the ledger's suites, whose tests have no refusal encoder and no state
+  encoding, 569 lines, each id once:
+  - `utxos/`, 190 lines, `EraUtxosSuite`'s UTXOS on each of its cases (the 70 submissions under both flags and the
+    50 cases of the multi-script results), 4 cells each: under `All`, applied again (`NonStatic`), after an earlier
+    failure, and with an evaluator that has no verdict. A verdict is `N` for none; `C:` and the kind of each
+    collection failure in order (`r`, `w`, `t`, and `m` with a language's number), as the flat comparison saw them;
+    `U:1` or `U:0` for scripts that passed unexpectedly; `F:` and the digest of each failing script's request
+    (`UtxoRecordings.request`), whose cause is checked to be the evaluator's on it; or `P:` and the counters;
+  - `state/`, 197 lines: the state the change of the UTxO state leaves (`A:`, the form above; the governance state
+    is checked to be as it was): `passing/` (68, the cases whose scripts pass as their flag says, with the deposits
+    less the refunds the change reports, or `-`), `returning/` (1, a collateral return) and `blocks/` (128, the
+    recorded blocks' transactions, with crafted donations and deregistrations);
+  - `dijkstra-deposits/`, 182 lines, `DijkstraStateSuite`: the deposits the flat Conway UTXO's `Deposits.of` gave of
+    each transaction without sub-transactions that Conway's decoder reads, by its id.
+
+  Recorded at Scarab commit `6448028a5`, the head of the flat CERTS's deletion with the case files pinned, with these
+  suites beside the ones that compared the two rules: every comparison agreed. The suites of `6448028a5` were run
+  again at `1ca5f3bff`, which adds these recordings and the suites that read them, and wrote these, byte for byte.
+  The flat UTXO's deletion was then rebased onto the head of the pull request that deleted the flat CERTS (#1493),
+  after the flat GOV's was squash-merged (#1487), which leaves `6448028a5` and `1ca5f3bff` on no branch. The
+  deletion's parent is now `24568efb3`, which differs from `1ca5f3bff` only outside the ledger: the read-ahead of
+  queued blocks' store reads (#1484), the fuzz job's differential targets (#1418) and documents (#1490, and the CERTS
+  recording's paragraph above). The recorders were run again at `24568efb3` with the suites of the case files' pin,
+  `08f1821b9`, beside them: every comparison agreed, and the files they wrote were these, byte for byte. After the flat
+  CERTS's pull request was squash-merged (#1493), which leaves `08f1821b9` and `24568efb3` on no branch too, the
+  deletion was rebased onto the merge: its parent is now `421110217`, which differs from `24568efb3` only by the fuzz
+  module's targets for the curve arithmetic and the crypto test sources they read (#1489), no main code. The
+  recorders were run again at `421110217`, with the suites of the case files' pin there, `35e65bd56`, beside them:
+  every comparison agreed, and the files they wrote were these, byte for byte. Each of the two files
+  holds the judgments of the suites named alone: an id under no prefix named fails. A verdict without one (`N`)
+  holds no cause; each is checked to have the evaluator's own on the script the rule stopped at. The comparisons that had other
+  oracles are not here: the reference's bytes where only UTXO or UTXOW refused, the reference's verdicts and script
+  results, the expected values derived from the reference's source (a collateral count narrowed to a `Word16`, the
+  forecast's branches, the order of failing keys), and the flat decoder's scripts needed and provided, which stay.
+
+- `plutus-case-files.jsonl`: one line for each case file the `--plutus-cases` observation of a Conway transaction
+  writes from the era's observation (`PlutusCases.observeConway`) in `ConwayPlutusCasesSuite`, 120 lines, each file
+  once: `file`, its set and its name (`<set>/slot<slot>-<id>.json`); and `bytes`, the digest of its bytes. The sets
+  are the 40 recorded Plutus cases Conway's decoder reads (`fixtures/preview/plutus`): with their scripts evaluated
+  (`evaluated/`), with their collection failed by every context error and by a certificate's, a pointer's, the
+  votes' and the proposals' where the transaction has them (`uncollected/`), and by no redeemer and no context for
+  each purpose its scripts need (`purposes/`). The failures are named in the flat collection's vocabulary
+  (`ConwayPhase2.storedErrors`, through the purposes' flat form, `ConwayUtxowPredFailure.storedPurposes` when recorded
+  and `ConwayPhase2`'s own since, and `ConwayTxCert.toStored`), and
+  the flat observation of the same transaction wrote the same bytes (#85's item 7152417866). Recorded on Scarab
+  commit `c187e8b90` with the suite that reads them, committed as `6448028a5` (`08f1821b9`, then `35e65bd56`, after
+  the rebases above), before the flat Conway UTXO, UTXOW and UTXOS were deleted; written again at `24568efb3` and at
+  `421110217`, byte for byte.
 
 Commit `84bf3a1cd` is the base this work started from; `3aaa942aa` the last of it with the flat encoder. The
 tests that wrote these lines and their throwaway checkouts were removed after. The digests are Scarab's own,

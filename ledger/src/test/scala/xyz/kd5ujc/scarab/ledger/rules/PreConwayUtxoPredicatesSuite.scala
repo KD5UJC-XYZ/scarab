@@ -8,13 +8,16 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.*
 import xyz.kd5ujc.scarab.ledger.byron.{ByronAddress, ByronCbor}
 import xyz.kd5ujc.scarab.ledger.state.*
-import xyz.kd5ujc.scarab.ledger.rules.Utxo as ConwayUtxo
+import xyz.kd5ujc.scarab.ledger.era.{EraUtxoRun, PParams, StoredTxOut}
+import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTestKit, ConwayUTxO}
+import xyz.kd5ujc.scarab.ledger.era.rules.{BabbageUtxo, ConwayUtxoPredFailure}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 /** Alonzo/Rules/Utxo.hs:551-571 and Babbage/Rules/Utxo.hs:392-412 at f649f975: bootstrap
   * attributes, output networks and collateral count are phase-1 predicates, independent of
-  * redeemers and the phase-2 validity flag. These tests call the production UTXO validation.
+  * redeemers and the phase-2 validity flag. These tests call the production UTXO validation: the
+  * flat rules' of the eras before Conway, and Conway's on the era types (`babbageUtxoValidation`).
   */
 class PreConwayUtxoPredicatesSuite extends FunSuite:
   private val alice = TestLedger.key()
@@ -76,6 +79,31 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       Vector(alice),
       isValid = isValid
     )
+
+  private def toStored(o: xyz.kd5ujc.scarab.ledger.era.TxOut[Conway]): TxOut =
+    StoredTxOut.conway.toStored(o)
+
+  /** Conway's UTXO predicates on the era types (`babbageUtxoValidation`) on `tx`, the UTxO set
+    * `held`, with the parameters `pp`, under `ctx`: its failures in its order, or none.
+    */
+  private def conwayUtxo(
+      tx: ConwayTestKit.Built,
+      pp: ProtocolParams,
+      held: Map[TxIn, TxOut],
+      ctx: TxEnv
+  ): Option[List[ConwayUtxoPredFailure[Conway]]] =
+    val params = PParams[Conway](ConwayPParams.fromStored(pp).fold(e => fail(e.toString), identity))
+    val cert = Empty.ledgerState[Conway](pp).cert
+    Test
+      .failures(
+        BabbageUtxo.babbageUtxoValidation[Conway](
+          xyz.kd5ujc.scarab.ledger.era.rules.UtxoEnv(ctx.slot, params, cert),
+          ConwayUTxO.fromStored(held).fold(e => fail(e.toString), identity),
+          tx.typed,
+          ConwayTestKit.contextOf(ctx)
+        )
+      )
+      .map(_.toChain.toList)
 
   private def cases[E <: EraTag](name: String, major: Int)(using
       era: ShelleyBasedEra[E],
@@ -306,34 +334,52 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       val cert =
         summon[PreConway[E]].cert.get(xyz.kd5ujc.scarab.ledger.state.Build.ledgerState[E](pp))
       Test.failures(ShelleyUtxo.validate[E](UtxoEnv(env(build), pp, cert), StAnnTx(tx, utxo), 0, 0))
+    // Conway's on the era types, of the same transaction written with its true bytes: its
+    // failures in the flat vocabulary of the others, field by field
+    val conwayTx = ConwayTestKit.tx(
+      ConwayTestKit
+        .Body(Vector(input), Vector(ConwayTestKit.out(big.head.address, funds - fee)), fee),
+      Vector(alice)
+    )
     def conway(build: ReferenceBuild) =
-      val pp = TestLedger.params(9)
-      val cert = Empty.ledgerState[Conway](pp).cert
-      Test.failures(ConwayUtxo.validate(UtxoEnv(env(build), pp, cert), StAnnTx(tx, utxo), 0, 0))
+      // no fee per byte: the transaction pays the fee of the others, whose size is not its bytes'
+      conwayUtxo(conwayTx, TestLedger.params(9).copy(minFeeA = 0), utxo.toMap, env(build))
+        .map(_.map {
+          case ConwayUtxoPredFailure.OutputTooBigUTxO(os) =>
+            PredicateFailure.utxo(
+              UtxoFailure.OutputTooBig(os.toList.toVector.map((a, b, o) => (a, b, toStored(o))))
+            )
+          case ConwayUtxoPredFailure.OutputBootAddrAttrsTooBig(os) =>
+            PredicateFailure.utxo(
+              UtxoFailure.OutputBootAddrAttrsTooBig(os.toList.toVector.map(toStored))
+            )
+          case other => fail(s"not a failure of an output's size: $other")
+        })
     ReferenceBuild.values.foreach { build =>
       // 11.1 injects Shelley's failure as `OutputTooBigUTxO` from Allegra; 11.2 and the Leios build
       // keep it
-      def expected(injected: Boolean) = build match
-        case ReferenceBuild.Release11_1 => attrsTooBig(injected, big)
+      def expected(injected: Boolean, outs: Vector[TxOut]) = build match
+        case ReferenceBuild.Release11_1 => attrsTooBig(injected, outs)
         case ReferenceBuild.Release11_2 | ReferenceBuild.Leios =>
-          UtxoFailure.OutputBootAddrAttrsTooBig(big)
+          UtxoFailure.OutputBootAddrAttrsTooBig(outs)
       // the usual version of each era, then Shelley and Allegra each at the other's version: the
       // injection follows the era (`Allegra/Rules/Utxo.hs:374-387`), and a chain whose eras are set
       // by epoch keeps its genesis version across a hard fork
+      // Conway's outputs are its own transaction's, written with their bytes
       val judged = Vector(
-        ("Shelley 2", false, preConway[Shelley](2, build)),
-        ("Allegra 3", true, preConway[Allegra](3, build)),
-        ("Mary 4", true, preConway[Mary](4, build)),
-        ("Alonzo 5", true, preConway[Alonzo](5, build)),
-        ("Babbage 7", true, preConway[Babbage](7, build)),
-        ("Conway 9", true, conway(build)),
-        ("Shelley 3", false, preConway[Shelley](3, build)),
-        ("Allegra 2", true, preConway[Allegra](2, build))
+        ("Shelley 2", false, big, preConway[Shelley](2, build).map(_.iterator.toList)),
+        ("Allegra 3", true, big, preConway[Allegra](3, build).map(_.iterator.toList)),
+        ("Mary 4", true, big, preConway[Mary](4, build).map(_.iterator.toList)),
+        ("Alonzo 5", true, big, preConway[Alonzo](5, build).map(_.iterator.toList)),
+        ("Babbage 7", true, big, preConway[Babbage](7, build).map(_.iterator.toList)),
+        ("Conway 9", true, conwayTx.flat.body.outputs, conway(build)),
+        ("Shelley 3", false, big, preConway[Shelley](3, build).map(_.iterator.toList)),
+        ("Allegra 2", true, big, preConway[Allegra](2, build).map(_.iterator.toList))
       )
-      judged.foreach { (name, injected, failures) =>
+      judged.foreach { (name, injected, outs, failures) =>
         assertEquals(
-          failures.map(_.iterator.toList),
-          Some(List(PredicateFailure.utxo(expected(injected)))),
+          failures,
+          Some(List(PredicateFailure.utxo(expected(injected, outs)))),
           s"$build $name"
         )
       }
@@ -370,18 +416,24 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
       coll + (body.inputs.head -> out.copy(value = Value.coin(out.value.coin + body.fee)))
     )
     for valid <- Vector(true, false); redeemers <- Vector(false, true) do
-      val witnesses =
-        if redeemers then
-          Witnesses.empty.copy(redeemers = Vector(Redeemer(0, 0, Bytes.empty, ExUnits.zero)))
-        else Witnesses.empty
-      val tx = Tx(body, witnesses, 100, isValid = valid, auxiliary = None)
-      assertEquals(
-        Test.failures(
-          ConwayUtxo.validate(UtxoEnv(TestLedger.env, pp, empty.cert), StAnnTx(tx, inputs), 0, 0)
+      import ConwayTestKit.Cb.*
+      // the body's decoded fields written as Conway's, its collateral the decoded set; a
+      // redeemer `[0, 0]` of no script, which only the collateral's checks read
+      val tx = ConwayTestKit.tx(
+        ConwayTestKit.Body(
+          body.inputs,
+          body.outputs.map(o => ConwayTestKit.out(o.address, o.value.coin)),
+          body.fee,
+          collateral = body.collateral.distinct
         ),
-        None
+        Vector.empty,
+        isValid = valid,
+        redeemers =
+          Option.when(redeemers)(map(arr(uint(0), uint(0)) -> arr(uint(0), arr(uint(0), uint(0)))))
       )
-      val checked = TxChecks.collateral[Conway](inputs, tx)
+      // no fee per byte: the body pays the fee it was recorded with, for a size not its Conway bytes'
+      assertEquals(conwayUtxo(tx, pp.copy(minFeeA = 0), inputs.toMap, TestLedger.env), None)
+      val checked = TxChecks.collateral[Conway](inputs, tx.flat)
       assertEquals(checked.fee, if redeemers then read[BigInt]("collateralCoin") else BigInt(0))
       if !valid && redeemers then
         val stake = InstantStakeOps
@@ -389,9 +441,7 @@ class PreConwayUtxoPredicatesSuite extends FunSuite:
           .fold(e => fail(e.toString), identity)
         val initial =
           empty.utxo.copy[Conway](utxo = UtxoTables(Utxo.fromMap(coll)), instantStake = stake)
-        val next = ConwayUtxo
-          .update(initial, StAnnTx(tx, inputs), checked, 0, 0)
-          .fold(e => fail(e.toString), identity)
+        val (next, _) = EraUtxoRun.update(tx.typed, pp, empty.cert, initial)
         assertEquals(next.utxo.utxo.size, 0)
         assertEquals(next.fees.value, read[BigInt]("collateralCoin"))
         assertEquals(next.instantStake, empty.utxo.instantStake)

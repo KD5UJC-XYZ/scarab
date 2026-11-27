@@ -770,15 +770,29 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
 
   test("the reference-script fee grows by 1.2 for every 25 KiB") {
     val base = Rational(15)
-    assertEquals(RefScripts.tierRefScriptFee(base, 0), BigInt(0))
-    assertEquals(RefScripts.tierRefScriptFee(base, 1000), BigInt(15000))
-    assertEquals(RefScripts.tierRefScriptFee(base, 25600), BigInt(15 * 25600))
-    // 25600 at 15 plus 400 at 18
-    assertEquals(RefScripts.tierRefScriptFee(base, 26000), BigInt(15 * 25600 + 400 * 18))
-    assertEquals(
-      RefScripts.tierRefScriptFee(base, 51200),
-      BigInt(15 * 25600 + 18 * 25600)
+    // Conway's multiplier and stride, which its parameters fix (`Conway/Tx.hs:122-142`,
+    // cardano-ledger f649f975)
+    val p = era.EraPParams.conway
+    val pp = era.PParams[Conway](
+      era.conway.ConwayPParams
+        .fromStored(TestLedger.params(10))
+        .fold(e => fail(e.toString), identity)
     )
+    def fee(size: Long): BigInt =
+      era.conway.ConwayTx
+        .tierRefScriptFee(
+          p.ppRefScriptCostMultiplierG.get(pp),
+          p.ppRefScriptCostStrideG.get(pp),
+          base,
+          size
+        )
+        .value
+    assertEquals(fee(0), BigInt(0))
+    assertEquals(fee(1000), BigInt(15000))
+    assertEquals(fee(25600), BigInt(15 * 25600))
+    // 25600 at 15 plus 400 at 18
+    assertEquals(fee(26000), BigInt(15 * 25600 + 400 * 18))
+    assertEquals(fee(51200), BigInt(15 * 25600 + 18 * 25600))
   }
 
   property("supply and deposit pot survive any mix of votes, proposals and boundaries") {

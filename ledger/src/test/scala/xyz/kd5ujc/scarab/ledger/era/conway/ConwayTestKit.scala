@@ -253,7 +253,8 @@ object ConwayTestKit extends munit.Assertions:
   // ---- the transaction --------------------------------------------------------------------------
 
   /** The fields of a Conway body that the kit writes. A voter that votes in several entries of
-    * `votes` casts all of their votes (a body's votes are a map by voter).
+    * `votes` casts all of their votes (a body's votes are a map by voter). The inputs are written
+    * in their order, or in the order given where `inputsInOrder`, which a decoder reads as well.
     */
   final case class Body(
       inputs: Vector[TxIn],
@@ -264,7 +265,14 @@ object ConwayTestKit extends munit.Assertions:
       votes: Vector[(Voter, Vector[(GovActionId, Vote)])] = Vector.empty,
       proposals: Vector[Proposal] = Vector.empty,
       donation: BigInt = 0,
-      currentTreasury: Option[BigInt] = None
+      currentTreasury: Option[BigInt] = None,
+      ttl: Option[BigInt] = None,
+      mint: Map[Bytes, Map[Bytes, BigInt]] = Map.empty,
+      collateral: Vector[TxIn] = Vector.empty,
+      collateralReturn: Option[TxOut] = None,
+      totalCollateral: Option[BigInt] = None,
+      referenceInputs: Vector[TxIn] = Vector.empty,
+      inputsInOrder: Boolean = false
   ):
     /** The votes by voter as the body's map holds them: the voters ascending, and each voter's
       * actions ascending.
@@ -285,14 +293,32 @@ object ConwayTestKit extends munit.Assertions:
     /** `transaction_body`, its keys in ascending order and an empty optional field left out. */
     def encode: Bytes =
       val fields = Vector(
-        Some(0 -> set(inputs.sortBy(i => (i.id, i.index)).map(txIn))),
+        Some(
+          0 -> set(
+            (if inputsInOrder then inputs else inputs.sortBy(i => (i.id, i.index))).map(txIn)
+          )
+        ),
         Some(1 -> arr(outputs.map(_.raw)*)),
         Some(2 -> uint(fee)),
+        ttl.map(t => 3 -> uint(t)),
         Option.when(certificates.nonEmpty)(4 -> set(certificates.map(certificate))),
         Option.when(withdrawals.nonEmpty)(
           5 -> map(
             withdrawals.toVector.sortBy(_._1).map((ra, c) => bytes(rewardAccount(ra)) -> uint(c))*
           )
+        ),
+        Option.when(mint.nonEmpty)(
+          9 -> map(mint.toVector.sortBy(_._1).map { (policy, assets) =>
+            bytes(policy) -> map(assets.toVector.sortBy(_._1).map((n, q) => bytes(n) -> int(q))*)
+          }*)
+        ),
+        Option.when(collateral.nonEmpty)(
+          13 -> set(collateral.sortBy(i => (i.id, i.index)).map(txIn))
+        ),
+        collateralReturn.map(r => 16 -> r.raw),
+        totalCollateral.map(c => 17 -> uint(c)),
+        Option.when(referenceInputs.nonEmpty)(
+          18 -> set(referenceInputs.sortBy(i => (i.id, i.index)).map(txIn))
         ),
         Option.when(votes.nonEmpty)(
           19 -> map(
@@ -311,17 +337,26 @@ object ConwayTestKit extends munit.Assertions:
   final case class Built(parts: Block.Transaction, flat: Tx, typed: ConwayTx):
     def id: Bytes = flat.body.id
 
-  /** `body` signed by `signers` (each once), valid and without auxiliary data, read back by the
-    * flat decoder and by Conway's; the flat reading gives every field of `body`. With no signers
-    * the witness set is empty, as the CDDL holds no empty list of vkey witnesses, and LEDGER judges
+  /** `body` signed by `signers` (each once), without auxiliary data, flagged `isValid`, with the
+    * redeemers `redeemers` (the witness set's key 5, as written) if given, read back by the flat
+    * decoder and by Conway's; the flat reading gives every field of `body`. With no signers the
+    * witness set has no key witnesses, as the CDDL holds no empty list of them, and LEDGER judges
     * the missing witnesses.
     */
-  def tx(body: Body, signers: Vector[Key]): Built =
+  def tx(
+      body: Body,
+      signers: Vector[Key],
+      isValid: Boolean = true,
+      redeemers: Option[Bytes] = None
+  ): Built =
     val raw = body.encode
     val id = xyz.kd5ujc.scarab.crypto.Blake2b.hash256.hash(raw)
     val vkeys = signers.distinctBy(_.vkey).map(k => arr(bytes(k.vkey), bytes(k.sign(id))))
-    val witnesses = if vkeys.isEmpty then map() else map(uint(0) -> set(vkeys))
-    val parts = Block.Transaction(raw, witnesses, None, true)
+    val witnesses = map(
+      (Option.when(vkeys.nonEmpty)(uint(0) -> set(vkeys)).toVector ++
+        redeemers.map(r => uint(5) -> r).toVector)*
+    )
+    val parts = Block.Transaction(raw, witnesses, None, isValid)
     val Built(_, flat, typed) = read(parts)
     val b = flat.body
     assertEquals(
@@ -347,6 +382,17 @@ object ConwayTestKit extends munit.Assertions:
       "the flat decoder reads the votes as they were cast"
     )
     assertEquals((b.donation, b.currentTreasury), (body.donation, body.currentTreasury))
+    assertEquals(
+      (b.ttl, b.mint, b.collateral.toSet, b.collateralReturn, b.referenceInputs.toSet),
+      (
+        body.ttl,
+        body.mint,
+        body.collateral.toSet,
+        body.collateralReturn,
+        body.referenceInputs.toSet
+      ),
+      "the flat decoder reads the body's validity, mint, collateral and reference inputs"
+    )
     Built(parts, flat, typed)
 
   // ---- the rules --------------------------------------------------------------------------------
@@ -443,7 +489,7 @@ object ConwayTestKit extends munit.Assertions:
   /** UTXO's context under `ctx`: its network, the system start its clock gives, one era from the
     * start at the rules' geometry, its validation and its build's failure of a Shelley output.
     */
-  private def contextOf(ctx: TxEnv): UtxoContext[Conway] =
+  def contextOf(ctx: TxEnv): UtxoContext[Conway] =
     val clock = ctx.clock.getOrElse(fail("the environment has no clock"))
     UtxoContext[Conway](
       Network.of(BigInt(ctx.network)).getOrElse(fail(s"network ${ctx.network}")),

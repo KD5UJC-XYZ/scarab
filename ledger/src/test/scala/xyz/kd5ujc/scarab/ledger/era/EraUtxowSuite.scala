@@ -11,22 +11,28 @@ import xyz.kd5ujc.scarab.ledger.{
   TestLedger,
   Tx as FlatTx,
   TxChecks,
+  UtxowFailure,
   Verdicts,
   ScriptIntegrity as FlatScriptIntegrity
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx}
-import xyz.kd5ujc.scarab.ledger.era.rules.{AlonzoUtxow, BabbageUtxow, ShelleyUtxow}
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  AlonzoUtxow,
+  BabbageUtxow,
+  ConwayUtxowPredFailure,
+  ShelleyUtxow
+}
 import xyz.kd5ujc.scarab.ledger.rules.Test
 import xyz.kd5ujc.scarab.ledger.state.{Conway, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** The UTXOW predicates on the era types (`era/rules/Utxow.scala`) and the script integrity they
-  * check (`era/ScriptIntegrity.scala`), against the flat ones on every recorded Conway transaction:
-  * the predicates that need only the transaction, and the integrity's bytes for every set of
-  * languages. The recorded blocks have no UTxO set, so the scripts a transaction needs are not
-  * known here; `ConwayUtxowChecksSuite` (node) compares the verdicts on the refusal corpus, with
-  * its UTxO sets.
+  * check (`era/ScriptIntegrity.scala`), against the flat checks the eras before Conway run, on
+  * every recorded Conway transaction: the predicates that need only the transaction, by the keys
+  * and hashes they report, and the integrity's bytes for every set of languages. The recorded
+  * blocks have no UTxO set, so the scripts a transaction needs are not known here;
+  * `ConwayUtxowChecksSuite` (node) compares the verdicts on the refusal corpus, with its UTxO sets.
   */
 class EraUtxowSuite extends munit.FunSuite:
   private given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
@@ -113,11 +119,18 @@ class EraUtxowSuite extends munit.FunSuite:
       top
     )
 
-  /** A UTXOW predicate's verdict in the node's flat form, through Conway's injection `inject`. */
-  private def flatOf[A](test: xyz.kd5ujc.scarab.ledger.rules.Test[A])(
-      inject: A => xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure[Conway]
-  ): xyz.kd5ujc.scarab.ledger.rules.Test[PredicateFailure] =
-    EraUtxoRun.utxowFlat(test)(inject).getOrElse(fail(s"no flat form: $test"))
+  /** A UTXOW predicate's failures, through Conway's injection `inject`, in their order. */
+  private def failuresOf[A](test: xyz.kd5ujc.scarab.ledger.rules.Test[A])(
+      inject: A => ConwayUtxowPredFailure[Conway]
+  ): Vector[ConwayUtxowPredFailure[Conway]] =
+    Test.failures(test).toVector.flatMap(_.toNonEmptyVector.toVector).map(inject)
+
+  /** The keys of the witnesses whose signatures fail, as each check reports them. */
+  private def invalidKeys(fs: Vector[ConwayUtxowPredFailure[Conway]]): Vector[Bytes] =
+    fs.flatMap {
+      case ConwayUtxowPredFailure.InvalidWitnessesUTXOW(keys) => keys.toList
+      case other => fail(s"not a witness failure: $other")
+    }
 
   test("the corpus has Conway transactions, some with redeemers and some with datums") {
     val flats = transactions.map(both(_)._1)
@@ -128,11 +141,19 @@ class EraUtxowSuite extends munit.FunSuite:
   test("validateVerifiedWits gives the flat check's verdict on every recorded Conway transaction") {
     transactions.foreach { t =>
       val (flat, c) = both(t)
+      // the flat check, which the eras before Conway run, by the keys it reports
       assertEquals(
         ShelleyUtxow
           .validateVerifiedWits[Conway, TxLevel.Top](c, Verdicts.Direct)(using tx, top)
-          .map(test => flatOf(test)(EraUtxoRun.shelleyW)),
-        TxChecks.verifiedWits(flat, Verdicts.Direct),
+          .map(test => invalidKeys(failuresOf(test)(EraUtxoRun.shelleyW))),
+        TxChecks
+          .verifiedWits(flat, Verdicts.Direct)
+          .map(test =>
+            Test.failures(test).toVector.flatMap(_.toNonEmptyVector.toVector).flatMap {
+              case PredicateFailure.Utxow(UtxowFailure.InvalidWitnesses(keys)) => keys
+              case other => fail(s"not a witness failure: $other")
+            }
+          ),
         flat.body.id.hex
       )
     }
@@ -156,22 +177,32 @@ class EraUtxowSuite extends munit.FunSuite:
         si.map(ScriptIntegrity.hashScriptIntegrity(_)),
         FlatScriptIntegrity.hash[Conway](flat, flatPp, kindsOf)
       )
-      // the verdict: the flat check's, which compares the same hash and reports the same mismatch
-      assertEquals(
-        flatOf(
-          AlonzoUtxow.checkScriptIntegrityHash[Conway, TxLevel.Top](c, pp, si)(using
-            tx,
-            summon[EraPParams[Conway]],
-            summon[xyz.kd5ujc.scarab.ledger.era.Era[Conway]],
-            top
-          )
-        )(EraUtxoRun.alonzoW),
-        Test.failureUnless(
-          FlatScriptIntegrity.hash[Conway](flat, flatPp, kindsOf) == flat.body.scriptDataHash,
-          PredicateFailure.utxow(FlatScriptIntegrity.mismatch[Conway](flat, flatPp, kindsOf))
-        ),
-        s"${flat.body.id.hex} at $major with $langs"
-      )
+      // the verdict: the flat check's, which compares the same hash and reports the same
+      // mismatch, below version 11 the hashes and from 11 the bytes the computed one is over too
+      val what = s"${flat.body.id.hex} at $major with $langs"
+      val ours = failuresOf(
+        AlonzoUtxow.checkScriptIntegrityHash[Conway, TxLevel.Top](c, pp, si)(using
+          tx,
+          summon[EraPParams[Conway]],
+          summon[xyz.kd5ujc.scarab.ledger.era.Era[Conway]],
+          top
+        )
+      )(EraUtxoRun.alonzoW)
+      if FlatScriptIntegrity.hash[Conway](flat, flatPp, kindsOf) == flat.body.scriptDataHash then
+        assertEquals(ours, Vector.empty, what)
+      else
+        (ours, FlatScriptIntegrity.mismatch[Conway](flat, flatPp, kindsOf)) match
+          case (
+                Vector(ConwayUtxowPredFailure.PPViewHashesDontMatch(m)),
+                UtxowFailure.PPViewHashesDontMatch(f)
+              ) =>
+            assertEquals((m.supplied, m.expected), (f.supplied, f.expected), what)
+          case (
+                Vector(ConwayUtxowPredFailure.ScriptIntegrityHashMismatch(m, bytes)),
+                UtxowFailure.ScriptIntegrityHashMismatch(f, flatBytes)
+              ) =>
+            assertEquals((m.supplied, m.expected, bytes), (f.supplied, f.expected, flatBytes), what)
+          case other => fail(s"$what: $other")
   }
 
   test("a language view is the flat one's, with and without a cost model") {
@@ -212,7 +243,7 @@ class EraUtxowSuite extends munit.FunSuite:
   test("babbageMissingScripts: the extraneous, then the missing, beside the reference scripts") {
     val (_, pp) = params(9)
     def h(b: Int) = Bytes(Vector.fill(28)(b.toByte))
-    val result = flatOf(
+    val result = failuresOf(
       BabbageUtxow.babbageMissingScripts[Conway](
         pp,
         sNeeded = Set(h(1), h(2), h(3)),
@@ -221,23 +252,20 @@ class EraUtxowSuite extends munit.FunSuite:
       )
     )(EraUtxoRun.shelleyW)
     assertEquals(
-      Test.failures(result).map(_.toNonEmptyVector.toVector),
-      Some(
-        Vector(
-          PredicateFailure.utxow(
-            xyz.kd5ujc.scarab.ledger.UtxowFailure.ExtraneousScriptWitnesses(Set(h(4)))
-          ),
-          PredicateFailure.utxow(
-            xyz.kd5ujc.scarab.ledger.UtxowFailure.MissingScriptWitnesses(Set(h(3)))
-          )
-        )
-      )
+      result.map {
+        case ConwayUtxowPredFailure.ExtraneousScriptWitnessesUTXOW(hs) =>
+          "extraneous" -> hs.toSortedSet.toSet
+        case ConwayUtxowPredFailure.MissingScriptWitnessesUTXOW(hs) =>
+          "missing" -> hs.toSortedSet.toSet
+        case other => fail(s"not a script witness failure: $other")
+      },
+      Vector("extraneous" -> Set(h(4)), "missing" -> Set(h(3)))
     )
     assertEquals(
-      flatOf(BabbageUtxow.babbageMissingScripts[Conway](pp, Set(h(1), h(2)), Set(h(2)), Set(h(1))))(
-        EraUtxoRun.shelleyW
-      ),
-      Test.pass[PredicateFailure]
+      failuresOf(
+        BabbageUtxow.babbageMissingScripts[Conway](pp, Set(h(1), h(2)), Set(h(2)), Set(h(1)))
+      )(EraUtxoRun.shelleyW),
+      Vector.empty
     )
   }
 

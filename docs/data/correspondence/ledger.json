@@ -4394,7 +4394,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AllegraUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AllegraUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "1442712aeb5787a5"
   },
   "def ledger.era.rules.AlonzoUtxo.validateTooManyCollateralInputs": {
@@ -4416,7 +4416,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes, the count narrowed to a Word16 as the reference's fromIntegral does; it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes, the count narrowed to a Word16 as the reference's fromIntegral does; it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "9214d9d11a064f50"
   },
   "def ledger.era.rules.AlonzoUtxo.validateWrongNetworkInTxBody": {
@@ -4438,7 +4438,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "ef3807df541f8011"
   },
   "def ledger.era.rules.BabbageUtxo.disjointRefInputs": {
@@ -4459,7 +4459,7 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (BabbageUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (BabbageUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals)",
    "digest": "629792a88bd35288"
   },
   "def ledger.era.rules.ShelleyUtxo.validateBadInputsUTxO": {
@@ -4481,7 +4481,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "012686d0db83ac38"
   },
   "def ledger.era.rules.ShelleyUtxo.validateInputSetEmptyUTxO": {
@@ -4503,7 +4503,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "99a434dae55e3828"
   },
   "def ledger.era.rules.ShelleyUtxo.validateWrongNetwork": {
@@ -4548,7 +4548,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraCertsSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its result type is the one constructor it reports, which Dijkstra's ENTITIES injects alone",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its result type is the one constructor it reports, which Dijkstra's ENTITIES injects alone",
    "digest": "d8f4a3441eb1b43f"
   },
   "given ledger.era.AlonzoEraPParams.conway": {
@@ -6933,7 +6933,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "f6d7fa8dc8502ee2"
   },
   "def ledger.era.rules.AlonzoUtxo.validateInsufficientCollateral": {
@@ -6955,7 +6955,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "cd00f1369b9c43bd"
   },
   "def ledger.era.rules.AlonzoUtxo.validateExUnitsTooBigUTxO": {
@@ -6987,7 +6987,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes, its units the class member getTotalExUnits (9df9f98c; f649f975's totExUnits is the member's default); it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes, its units the class member getTotalExUnits (9df9f98c; f649f975's totExUnits is the member's default); it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "1128203271af481d"
   },
   "def ledger.era.rules.BabbageUtxo.feesOK": {
@@ -7008,7 +7008,7 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes, its rule fixed to UTXO: Alonzo's and Babbage's failures injected into the era's UTXO failure (InjectUtxoFailure); its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored",
+   "note": "the reference's predicate generic in its era over the reference's classes, its rule fixed to UTXO: Alonzo's and Babbage's failures injected into the era's UTXO failure (InjectUtxoFailure); its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals)",
    "digest": "399ff130c9162bb8"
   },
   "def ledger.era.rules.BabbageUtxo.validateTotalCollateral": {
@@ -7030,7 +7030,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes, its rule fixed to UTXO: Alonzo's and Babbage's failures injected into the era's UTXO failure (InjectUtxoFailure); its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; it asks for the injections of the constructors its predicates report (CollateralFailure, IncorrectTotalCollateralField), which Dijkstra's serve (#85)",
+   "note": "the reference's predicate generic in its era over the reference's classes, its rule fixed to UTXO: Alonzo's and Babbage's failures injected into the era's UTXO failure (InjectUtxoFailure); its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); it asks for the injections of the constructors its predicates report (CollateralFailure, IncorrectTotalCollateralField), which Dijkstra's serve (#85)",
    "digest": "40ba5bf6eef056ff"
   },
   "def ledger.era.rules.BabbageUtxo.validateCollateralContainsNonADA": {
@@ -7052,7 +7052,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (BabbageUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (BabbageUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "3f531c6aa7800656"
   },
   "def ledger.era.rules.BabbageUtxo.validateCollateralEqBalance": {
@@ -7074,7 +7074,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (BabbageUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (BabbageUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "ca68a09d855a4efb"
   },
   "def ledger.era.rules.BabbageUtxo.collAdaBalance": {
@@ -7118,7 +7118,7 @@
     "EraUtxowSuite",
     "DijkstraSubUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes, the failing key witnesses' keys in their set's order as the reference lists them, the bootstrap witnesses' in the order of bootAddrTxWits, a sequence the decoder keeps in the reference's set order (Ord BootstrapWitness, by address root); the signature checks are the node's Verdicts, given as an argument, asked for the checks verifiedWitsAsked lists in that order (each key witness, then each bootstrap witness, of the body's hash; the key witnesses' failures before the bootstrap witnesses', the first defect the first met, as the reference's two lists concatenated), and a check that gives no verdict is a provider defect (Left), as in the flat check. It reports Shelley's failure type (ShelleyUtxowPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxowPredFailure.toStored; its failures the constructors it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's SUBUTXOW, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes, the failing key witnesses' keys in their set's order as the reference lists them, the bootstrap witnesses' in the order of bootAddrTxWits, a sequence the decoder keeps in the reference's set order (Ord BootstrapWitness, by address root); the signature checks are the node's Verdicts, given as an argument, asked for the checks verifiedWitsAsked lists in that order (each key witness, then each bootstrap witness, of the body's hash; the key witnesses' failures before the bootstrap witnesses', the first defect the first met, as the reference's two lists concatenated), and a check that gives no verdict is a provider defect (Left), as in the flat check. It reports Shelley's failure type (ShelleyUtxowPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its failures the constructors it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's SUBUTXOW, whose reference injections are partial, #85)",
    "digest": "3fd6fc7a1602d94e"
   },
   "def ledger.era.rules.AlonzoUtxow.checkScriptIntegrityHash": {
@@ -7141,7 +7141,7 @@
     "EraUtxowSuite",
     "DijkstraSubUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxowPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxowPredFailure.toStored; its failures the constructors it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's SUBUTXOW, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxowPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); its failures the constructors it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's SUBUTXOW, whose reference injections are partial, #85)",
    "digest": "f3244b062a55ee41"
   },
   "def ledger.era.rules.BabbageUtxow.babbageMissingScripts": {
@@ -7163,7 +7163,7 @@
     "ConwayUtxowChecksSuite",
     "EraUtxowSuite"
    ],
-   "note": "the reference's predicate over the three sets of script hashes; it reports its era's own failure type (ShelleyUtxowPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxowPredFailure.toStored",
+   "note": "the reference's predicate over the three sets of script hashes; it reports its era's own failure type (ShelleyUtxowPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals)",
    "digest": "5ee0e39ec5d3c0cb"
   },
   "class ledger.era.ScriptIntegrity": {
@@ -9313,7 +9313,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; a value's serialised size is that of the node's stored value (Value.serializedSize), MaryValue's encoding (Mary/Value.hs:342-350) from protocol major 2, where a map of more than 23 entries is indefinite (Encoding/Encoder.hs:402-407); every major this check runs at is 5 or more; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); a value's serialised size is that of the node's stored value (Value.serializedSize), MaryValue's encoding (Mary/Value.hs:342-350) from protocol major 2, where a map of more than 23 entries is indefinite (Encoding/Encoder.hs:402-407); every major this check runs at is 5 or more; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "1194e7cd80b33718"
   },
   "def ledger.era.rules.BabbageUtxo.validateOutputTooSmallUTxO": {
@@ -9345,7 +9345,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (BabbageUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; `pointwise (>=)` against `inject` of the least lovelace is written out: the coin at least it and every quantity at least zero, as pointWise against an empty map is (CanonicalMaps.hs:104-106); its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (BabbageUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); `pointwise (>=)` against `inject` of the least lovelace is written out: the coin at least it and every quantity at least zero, as pointWise against an empty map is (CanonicalMaps.hs:104-106); its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "19331a66cf894f63"
   },
   "def ledger.era.rules.ShelleyUtxo.validateOutputBootAddrAttrsTooBig": {
@@ -9367,7 +9367,7 @@
     "ConwayUtxoChecksSuite",
     "DijkstraUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxoPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored; Shelley's own failure, which each later era's UTXO injects as its build has it when it runs this; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxoPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals); Shelley's own failure, which each later era's UTXO injects as its build has it when it runs this; its failure the constructor it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's, whose reference injections are partial, #85)",
    "digest": "6d801f3bddb45a0a"
   },
   "def ledger.era.dijkstra.DijkstraNativeScript#eval": {
@@ -9896,7 +9896,7 @@
    "evidence": [
     "ConwayUtxoChecksSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxoPredFailure, with the era values consumed and produced), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxoPredFailure.toStored",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxoPredFailure, with the era values consumed and produced), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals)",
    "digest": "167475f85fed504a"
   },
   "def ledger.era.rules.AlonzoUtxo.validateOutsideForecast": {
@@ -10715,7 +10715,7 @@
     "ConwayUtxowChecksSuite",
     "DijkstraSubUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxowPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxowPredFailure.toStored, and its refusal with the reference's bytes where it is UTXOW's only; its failures the constructors it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's SUBUTXOW, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (ShelleyUtxowPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals), and its refusal with the reference's bytes where it is UTXOW's only; its failures the constructors it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's SUBUTXOW, whose reference injections are partial, #85)",
    "digest": "b7a29a1663da6b02"
   },
   "def ledger.era.AlonzoEraScript#withPlutusScript": {
@@ -10942,7 +10942,7 @@
     "ConwayUtxowChecksSuite",
     "DijkstraSubUtxowSuite"
    ],
-   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxowPredFailure), which the rule injects into its own; its verdict is compared with the flat rule's through ConwayUtxowPredFailure.toStored, and its refusal with the reference's bytes where it is UTXOW's only; its body is missingRequiredDatumsAllowing with getSupplementalDataHashes of the body; its failures the constructors it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's SUBUTXOW, whose reference injections are partial, #85)",
+   "note": "the reference's predicate generic in its era over the reference's classes; it reports its era's own failure type (AlonzoUtxowPredFailure), which the rule injects into its own; its verdict is held to the flat rule's, recorded before the flat rule was deleted (fixtures/conway-flat-refusals), and its refusal with the reference's bytes where it is UTXOW's only; its body is missingRequiredDatumsAllowing with getSupplementalDataHashes of the body; its failures the constructors it reports, declared as its result type, so that an injection over the constructors a rule reaches serves it (Dijkstra's SUBUTXOW, whose reference injections are partial, #85)",
    "digest": "3fa9e4a61bf1ec67"
   },
   "def ledger.era.rules.AlonzoUtxow.hasExactSetOfRedeemers": {
@@ -49768,11 +49768,10 @@
    ]
   },
   {
-   "reason": "the era-typed failures' adapter to the node's flat failure types (ConwayUtxoPredFailure.toStored: UtxoFailure under PredicateFailure, and Network as the wire value they carry), which the comparisons with the flat rules and the node's encoders read until each era's failures have their encoders (§3.4 of docs/design/era-typed-transactions.md); the injection runTest applies to a test's failures (validateTrans injectFailure), a function here; the orders the failures' non-empty sets are kept in, TxIn's and AccountAddress's the reference's derived ones and an address's by its bytes (the Gap of validateWrongNetwork, #796); and the objects that stand for the reference's Rules/Utxo modules",
+   "reason": "the era-typed outputs' adapter to the node's stored output (StoredTxOut), and Network as the wire value the failures carry; the injection runTest applies to a test's failures (validateTrans injectFailure), a function here; the orders the failures' non-empty sets are kept in, TxIn's and AccountAddress's the reference's derived ones and an address's by its bytes (the Gap of validateWrongNetwork, #796); and the objects that stand for the reference's Rules/Utxo modules",
    "definitions": [
     "def ledger.era.StoredTxOut#storedValue",
     "def ledger.era.StoredTxOut#toStored",
-    "def ledger.era.rules.ConwayUtxoPredFailure.toStored",
     "def ledger.era.rules.injected",
     "def ledger.era.rules.wire",
     "given ledger.era.StoredTxOut.conway",
@@ -49784,7 +49783,6 @@
     "object ledger.era.rules.BabbageUtxo",
     "object ledger.era.rules.ShelleyUtxo",
     "trait ledger.era.StoredTxOut",
-    "def ledger.era.rules.ConwayUtxoPredFailure.storedUtxos",
     "given ledger.era.StoredTxOut.dijkstra"
    ]
   },
@@ -49795,14 +49793,11 @@
    ]
   },
   {
-   "reason": "the era-typed UTXOW failures' adapter to the node's flat failure type (ConwayUtxowPredFailure.toStored: UtxowFailure under PredicateFailure, a missing redeemer's purpose given its flat form, with its index and spent output, from the transaction's scripts needed by storedPurposes, and the failures it cannot so give returned as UtxowUnprojected), which the comparisons with the flat rules and the node's encoders read until each era's failures have their encoders (§3.4 of docs/design/era-typed-transactions.md); the flat purposes and certificates a missing redeemer names; a non-empty set of hashes and its order, the bytes', as the reference's derived `Ord` of a hash; and the objects that stand for the reference's Rules/Utxow modules",
+   "reason": "the flat purposes and certificates the case files of --plutus-cases name (ConwayPlutusPurpose.toStored, ConwayTxCert.toStored, read by ConwayPhase2.storedPurposes and storedErrors); a non-empty set of hashes and its order, the bytes', as the reference's derived `Ord` of a hash; and the objects that stand for the reference's Rules/Utxow modules",
    "definitions": [
     "def ledger.era.conway.ConwayPlutusPurpose.toStored",
     "def ledger.era.conway.ConwayTxCert.toStored",
-    "def ledger.era.rules.ConwayUtxowPredFailure.storedPurposes",
-    "def ledger.era.rules.ConwayUtxowPredFailure.toStored",
     "def ledger.era.rules.hashes",
-    "enum ledger.era.rules.UtxowUnprojected",
     "given ledger.era.rules.hashOrder",
     "object ledger.era.rules.AlonzoUtxow",
     "object ledger.era.rules.BabbageUtxow",
@@ -50699,7 +50694,7 @@
    ]
   },
   {
-   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Conway block the era rules judge (#85): a script located among the block's transactions (Located, locate: its context collected again one purpose at a time in the ledger state the rules ran it in and compared); a script with no verdict named by its transaction and redeemer as the flat rules name it (LedgerFailure.Unavailable), so that the node withholds the block as it does the flat rules'; the phase-2 observation of a transaction's scripts (--plutus-cases), made from the era's transaction and state with no flat transaction (Observation, observation, and outcome), as the flat rules observe theirs, and of a transaction whose scripts UTXOS could not collect, with the era's collection's failures (collectPlutusScriptsWithContext, which Phase2Deferral.uncollected carries), named in the case files as the flat collection's were through their projection into the flat vocabulary (storedErrors, the flat purposes of ConwayUtxowPredFailure.storedPurposes and the flat certificates of ConwayTxCert.toStored), glue for the case files' text; and the phase-2 counters (PlutusStats) of a block the rules admitted: what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan); and what a prepared block reads of its transactions: a transaction's id, its place among the block's transactions, whether it holds a redeemer, and its footprint in the dependency graph (TxDependencies.Footprint), the flat transaction's",
+   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Conway block the era rules judge (#85): a script located among the block's transactions (Located, locate: its context collected again one purpose at a time in the ledger state the rules ran it in and compared); a script with no verdict named by its transaction and redeemer as the flat rules name it (LedgerFailure.Unavailable), so that the node withholds the block as it does the flat rules'; the phase-2 observation of a transaction's scripts (--plutus-cases), made from the era's transaction and state with no flat transaction (Observation, observation, and outcome), as the flat rules observe theirs, and of a transaction whose scripts UTXOS could not collect, with the era's collection's failures (collectPlutusScriptsWithContext, which Phase2Deferral.uncollected carries), named in the case files as the flat collection's were through their projection into the flat vocabulary (storedErrors, the flat purposes of storedPurposes and the flat certificates of ConwayTxCert.toStored), glue for the case files' text; and the phase-2 counters (PlutusStats) of a block the rules admitted: what of BBODY's events they read (ScriptsTold, UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them) and their count by transaction, integrityChecked the bodies that declare a script integrity hash, as the flat rules count them from their evaluations (TxChecks.phase2, EraBlock.Plan); and what a prepared block reads of its transactions: a transaction's id, its place among the block's transactions, whether it holds a redeemer, and its footprint in the dependency graph (TxDependencies.Footprint), the flat transaction's",
    "definitions": [
     "class ledger.era.rules.ConwayPhase2.Located",
     "def ledger.era.rules.ConwayPhase2.counted",

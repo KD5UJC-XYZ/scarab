@@ -9,15 +9,12 @@ import xyz.kd5ujc.scarab.ledger.{
   Address,
   Datum,
   LedgerDefect,
-  PredicateFailure,
   ScriptKind,
   Tx as FlatTx,
   TxChecks,
-  TxEnv,
   TxIn,
   TxOut as FlatTxOut,
   Utxo as FlatUtxo,
-  UtxowFailure,
   Verdicts
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayTxCert, ConwayUTxO}
@@ -27,24 +24,27 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayUtxowPredFailure,
   ShelleyUtxow
 }
-import xyz.kd5ujc.scarab.ledger.rules.{StAnnTx, Test as Verdict, UtxoEnv, Utxow}
+import xyz.kd5ujc.scarab.ledger.rules.{StAnnTx, Test as Verdict}
 import xyz.kd5ujc.scarab.ledger.state.{Conway, ConwayNewEpochState, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission
+import xyz.kd5ujc.scarab.node.ntc.FlatRecordings
 import xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.*
-import xyz.kd5ujc.scarab.plutus.{PlutusLanguage, ScarabEvaluator}
+import xyz.kd5ujc.scarab.plutus.PlutusLanguage
 import xyz.kd5ujc.scarab.protocol.Era
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
 
-/** Conway's UTXOW predicates on the era types (`era/rules/Utxow.scala`) against the flat ones, on
-  * every transaction of the recorded Conway refusal corpora: the same verdict, failures included,
-  * from each. The scripts a transaction needs and provides are the era types' own (`EraUTxO`'s
-  * `getScriptsNeeded` and `getScriptsProvided`), checked against the flat path's on every case. A
-  * predicate the corpus never fails is named, and refused on a case crafted from a recorded one.
-  * The corpora recorded for the era rules alone
-  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out of the flat
-  * comparisons, which stage 3 retires; the era rules' own assertions keep them, and
-  * `ReferenceRefusalSuite` binds the era rules to them.
+/** Conway's UTXOW predicates on the era types (`era/rules/Utxow.scala`) on every transaction of the
+  * recorded Conway refusal corpora and on cases crafted from them. Before the flat Conway UTXOW was
+  * deleted, each predicate was compared here with the flat one, and gave the same verdict, failures
+  * included; the era predicates' verdicts were recorded after the two were found to agree
+  * (`fixtures/conway-flat-refusals/utxo-judgments.jsonl`, under `utxow-checks/`), a refusal by the
+  * bytes of its failures, and the predicates are held to that recording. The corpora the flat
+  * predicates judged are named ([[RecordedCorpora]]). The scripts a transaction needs and provides
+  * are the era types' own (`EraUTxO`'s `getScriptsNeeded` and `getScriptsProvided`), checked
+  * against the flat decoder's on every recorded case. A predicate the corpus never fails is named,
+  * and refused on a case crafted from a recorded one; where a predicate alone refused, the refusal
+  * is the reference's, byte for byte.
   */
 class ConwayUtxowChecksSuite extends FunSuite:
   private given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
@@ -108,33 +108,6 @@ class ConwayUtxowChecksSuite extends FunSuite:
       }
     }
 
-  private val decoder = ScarabEvaluator.interpreter
-
-  /** The flat UTXOW's failures of the given kinds, in its order: the flat rule checks the scripts
-    * received inside its checks (`Utxow.checks`), not in a function of its own.
-    */
-  private def flatFailures(s: Seen)(keep: UtxowFailure => Boolean): Vector[PredicateFailure] =
-    val env = TxEnv(
-      slot = s.slot,
-      epoch = 0,
-      network = s.network,
-      evaluator = decoder,
-      decoder = decoder
-    )
-    Utxow
-      .checks[Conway](UtxoEnv(env, s.flatPp, ()), Map.empty, s.ann, Verdict.pass)
-      .collect { case Right(t) =>
-        Verdict.failures(t).toVector.flatMap(_.toNonEmptyVector.toVector)
-      }
-      .flatten
-      .filter {
-        case PredicateFailure.Utxow(f) => keep(f)
-        case _                         => false
-      }
-
-  private def failuresOf(t: Verdict[PredicateFailure]): Vector[PredicateFailure] =
-    Verdict.failures(t).toVector.flatMap(_.toNonEmptyVector.toVector)
-
   /** The Plutus languages of the scripts the transaction needs and has
     * (`plutusLanguagesUsedStAnnTx`), from the flat annotation.
     */
@@ -158,8 +131,8 @@ class ConwayUtxowChecksSuite extends FunSuite:
       .getScriptsProvided[TxLevel.Top](s.utxo, s.typed)(using EraUTxO.conway.txOf.bodyOf.top)
 
   /** `missingRequiredDatums`' failures on the era types. */
-  private def typedDatums(s: Seen): Vector[PredicateFailure] =
-    typedFailures(s, EraUtxoRun.alonzoW)(
+  private def typedDatums(s: Seen): Vector[ConwayUtxowPredFailure[Conway]] =
+    typedFailures(EraUtxoRun.alonzoW)(
       AlonzoUtxow.missingRequiredDatums[Conway, TxLevel.Top](scriptsProvided(s), s.utxo, s.typed)(
         using
         tx,
@@ -169,11 +142,9 @@ class ConwayUtxowChecksSuite extends FunSuite:
       )
     )
 
-  /** `hasExactSetOfRedeemers` ' failures on the era types, each missing purpose in the node's flat
-    * form ([[ConwayPlutusPurpose.toStored]]).
-    */
-  private def typedRedeemers(s: Seen): Vector[PredicateFailure] =
-    typedFailures(s, EraUtxoRun.alonzoW)(
+  /** `hasExactSetOfRedeemers` ' failures on the era types. */
+  private def typedRedeemers(s: Seen): Vector[ConwayUtxowPredFailure[Conway]] =
+    typedFailures(EraUtxoRun.alonzoW)(
       AlonzoUtxow.hasExactSetOfRedeemers[Conway, TxLevel.Top](
         s.typed,
         scriptsProvided(s),
@@ -181,20 +152,11 @@ class ConwayUtxowChecksSuite extends FunSuite:
       )(using tx, top)
     )
 
-  /** A UTXOW predicate's failures in the node's flat form, injected into Conway's by `inject`, a
-    * missing redeemer's purpose by the case's scripts needed and UTxO set.
-    */
-  private def typedFailures[A](s: Seen, inject: A => ConwayUtxowPredFailure[Conway])(
+  /** A UTXOW predicate's failures, injected into Conway's by `inject`, in their order. */
+  private def typedFailures[A](inject: A => ConwayUtxowPredFailure[Conway])(
       test: Verdict[A]
-  ): Vector[PredicateFailure] =
-    failuresOf(
-      EraUtxoRun
-        .utxowFlat(test)(
-          inject,
-          ConwayUtxowPredFailure.storedPurposes(scriptsNeeded(s), s.utxo)
-        )
-        .getOrElse(fail(s"${s.label}: no flat form of $test"))
-    )
+  ): Vector[ConwayUtxowPredFailure[Conway]] =
+    Verdict.failures(test).toVector.flatMap(_.toNonEmptyVector.toVector).map(inject)
 
   /** A typed predicate's failures injected into Conway's UTXOW (`inject`), under LEDGER, as LEDGER
     * reports them.
@@ -222,16 +184,10 @@ class ConwayUtxowChecksSuite extends FunSuite:
       bodies.inputs[TxLevel.Top](body)(using bodies.top)
     BabbageUTxO.getReferenceScripts(s.utxo, ins).keySet
 
-  /** Each predicate: its name, the flat verdict and the typed one, as failures (a defect is a
-    * `Left`).
-    */
-  private def pairs(s: Seen): Vector[
-    (
-        String,
-        Either[LedgerDefect, Vector[PredicateFailure]],
-        Either[LedgerDefect, Vector[PredicateFailure]]
-    )
-  ] =
+  /** Each predicate: its name and its failures (a defect is a `Left`). */
+  private def pairs(
+      s: Seen
+  ): Vector[(String, Either[LedgerDefect, Vector[ConwayUtxowPredFailure[Conway]]])] =
     val wits = tx.wits[TxLevel.Top](s.typed)(using top)
     val integrity =
       ScriptIntegrity.mkScriptIntegrity[Conway, TxLevel.Top](s.pp, s.typed, languages(s))(using
@@ -241,101 +197,76 @@ class ConwayUtxowChecksSuite extends FunSuite:
         top
       )
     Vector(
-      (
-        "validateVerifiedWits",
-        TxChecks.verifiedWits(s.flat, Verdicts.Direct).map(failuresOf),
-        ShelleyUtxow
-          .validateVerifiedWits[Conway, TxLevel.Top](s.typed, Verdicts.Direct)(using tx, top)
-          .map(typedFailures(s, EraUtxoRun.shelleyW))
-      ),
-      (
-        "babbageMissingScripts",
-        Right(
-          flatFailures(s) {
-            case UtxowFailure.MissingScriptWitnesses(_) |
-                UtxowFailure.ExtraneousScriptWitnesses(_) =>
-              true
-            case _ => false
-          }
-        ),
-        Right(
-          typedFailures(s, EraUtxoRun.shelleyW)(
-            BabbageUtxow.babbageMissingScripts[Conway](
-              s.pp,
-              EraUTxO.conway.getScriptsHashesNeeded(scriptsNeeded(s)),
-              referenceScripts(s),
-              tx.witsOf.scriptTxWits(wits).keySet
-            )
+      "validateVerifiedWits" -> ShelleyUtxow
+        .validateVerifiedWits[Conway, TxLevel.Top](s.typed, Verdicts.Direct)(using tx, top)
+        .map(typedFailures(EraUtxoRun.shelleyW)),
+      "babbageMissingScripts" -> Right(
+        typedFailures(EraUtxoRun.shelleyW)(
+          BabbageUtxow.babbageMissingScripts[Conway](
+            s.pp,
+            EraUTxO.conway.getScriptsHashesNeeded(scriptsNeeded(s)),
+            referenceScripts(s),
+            tx.witsOf.scriptTxWits(wits).keySet
           )
         )
       ),
-      (
-        "validateNeededWitnesses",
-        Right(
-          flatFailures(s) {
-            case UtxowFailure.MissingVKeyWitnesses(_) => true
-            case _                                    => false
-          }
-        ),
-        Right(
-          typedFailures(s, EraUtxoRun.shelleyW)(
-            ShelleyUtxow.validateNeededWitnesses[Conway, TxLevel.Top](
-              EraTxWits.keyHashWitnessesTxWits[Conway](wits)(using tx.witsOf),
-              s.cert,
-              s.utxo,
-              tx.body[TxLevel.Top](s.typed)(using top)
-            )(using EraUTxO.conway, EraUTxO.conway.txOf.bodyOf.top)
-          )
+      "validateNeededWitnesses" -> Right(
+        typedFailures(EraUtxoRun.shelleyW)(
+          ShelleyUtxow.validateNeededWitnesses[Conway, TxLevel.Top](
+            EraTxWits.keyHashWitnessesTxWits[Conway](wits)(using tx.witsOf),
+            s.cert,
+            s.utxo,
+            tx.body[TxLevel.Top](s.typed)(using top)
+          )(using EraUTxO.conway, EraUTxO.conway.txOf.bodyOf.top)
         )
       ),
-      (
-        "missingRequiredDatums",
-        Right(
-          flatFailures(s) {
-            case UtxowFailure.UnspendableUTxONoDatumHash(_) |
-                UtxowFailure.MissingRequiredDatums(_, _) |
-                UtxowFailure.NotAllowedSupplementalDatums(_, _) =>
-              true
-            case _ => false
-          }
-        ),
-        Right(typedDatums(s))
-      ),
-      (
-        "hasExactSetOfRedeemers",
-        Right(
-          flatFailures(s) {
-            case UtxowFailure.ExtraRedeemers(_) | UtxowFailure.MissingRedeemers(_) => true
-            case _                                                                 => false
-          }
-        ),
-        Right(typedRedeemers(s))
-      ),
-      (
-        "checkScriptIntegrityHash",
-        Right(
-          failuresOf(
-            TxChecks.integrityCheck[Conway](s.flatPp, s.flat, s.ann.spentByInput, s.ann.scripts)
-          )
-        ),
-        Right(
-          typedFailures(s, EraUtxoRun.alonzoW)(
-            AlonzoUtxow.checkScriptIntegrityHash[Conway, TxLevel.Top](s.typed, s.pp, integrity)(
-              using
-              tx,
-              summon[EraPParams[Conway]],
-              summon[xyz.kd5ujc.scarab.ledger.era.Era[Conway]],
-              top
-            )
+      "missingRequiredDatums" -> Right(typedDatums(s)),
+      "hasExactSetOfRedeemers" -> Right(typedRedeemers(s)),
+      "checkScriptIntegrityHash" -> Right(
+        typedFailures(EraUtxoRun.alonzoW)(
+          AlonzoUtxow.checkScriptIntegrityHash[Conway, TxLevel.Top](s.typed, s.pp, integrity)(using
+            tx,
+            summon[EraPParams[Conway]],
+            summon[xyz.kd5ujc.scarab.ledger.era.Era[Conway]],
+            top
           )
         )
       )
     )
 
-  private def compared(s: Seen, name: String): Vector[PredicateFailure] =
-    val (_, flat, typed) = pairs(s).find(_._1 == name).getOrElse(fail(s"no predicate $name"))
-    assertEquals(typed, flat, s"${s.label}: $name")
-    right(s"${s.label}: $name")(flat)
+  /** A predicate's cell: `-` where it found nothing, a refusal's cell
+    * (`FlatRecordings.utxowRefused`) where it failed; a defect fails the test, as no judgment the
+    * flat predicates were compared on ended with one.
+    */
+  private def cell(
+      what: String,
+      failures: Either[LedgerDefect, Vector[ConwayUtxowPredFailure[Conway]]]
+  ): String =
+    right(what)(failures) match
+      case Vector() => "-"
+      case fs       => FlatRecordings.utxowRefused(fs)
+
+  /** The recorded judgment `id`, failing the test where none was recorded. */
+  private def recorded(id: String): Vector[String] =
+    FlatRecordings.utxoJudgments.getOrElse(id, fail(s"no recording of $id"))
+
+  /** A crafted judgment: its id, its recorded cells and the predicate's failures. */
+  private final case class Crafted(
+      id: String,
+      cells: Vector[String],
+      failures: Vector[ConwayUtxowPredFailure[Conway]]
+  )
+
+  /** The crafted judgment `id`: the predicate `name` on `s`. */
+  private def crafted(id: String, s: Seen, name: String): Crafted =
+    val failures = pairs(s).find(_._1 == name).getOrElse(fail(s"no predicate $name"))._2
+    val full = s"utxow-checks/crafted/$id"
+    Crafted(full, Vector(cell(full, failures)), right(full)(failures))
+
+  /** That `c` is the flat predicate's recorded verdict; its failures are returned. */
+  private def holds(c: Crafted): Vector[ConwayUtxowPredFailure[Conway]] =
+    assertEquals(c.cells, recorded(c.id), c.id)
+    c.failures
 
   /** A purpose as the flat path names it: its tag, index and script. */
   private def flatNeeded(s: Seen): Vector[(Int, BigInt, Bytes)] =
@@ -356,11 +287,26 @@ class ConwayUtxowChecksSuite extends FunSuite:
       (tag, ix, hash)
     }
 
-  /** The cases the flat comparisons judge: the corpora recorded for the era rules alone aside. */
-  private lazy val flatSeen: Vector[Seen] = seen.filterNot(s => eraOnly(s.label))
+  /** The corpora whose cases the flat predicates judged before they were deleted, by name: a corpus
+    * added later is not among them.
+    */
+  private val RecordedCorpora: Set[String] = Set(
+    "conway-bootstrap-attributes",
+    "conway-bootstrap-attributes-leios-b004fe0c",
+    "conway-deleg-collateral",
+    "conway-devnet",
+    "conway-gov-proposals",
+    "conway-governance",
+    "conway-three-certificates",
+    "conway-v11-coverage"
+  )
+
+  /** The cases the flat predicates judged. */
+  private lazy val recordedSeen: Vector[Seen] =
+    seen.filter(s => RecordedCorpora.exists(c => s.label.startsWith(s"$c/")))
 
   test("getScriptsNeeded is the flat path's, in order with each purpose's index, on every case"):
-    flatSeen.foreach(s => assertEquals(typedNeeded(s), flatNeeded(s), s.label))
+    recordedSeen.foreach(s => assertEquals(typedNeeded(s), flatNeeded(s), s.label))
 
   // what a wrong order or index would change: the corpus has a guardrails script; the recorded
   // blocks a script's withdrawal and a script voter (`EraUtxowSuite`); the crafted case below a
@@ -419,7 +365,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
     assert(compared.nonEmpty, "no case the datums alone refuse")
 
   test("a certificate's flat form is the one the flat decoder read, on every case"):
-    val certs = flatSeen.flatMap { s =>
+    val certs = recordedSeen.flatMap { s =>
       val typed = EraTxBody.conway
         .certs[TxLevel.Top](tx.body[TxLevel.Top](s.typed)(using top))(using EraTxBody.conway.top)
       assertEquals(typed.map(ConwayTxCert.toStored), s.flat.body.certificates, s.label)
@@ -513,7 +459,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
 
   test("getScriptsProvided is the flat path's scripts on every case: hashes, kinds and bytes"):
     val scripts = tx.witsOf.scriptsOf
-    val bytesCompared = flatSeen.map { s =>
+    val bytesCompared = recordedSeen.map { s =>
       val body = s.flat.body
       val outs = (body.inputs ++ body.referenceInputs).flatMap(s.stored.get)
       val flat = TxChecks.providedScripts(s.flat.witnesses, outs.toVector)
@@ -534,18 +480,28 @@ class ConwayUtxowChecksSuite extends FunSuite:
     }.sum
     assert(bytesCompared > 0, "no script whose bytes both paths keep")
 
-  test("the corpus has Conway cases, each read by both paths"):
+  test("the corpus has Conway cases, each read by the era types, and the recorded corpora"):
     assert(clue(seen.size) > 0)
-
-  test("each typed predicate gives the flat one's verdict on every Conway case"):
-    flatSeen.foreach(s =>
-      pairs(s).foreach((name, flat, typed) => assertEquals(typed, flat, s"${s.label}: $name"))
+    assertEquals(
+      RecordedCorpora -- seen.map(_.label.takeWhile(_ != '/')),
+      Set.empty[String],
+      "the recorded corpora not loaded"
     )
+
+  private lazy val predicatesJudged: Vector[(String, Vector[String])] =
+    recordedSeen.map(s =>
+      s"utxow-checks/predicates/${s.label}" -> pairs(s).map((name, fs) =>
+        cell(s"${s.label}: $name", fs)
+      )
+    )
+
+  test("each predicate gives the flat one's recorded verdict on every recorded case"):
+    predicatesJudged.foreach((id, cells) => assertEquals(cells, recorded(id), id))
 
   /** The cases on which each predicate refuses. */
   private lazy val refusals: Map[String, Int] =
-    flatSeen
-      .flatMap(s => pairs(s).collect { case (name, Right(fs), _) if fs.nonEmpty => name })
+    recordedSeen
+      .flatMap(s => pairs(s).collect { case (name, Right(fs)) if fs.nonEmpty => name })
       .groupMapReduce(identity)(_ => 1)(_ + _)
 
   test("the corpus fails the predicates it can tell apart, and names the rest"):
@@ -594,38 +550,49 @@ class ConwayUtxowChecksSuite extends FunSuite:
         (leaf(Value.UInt(11)) -> leaf(Value.ByteString(Bytes(Vector.fill(32)(7.toByte)))))
     )
 
+  private lazy val redeemed: Seen =
+    seen.find(c => c.flat.witnesses.redeemers.nonEmpty).getOrElse(fail("no case with redeemers"))
+
+  private lazy val wrongHashBelow: Crafted =
+    crafted("integrity-hash-v10", wrongHash(withMajor(redeemed, 10)), "checkScriptIntegrityHash")
+
+  private lazy val wrongHashFrom: Crafted =
+    crafted("integrity-hash-v11", wrongHash(withMajor(redeemed, 11)), "checkScriptIntegrityHash")
+
   test("crafted: a wrong script integrity hash, below version 11 and from 11"):
-    val s =
-      seen.find(c => c.flat.witnesses.redeemers.nonEmpty).getOrElse(fail("no case with redeemers"))
-    val below = compared(wrongHash(withMajor(s, 10)), "checkScriptIntegrityHash")
+    val below = holds(wrongHashBelow)
     assert(
       below.exists {
-        case PredicateFailure.Utxow(UtxowFailure.PPViewHashesDontMatch(_)) => true
-        case _                                                             => false
+        case ConwayUtxowPredFailure.PPViewHashesDontMatch(_) => true
+        case _                                               => false
       },
       below
     )
-    val from = compared(wrongHash(withMajor(s, 11)), "checkScriptIntegrityHash")
+    val from = holds(wrongHashFrom)
     assert(
       from.exists {
-        case PredicateFailure.Utxow(UtxowFailure.ScriptIntegrityHashMismatch(_, Some(_))) => true
-        case _                                                                            => false
+        case ConwayUtxowPredFailure.ScriptIntegrityHashMismatch(_, Some(_)) => true
+        case _                                                              => false
       },
       from
     )
 
-  test("crafted: datums without redeemers, whose integrity is over Conway's empty redeemers"):
+  private lazy val noRedeemers: Seen =
     val datum = leaf(Value.UInt(42))
-    val s = withMajor(seen.head, 11)
-    val noRedeemers = edited(s, 1)(fields =>
+    edited(withMajor(seen.head, 11), 1)(fields =>
       fields.filterNot((k, _) => isKey(5)(k) || isKey(4)(k)) :+
         (leaf(Value.UInt(4)) -> leaf(Value.Arr(Vector(datum))))
     )
+
+  private lazy val datumsWithoutRedeemers: Crafted =
+    crafted("datums-without-redeemers", wrongHash(noRedeemers), "checkScriptIntegrityHash")
+
+  test("crafted: datums without redeemers, whose integrity is over Conway's empty redeemers"):
     assertEquals(noRedeemers.flat.witnesses.redeemersRaw, None)
-    val failures = compared(wrongHash(noRedeemers), "checkScriptIntegrityHash")
+    val failures = holds(datumsWithoutRedeemers)
     assert(
       failures.exists {
-        case PredicateFailure.Utxow(UtxowFailure.ScriptIntegrityHashMismatch(_, Some(pre))) =>
+        case ConwayUtxowPredFailure.ScriptIntegrityHashMismatch(_, Some(pre)) =>
           pre.headOption.contains(0xa0.toByte)
         case _ => false
       },
@@ -671,13 +638,13 @@ class ConwayUtxowChecksSuite extends FunSuite:
       )
       .addressRoot
 
-  /** The keys of the forged witnesses each path reports, for key witnesses of `fills` and bootstrap
-    * witnesses of `boots`, each added to the recorded witnesses of its kind (key 0 or 2).
+  /** The keys of the forged witnesses the era predicate reports, for key witnesses of `fills` and
+    * bootstrap witnesses of `boots`, each added to the recorded witnesses of its kind (key 0 or 2).
     */
   private def forgedReported(
       fills: Vector[Int],
       boots: Vector[Int] = Vector.empty
-  ): (Vector[Bytes], Vector[Bytes]) =
+  ): Vector[Bytes] =
     def added(more: Vector[Node])(n: Node): Node = n.value match
       case Value.Arr(ws)   => leaf(Value.Arr(ws ++ more))
       case Value.Tag(t, x) => leaf(Value.Tag(t, added(more)(x)))
@@ -690,12 +657,10 @@ class ConwayUtxowChecksSuite extends FunSuite:
     val c = edited(seen.head, 1)(fields =>
       withMore(2, boots.map(forgedBootstrap))(withMore(0, fills.map(forged))(fields))
     )
-    val (_, flat, typed) = pairs(c).find(_._1 == "validateVerifiedWits").get
-    def keys(r: Either[LedgerDefect, Vector[PredicateFailure]]) =
-      right(s"forged $fills $boots")(r).collect {
-        case PredicateFailure.Utxow(UtxowFailure.InvalidWitnesses(ks)) => ks
-      }.flatten
-    (keys(flat), keys(typed))
+    val (_, typed) = pairs(c).find(_._1 == "validateVerifiedWits").get
+    right(s"forged $fills $boots")(typed).collect {
+      case ConwayUtxowPredFailure.InvalidWitnessesUTXOW(ks) => ks.toList.toVector
+    }.flatten
 
   private def key(fill: Int): Bytes = Bytes(Vector.fill(32)(fill.toByte))
 
@@ -718,36 +683,32 @@ class ConwayUtxowChecksSuite extends FunSuite:
       (Vector(1, 2), Vector(5)),
       (Vector(2, 1), Vector(7, 6))
     ).foreach { (fills, boots) =>
-      val (flat, typed) = forgedReported(fills, boots)
+      val typed = forgedReported(fills, boots)
       val expected = referenceOrder(fills, boots)
       assertEquals(typed, expected, s"forged $fills, bootstrap $boots")
-      assertEquals(flat, expected, s"forged $fills, bootstrap $boots")
     }
 
-  test("crafted: forged key witnesses refuse in both paths, the same keys"):
+  test("crafted: forged key witnesses refuse, the forged keys"):
     Vector(Vector(1, 2), Vector(2, 1)).foreach { fills =>
-      val (flat, typed) = forgedReported(fills)
+      val typed = forgedReported(fills)
       val forgedKeys = fills.map(f => Bytes(Vector.fill(32)(f.toByte)))
       assertEquals(typed.toSet, forgedKeys.toSet, s"forged $fills")
-      assertEquals(flat.toSet, typed.toSet, s"forged $fills")
     }
 
-  /** Both paths list the keys of the failing key witnesses as the reference does, in its witness
-    * set's order (`Set.toList` over `Ord WitVKey`, the key's hash first,
+  /** The era predicate lists the keys of the failing key witnesses as the reference does, in its
+    * witness set's order (`Set.toList` over `Ord WitVKey`, the key's hash first,
     * `Shelley/Rules/Utxow.hs:398-402` and `Keys/WitVKey.hs:58-68`, cardano-ledger f649f975),
     * whatever order they arrived in.
     */
-  test("crafted: both paths list failing keys in the reference's order, whatever their arrival"):
+  test("crafted: failing keys are listed in the reference's order, whatever their arrival"):
     val one = Bytes(Vector.fill(32)(1.toByte))
     val two = Bytes(Vector.fill(32)(2.toByte))
     val byWitness = Vector(one, two).sortBy(k => WitVKey(k, Bytes(Vector.fill(64)(0.toByte))))
     Vector(Vector(1, 2), Vector(2, 1)).foreach { fills =>
-      val (flat, typed) = forgedReported(fills)
-      assertEquals(typed, byWitness, s"forged $fills")
-      assertEquals(flat, byWitness, s"forged $fills")
+      assertEquals(forgedReported(fills), byWitness, s"forged $fills")
     }
 
-  test("crafted: an extraneous script witness"):
+  private lazy val extraneous: Crafted =
     val s = seen.head
     // `[0, [0, h]]`, a signature script, in the native scripts (key 1)
     val native = leaf(
@@ -760,11 +721,14 @@ class ConwayUtxowChecksSuite extends FunSuite:
         Value.Arr(Vector(native))
       ))
     )
-    val failures = compared(c, "babbageMissingScripts")
+    crafted("extraneous-script", c, "babbageMissingScripts")
+
+  test("crafted: an extraneous script witness"):
+    val failures = holds(extraneous)
     assert(
       failures.exists {
-        case PredicateFailure.Utxow(UtxowFailure.ExtraneousScriptWitnesses(_)) => true
-        case _                                                                 => false
+        case ConwayUtxowPredFailure.ExtraneousScriptWitnessesUTXOW(_) => true
+        case _                                                        => false
       },
       failures
     )
@@ -791,14 +755,15 @@ class ConwayUtxowChecksSuite extends FunSuite:
     )
     s.copy(stored = stored, utxo = right("crafted UTxO")(ConwayUTxO.fromStored(stored)))
 
-  private def unspendable(failures: Vector[PredicateFailure]): Vector[Set[TxIn]] =
-    failures.collect { case PredicateFailure.Utxow(UtxowFailure.UnspendableUTxONoDatumHash(ins)) =>
-      ins
+  private def unspendable(failures: Vector[ConwayUtxowPredFailure[Conway]]): Vector[Set[TxIn]] =
+    failures.collect { case ConwayUtxowPredFailure.UnspendableUTxONoDatumHash(ins) =>
+      ins.toSortedSet.toSet
     }
 
-  test(
-    "crafted: a spent Plutus V1 output without a datum is unspendable, a Plutus V3 one is not (CIP-69)"
-  ):
+  /** The output a script locks spent without its datum, as a Plutus V3 script's and as a Plutus V1
+    * script's, and the input that spends it.
+    */
+  private lazy val withoutDatum: (TxIn, Crafted, Crafted) =
     val s0 = seen
       .find(_.label.endsWith("/utxow-spend-without-datum-or-redeemer"))
       .getOrElse(fail("no case that spends a script's output without its datum"))
@@ -806,8 +771,6 @@ class ConwayUtxowChecksSuite extends FunSuite:
     val v3 = out.address.kind match
       case Address.Kind.Shelley(_, xyz.kd5ujc.scarab.ledger.Credential.Script(h), _, _) => h
       case other => fail(s"not a script's address: $other")
-    // the Plutus V3 script, without a datum: no failure of the datums
-    assertEquals(unspendable(compared(noDatum(s0, in, v3), "missingRequiredDatums")), Vector.empty)
     // the same script's bytes as a Plutus V1 script (key 3 of the witnesses, not 7)
     val asV1 = edited(s0, 1)(fields =>
       fields.map((k, v) => if isKey(7)(k) then leaf(Value.UInt(3)) -> v else k -> v)
@@ -817,10 +780,19 @@ class ConwayUtxowChecksSuite extends FunSuite:
         case (h, script) if tx.witsOf.scriptsOf.scriptPrefixTag(script) == 1 => h
       }
       .getOrElse(fail("no Plutus V1 script provided"))
-    assertEquals(
-      unspendable(compared(noDatum(asV1, in, v1), "missingRequiredDatums")),
-      Vector(Set(in))
+    (
+      in,
+      crafted("without-datum-v3", noDatum(s0, in, v3), "missingRequiredDatums"),
+      crafted("without-datum-v1", noDatum(asV1, in, v1), "missingRequiredDatums")
     )
+
+  test(
+    "crafted: a spent Plutus V1 output without a datum is unspendable, a Plutus V3 one is not (CIP-69)"
+  ):
+    val (in, v3, v1) = withoutDatum
+    // the Plutus V3 script, without a datum: no failure of the datums
+    assertEquals(unspendable(holds(v3)), Vector.empty)
+    assertEquals(unspendable(holds(v1)), Vector(Set(in)))
 
   /** `[k, v]` pairs as a CBOR map node. */
   private def map(entries: (Node, Node)*): Node = leaf(Value.Map(entries.toVector))
@@ -828,7 +800,7 @@ class ConwayUtxowChecksSuite extends FunSuite:
   private def uint(n: Int): Node = leaf(Value.UInt(n))
   private def bytes(b: Bytes): Node = leaf(Value.ByteString(b))
 
-  test("crafted: redeemers no purpose needs, written out of their order"):
+  private lazy val extraRedeemers: Crafted =
     val s = seen.head
     // a redeemer `[data, [mem, steps]]` at mint 7, then at spend 9
     val redeemer = arr(uint(0), arr(uint(0), uint(0)))
@@ -836,13 +808,17 @@ class ConwayUtxowChecksSuite extends FunSuite:
       fields.filterNot((k, _) => isKey(5)(k)) :+
         (uint(5) -> map(arr(uint(1), uint(7)) -> redeemer, arr(uint(0), uint(9)) -> redeemer))
     )
-    val failures = compared(c, "hasExactSetOfRedeemers")
+    crafted("extra-redeemers", c, "hasExactSetOfRedeemers")
+
+  test("crafted: redeemers no purpose needs, written out of their order"):
     assertEquals(
-      failures.collect { case PredicateFailure.Utxow(UtxowFailure.ExtraRedeemers(ps)) => ps },
+      holds(extraRedeemers).collect { case ConwayUtxowPredFailure.ExtraRedeemers(ps) =>
+        ps.toList.toVector.map(p => (p.tag, p.ix.value))
+      },
       Vector(Vector((0, BigInt(9)), (1, BigInt(7))))
     )
 
-  test("crafted: a Plutus script minting, certifying, withdrawing and voting with no redeemer"):
+  private lazy val missingRedeemers: (Bytes, Crafted) =
     val s0 = seen
       .find(s => s.label.endsWith("/utxo-mint-units-too-big"))
       .getOrElse(fail("no case that mints with a Plutus script"))
@@ -864,8 +840,37 @@ class ConwayUtxowChecksSuite extends FunSuite:
       fields.filterNot((k, _) => isKey(4)(k) || isKey(5)(k) || isKey(19)(k)) ++ added
     )
     val c = edited(body, 1)(fields => fields.filterNot((k, _) => isKey(5)(k)))
-    val failures = compared(c, "hasExactSetOfRedeemers")
-    val missing = failures.collect {
-      case PredicateFailure.Utxow(UtxowFailure.MissingRedeemers(ps)) => ps
+    policy -> crafted("missing-redeemers", c, "hasExactSetOfRedeemers")
+
+  test("crafted: a Plutus script minting, certifying, withdrawing and voting with no redeemer"):
+    val (policy, c) = missingRedeemers
+    val missing = holds(c).collect { case ConwayUtxowPredFailure.MissingRedeemers(ps) =>
+      ps.toList.toVector
     }.flatten
     assertEquals(missing.map((p, h) => (p.tag, h)), Vector(3, 2, 1, 4).map(_ -> policy))
+
+  /** Every judgment of this suite the recording holds. */
+  private lazy val judged: Vector[(String, Vector[String])] =
+    predicatesJudged ++ Vector(
+      wrongHashBelow,
+      wrongHashFrom,
+      datumsWithoutRedeemers,
+      extraneous,
+      withoutDatum._2,
+      withoutDatum._3,
+      extraRedeemers,
+      missingRedeemers._2
+    ).map(c => c.id -> c.cells)
+
+  test("the recording of the flat UTXOW's judgments holds this suite's alone, each once"):
+    val ids = judged.map(_._1)
+    assertEquals(ids.distinct.size, ids.size, "a judgment twice")
+    assertEquals(
+      ids.toSet,
+      FlatRecordings.utxoJudgments.keySet.filter(_.startsWith("utxow-checks/"))
+    )
+
+  test("the recording holds each prefix's judgments, as many as were recorded"):
+    def count(prefix: String) =
+      FlatRecordings.utxoJudgments.keySet.count(_.startsWith(s"utxow-checks/$prefix/"))
+    assertEquals(Vector("predicates", "crafted").map(count), Vector(84, 8))

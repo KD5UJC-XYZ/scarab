@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import xyz.kd5ujc.scarab.codec.Rational
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.codec.Bytes
@@ -661,38 +660,9 @@ object TxChecks:
         )
       }
 
-/** Reference scripts: the limits and the fee of Conway's reference-script pricing. */
+/** Reference scripts: the limits of Conway's reference-script sizes. */
 object RefScripts:
   val MaxRefScriptSizePerTx: Int = 200 * 1024
 
   /** Maximum total size of the reference scripts of one block. */
   val MaxRefScriptSizePerBlock: Int = 1024 * 1024
-
-  private val RefScriptStride = 25600
-  private val RefScriptMultiplier = Rational(6, 5)
-
-  /** `tierRefScriptFee`: the price per byte starts at `base` and grows by 1.2 for every 25 KiB. The
-    * size is a `Long`, as the reference's is a 64-bit `Int` (`Conway/Tx.hs:122-142`, cardano-ledger
-    * f649f975).
-    */
-  def tierRefScriptFee(base: Rational, size: Long): BigInt =
-    @annotation.tailrec
-    def go(acc: Rational, price: Rational, n: Long): BigInt =
-      if n < RefScriptStride then (acc + Rational(n) * price).floor
-      else
-        go(
-          acc + Rational(RefScriptStride) * price,
-          RefScriptMultiplier * price,
-          n - RefScriptStride
-        )
-    go(Rational.zero, base, size)
-
-  /** Total size of the reference scripts of the distinct inputs and reference inputs
-    * (`txNonDistinctRefScriptsSize`, `Conway/UTxO.hs:166-170`, cardano-ledger f649f975), added up
-    * in 64 bits as the reference's `Int`.
-    */
-  def refScriptsSize(utxo: Utxo, body: TxBody): Long =
-    (body.inputs.toSet ++ body.referenceInputs.toSet).iterator
-      .flatMap(utxo.get)
-      .map(_.referenceScriptSize)
-      .sum

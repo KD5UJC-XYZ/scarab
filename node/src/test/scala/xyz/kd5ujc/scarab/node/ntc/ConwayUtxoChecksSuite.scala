@@ -4,18 +4,8 @@ package xyz.kd5ujc.scarab.node.ntc
 import xyz.kd5ujc.scarab.protocol.StateLayout
 import java.nio.file.Path
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
-import xyz.kd5ujc.scarab.ledger.{
-  Horizon,
-  PredicateFailure,
-  Tx,
-  TxEnv,
-  TxIn,
-  TxOut,
-  Utxo,
-  UtxoFailure,
-  UtxowFailure
-}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.ledger.{Horizon, Tx, TxEnv, TxIn, TxOut, Utxo, testByteStrings}
 import xyz.kd5ujc.scarab.ledger.era.{
   ConwayEraPParams,
   EraCertState,
@@ -39,26 +29,15 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   BabbageUtxoPredFailure,
   ConwayUtxo,
   ConwayUtxoPredFailure,
+  ConwayUtxowPredFailure,
   InjectUtxoFailure,
   ShelleyUtxo,
   ShelleyUtxoPredFailure,
   UtxoContext,
   UtxoEnv
 }
-import xyz.kd5ujc.scarab.ledger.{RefScripts, testByteStrings}
 import xyz.kd5ujc.scarab.ledger.era.EraUtxoRun
-import xyz.kd5ujc.scarab.ledger.rules.{
-  CertLens,
-  Counted,
-  Deposits,
-  Judgment,
-  RuleT,
-  StAnnTx,
-  Test as Verdict,
-  Utxo as FlatUtxoRule,
-  UtxoEnv as FlatUtxoEnv,
-  UtxoTests
-}
+import xyz.kd5ujc.scarab.ledger.rules.{CertLens, Test as Verdict}
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
   Conway,
@@ -79,12 +58,20 @@ import xyz.kd5ujc.scarab.node.mempool.LocalSubmission
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
 
-/** Conway's UTXO predicates on the era types against the flat ones, on every transaction of the
-  * recorded Conway refusal corpora: the same verdict, failures included, from each. A predicate the
-  * corpus never fails is named, since only a failing case tells the two apart. The corpora recorded
-  * for the era rules alone ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left
-  * out of the flat comparisons, which stage 3 retires; the era rules' own assertions keep them, and
-  * `ReferenceRefusalSuite` binds the era rules to them.
+/** Conway's UTXO predicates on the era types, each on its own, assembled (`babbageUtxoValidation`)
+  * and whole (`conwayUtxoTransition`, and UTXOW's `babbageUtxowTransition` over it), on every
+  * transaction of the recorded Conway refusal corpora and on cases crafted from them. Before the
+  * flat Conway UTXO and UTXOW were deleted, the era rules were compared with them here, and they
+  * gave the same verdicts, failures included, the same values (the minimum fee, the value consumed
+  * and produced, the deposits and the refunds) and the same state; the era rules' judgments were
+  * recorded after the two were found to agree
+  * (`fixtures/conway-flat-refusals/utxo-judgments.jsonl`, under `utxo-checks/`): a refusal by the
+  * bytes of its failures, an admission by the state it leaves, a value as it is. The era rules are
+  * held to that recording. The corpora the flat predicates judged are named ([[RecordedCorpora]]):
+  * the corpora recorded for the era rules alone
+  * ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are not among them, while the
+  * whole rules judged every Conway corpus ([[WholeCorpora]]). Where only UTXO or UTXOW refused, the
+  * refusal is the reference's, byte for byte; a predicate the corpus never fails is named.
   */
 class ConwayUtxoChecksSuite extends FunSuite:
   import ReferenceRefusalSuite.*
@@ -94,7 +81,9 @@ class ConwayUtxoChecksSuite extends FunSuite:
   private val body = EraTxBody.conway
   private val top = body.top
 
-  /** One Conway case as both paths see it. */
+  /** One Conway case as the era types see it, with the transaction the flat decoder read, which the
+    * crafted cases are made from, and the parameters as stored.
+    */
   private final case class Seen(
       label: String,
       bytes: Bytes,
@@ -160,212 +149,177 @@ class ConwayUtxoChecksSuite extends FunSuite:
       }
     }
 
-  /** A failure of the era types in the node's flat form; none of UTXO's predicates reports UTXOS's
-    * collection errors, the projection's one lossy case.
-    */
-  private def stored(f: ConwayUtxoPredFailure[Conway]): PredicateFailure =
-    ConwayUtxoPredFailure.toStored(f).fold(e => fail(s"collection errors: $e"), identity)
+  // ---- the recording -----------------------------------------------------------------------------
 
-  /** A typed predicate's verdict with its failures injected into Conway's (`inject`) and in the
-    * flat form, so it compares with the flat predicate's.
+  /** The corpora whose cases the flat predicates judged before they were deleted, by name: a corpus
+    * added later is not among them.
     */
-  private def asConway[A](test: Verdict[A])(
-      inject: A => ConwayUtxoPredFailure[Conway]
-  ): Verdict[PredicateFailure] =
-    test.leftMap(_.map(a => stored(inject(a))))
+  private val RecordedCorpora: Set[String] = Set(
+    "conway-bootstrap-attributes",
+    "conway-bootstrap-attributes-leios-b004fe0c",
+    "conway-deleg-collateral",
+    "conway-devnet",
+    "conway-gov-proposals",
+    "conway-governance",
+    "conway-three-certificates",
+    "conway-v11-coverage"
+  )
+
+  /** The corpora whose cases the flat UTXO and UTXOW judged whole, by name: every Conway corpus. */
+  private val WholeCorpora: Set[String] = RecordedCorpora ++ Set(
+    "conway-constructors",
+    "conway-constructors-v11",
+    "conway-gov-order",
+    "conway-mempool"
+  )
+
+  private def of(corpora: Set[String]): Vector[Seen] =
+    seen.filter(s => corpora.exists(c => s.label.startsWith(s"$c/")))
+
+  /** The cases the flat predicates judged. */
+  private lazy val recordedSeen: Vector[Seen] = of(RecordedCorpora)
+
+  /** The cases the flat rules judged whole. */
+  private lazy val wholeSeen: Vector[Seen] = of(WholeCorpora)
+
+  /** The recorded judgment `id`, failing the test where none was recorded. */
+  private def recorded(id: String): Vector[String] =
+    FlatRecordings.utxoJudgments.getOrElse(id, fail(s"no recording of $id"))
+
+  /** That `cells` are the recorded judgment `id`, which are returned. */
+  private def holds(id: String, cells: Vector[String]): Vector[String] =
+    assertEquals(cells, recorded(id), id)
+    cells
+
+  /** A verdict's cell: `-` where it passes, a refusal's cell ([[FlatRecordings.utxoRefused]]) where
+    * it fails.
+    */
+  private def cell(test: Verdict[ConwayUtxoPredFailure[Conway]]): String =
+    test.fold(fs => FlatRecordings.utxoRefused(fs.toChain.toVector), _ => "-")
+
+  // ---- the predicates ----------------------------------------------------------------------------
 
   /** A Shelley predicate's failures through the 11.2 injection, which keeps each failure a Conway
-    * transaction gives Shelley's predicates as it is: the predicates are compared, not the
-    * injection, which `assembled` compares under each build.
+    * transaction gives Shelley's predicates as it is: the predicates are judged, not the injection,
+    * which `assembled` judges under each build.
     */
-  private def shelley(test: Verdict[ShelleyUtxoPredFailure[Conway]]): Verdict[PredicateFailure] =
-    asConway(test)(ConwayUtxo.injectShelleyFailure11_2.injectFailure)
+  private def shelley(
+      test: Verdict[ShelleyUtxoPredFailure[Conway]]
+  ): Verdict[ConwayUtxoPredFailure[Conway]] =
+    test.leftMap(_.map(ConwayUtxo.injectShelleyFailure11_2.injectFailure))
 
-  private def allegra(test: Verdict[AllegraUtxoPredFailure[Conway]]): Verdict[PredicateFailure] =
-    asConway(test)(InjectUtxoFailure.conwayAllegra.injectFailure)
+  private def allegra(
+      test: Verdict[AllegraUtxoPredFailure[Conway]]
+  ): Verdict[ConwayUtxoPredFailure[Conway]] =
+    test.leftMap(_.map(InjectUtxoFailure.conwayAllegra.injectFailure))
 
-  private def alonzo(test: Verdict[AlonzoUtxoPredFailure[Conway]]): Verdict[PredicateFailure] =
-    asConway(test)(InjectUtxoFailure.conwayAlonzo.injectFailure)
+  private def alonzo(
+      test: Verdict[AlonzoUtxoPredFailure[Conway]]
+  ): Verdict[ConwayUtxoPredFailure[Conway]] =
+    test.leftMap(_.map(InjectUtxoFailure.conwayAlonzo.injectFailure))
 
-  private def babbage(test: Verdict[BabbageUtxoPredFailure[Conway]]): Verdict[PredicateFailure] =
-    asConway(test)(InjectUtxoFailure.conwayBabbage.injectFailure)
+  private def babbage(
+      test: Verdict[BabbageUtxoPredFailure[Conway]]
+  ): Verdict[ConwayUtxoPredFailure[Conway]] =
+    test.leftMap(_.map(InjectUtxoFailure.conwayBabbage.injectFailure))
 
-  private def conway(test: Verdict[ConwayUtxoPredFailure[Conway]]): Verdict[PredicateFailure] =
-    asConway(test)(identity)
-
-  /** Each predicate: its name, the flat verdict and the typed one. */
-  private def pairs(
-      s: Seen
-  ): Vector[(String, Verdict[PredicateFailure], Verdict[PredicateFailure])] =
-    val fb = s.flat.body
+  /** Each predicate, by its name, and its verdict in Conway's failures. */
+  private def pairs(s: Seen): Vector[(String, Verdict[ConwayUtxoPredFailure[Conway]])] =
     val tx = EraTx.conway
     val tb = tx.body[TxLevel.Top](s.typed)(using tx.bodyOf.top)
-    val outs = fb.outputs ++ fb.collateralReturn.toVector
     Vector(
-      (
-        "disjointRefInputs",
-        UtxoTests.disjointRefInputs(s.flatPp, fb),
-        babbage(
-          BabbageUtxo
-            .disjointRefInputs[Conway](
-              s.pp,
-              body.inputs[TxLevel.Top](tb)(using top),
-              body.referenceInputs[TxLevel.Top](tb)(using top)
-            )
-        )
-      ),
-      (
-        "validateOutsideValidityIntervalUTxO",
-        UtxoTests.validityInterval(fb, s.slot),
-        allegra(
-          AllegraUtxo.validateOutsideValidityIntervalUTxO[Conway, TxLevel.Top](s.slot, tb)(using
-            body,
-            top
-          )
-        )
-      ),
-      (
-        "validateInputSetEmptyUTxO",
-        UtxoTests.inputSetEmpty(fb),
-        shelley(ShelleyUtxo.validateInputSetEmptyUTxO[Conway, TxLevel.Top](tb)(using body, top))
-      ),
-      (
-        "validateBadInputsUTxO",
-        UtxoTests
-          .badInputs(Utxo.fromMap(s.stored), fb.inputs ++ fb.collateral ++ fb.referenceInputs),
-        shelley(ShelleyUtxo.validateBadInputsUTxO[Conway](s.utxo, body.allInputs(tb)))
-      ),
-      (
-        "validateWrongNetwork",
-        UtxoTests.wrongNetwork(s.network, outs),
-        shelley(
-          ShelleyUtxo
-            .validateWrongNetwork[Conway](
-              s.netId,
-              body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
-            )(using
-              body.outputsOf
-            )
-        )
-      ),
-      (
-        "validateWrongNetworkWithdrawal",
-        UtxoTests.wrongNetworkWithdrawal(s.network, fb),
-        shelley(
-          ShelleyUtxo.validateWrongNetworkWithdrawal[Conway, TxLevel.Top](s.netId, tb)(using
-            body,
-            top
-          )
-        )
-      ),
-      (
-        "validateWrongNetworkInTxBody",
-        UtxoTests.wrongNetworkInTxBody(s.network, fb),
-        alonzo(
-          AlonzoUtxo.validateWrongNetworkInTxBody[Conway, TxLevel.Top](s.netId, tb)(using
-            body,
-            top
-          )
-        )
-      ),
-      (
-        "validateTooManyCollateralInputs",
-        UtxoTests.tooManyCollateralInputs(s.flatPp, fb),
-        alonzo(AlonzoUtxo.validateTooManyCollateralInputs[Conway](s.pp, tb))
-      ),
-      (
-        "validateOutputTooSmallUTxO",
-        UtxoTests.outputTooSmall[Conway](s.flatPp, outs),
-        babbage(
-          BabbageUtxo.validateOutputTooSmallUTxO[Conway](
+      "disjointRefInputs" -> babbage(
+        BabbageUtxo
+          .disjointRefInputs[Conway](
             s.pp,
-            body.allSizedOutputs[TxLevel.Top](tb)(using top)
-          )(using body.outputsOf)
-        )
-      ),
-      (
-        "validateOutputTooBigUTxO",
-        UtxoTests.outputTooBig[Conway](s.flatPp, outs),
-        alonzo(
-          AlonzoUtxo.validateOutputTooBigUTxO[Conway](
-            s.pp,
-            body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
-          )(using body.outputsOf)
-        )
-      ),
-      (
-        "validateOutputBootAddrAttrsTooBig",
-        UtxoTests.bootAddrAttrsTooBig(outs),
-        shelley(
-          ShelleyUtxo.validateOutputBootAddrAttrsTooBig[Conway](
-            body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
-          )(using body.outputsOf)
-        )
-      ),
-      (
-        "validateValueNotConservedUTxO", {
-          val (consumed, produced) = flatBalance(s)
-          UtxoTests.valueNotConserved(consumed, produced)
-        },
-        shelley(ShelleyUtxo.validateValueNotConservedUTxO[Conway](s.pp, s.utxo, s.cert, tb))
-      ),
-      (
-        "feesOK",
-        UtxoTests.feesOK[Conway](s.flatPp, Utxo.fromMap(s.stored), s.flat, flatMinFee(s)),
-        conway(BabbageUtxo.feesOK[Conway](s.pp, s.typed, s.utxo))
-      ),
-      (
-        "validateMaxTxSizeUTxO",
-        UtxoTests.maxTxSize(s.flatPp, s.flat),
-        shelley(
-          ShelleyUtxo.validateMaxTxSizeUTxO[Conway, TxLevel.Top](s.pp, s.typed)(using
-            tx,
-            tx.bodyOf.top
+            body.inputs[TxLevel.Top](tb)(using top),
+            body.referenceInputs[TxLevel.Top](tb)(using top)
           )
+      ),
+      "validateOutsideValidityIntervalUTxO" -> allegra(
+        AllegraUtxo.validateOutsideValidityIntervalUTxO[Conway, TxLevel.Top](s.slot, tb)(using
+          body,
+          top
         )
       ),
-      (
-        "validateExUnitsTooBigUTxO",
-        UtxoTests.exUnitsTooBig(s.flatPp, s.flat),
-        alonzo(
-          AlonzoUtxo.validateExUnitsTooBigUTxO[Conway, TxLevel.Top](s.pp, s.typed)(using
-            tx,
-            tx.bodyOf.top
+      "validateInputSetEmptyUTxO" -> shelley(
+        ShelleyUtxo.validateInputSetEmptyUTxO[Conway, TxLevel.Top](tb)(using body, top)
+      ),
+      "validateBadInputsUTxO" -> shelley(
+        ShelleyUtxo.validateBadInputsUTxO[Conway](s.utxo, body.allInputs(tb))
+      ),
+      "validateWrongNetwork" -> shelley(
+        ShelleyUtxo
+          .validateWrongNetwork[Conway](
+            s.netId,
+            body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
+          )(using
+            body.outputsOf
           )
+      ),
+      "validateWrongNetworkWithdrawal" -> shelley(
+        ShelleyUtxo.validateWrongNetworkWithdrawal[Conway, TxLevel.Top](s.netId, tb)(using
+          body,
+          top
+        )
+      ),
+      "validateWrongNetworkInTxBody" -> alonzo(
+        AlonzoUtxo.validateWrongNetworkInTxBody[Conway, TxLevel.Top](s.netId, tb)(using
+          body,
+          top
+        )
+      ),
+      "validateTooManyCollateralInputs" -> alonzo(
+        AlonzoUtxo.validateTooManyCollateralInputs[Conway](s.pp, tb)
+      ),
+      "validateOutputTooSmallUTxO" -> babbage(
+        BabbageUtxo.validateOutputTooSmallUTxO[Conway](
+          s.pp,
+          body.allSizedOutputs[TxLevel.Top](tb)(using top)
+        )(using body.outputsOf)
+      ),
+      "validateOutputTooBigUTxO" -> alonzo(
+        AlonzoUtxo.validateOutputTooBigUTxO[Conway](
+          s.pp,
+          body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
+        )(using body.outputsOf)
+      ),
+      "validateOutputBootAddrAttrsTooBig" -> shelley(
+        ShelleyUtxo.validateOutputBootAddrAttrsTooBig[Conway](
+          body.allSizedOutputs[TxLevel.Top](tb)(using top).map(_.value)
+        )(using body.outputsOf)
+      ),
+      "validateValueNotConservedUTxO" -> shelley(
+        ShelleyUtxo.validateValueNotConservedUTxO[Conway](s.pp, s.utxo, s.cert, tb)
+      ),
+      "feesOK" -> BabbageUtxo.feesOK[Conway](s.pp, s.typed, s.utxo),
+      "validateMaxTxSizeUTxO" -> shelley(
+        ShelleyUtxo.validateMaxTxSizeUTxO[Conway, TxLevel.Top](s.pp, s.typed)(using
+          tx,
+          tx.bodyOf.top
+        )
+      ),
+      "validateExUnitsTooBigUTxO" -> alonzo(
+        AlonzoUtxo.validateExUnitsTooBigUTxO[Conway, TxLevel.Top](s.pp, s.typed)(using
+          tx,
+          tx.bodyOf.top
         )
       )
     )
 
-  /** The flat path's minimum fee, as its UTXO computes it
-    * ([[xyz.kd5ujc.scarab.ledger.rules.Utxo]]'s `validate`).
-    */
-  private def flatMinFee(s: Seen): BigInt =
-    val pp = s.flatPp
-    val units = s.flat.witnesses.totalExUnits
-    val scriptFee =
-      (pp.priceMem * Rational(units.mem) + pp.priceSteps * Rational(units.steps)).ceil
-    pp.minFeeA * s.flat.size + pp.minFeeB + scriptFee +
-      RefScripts.tierRefScriptFee(
-        pp.minFeeRefScriptCostPerByte,
-        RefScripts.refScriptsSize(Utxo.fromMap(s.stored), s.flat.body)
-      )
+  /** The verdict of the predicate `name` on `s`. */
+  private def verdictOf(s: Seen, name: String): Verdict[ConwayUtxoPredFailure[Conway]] =
+    pairs(s).find(_._1 == name).getOrElse(fail(s"no predicate $name"))._2
 
-  /** The flat path's value consumed and produced, as its UTXO computes them from the deposits and
-    * refunds of [[Deposits.of]].
+  // ---- the values --------------------------------------------------------------------------------
+
+  /** A value as it is recorded: its lovelace, then each asset `<policy>.<name>=<quantity>`, in the
+    * order of the policies and names, separated by `+`.
     */
-  private def flatBalance(
-      s: Seen
-  ): (xyz.kd5ujc.scarab.ledger.Value, xyz.kd5ujc.scarab.ledger.Value) =
-    import xyz.kd5ujc.scarab.ledger.Value as FlatValue
-    val body = s.flat.body
-    val (deposits, refunds) = Deposits.of(s.flatPp, s.cert, body)
-    val spent = body.inputs.flatMap(s.stored.get)
-    val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
-    val consumed = spent.foldLeft(FlatValue.zero)(_ + _.value) +
-      FlatValue.coin(withdrawn + refunds) + FlatValue.minted(body.mint)
-    val produced = body.outputs.foldLeft(FlatValue.zero)(_ + _.value) +
-      FlatValue.coin(body.fee + deposits + body.donation) + FlatValue.burned(body.mint)
-    (consumed, produced)
+  private def valueText(v: xyz.kd5ujc.scarab.ledger.Value): String =
+    (v.coin.toString +: v.assets.toVector.sortBy(_._1.hex).flatMap { (policy, names) =>
+      names.toVector.sortBy(_._1.hex).map((name, n) => s"${policy.hex}.${name.hex}=$n")
+    }).mkString("+")
 
   private def lookupStakingDeposit(s: Seen)(c: Credential[Staking]): Option[Coin] =
     CertLens.accounts.get(s.cert).get(c).map(_.deposit.toCoin)
@@ -373,80 +327,80 @@ class ConwayUtxoChecksSuite extends FunSuite:
   private def isPoolRegistered(s: Seen)(k: KeyHash[StakePool]): Boolean =
     CertLens.pools.get(s.cert).contains(k)
 
-  /** The cases the flat comparisons judge: the corpora recorded for the era rules alone aside. */
-  private lazy val flatSeen: Vector[Seen] = seen.filterNot(s => eraOnly(s.label))
-
-  test("getMinFeeTxUtxo is the flat path's minimum fee on every Conway case"):
+  /** The minimum fee (`getMinFeeTxUtxo`) of `s`. */
+  private def minFee(s: Seen): BigInt =
     val u = EraUTxO.conway
-    flatSeen.foreach { s =>
-      assertEquals(
-        u.getMinFeeTxUtxo[TxLevel.Top](s.pp, s.typed, s.utxo)(using u.txOf.bodyOf.top).value,
-        flatMinFee(s),
-        s.label
-      )
-    }
+    u.getMinFeeTxUtxo[TxLevel.Top](s.pp, s.typed, s.utxo)(using u.txOf.bodyOf.top).value
 
-  test("getConsumedValue and getProducedValue are the flat path's on every Conway case"):
+  /** The value `s` consumes and produces (`getConsumedValue`, `getProducedValue`), as recorded. */
+  private def balance(s: Seen): Vector[String] =
     val u = EraUTxO.conway
     val stored = StoredTxOut.conway
-    flatSeen.foreach { s =>
-      val tb = u.txOf.body[TxLevel.Top](s.typed)(using u.txOf.bodyOf.top)
-      val (consumed, produced) = flatBalance(s)
-      assertEquals(
+    val tb = u.txOf.body[TxLevel.Top](s.typed)(using u.txOf.bodyOf.top)
+    Vector(
+      valueText(
         stored.storedValue(
           u.getConsumedValue[TxLevel.Top](s.pp, lookupStakingDeposit(s), s.utxo, tb)(using
             u.txOf.bodyOf.top
           )
-        ),
-        consumed,
-        s"${s.label}: consumed"
-      )
-      assertEquals(
-        stored.storedValue(u.getProducedValue(s.pp, isPoolRegistered(s), tb)),
-        produced,
-        s"${s.label}: produced"
-      )
-    }
+        )
+      ),
+      valueText(stored.storedValue(u.getProducedValue(s.pp, isPoolRegistered(s), tb)))
+    )
+
+  /** The deposits and refunds of `s` 's certificates (`certsTotalDepositsTxBody`,
+    * `certsTotalRefundsTxBody`).
+    */
+  private def certDeposits(s: Seen): Vector[BigInt] =
+    val c = EraCertState.conway
+    val tb = EraTx.conway.body[TxLevel.Top](s.typed)(using EraTx.conway.bodyOf.top)
+    Vector(
+      c.certsTotalDepositsTxBody(s.pp, s.cert, tb)(using body).value,
+      c.certsTotalRefundsTxBody[TxLevel.Top](s.pp, c.certDStateL.get(s.cert).accounts, tb)(using
+        body,
+        top
+      ).value
+    )
+
+  /** The recorded values of a case: its minimum fee, the value it consumes and produces, and its
+    * certificates' deposits and refunds.
+    */
+  private def values(s: Seen): Vector[String] =
+    minFee(s).toString +: (balance(s) ++ certDeposits(s).map(_.toString))
+
+  test("the corpus has Conway cases, each read by the era types, and the recorded corpora"):
+    assert(clue(seen.size) > 0)
+    assertEquals(
+      WholeCorpora -- seen.map(_.label.takeWhile(_ != '/')),
+      Set.empty[String],
+      "the recorded corpora not loaded"
+    )
+
+  private lazy val valuesJudged: Vector[(String, Vector[String])] =
+    recordedSeen.map(s => s"utxo-checks/values/${s.label}" -> values(s))
 
   test(
-    "certsTotalDepositsTxBody and certsTotalRefundsTxBody are the flat path's on every Conway case"
+    "getMinFeeTxUtxo, getConsumedValue, getProducedValue and the certificates' deposits and refunds are the flat path's recorded values on every case"
   ):
-    val c = EraCertState.conway
-    flatSeen.foreach { s =>
-      val tb = EraTx.conway.body[TxLevel.Top](s.typed)(using EraTx.conway.bodyOf.top)
-      val (deposits, refunds) = Deposits.of(s.flatPp, s.cert, s.flat.body)
-      assertEquals(
-        c.certsTotalDepositsTxBody(s.pp, s.cert, tb)(using body).value,
-        deposits,
-        s.label
-      )
-      assertEquals(
-        c.certsTotalRefundsTxBody[TxLevel.Top](s.pp, c.certDStateL.get(s.cert).accounts, tb)(using
-          body,
-          top
-        ).value,
-        refunds,
-        s.label
-      )
-    }
+    valuesJudged.foreach(holds.tupled)
 
-  test("the corpus has Conway cases, each read by both paths"):
-    assert(clue(seen.size) > 0)
+  // ---- each predicate ----------------------------------------------------------------------------
 
-  test("each typed predicate gives the flat one's verdict on every Conway case"):
-    flatSeen.foreach { s =>
-      pairs(s).foreach { (name, flat, typed) =>
-        assertEquals(typed, flat, s"${s.label}: $name")
-      }
-    }
+  private lazy val predicatesJudged: Vector[(String, Vector[String])] =
+    recordedSeen.map(s => s"utxo-checks/predicates/${s.label}" -> pairs(s).map((_, t) => cell(t)))
 
-  /** The predicates some case fails, so the comparison above saw them refuse. */
-  private val refusedSomewhere: Set[String] =
-    flatSeen.flatMap(s => pairs(s).collect { case (name, flat, _) if flat.isInvalid => name }).toSet
+  test("each predicate gives the flat one's recorded verdict on every recorded case"):
+    predicatesJudged.foreach(holds.tupled)
 
-  /** The bytes of `s` 's transaction with its body's fields edited by `f`, and both paths' reading
-    * of them. The predicates are pure, so a body whose witnesses no longer sign it still tells them
-    * apart.
+  /** The predicates some recorded case fails, so the flat comparison saw them refuse. */
+  private lazy val refusedSomewhere: Set[String] =
+    recordedSeen.flatMap(s => pairs(s).collect { case (name, t) if t.isInvalid => name }).toSet
+
+  // ---- crafted cases -----------------------------------------------------------------------------
+
+  /** The bytes of `s` 's transaction with its body's fields edited by `f`, and both decoders'
+    * reading of them. The predicates are pure, so a body whose witnesses no longer sign it still
+    * tells them apart.
     */
   private def edited(s: Seen, bytes: Bytes)(
       f: Vector[(Node, Node)] => Vector[(Node, Node)]
@@ -478,16 +432,18 @@ class ConwayUtxoChecksSuite extends FunSuite:
       pp = PParams[Conway](right("edited parameters")(ConwayPParams.fromStored(flatPp)))
     )
 
-  private def compared(s: Seen, name: String): Unit =
-    val (_, flat, typed) = pairs(s).find(_._1 == name).getOrElse(fail(s"no predicate $name"))
-    assert(flat.isInvalid, s"${s.label}: the crafted case passes $name")
-    assertEquals(typed, flat, s"${s.label}: $name")
+  /** The crafted case `id`: the predicate `name` refuses `s`, and its verdict's cell. */
+  private def crafted(id: String, s: Seen, name: String): (String, Vector[String]) =
+    val verdict = verdictOf(s, name)
+    assert(verdict.isInvalid, s"$id: the crafted case passes $name")
+    s"utxo-checks/crafted/$id" -> Vector(cell(verdict))
 
   private def envelope(s: Seen): Bytes = s.bytes
 
-  test("crafted from a recorded case: an empty input set"):
+  private lazy val emptyInputs: (String, Vector[String]) =
     val s = seen.head
-    compared(
+    crafted(
+      "empty-inputs",
       edited(s, envelope(s))(fields =>
         fields.map((k, v) =>
           if isKey(0)(k) then k -> Node(Value.Arr(Vector.empty), Bytes.empty) else k -> v
@@ -496,9 +452,13 @@ class ConwayUtxoChecksSuite extends FunSuite:
       "validateInputSetEmptyUTxO"
     )
 
-  test("crafted from a recorded case: reference inputs that are also spent, at version 10"):
+  test("crafted from a recorded case: an empty input set"):
+    holds.tupled(emptyInputs)
+
+  private lazy val spentReferences: (String, Vector[String]) =
     val s = withParams(seen.head)(_.copy(protocolMajor = 10))
-    compared(
+    crafted(
+      "reference-inputs-spent-v10",
       edited(s, envelope(s))(fields =>
         val inputs =
           fields.collectFirst { case (k, v) if isKey(0)(k) => v }.getOrElse(fail("no inputs"))
@@ -507,9 +467,19 @@ class ConwayUtxoChecksSuite extends FunSuite:
       "disjointRefInputs"
     )
 
-  test("crafted from a recorded case: more collateral inputs than the parameters allow"):
+  test("crafted from a recorded case: reference inputs that are also spent, at version 10"):
+    holds.tupled(spentReferences)
+
+  private lazy val tooManyCollateral: (String, Vector[String]) =
     val s = seen.find(_.flat.body.collateral.nonEmpty).getOrElse(fail("no case with collateral"))
-    compared(withParams(s)(_.copy(maxCollateralInputs = 0)), "validateTooManyCollateralInputs")
+    crafted(
+      "too-many-collateral",
+      withParams(s)(_.copy(maxCollateralInputs = 0)),
+      "validateTooManyCollateralInputs"
+    )
+
+  test("crafted from a recorded case: more collateral inputs than the parameters allow"):
+    holds.tupled(tooManyCollateral)
 
   /** A collateral set of `n` distinct inputs: indices below 50,000 of one transaction id after
     * another, since an index is a `Word16`.
@@ -526,25 +496,32 @@ class ConwayUtxoChecksSuite extends FunSuite:
       fields.filterNot((k, _) => isKey(13)(k)) :+ (key(13) -> collateral(n))
     )
 
-  test("the collateral count is narrowed to a Word16, as the reference compares it, in both paths"):
+  /** The collateral counts past a `Word16`, and the verdict on each. */
+  private lazy val narrowedCollateral: Vector[(Int, Verdict[ConwayUtxoPredFailure[Conway]])] =
     val s = withParams(seen.head)(_.copy(maxCollateralInputs = 3))
-    def verdicts(n: Int) =
-      val (_, flat, typed) =
-        pairs(withCollateral(s, n)).find(_._1 == "validateTooManyCollateralInputs").get
-      assertEquals(typed, flat, s"$n collateral inputs")
-      flat
-    assert(verdicts(1 << 16).isValid, "65,536 inputs count as 0")
-    assert(verdicts((1 << 16) + 3).isValid, "65,539 inputs count as 3")
-    assertEquals(
-      verdicts((1 << 16) + 4),
-      Verdict.failureUnless(
-        false,
-        PredicateFailure.utxo(
-          xyz.kd5ujc.scarab.ledger.UtxoFailure
-            .TooManyCollateralInputs(xyz.kd5ujc.scarab.ledger.Mismatch(4, 3))
-        )
-      )
+    Vector(1 << 16, (1 << 16) + 3, (1 << 16) + 4).map(n =>
+      n -> verdictOf(withCollateral(s, n), "validateTooManyCollateralInputs")
     )
+
+  private lazy val narrowedJudged: (String, Vector[String]) =
+    "utxo-checks/crafted/collateral-word16" -> narrowedCollateral.map((_, t) => cell(t))
+
+  test("the collateral count is narrowed to a Word16, as the reference compares it"):
+    holds.tupled(narrowedJudged)
+    narrowedCollateral match
+      case Vector((_, at0), (_, at3), (_, at4)) =>
+        assert(at0.isValid, "65,536 inputs count as 0")
+        assert(at3.isValid, "65,539 inputs count as 3")
+        at4.fold(
+          fs =>
+            fs.toChain.toList match
+              case List(ConwayUtxoPredFailure.TooManyCollateralInputs(m)) =>
+                assertEquals((m.supplied.value, m.expected.value), (BigInt(4), BigInt(3)))
+              case other => fail(s"65,540 inputs: $other")
+          ,
+          _ => fail("65,540 inputs count as 4, past the 3 allowed")
+        )
+      case other => fail(s"the verdicts: $other")
 
   // ---- crafted cases for the branches the corpus never takes (review of #1119) ----
 
@@ -586,9 +563,16 @@ class ConwayUtxoChecksSuite extends FunSuite:
       TxOut.fromBytes(right("encode output")(Cbor.encode(out, Cbor.Limits.Unbounded)))
     )
 
-  test(
-    "the minimum fee counts repeated reference scripts and an input in both sets once, as the flat path"
-  ):
+  /** The reference scripts' size `s` 's minimum fee counts (`txNonDistinctRefScriptsSize`): an
+    * input in both sets once.
+    */
+  private def refScriptsSize(s: Seen): Long =
+    (s.flat.body.inputs.toSet ++ s.flat.body.referenceInputs.toSet).iterator
+      .flatMap(s.stored.get)
+      .map(_.referenceScriptSize)
+      .sum
+
+  private lazy val repeatedScripts: (String, Vector[String]) =
     val base = seen.head
     val spent = base.flat.body.inputs.toVector
     // the same script on a spent output and on a reference output, and another on a second one
@@ -613,22 +597,20 @@ class ConwayUtxoChecksSuite extends FunSuite:
         case other => fail(s"inputs: $other")
       fields.filterNot((k, _) => isKey(18)(k)) :+ (key(18) -> refs)
     )
-    assert(
-      RefScripts.refScriptsSize(Utxo.fromMap(s.stored), s.flat.body) > 25600L,
-      "past the first tier"
-    )
-    val u = EraUTxO.conway
-    assertEquals(
-      u.getMinFeeTxUtxo[TxLevel.Top](s.pp, s.typed, s.utxo)(using u.txOf.bodyOf.top).value,
-      flatMinFee(s)
-    )
+    assert(refScriptsSize(s) > 25600L, "past the first tier")
+    "utxo-checks/crafted/repeated-reference-scripts" -> Vector(minFee(s).toString)
 
-  test("tierRefScriptFee is the flat path's at and around each tier's boundary"):
+  test(
+    "the minimum fee counts repeated reference scripts and an input in both sets once, as the flat path's recorded fee"
+  ):
+    holds.tupled(repeatedScripts)
+
+  /** The sizes about each tier's boundary, and the fee of each. */
+  private lazy val tiers: (String, Vector[String]) =
     val p = EraPParams.conway
     val pp = seen.head.pp
-    val base = seen.head.flatPp.minFeeRefScriptCostPerByte
-    Vector(0L, 1L, 25599L, 25600L, 25601L, 51199L, 51200L, 204800L, 1048576L).foreach { size =>
-      assertEquals(
+    "utxo-checks/crafted/tier-ref-script-fee" ->
+      Vector(0L, 1L, 25599L, 25600L, 25601L, 51199L, 51200L, 204800L, 1048576L).map(size =>
         ConwayTx
           .tierRefScriptFee(
             p.ppRefScriptCostMultiplierG.get(pp),
@@ -636,11 +618,12 @@ class ConwayUtxoChecksSuite extends FunSuite:
             ConwayEraPParams.ppMinFeeRefScriptCostPerByteL[Conway].get(pp).rational,
             size
           )
-          .value,
-        RefScripts.tierRefScriptFee(base, size),
-        s"size $size"
+          .value
+          .toString
       )
-    }
+
+  test("tierRefScriptFee is the flat path's recorded fee at and around each tier's boundary"):
+    holds.tupled(tiers)
 
   /** A pool registration (tag 3) of `operator` at cost `cost`. */
   private def regPool(s: Seen, operator: Bytes, cost: Int): Node =
@@ -661,9 +644,10 @@ class ConwayUtxoChecksSuite extends FunSuite:
       )
     )
 
-  test(
-    "deposits and refunds of crafted certificates, proposals aside, are the flat path's, as is the donation"
-  ):
+  /** The crafted certificates' case and its deposits and refunds, by `getTotalDepositsTxBody` and
+    * `getTotalRefundsTxBody`.
+    */
+  private lazy val craftedDeposits: (Seen, BigInt, BigInt) =
     // a pool deposit of its own, so the pools' share of the deposits is seen
     val base = withParams(seen.head)(_.copy(poolDeposit = 500000000))
     val certs = Vector(
@@ -684,64 +668,59 @@ class ConwayUtxoChecksSuite extends FunSuite:
       )) :+
         (key(22) -> uint(7))
     )
-    val b = EraTxBody.conway
-    val tb = b.top
-    val body = EraTx.conway.body[TxLevel.Top](s.typed)(using EraTx.conway.bodyOf.top)
-    val (deposits, refunds) = Deposits.of(s.flatPp, s.cert, s.flat.body)
-    assertEquals(b.getTotalDepositsTxBody(s.pp, isPoolRegistered(s), body).value, deposits)
-    assertEquals(
-      b.getTotalRefundsTxBody[TxLevel.Top](s.pp, lookupStakingDeposit(s), body)(using tb).value,
-      refunds
-    )
-    assert(refunds > 0, "refunds")
-    assert(deposits >= 2 * base.flatPp.poolDeposit, "two new pools' deposits")
-    val c = EraCertState.conway
-    assertEquals(c.certsTotalDepositsTxBody(s.pp, s.cert, body)(using b).value, deposits)
-    assertEquals(
-      c.certsTotalRefundsTxBody[TxLevel.Top](s.pp, c.certDStateL.get(s.cert).accounts, body)(using
-        b,
-        tb
-      ).value,
-      refunds
-    )
-    val u = EraUTxO.conway
-    val (consumed, produced) = flatBalance(s)
-    assertEquals(
-      StoredTxOut.conway.storedValue(u.getProducedValue(s.pp, isPoolRegistered(s), body)),
-      produced
-    )
-    assertEquals(
-      StoredTxOut.conway.storedValue(
-        u.getConsumedValue[TxLevel.Top](s.pp, lookupStakingDeposit(s), s.utxo, body)(using
-          u.txOf.bodyOf.top
-        )
-      ),
-      consumed
+    val tb = EraTx.conway.body[TxLevel.Top](s.typed)(using EraTx.conway.bodyOf.top)
+    (
+      s,
+      body.getTotalDepositsTxBody(s.pp, isPoolRegistered(s), tb).value,
+      body.getTotalRefundsTxBody[TxLevel.Top](s.pp, lookupStakingDeposit(s), tb)(using top).value
     )
 
-  test("crafted from a recorded case: a declared total collateral that is not the balance"):
+  private lazy val depositsJudged: (String, Vector[String]) =
+    val (s, deposits, refunds) = craftedDeposits
+    "utxo-checks/crafted/deposits-refunds" ->
+      (Vector(deposits, refunds).map(_.toString) ++ certDeposits(s).map(_.toString) ++ balance(s))
+
+  test(
+    "deposits and refunds of crafted certificates, proposals aside, are the flat path's recorded ones, as is the donation"
+  ):
+    holds.tupled(depositsJudged)
+    val (s, deposits, refunds) = craftedDeposits
+    assert(refunds > 0, "refunds")
+    assert(deposits >= 2 * 500000000, "two new pools' deposits")
+    // proposals aside, the certificates' deposits and refunds are the body's
+    assertEquals(certDeposits(s), Vector(deposits, refunds))
+
+  private lazy val wrongTotalCollateral: (String, Vector[String]) =
     val s = seen
       .find(s => s.flat.body.collateral.nonEmpty && s.flat.witnesses.redeemers.nonEmpty)
       .getOrElse(fail("no case with collateral and redeemers"))
-    val wrong = edited(s, envelope(s))(fields =>
-      fields.filterNot((k, _) => isKey(17)(k)) :+ (key(17) -> uint(1))
+    crafted(
+      "total-collateral-not-balance",
+      edited(s, envelope(s))(fields =>
+        fields.filterNot((k, _) => isKey(17)(k)) :+ (key(17) -> uint(1))
+      ),
+      "feesOK"
     )
-    compared(wrong, "feesOK")
 
-  test("crafted from a recorded case: a fee one lovelace over the balance, and one under"):
+  test("crafted from a recorded case: a declared total collateral that is not the balance"):
+    holds.tupled(wrongTotalCollateral)
+
+  private lazy val feeOffByOne: Vector[(String, Vector[String])] =
     val s = seen
-      .find(s =>
-        pairs(s).exists((n, flat, _) => n == "validateValueNotConservedUTxO" && flat.isValid)
-      )
+      .find(s => verdictOf(s, "validateValueNotConservedUTxO").isValid)
       .getOrElse(fail("no case that conserves its value"))
-    Vector(BigInt(1), BigInt(-1)).foreach { d =>
-      compared(
+    Vector("over" -> BigInt(1), "under" -> BigInt(-1)).map { (name, d) =>
+      crafted(
+        s"fee-one-$name",
         edited(s, envelope(s))(fields =>
           fields.filterNot((k, _) => isKey(2)(k)) :+ (key(2) -> uint(s.flat.body.fee + d))
         ),
         "validateValueNotConservedUTxO"
       )
     }
+
+  test("crafted from a recorded case: a fee one lovelace over the balance, and one under"):
+    feeOffByOne.foreach(holds.tupled)
 
   /** An era history of 1-second slots and 100-slot epochs at a tip `tip`: it covers the slots up to
     * the epoch boundary after the tip plus a safe zone of 30 slots (as `HorizonSuite` shows).
@@ -757,7 +736,11 @@ class ConwayUtxoChecksSuite extends FunSuite:
       fields.filterNot((k, _) => isKey(3)(k)) ++ bound.map(b => key(3) -> uint(b)).toVector
     )
 
-  private def outsideForecast(s: Seen, ei: Horizon, slot: BigInt): Verdict[PredicateFailure] =
+  private def outsideForecast(
+      s: Seen,
+      ei: Horizon,
+      slot: BigInt
+  ): Verdict[ConwayUtxoPredFailure[Conway]] =
     alonzo(
       AlonzoUtxo.validateOutsideForecast[Conway, TxLevel.Top](
         ei,
@@ -769,6 +752,10 @@ class ConwayUtxoChecksSuite extends FunSuite:
         EraTx.conway.bodyOf.top
       )
     )
+
+  /** `OutsideForecast` of `slot`, as Conway reports Alonzo's failure. */
+  private def forecastFailure(slot: BigInt): Verdict[ConwayUtxoPredFailure[Conway]] =
+    alonzo(Verdict.failureUnless(false, AlonzoUtxoPredFailure.OutsideForecast[Conway](slot)))
 
   test("validateOutsideForecast in each of the reference's branches"):
     val redeemed = seen
@@ -796,44 +783,18 @@ class ConwayUtxoChecksSuite extends FunSuite:
     assertEquals(outsideForecast(withUpperBound(redeemed, Some(850)), behind, slot), Verdict.pass)
     assertEquals(
       outsideForecast(withUpperBound(redeemed, Some(950)), behind, slot),
-      Verdict.failureUnless(false, PredicateFailure.utxo(UtxoFailure.OutsideForecast(950)))
+      forecastFailure(950)
     )
     assertEquals(
       outsideForecast(withUpperBound(redeemed, Some(far)), behind, slot),
-      Verdict.failureUnless(false, PredicateFailure.utxo(UtxoFailure.OutsideForecast(far)))
+      forecastFailure(far)
     )
 
-  /** UTXO's predicates on both paths: the flat `UtxoTests.babbage` with the case's balance and
-    * minimum fee, and the era-typed `babbageUtxoValidation` with the history `ei`, under `build`
-    * and `validation`.
+  // ---- UTXO's predicates assembled ---------------------------------------------------------------
+
+  /** `babbageUtxoValidation` on `s`: its verdict in the era's failures, with the history `ei`,
+    * under `build` and `validation`.
     */
-  private def assembled(
-      s: Seen,
-      build: ReferenceBuild,
-      validation: TxEnv.Validation,
-      ei: Horizon
-  ): (Verdict[PredicateFailure], Verdict[PredicateFailure]) =
-    val (consumed, produced) = flatBalance(s)
-    val env = TxEnv(
-      slot = s.slot,
-      epoch = 0,
-      network = s.network,
-      evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
-      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
-      validation = validation,
-      referenceBuild = build
-    )
-    val flat = UtxoTests.babbage[Conway](
-      s.flatPp,
-      env,
-      StAnnTx(s.flat, Utxo.fromMap(s.stored)),
-      flatMinFee(s),
-      consumed,
-      produced
-    )
-    (flat, conway(typedUtxo(s, build, validation, ei)))
-
-  /** `babbageUtxoValidation` on `s`: its verdict in the era's failures. */
   private def typedUtxo(
       s: Seen,
       build: ReferenceBuild,
@@ -856,20 +817,27 @@ class ConwayUtxoChecksSuite extends FunSuite:
   /** A UTXO failure under LEDGER's UTXOW, as LEDGER reports it. */
   private def underLedger(f: ConwayUtxoPredFailure[Conway]) =
     xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure.ConwayUtxowFailure[Conway](
-      xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure.UtxoFailure[Conway](f)
+      ConwayUtxowPredFailure.UtxoFailure[Conway](f)
+    )
+
+  /** Each build, then each policy under it, the order of a judgment's cells. */
+  private val underEach: Vector[(ReferenceBuild, TxEnv.Validation)] =
+    for
+      build <- ReferenceBuild.values.toVector
+      validation <- TxEnv.Validation.values.toVector
+    yield (build, validation)
+
+  private lazy val assembledJudged: Vector[(String, Vector[String])] =
+    recordedSeen.map(s =>
+      s"utxo-checks/assembled/${s.label}" -> underEach.map((build, validation) =>
+        cell(typedUtxo(s, build, validation, historyAt(s.slot)))
+      )
     )
 
   test(
-    "babbageUtxoValidation gives the flat UTXO's verdict on every Conway case, build and policy"
+    "babbageUtxoValidation gives the flat UTXO's recorded verdict on every recorded case, build and policy"
   ):
-    flatSeen.foreach { s =>
-      for
-        build <- ReferenceBuild.values
-        validation <- TxEnv.Validation.values
-      do
-        val (flat, typed) = assembled(s, build, validation, historyAt(s.slot))
-        assertEquals(typed, flat, s"${s.label} under ${build.name}, $validation")
-    }
+    assembledJudged.foreach(holds.tupled)
 
   test("babbageUtxoValidation's refusal is the reference's, byte for byte, where only UTXO failed"):
     // where every failure the reference recorded is UTXO's, its refusal is UTXO's alone: the
@@ -893,19 +861,22 @@ class ConwayUtxoChecksSuite extends FunSuite:
       "the cases that only UTXO refuses come from a single build"
     )
 
-  test("the comparison of babbageUtxoValidation sees several failures and both injections"):
+  test("babbageUtxoValidation's judgments hold several failures and both injections"):
     def failures(s: Seen, build: ReferenceBuild) =
-      assembled(s, build, TxEnv.Validation.All, historyAt(s.slot))._1
-        .fold(_.iterator.toList, _ => Nil)
-    assert(seen.exists(s => failures(s, s.build).size >= 2), "no case with several failures")
+      typedUtxo(s, build, TxEnv.Validation.All, historyAt(s.slot)).fold(_.iterator.toList, _ => Nil)
     assert(
-      seen.exists(s =>
+      recordedSeen.exists(s => failures(s, s.build).size >= 2),
+      "no case with several failures"
+    )
+    assert(
+      recordedSeen.exists(s =>
         failures(s, ReferenceBuild.Release11_1) != failures(s, ReferenceBuild.Release11_2)
       ),
       "no case whose failures differ by build"
     )
 
-  test("babbageUtxoValidation puts the forecast after the validity interval and before the rest"):
+  /** A case whose interval, forecast and value all fail, and its judgment under 11.1. */
+  private lazy val forecastOrder: (Seen, Verdict[ConwayUtxoPredFailure[Conway]]) =
     val s0 = seen
       .find(_.flat.witnesses.redeemers.nonEmpty)
       .getOrElse(fail("no case with redeemers"))
@@ -917,33 +888,34 @@ class ConwayUtxoChecksSuite extends FunSuite:
     )
     val behind = historyAt(s.slot - 200)
     assert(behind.timePs(s.slot - 1).isEmpty)
-    val (flat, typed) =
-      assembled(s, ReferenceBuild.Release11_1, TxEnv.Validation.All, behind)
-    val flatFailures = flat.fold(_.iterator.toList, _ => Nil)
-    flatFailures match
-      case (interval @ PredicateFailure.Utxow(
-            xyz.kd5ujc.scarab.ledger.UtxowFailure.Utxo(_: UtxoFailure.OutsideValidityInterval)
-          )) :: rest =>
-        assert(rest.nonEmpty, "nothing fails after the interval")
-        assertEquals(
-          typed.fold(_.iterator.toList, _ => Nil),
-          interval :: PredicateFailure.utxo(UtxoFailure.OutsideForecast(s.slot - 1)) :: rest
-        )
-      case other => fail(s"the interval does not fail first: $other")
+    (s, typedUtxo(s, ReferenceBuild.Release11_1, TxEnv.Validation.All, behind))
 
-  test("crafted from a recorded case: values over a 1-byte limit, reported last output first"):
+  test("babbageUtxoValidation puts the forecast after the validity interval and before the rest"):
+    val (s, verdict) = forecastOrder
+    holds("utxo-checks/crafted/forecast-order", Vector(cell(verdict)))
+    verdict.fold(_.iterator.toList, _ => Nil) match
+      case ConwayUtxoPredFailure.OutsideValidityIntervalUTxO(_, _) ::
+          ConwayUtxoPredFailure.OutsideForecast(slot) :: rest =>
+        assertEquals(slot, s.slot - 1)
+        assert(rest.nonEmpty, "nothing fails after the forecast")
+      case other => fail(s"the interval and the forecast do not fail first: $other")
+
+  private lazy val tooBigValues: (String, Vector[String]) =
     val s = withParams(
       seen
         .find(s => s.flat.body.outputs.size + s.flat.body.collateralReturn.size >= 2)
         .getOrElse(fail("no case with two outputs"))
     )(_.copy(maxValueSize = 1))
-    compared(s, "validateOutputTooBigUTxO")
+    crafted("values-over-one-byte", s, "validateOutputTooBigUTxO")
+
+  test("crafted from a recorded case: values over a 1-byte limit, reported last output first"):
+    holds.tupled(tooBigValues)
 
   test("the corpus fails the predicates it can tell apart, and names the rest"):
     val all = pairs(seen.head).map(_._1).toSet
     assertEquals(all -- refusedSomewhere, NeverRefused)
 
-  /** The predicates no Conway case of the corpus fails: for these the comparison saw passes only.
+  /** The predicates no recorded case of the corpus fails: for these the comparison saw passes only.
     */
   private val NeverRefused: Set[String] =
     Set(
@@ -955,107 +927,83 @@ class ConwayUtxoChecksSuite extends FunSuite:
 
   // ---- UTXO whole: the transition with UTXOS and the change of the state -------------------------
 
-  /** One clock for both paths' script contexts: the corpus records no era history, and the
-    * comparison is of the two rules, not of the scripts' time.
+  /** One clock for the script contexts: the corpus records no era history, and the comparison was
+    * of the two rules, not of the scripts' time.
     */
   private val clock = xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => slot * 1000)
 
-  /** What a whole rule made of a case: its failures in the reference's order, in the comparison's
-    * form, or the state after. A defect fails the suite: the corpus holds none.
-    */
-  private enum Whole:
-    case Refused(failures: List[EraUtxoRun.Failure])
-    case Admitted(state: UTxOState[Conway])
+  private def context(s: Seen, build: ReferenceBuild, validation: TxEnv.Validation) =
+    UtxoContext(
+      s.netId,
+      xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
+      historyAt(s.slot),
+      validation,
+      ConwayUtxo.injectShelleyFailure(build)
+    )
 
-  /** The era-typed `conwayUtxoTransition` and the flat UTXO (`rules.Utxo`) on `s` from its state,
-    * under `build` and `validation`.
+  private def stAnnTx(s: Seen) =
+    xyz.kd5ujc.scarab.ledger.era.AlonzoStAnnTx
+      .mkAlonzoStAnnTx[Conway](clock.posix, s.pp, s.utxo, Map.empty, s.typed)
+
+  /** The era-typed `conwayUtxoTransition` on `s` from its state, under `build` and `validation`, at
+    * the root: its failures in the reference's order, or the state after. A defect fails the suite:
+    * the corpus holds none.
     */
   private def wholeRule(
       s: Seen,
       build: ReferenceBuild,
       validation: TxEnv.Validation
-  ): (Whole, Whole) =
-    val what = s"${s.label} under ${build.name}, $validation"
-    val evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
-    val stAnnTx = xyz.kd5ujc.scarab.ledger.era.AlonzoStAnnTx
-      .mkAlonzoStAnnTx[Conway](clock.posix, s.pp, s.utxo, Map.empty, s.typed)
-    val context =
-      UtxoContext(
-        s.netId,
-        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
-        historyAt(s.slot),
-        validation,
-        ConwayUtxo.injectShelleyFailure(build)
-      )
-    val era =
-      EraUtxoRun.run(UtxoEnv(s.slot, s.pp, s.cert), stAnnTx, context, s.utxoState, evaluator) match
-        case Left(defect) => fail(s"$what: era defect $defect")
-        case Right(Left(fs)) =>
-          Whole.Refused(
-            fs.toChain.toList.map(f =>
-              EraUtxoRun.eraForm(f, purposes(s)).getOrElse(fail(s"$what: $f"))
-            )
-          )
-        case Right(Right((after, _))) => Whole.Admitted(after)
-    val env = TxEnv(
-      slot = s.slot,
-      epoch = 0,
-      network = s.network,
-      evaluator = evaluator,
-      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
-      validation = validation,
-      referenceBuild = build,
-      clock = Some(clock)
-    )
-    val flat = Judgment.run(FlatUtxoRule, RuleT.Policy.Accumulate)(
-      xyz.kd5ujc.scarab.ledger.TestLedger.globals,
-      FlatUtxoEnv(env, s.flatPp, s.cert),
-      Counted(s.utxoState, xyz.kd5ujc.scarab.ledger.PlutusStats.zero),
-      StAnnTx(s.flat, Utxo.fromMap(s.stored))
+  ): Either[Vector[ConwayUtxoPredFailure[Conway]], UTxOState[Conway]] =
+    EraUtxoRun.run(
+      UtxoEnv(s.slot, s.pp, s.cert),
+      stAnnTx(s),
+      context(s, build, validation),
+      s.utxoState,
+      xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default
     ) match
-      case Left(defect) => fail(s"$what: flat defect $defect")
+      case Left(defect) => fail(s"${s.label} under ${build.name}: defect $defect")
       case Right(Left(fs)) =>
-        Whole.Refused(fs.toChain.toList.map(f => EraUtxoRun.form(f).getOrElse(fail(s"$what: $f"))))
-      case Right(Right(counted)) => Whole.Admitted(counted.state)
-    (era, flat)
+        val failures = fs.toChain.toVector
+        assert(
+          EraUtxoRun.causesHeld(failures, xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default),
+          s"${s.label}: a script's cause is not the evaluator's on its request"
+        )
+        Left(failures)
+      case Right(Right((after, _))) => Right(after)
 
-  test("conwayUtxoTransition gives the flat UTXO's failures, in order, on every Conway case"):
-    val outcomes = for
-      s <- seen
-      build <- ReferenceBuild.values.toVector
-      validation <- TxEnv.Validation.values.toVector
-    yield
-      val what = s"${s.label} under ${build.name}, $validation"
-      wholeRule(s, build, validation) match
-        case (Whole.Admitted(ours), Whole.Admitted(theirs)) =>
-          assert(summon[cats.Eq[UTxOState[Conway]]].eqv(ours, theirs), what)
-          Whole.Admitted(ours)
-        case (era, flat) =>
-          assertEquals(era, flat, what)
-          era
-    assert(
-      outcomes.exists {
-        case Whole.Refused(fs) => fs.size >= 2
-        case _                 => false
-      },
-      "no case with several failures"
+  /** A whole rule's cell: a refusal's, or `A:` and the digest of the UTxO state it leaves
+    * (`UtxoRecordings.stateCell`).
+    */
+  private def wholeCell[F](refusal: Vector[F] => String, before: UTxOState[Conway])(
+      outcome: Either[Vector[F], UTxOState[Conway]]
+  ): String =
+    outcome.fold(refusal, FlatRecordings.utxoStateCell(_, before))
+
+  private lazy val wholeOutcomes
+      : Vector[(String, Vector[Either[Vector[ConwayUtxoPredFailure[Conway]], UTxOState[Conway]]])] =
+    wholeSeen.map(s =>
+      s"utxo-checks/utxo/${s.label}" -> underEach.map((build, validation) =>
+        wholeRule(s, build, validation)
+      )
     )
+
+  private lazy val wholeJudged: Vector[(String, Vector[String])] =
+    wholeSeen.zip(wholeOutcomes).map { case (s, (id, os)) =>
+      id -> os.map(wholeCell(FlatRecordings.utxoRefused, s.utxoState))
+    }
+
+  test(
+    "conwayUtxoTransition gives the flat UTXO's recorded failures, in order, or state, on every Conway case"
+  ):
+    wholeJudged.foreach(holds.tupled)
+    val outcomes = wholeOutcomes.flatMap(_._2)
+    assert(outcomes.exists(_.left.exists(_.size >= 2)), "no case with several failures")
+    assert(outcomes.exists(_.isRight), "no admitted case: the states were never compared")
     assert(
-      outcomes.exists {
-        case Whole.Admitted(_) => true
-        case _                 => false
-      },
-      "no admitted case: the states were never compared"
-    )
-    assert(
-      outcomes.exists {
-        case Whole.Refused(fs) =>
-          fs.exists {
-            case EraUtxoRun.Failure.Utxo(_) => false
-            case _                          => true
-          }
-        case _ => false
-      },
+      outcomes.exists(_.left.exists(_.exists {
+        case ConwayUtxoPredFailure.UtxosFailure(_) => true
+        case _                                     => false
+      })),
       "no case UTXOS refuses"
     )
 
@@ -1098,15 +1046,8 @@ class ConwayUtxoChecksSuite extends FunSuite:
       val failures = EraUtxoRun
         .run(
           UtxoEnv(s.slot, s.pp, s.cert),
-          xyz.kd5ujc.scarab.ledger.era.AlonzoStAnnTx
-            .mkAlonzoStAnnTx[Conway](clock.posix, s.pp, s.utxo, Map.empty, s.typed),
-          UtxoContext(
-            s.netId,
-            xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
-            historyAt(s.slot),
-            TxEnv.Validation.All,
-            ConwayUtxo.injectShelleyFailure(s.build)
-          ),
+          stAnnTx(s),
+          context(s, s.build, TxEnv.Validation.All),
           s.utxoState,
           xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
           asSubRule = true
@@ -1118,30 +1059,12 @@ class ConwayUtxoChecksSuite extends FunSuite:
 
   // ---- UTXOW whole: its checks, then UTXO with UTXOS -------------------------------------------
 
-  /** The purposes of `s`'s scripts needed in their flat form, for a missing redeemer's failure. */
-  private def purposes(s: Seen) =
-    val u = EraUTxO.conway
-    val t = EraTx.conway
-    xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxowPredFailure.storedPurposes(
-      u.getScriptsNeeded[TxLevel.Top](s.utxo, t.body[TxLevel.Top](s.typed)(using t.bodyOf.top))(
-        using u.txOf.bodyOf.top
-      ),
-      s.utxo
-    )
-
   /** The era-typed `babbageUtxowTransition` on `s`, `depth` levels below the root. */
   private def eraUtxow(s: Seen, build: ReferenceBuild, validation: TxEnv.Validation, depth: Int) =
     EraUtxoRun.Utxow.run(
       UtxoEnv(s.slot, s.pp, s.cert),
-      xyz.kd5ujc.scarab.ledger.era.AlonzoStAnnTx
-        .mkAlonzoStAnnTx[Conway](clock.posix, s.pp, s.utxo, Map.empty, s.typed),
-      UtxoContext(
-        s.netId,
-        xyz.kd5ujc.scarab.ledger.SystemStart(java.time.Instant.EPOCH),
-        historyAt(s.slot),
-        validation,
-        ConwayUtxo.injectShelleyFailure(build)
-      ),
+      stAnnTx(s),
+      context(s, build, validation),
       s.utxoState,
       xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
       xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
@@ -1149,68 +1072,41 @@ class ConwayUtxoChecksSuite extends FunSuite:
       depth
     )
 
-  /** The era-typed UTXOW and the flat one (`rules.Utxow`) on `s` from its state. */
-  private def wholeUtxow(
-      s: Seen,
-      build: ReferenceBuild,
-      validation: TxEnv.Validation
-  ): (Whole, Whole) =
-    val what = s"${s.label} under ${build.name}, $validation (UTXOW)"
-    val era = eraUtxow(s, build, validation, 0) match
-      case Left(defect) => fail(s"$what: era defect $defect")
-      case Right(Left(fs)) =>
-        Whole.Refused(
-          fs.toChain.toList.map(f =>
-            EraUtxoRun.Utxow.eraForm(f, purposes(s)).getOrElse(fail(s"$what: $f"))
-          )
-        )
-      case Right(Right((after, _))) => Whole.Admitted(after)
-    val env = TxEnv(
-      slot = s.slot,
-      epoch = 0,
-      network = s.network,
-      evaluator = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default,
-      decoder = xyz.kd5ujc.scarab.plutus.ScarabEvaluator.defaultDecoder,
-      validation = validation,
-      referenceBuild = build,
-      clock = Some(clock)
+  private lazy val utxowOutcomes: Vector[
+    (String, Vector[Either[Vector[ConwayUtxowPredFailure[Conway]], UTxOState[Conway]]])
+  ] =
+    wholeSeen.map(s =>
+      s"utxo-checks/utxow/${s.label}" -> underEach.map((build, validation) =>
+        eraUtxow(s, build, validation, 0) match
+          case Left(defect) => fail(s"${s.label} under ${build.name}: defect $defect")
+          case Right(Left(fs)) =>
+            val failures = fs.toChain.toVector
+            assert(
+              EraUtxoRun
+                .utxowCausesHeld(failures, xyz.kd5ujc.scarab.plutus.ScarabEvaluator.default),
+              s"${s.label}: a script's cause is not the evaluator's on its request"
+            )
+            Left(failures)
+          case Right(Right((after, _))) => Right(after)
+      )
     )
-    val flat = Judgment.run(xyz.kd5ujc.scarab.ledger.rules.Utxow, RuleT.Policy.Accumulate)(
-      xyz.kd5ujc.scarab.ledger.TestLedger.globals,
-      FlatUtxoEnv(env, s.flatPp, s.cert),
-      Counted(s.utxoState, xyz.kd5ujc.scarab.ledger.PlutusStats.zero),
-      StAnnTx(s.flat, Utxo.fromMap(s.stored))
-    ) match
-      case Left(defect) => fail(s"$what: flat defect $defect")
-      case Right(Left(fs)) =>
-        Whole.Refused(fs.toChain.toList.map(f => EraUtxoRun.form(f).getOrElse(fail(s"$what: $f"))))
-      case Right(Right(counted)) => Whole.Admitted(counted.state)
-    (era, flat)
 
-  test("babbageUtxowTransition gives the flat UTXOW's failures, in order, on every Conway case"):
-    val outcomes = for
-      s <- seen
-      build <- ReferenceBuild.values.toVector
-      validation <- TxEnv.Validation.values.toVector
-    yield
-      val what = s"${s.label} under ${build.name}, $validation"
-      wholeUtxow(s, build, validation) match
-        case (Whole.Admitted(ours), Whole.Admitted(theirs)) =>
-          assert(summon[cats.Eq[UTxOState[Conway]]].eqv(ours, theirs), what)
-          Whole.Admitted(ours)
-        case (era, flat) =>
-          assertEquals(era, flat, what)
-          era
+  private lazy val utxowJudged: Vector[(String, Vector[String])] =
+    wholeSeen.zip(utxowOutcomes).map { case (s, (id, os)) =>
+      id -> os.map(wholeCell(FlatRecordings.utxowRefused, s.utxoState))
+    }
+
+  test(
+    "babbageUtxowTransition gives the flat UTXOW's recorded failures, in order, or state, on every Conway case"
+  ):
+    utxowJudged.foreach(holds.tupled)
     assert(
-      outcomes.exists {
-        case Whole.Refused(fs) =>
-          fs.exists {
-            case EraUtxoRun.Failure.Utxo(PredicateFailure.Utxow(UtxowFailure.Utxo(_))) => false
-            case EraUtxoRun.Failure.Utxo(PredicateFailure.Utxow(_))                    => true
-            case _                                                                     => false
-          }
-        case _ => false
-      },
+      utxowOutcomes
+        .flatMap(_._2)
+        .exists(_.left.exists(_.exists {
+          case ConwayUtxowPredFailure.UtxoFailure(_) => false
+          case _                                     => true
+        })),
       "no case UTXOW's own checks refuse"
     )
 
@@ -1232,3 +1128,139 @@ class ConwayUtxoChecksSuite extends FunSuite:
         case other => fail(s"${s.label}: $other")
       assertEquals(ConwayFailureCborCheck.direct(failures).hex, s.reason.hex, s.label)
     }
+
+  // ---- the recording whole -----------------------------------------------------------------------
+
+  /** Every judgment of this suite the recording holds. */
+  private lazy val judged: Vector[(String, Vector[String])] =
+    valuesJudged ++ predicatesJudged ++ Vector(
+      emptyInputs,
+      spentReferences,
+      tooManyCollateral,
+      narrowedJudged,
+      repeatedScripts,
+      tiers,
+      depositsJudged,
+      wrongTotalCollateral
+    ) ++ feeOffByOne ++ Vector(
+      "utxo-checks/crafted/forecast-order" -> Vector(cell(forecastOrder._2)),
+      tooBigValues
+    ) ++ assembledJudged ++ wholeJudged ++ utxowJudged
+
+  test("the recording of the flat UTXO's judgments holds this suite's alone, each once"):
+    val ids = judged.map(_._1)
+    assertEquals(ids.distinct.size, ids.size, "a judgment twice")
+    assertEquals(
+      ids.toSet,
+      FlatRecordings.utxoJudgments.keySet.filter(_.startsWith("utxo-checks/"))
+    )
+
+  /** A failure of a recorded predicate that carries an output. */
+  private lazy val refusalWithOutput: ConwayUtxoPredFailure[Conway] = recordedSeen
+    .flatMap(s => pairs(s).flatMap((_, t) => t.fold(_.toChain.toVector, _ => Vector.empty)))
+    .find(f => FlatRecordings.outputsOf(f).nonEmpty)
+    .getOrElse(fail("no recorded refusal carries an output"))
+
+  /** `f` with the output `out` it carries replaced by `by`. */
+  private def replaced(
+      f: ConwayUtxoPredFailure[Conway],
+      out: xyz.kd5ujc.scarab.ledger.era.TxOut[Conway],
+      by: xyz.kd5ujc.scarab.ledger.era.TxOut[Conway]
+  ): ConwayUtxoPredFailure[Conway] =
+    def swap(o: xyz.kd5ujc.scarab.ledger.era.TxOut[Conway]) = if o == out then by else o
+    f match
+      case ConwayUtxoPredFailure.OutputTooSmallUTxO(os) =>
+        ConwayUtxoPredFailure.OutputTooSmallUTxO[Conway](os.map(swap))
+      case ConwayUtxoPredFailure.OutputBootAddrAttrsTooBig(os) =>
+        ConwayUtxoPredFailure.OutputBootAddrAttrsTooBig[Conway](os.map(swap))
+      case ConwayUtxoPredFailure.OutputTooBigUTxO(os) =>
+        ConwayUtxoPredFailure.OutputTooBigUTxO[Conway](os.map((a, b, o) => (a, b, swap(o))))
+      case ConwayUtxoPredFailure.BabbageOutputTooSmallUTxO(os) =>
+        ConwayUtxoPredFailure.BabbageOutputTooSmallUTxO[Conway](os.map((o, c) => (swap(o), c)))
+      case other => fail(s"a failure this test does not rewrite: $other")
+
+  test(
+    "a refusal's cell writes an output from its fields, so each output is checked to be its bytes"
+  ) {
+    // the refusal's encoding writes an output from its fields (`UtxoCodecs.txOut`), so the same
+    // output in the other of its two forms (`[address, value]` and `{0: address, 1: value}`), which
+    // the era's output keeps as the bytes it came with, has the same cell: each output a refusal
+    // carries is checked to be written as its own bytes (`FlatRecordings.outputsHeld`), as the flat
+    // comparison, through the output's stored form, held its bytes too
+    val failure = refusalWithOutput
+    val out = FlatRecordings.outputsOf(failure).head
+    val raw = StoredTxOut.conway.toStored(out).raw
+    val other = right("output")(Cbor.decode(raw)).value match
+      case Value.Arr(Vector(address, value)) =>
+        Value.Map(Vector(key(0) -> address, key(1) -> value))
+      case Value.Map(Vector((k0, address), (k1, value))) if isKey(0)(k0) && isKey(1)(k1) =>
+        Value.Arr(Vector(address, value))
+      case other => fail(s"an output with more than an address and a value: $other")
+    val mutantRaw = right("re-encode")(Cbor.encode(other, Cbor.Limits.Unbounded))
+    assertNotEquals(mutantRaw, raw)
+    val mutant = right("mutant")(
+      ConwayUTxO.fromStored(
+        Map(
+          TxIn(Bytes(Vector.fill(32)(0.toByte)), 0) -> right("stored")(TxOut.fromBytes(mutantRaw))
+        )
+      )
+    ).unUTxO.values.head
+    val swapped = replaced(failure, out, mutant)
+    // the era's output keeps the bytes it came with, which its equality and the encoding leave out
+    assertEquals(swapped, failure)
+    assertEquals(StoredTxOut.conway.toStored(mutant).raw, mutantRaw)
+    def under(f: ConwayUtxoPredFailure[Conway]) = Vector(underLedger(f))
+    assertEquals(
+      ConwayFailureCborCheck.direct(under(swapped)),
+      ConwayFailureCborCheck.direct(under(failure))
+    )
+    assert(FlatRecordings.outputsHeld(Vector(ConwayUtxowPredFailure.UtxoFailure(failure))))
+    assert(!FlatRecordings.outputsHeld(Vector(ConwayUtxowPredFailure.UtxoFailure(swapped))))
+  }
+
+  test(
+    "a refusal's cell does not hold an output's value size, which the output is checked to have"
+  ) {
+    // the encoding writes no output's value size, which the stored output and the flat comparison
+    // held: the same output, its bytes kept, with another size has the same cell, and is not the
+    // output its bytes read as (`FlatRecordings.outputsHeld`)
+    val failure = refusalWithOutput
+    val out = FlatRecordings.outputsOf(failure).head
+    val stored = StoredTxOut.conway.toStored(out)
+    val mutant = right("mutant")(
+      ConwayUTxO.fromStored(
+        Map(
+          TxIn(Bytes(Vector.fill(32)(0.toByte)), 0) -> stored.copy(valueSize = stored.valueSize + 1)
+        )
+      )
+    ).unUTxO.values.head
+    assertEquals(StoredTxOut.conway.toStored(mutant).raw, stored.raw)
+    assertEquals(StoredTxOut.conway.toStored(mutant).valueSize, stored.valueSize + 1)
+    val swapped = replaced(failure, out, mutant)
+    def under(f: ConwayUtxoPredFailure[Conway]) = Vector(underLedger(f))
+    assertEquals(
+      ConwayFailureCborCheck.direct(under(swapped)),
+      ConwayFailureCborCheck.direct(under(failure))
+    )
+    assert(FlatRecordings.outputsHeld(Vector(ConwayUtxowPredFailure.UtxoFailure(failure))))
+    assert(!FlatRecordings.outputsHeld(Vector(ConwayUtxowPredFailure.UtxoFailure(swapped))))
+  }
+
+  test("the recording holds each prefix's judgments, as many as were recorded") {
+    def count(prefix: String) =
+      FlatRecordings.utxoJudgments.keySet.count(_.startsWith(s"utxo-checks/$prefix/"))
+    assertEquals(
+      Vector("values", "predicates", "assembled", "utxo", "utxow", "crafted").map(count),
+      Vector(84, 84, 84, 112, 112, 12)
+    )
+  }
+
+  test("the UTXO recording holds the judgments of its three suites alone") {
+    // each suite holds its prefix's ids exactly (`ConwayUtxoChecksSuite`, `ConwayUtxowChecksSuite`,
+    // `EraUtxoSuite`), so the file is their union when no id is under another prefix
+    val prefixes = Vector("utxo-checks/", "utxow-checks/", "era-utxo/")
+    val ids = FlatRecordings.utxoJudgments.keySet
+    assertEquals(ids.filterNot(id => prefixes.exists(id.startsWith)), Set.empty[String])
+    assertEquals(prefixes.map(p => ids.count(_.startsWith(p))), Vector(488, 92, 455))
+    assertEquals(ids.size, 1035)
+  }

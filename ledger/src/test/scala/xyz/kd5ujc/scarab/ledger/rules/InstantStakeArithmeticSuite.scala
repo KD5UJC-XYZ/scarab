@@ -9,7 +9,8 @@ import xyz.kd5ujc.scarab.ledger.state.*
 
 /** Source-derived arithmetic controls, not new native captures. At cardano-ledger f649f975,
   * Conway/State/Stake.hs:87-120 uses Word64 arithmetic and Map.alter insertion on absence;
-  * Shelley/Rules/Utxo.hs:613-624 adds outputs before deleting the ordered input map.
+  * Shelley/Rules/Utxo.hs:613-624 adds outputs before deleting the ordered input map, which Conway's
+  * change of the state on the era types follows.
   */
 class InstantStakeArithmeticSuite extends FunSuite:
   private val stakeBytes = Bytes(Vector.fill(28)(2.toByte))
@@ -79,25 +80,21 @@ class InstantStakeArithmeticSuite extends FunSuite:
   }
 
   test("production cache deletion follows TxIn map order rather than signed input order") {
+    // the inputs are written and signed in the order (second, first), which Conway's decoder reads
+    // as a set; the outputs are deleted in the order of `TxIn` (`Ord TxIn`): the output at the
+    // lesser input, 3, first, which leaves nothing, then the absent credential takes 2
     val first = TxIn(Bytes(Vector.fill(32)(1.toByte)), 0)
     val second = TxIn(Bytes(Vector.fill(32)(2.toByte)), 0)
-    val held = NodeUtxo.fromMap(Map(first -> output(3), second -> output(2)))
-    val initial = Empty
-      .ledgerState[Conway](TestLedger.params(10))
-      .utxo
-      .copy[Conway](utxo = UtxoTables(held), instantStake = cache(Some(3)))
-    val body = TestLedger.body("cache-input-order", Vector(second, first), Vector.empty, 0)
-    val transaction = TestLedger.tx(body, Vector.empty)
-    val next = Utxo
-      .update(
-        initial,
-        StAnnTx(transaction, held),
-        xyz.kd5ujc.scarab.ledger.TxChecks.Collateral.none,
-        0,
-        0
-      )
-      .fold(e => fail(e.toString), identity)
-    assertEquals(transaction.body.inputs, Vector(second, first))
+    val kit = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
+    val held = NodeUtxo.fromMap(Map(first -> kit.out(address, 3), second -> kit.out(address, 2)))
+    val ls = Empty.ledgerState[Conway](TestLedger.params(10))
+    val initial = ls.utxo.copy[Conway](utxo = UtxoTables(held), instantStake = cache(Some(3)))
+    val tx =
+      kit.tx(kit.Body(Vector(second, first), Vector.empty, 0, inputsInOrder = true), Vector.empty)
+    val (next, _) =
+      xyz.kd5ujc.scarab.ledger.era.EraUtxoRun
+        .update(tx.typed, TestLedger.params(10), ls.cert, initial)
+    assertEquals(tx.flat.body.inputs, Vector(second, first))
     assertEquals(next.instantStake, cache(Some(2)))
     assertEquals(next.utxo.utxo.count, 0L)
   }
