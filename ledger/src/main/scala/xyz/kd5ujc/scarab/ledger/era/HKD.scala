@@ -60,9 +60,9 @@ object HKDFunctor:
     def toNoUpdate[A](fa: Option[A]): NoUpdate[A] = NoUpdate()
     def fromNoUpdate[A](n: NoUpdate[A]): Option[A] = None
 
-/** `HKDApplicative` (`HKD.hs:67-81`, cardano-ledger f649f975): a field made from a value
-  * (`hkdPure`) and from two fields (`hkdLiftA2`), as an upgrade of the parameters builds a field of
-  * the next era from one of this era and one of the upgrade's.
+/** `HKDApplicative` (`HKD.hs:67-81`, cardano-ledger f649f975): a field made from two fields
+  * (`hkdLiftA2`), as an upgrade of the parameters builds a field of the next era from one of this
+  * era and one of the upgrade's. The reference's `hkdPure` has no caller here and is not.
   *
   * The reference's conversions inside an upgrade may be partial: `asCompactCoinHKD`
   * (`Conway/PParams.hs:1258-1259`) maps `compactCoinOrError`, which throws on a coin outside
@@ -70,7 +70,6 @@ object HKDFunctor:
   * (`hkdSequence`), so the upgrade returns the refusal instead.
   */
 trait HKDApplicative[F[_]] extends HKDFunctor[F]:
-  def hkdPure[A](a: A): F[A]
   def hkdLiftA2[A, B, C](f: (A, B) => C)(fa: F[A], fb: F[B]): F[C]
   def hkdSequence[E, A](fa: F[Either[E, A]]): Either[E, F[A]]
 
@@ -79,7 +78,6 @@ object HKDApplicative:
     def hkdMap[A, B](f: A => B)(fa: A): B = f(fa)
     def toNoUpdate[A](fa: A): A = fa
     def fromNoUpdate[A](n: A): A = n
-    def hkdPure[A](a: A): A = a
     def hkdLiftA2[A, B, C](f: (A, B) => C)(fa: A, fb: B): C = f(fa, fb)
     def hkdSequence[E, A](fa: Either[E, A]): Either[E, A] = fa
 
@@ -87,7 +85,6 @@ object HKDApplicative:
     def hkdMap[A, B](f: A => B)(fa: Option[A]): Option[B] = fa.map(f)
     def toNoUpdate[A](fa: Option[A]): NoUpdate[A] = NoUpdate()
     def fromNoUpdate[A](n: NoUpdate[A]): Option[A] = None
-    def hkdPure[A](a: A): Option[A] = Some(a)
     def hkdLiftA2[A, B, C](f: (A, B) => C)(fa: Option[A], fb: Option[B]): Option[C] =
       fa.zip(fb).map(f.tupled)
     def hkdSequence[E, A](fa: Option[Either[E, A]]): Either[E, Option[A]] =

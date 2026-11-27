@@ -50288,25 +50288,8 @@
    "evidence": [
     "BabbagePParamsSuite"
    ],
-   "note": "with `hkdSequence`, which the reference has not: its partial conversions inside an upgrade throw (`compactCoinOrError`), here they are an Either sequenced through the field",
+   "note": "with `hkdSequence`, which the reference has not: its partial conversions inside an upgrade throw (`compactCoinOrError`), here they are an Either sequenced through the field; without `hkdPure`, which nothing here calls",
    "digest": "3f73237c5abfb5f6"
-  },
-  "def ledger.era.HKDApplicative#hkdPure": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
-     "symbol": "hkdPure",
-     "lines": [
-      68,
-      68
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "same",
-   "digest": "5f5384798e9e2397"
   },
   "def ledger.era.HKDApplicative#hkdLiftA2": {
    "upstream": [
@@ -50340,7 +50323,7 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "digest": "91abe272d501aac9"
+   "digest": "72378e3385d7fcb9"
   },
   "given ledger.era.HKDApplicative.strictMaybe": {
    "upstream": [
@@ -50357,7 +50340,7 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "digest": "9f2cf5a6e2779e70"
+   "digest": "ab5d6fb2f362ecee"
   },
   "def ledger.era.OrdExUnits.hkdUnits": {
    "upstream": [
