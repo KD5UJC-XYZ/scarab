@@ -7,6 +7,7 @@ import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{
+  Certificate,
   Committee,
   GovAction,
   GovActionId,
@@ -14,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   LedgerDefect,
   Proposal,
   RewardAccount,
+  Tx,
   TxIn,
   TxOut,
   Utxo,
@@ -236,9 +238,41 @@ class ConwayCertsChecksSuite extends FunSuite:
     * defect.
     */
   private def cellOf(s: Seen, v: Verdict): String = v match
-    case Left(defect)          => fail(s"${s.label}: a defect, which no recording holds: $defect")
-    case Right(Left(failures)) => FlatRecordings.certsRefused(failures.toChain.toVector)
+    case Left(defect) => fail(s"${s.label}: a defect, which no recording holds: $defect")
+    case Right(Left(failures)) =>
+      assert(
+        retirementsWhole(s, failures.toChain.toVector),
+        s"${s.label}: a retirement's failure is not the reference's: $failures"
+      )
+      FlatRecordings.certsRefused(failures.toChain.toVector)
     case Right(Right((after, _))) => FlatRecordings.certsAdmitted(after, s.codecs)
+
+  /** The retirement epochs' mismatches among `failures`, each as POOL reports it. */
+  private def retirements(
+      failures: Vector[CertsPredFailure[Conway]]
+  ): Vector[ShelleyPoolPredFailure.StakePoolRetirementWrongEpochPOOL[Conway]] =
+    failures.collect {
+      case ConwayCertsPredFailure.CertFailure(
+            ConwayCertPredFailure.PoolFailure(
+              r: ShelleyPoolPredFailure.StakePoolRetirementWrongEpochPOOL[Conway] @unchecked
+            )
+          ) =>
+        r
+    }
+
+  /** Whether each retirement's failure among `failures` is the reference's for its judgment: the
+    * retirement's epoch supplied to both mismatches, against the current epoch and against the
+    * current epoch and `eMax` summed in `Word64` (`poolTransition`,
+    * `eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Pool.hs:307-322`, cardano-ledger
+    * f649f975). The refusal's bytes hold the retirement's epoch once, the second mismatch's
+    * (`EncCBOR`, `:157`), so a first mismatch supplied another is not in its cell; this holds it.
+    */
+  private def retirementsWhole(s: Seen, failures: Vector[CertsPredFailure[Conway]]): Boolean =
+    val limit = (s.epoch + s.storedPp.eMax).mod(BigInt(1) << 64)
+    retirements(failures).forall { r =>
+      r.current.supplied == r.latest.supplied && r.current.expected.toBigInt == s.epoch &&
+      r.latest.expected.toBigInt == limit
+    }
 
   // ---- what a judgment reached
 
@@ -498,8 +532,14 @@ class ConwayCertsChecksSuite extends FunSuite:
   private def read(n: Node): Node =
     right("read")(Cbor.decode(right("encode")(Cbor.encode(n.value, Cbor.Limits.Unbounded))))
 
+  /** The crafted certificates as Conway's decoder reads them, each read by the flat decoder too,
+    * which still reads a relayed transaction's.
+    */
   private def certsOf(certs: Vector[Node]): Vector[ConwayTxCert] =
-    certs.map(read).map(n => right("certificate")(ConwayTxCert.decode(n, StateLayout.Node11_1)))
+    certs.map(read).map { n =>
+      right("flat certificate")(Certificate.decode(n, Era.Conway))
+      right("certificate")(ConwayTxCert.decode(n, StateLayout.Node11_1))
+    }
 
   /** The recorded state to craft against, by its case's label: it has two pools, an account and a
     * DRep registered, so the crafted delegations have somewhere to move.
@@ -790,10 +830,18 @@ class ConwayCertsChecksSuite extends FunSuite:
             )
           case other => fail(s"a body that is not a map: $other")
       case other => fail(s"an envelope that is not an array: $other")
-    s.copy(
-      bytes = again,
-      typed = right("edited typed")(ConwayTx.fromEnvelope(again, StateLayout.Node11_1))
+    // the flat decoder, which still reads a relayed transaction, reads the edited envelope too,
+    // to the same body
+    val flat = right("edited flat")(Tx.fromEnvelope(again, Era.Conway))
+    val typed = right("edited typed")(ConwayTx.fromEnvelope(again, StateLayout.Node11_1))
+    val tx = EraTx.conway
+    val body = EraTxBody.conway
+    assertEquals(
+      body.id[TxLevel.Top](tx.body[TxLevel.Top](typed)(using tx.bodyOf.top))(using body.top).hex,
+      flat.body.id.hex,
+      "the edited body's id by either decoder"
     )
+    s.copy(bytes = again, typed = typed)
 
   private def isKey(k: Int)(n: Node): Boolean = n.value == Value.UInt(k)
 
@@ -1078,3 +1126,48 @@ class ConwayCertsChecksSuite extends FunSuite:
       FlatRecordings.certsAdmitted(mutant, s.codecs),
       FlatRecordings.certsAdmitted(after, s.codecs)
     )
+
+  test("a refused retirement's two mismatches are the reference's, which its cell holds once"):
+    // the crafted retirements of a registered pool at the current epoch and a million epochs on,
+    // past the limit `eMax` sets: both mismatches supply the epoch, the first against the current
+    // epoch, the second against the limit
+    Vector(9, 10, 11).foreach { v =>
+      val s = atVersion(base, v)
+      val id = s"crafted/${s.label}/pool retirements"
+      val failures = craftedJudged.find(_.id == id).map(_.verdict) match
+        case Some(Right(Left(fs))) => fs.toChain.toVector
+        case other                 => fail(s"$id: $other")
+      def epoch(n: BigInt): EpochNo = right("epoch")(EpochNo.fromBigInt(n))
+      val limit = epoch(s.epoch + s.storedPp.eMax)
+      val expected = Vector(s.epoch, s.epoch + 1000000).map(e =>
+        ShelleyPoolPredFailure.StakePoolRetirementWrongEpochPOOL[Conway](
+          xyz.kd5ujc.scarab.ledger.era.Mismatch(epoch(e), epoch(s.epoch)),
+          xyz.kd5ujc.scarab.ledger.era.Mismatch(epoch(e), limit)
+        )
+      )
+      assertEquals(
+        retirements(failures).sortBy(_.current.supplied.toBigInt),
+        expected,
+        id
+      )
+      // a mutant whose first mismatch supplies the current epoch has the same cell, and is refused
+      val first = retirements(failures).maxBy(_.current.supplied.toBigInt)
+      val mutated = failures.map {
+        case ConwayCertsPredFailure.CertFailure(ConwayCertPredFailure.PoolFailure(r))
+            if r == first =>
+          ConwayCertsPredFailure.CertFailure[Conway](
+            ConwayCertPredFailure.PoolFailure[Conway](
+              first.copy(current = first.current.copy(supplied = epoch(s.epoch)))
+            )
+          )
+        case other => other
+      }
+      assertNotEquals(mutated, failures, id)
+      assertEquals(
+        FlatRecordings.certsRefused(mutated),
+        FlatRecordings.certsRefused(failures),
+        s"$id: the cells"
+      )
+      assert(retirementsWhole(s, failures), id)
+      assert(!retirementsWhole(s, mutated), id)
+    }
