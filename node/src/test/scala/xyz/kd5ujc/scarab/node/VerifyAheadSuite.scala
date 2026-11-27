@@ -342,16 +342,67 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   // ------------------------------------------------------------------ the node
 
+  /** What a peer announces, and how the worker is held: the chain's genesis; the peer's events and
+    * the bodies it serves; the block whose preparation is held (`holdAt`) until the verifier has
+    * verified `until`, the last of those queued behind it; and the block whose certificate's KES
+    * signature the provider refuses, if any.
+    */
+  private final case class Script(
+      genesis: MirrorState,
+      events: Vector[SyncEvent],
+      bodies: Map[Bytes, Bytes],
+      holdAt: Header,
+      until: Header,
+      bad: Option[Header]
+  )
+
   /** The forged block whose certificate's KES signature the provider refuses: in the middle of the
     * queue while the worker is held at the first block.
     */
   private val index = 10
   private def target: Header.Shelley = forged.headers(index)
 
-  /** The real verifiers, except that the KES signature of the target is refused; `calls` counts the
-    * checks of the target's certificate.
+  private def forward(h: Header) = SyncEvent.RollForward(h, ChainSync.Tip.Origin)
+
+  private lazy val badSignature: Script = Script(
+    forged.genesis,
+    forged.headers.map(forward),
+    forged.headers.map(_.hash).zip(forged.raws).toMap,
+    header(0),
+    target,
+    Some(target)
+  )
+
+  /** Two forks of one prefix, the second longer: the peer announces the prefix and the first fork,
+    * rolls back to the prefix and announces the second. The worker is held at the prefix's last
+    * block while all eight blocks of the forks are queued and verified behind it; it then adopts
+    * the first fork and switches to the second, rolling the first back.
     */
-  private final class BadSignature extends Verdicts:
+  private lazy val forks: (ForgedChain, ForgedChain) =
+    ForgedChain
+      .competingForks(5000 until 5020, 5020 until 5100, 31, 47)
+      .unsafeRunSync()(using munitIORuntime)
+
+  private lazy val rollback: Script =
+    val (longer, shorter) = forks
+    val common = longer.headers.zip(shorter.headers).takeWhile((a, b) => a.hash == b.hash).size
+    Script(
+      longer.genesis,
+      shorter.headers.map(forward) ++
+        Vector(SyncEvent.RollBackward(longer.headers(common - 1).point, ChainSync.Tip.Origin)) ++
+        longer.headers.drop(common).map(forward),
+      (longer.headers.zip(longer.raws) ++ shorter.headers.zip(shorter.raws))
+        .map((h, raw) => h.hash -> raw)
+        .toMap,
+      longer.headers(common - 1),
+      longer.headers.last,
+      None
+    )
+
+  /** The real verifiers, except that the KES signature of `bad` is refused; `calls` counts the
+    * checks of its certificate.
+    */
+  private final class BadSignature(bad: Option[Header]) extends Verdicts:
     export Verdicts.Direct.{keyHash, praosVrf, takePrepared, tpraosVrf, witness}
     private val counted = new java.util.concurrent.atomic.AtomicInteger(0)
     def calls: Int = counted.get
@@ -360,16 +411,16 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         slotsPerKesPeriod: BigInt,
         maxKesEvolutions: BigInt
     ): Either[OCertError | ProviderDefect, Unit] =
-      if header.hash == target.hash then
+      if bad.exists(_.hash == header.hash) then
         counted.incrementAndGet(): Unit
         Left(OCertError.KesSignatureRejected)
       else Verdicts.Direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
 
   /** How the worker meets the checks: as before checks were made ahead (`Baseline`); through the
-    * node's preparation with nothing made ahead (`Idle`); with the first block held until the
-    * verifier has verified it and the ten queued behind it, the target the last of them (`Before`);
-    * or with the target's checks started ahead and released only when the worker reaches it, so
-    * that the worker most likely finds them being made (`During`).
+    * node's preparation with nothing made ahead (`Idle`); with the script's held block held until
+    * the verifier has verified the blocks queued behind it (`Before`); or with the checks of the
+    * script's last queued block started ahead and released only when the worker reaches it, so that
+    * the worker most likely finds them being made (`During`).
     */
   private enum Schedule:
     case Baseline, Idle, Before, During
@@ -384,19 +435,19 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       calls: Int
   )
 
-  /** A follower session over the real block rules of the forged chain with the verification cache
-    * as their verifiers, against a peer announcing every forged header, whose blocks the node's
-    * selection worker adopts with the preparation `schedule` gives. Diffusion pipelining is off, so
-    * that the refusal of a block the peer delivered is blamed on it.
+  /** A follower session over the real block rules of the forged chains with the verification cache
+    * as their verifiers, against a peer playing `script`, whose blocks the node's selection worker
+    * adopts with the preparation `schedule` gives. Diffusion pipelining is off, so that the refusal
+    * of a block the peer delivered is blamed on it.
     */
-  private def session(schedule: Schedule): IO[Seen] =
-    val provider = BadSignature()
+  private def session(script: Script, schedule: Schedule): IO[Seen] =
+    val provider = BadSignature(script.bad)
     val cache = VerificationCache.unsafe(2, provider)
     NodeScope.resource
       .use { node =>
         for
           ref <- Ref.of[IO, VolatileChain[MirrorState]](
-            VolatileChain.genesis(ForgedChain.geometry.k.toInt, forged.genesis)
+            VolatileChain.genesis(ForgedChain.geometry.k.toInt, script.genesis)
           )
           given Stateful[IO, VolatileChain[MirrorState]] = RefStateful(ref)
           emitted <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
@@ -414,7 +465,6 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           )
           pool <- WorkerTesting.pool(follower)
           praos <- Ref.of[IO, PraosConfig](ForgedChain.config)
-          verifiedCount <- Ref.of[IO, Int](0)
           queued <- Deferred[IO, Unit]
           started <- Deferred[IO, Unit]
           release <- Deferred[IO, Unit]
@@ -422,18 +472,14 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             .verifier(follower, pool, cache, praos)
             .getOrElse(fail("a cache of two threads verifies ahead"))
           blamed <- Ref.of[IO, Vector[ValidationError]](Vector.empty)
-          // the node's verifier, counting what it verified and, `During`, holding the target
+          // the node's verifier, saying when it has verified the last block queued behind the held
+          // one and, `During`, holding that block's checks
+          last = script.until.hash
           verifier = base.copy(verify =
             (h, bytes) =>
               (started.complete(()) *> release.get)
-                .whenA(schedule == Schedule.During && h.hash == target.hash) *>
-                base
-                  .verify(h, bytes)
-                  .flatTap(_ =>
-                    verifiedCount
-                      .updateAndGet(_ + 1)
-                      .flatMap(n => queued.complete(()).void.whenA(n > index))
-                  )
+                .whenA(schedule == Schedule.During && h.hash == last) *>
+                base.verify(h, bytes).flatTap(_ => queued.complete(()).void.whenA(h.hash == last))
           )
           preverify = (blocks: Vector[Bytes]) => cache.warm[IO](blocks, ForgedChain.config)
           seen <- VerifyAhead.resource[IO](verifier).use { verifyAhead =>
@@ -450,16 +496,14 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 prep,
                 h =>
                   schedule match
-                    case Schedule.Before => queued.get.whenA(h.hash == header(0).hash)
+                    case Schedule.Before => queued.get.whenA(h.hash == script.holdAt.hash)
                     case Schedule.During =>
-                      (started.get *> release.complete(()).start.void).whenA(h.hash == target.hash)
+                      (started.get *> release.complete(()).start.void).whenA(h.hash == last)
                     case _ => IO.unit
               )
               queue <- Queue.unbounded[IO, SyncEvent]
-              _ <- forged.headers
-                .traverse_(h => queue.offer(SyncEvent.RollForward(h, ChainSync.Tip.Origin)))
+              _ <- script.events.traverse_(queue.offer)
               done <- Deferred[IO, Unit]
-              raws = forged.headers.map(_.hash).zip(forged.raws).toMap
               peer = new WorkerTesting.Scripted[IO]:
                 def intersect(candidates: Vector[ChainSync.Point])(using Raise[IO, PeerError]) =
                   IO.pure(candidates.headOption)
@@ -467,7 +511,8 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   case Some(event) => IO.pure(event)
                   case None        => done.complete(()) *> IO.never[SyncEvent]
                 }
-                def fetch(header: Header)(using Raise[IO, PeerError]) = IO.pure(raws(header.hash))
+                def fetch(header: Header)(using Raise[IO, PeerError]) =
+                  IO.pure(script.bodies(header.hash))
               end <- SessionEnd
                 .scoped(node) { (_, _) ?=>
                   WorkerTesting
@@ -525,10 +570,10 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
   test("a bad signature in the middle of the queue: the same refusal, blame and states") {
     for
-      expected <- session(Schedule.Baseline)
-      idle <- session(Schedule.Idle)
-      before <- session(Schedule.Before)
-      during <- session(Schedule.During)
+      expected <- session(badSignature, Schedule.Baseline)
+      idle <- session(badSignature, Schedule.Idle)
+      before <- session(badSignature, Schedule.Before)
+      during <- session(badSignature, Schedule.During)
     yield
       // the baseline refuses the target, blames its sender, and stops at its predecessor
       assertEquals(expected.invalid.keySet, Set(target.hash))
@@ -545,6 +590,29 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assert(before.counts.hit >= index.toLong, before.counts.toString)
       assertEquals(before.calls, 1)
       assert(during.counts.hit + during.counts.joined > 0, during.counts.toString)
+  }
+
+  test("a rollback over queued blocks verified ahead: the same switch, events and states") {
+    val (longer, shorter) = forks
+    for
+      expected <- session(rollback, Schedule.Baseline)
+      before <- session(rollback, Schedule.Before)
+      during <- session(rollback, Schedule.During)
+    yield
+      // the baseline adopts the first fork, then switches to the second and rolls the first back
+      assertEquals(expected.chain.tip, longer.headers.last.point)
+      assert(
+        expected.events.exists {
+          case FollowerEvent.RolledBack(from, _, _) => from == shorter.headers.last.point
+          case _                                    => false
+        },
+        expected.events.toString
+      )
+      assertEquals(expected.invalid, Map.empty)
+      same(before, expected)
+      same(during, expected)
+      // the eight blocks of the forks were verified while the worker was held before them
+      assert(before.counts.hit >= 8L, before.counts.toString)
   }
 
   // ------------------------------------------------------------------ the era-walking chain
