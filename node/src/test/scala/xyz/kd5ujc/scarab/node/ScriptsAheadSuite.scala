@@ -263,13 +263,48 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     }
   }
 
-  test("a failure is charged what its cause can keep") {
-    val failure = deterministic(_ => true).evaluate(request)
-    val success = deterministic(_ => false).evaluate(request)
-    assert(
-      ScriptsAhead.Results.weight(request, failure) >=
-        ScriptsAhead.Results.weight(request, success) + request.budget.mem.toLong * 8
-    )
+  test("a failure holding a term of the machine is not kept, one without is") {
+    val withCause: ScriptEvaluator[Id] = _ =>
+      EvalResult.Failure(
+        EvalFailure.Script(
+          ScriptFailure.Uplc(
+            EvaluationError.Cek(
+              xyz.kd5ujc.scarab.uplc.cek.CekFailure(
+                xyz.kd5ujc.scarab.uplc.cek.CekError.ErrorTerm,
+                // never discharged: nothing reads it
+                Some(xyz.kd5ujc.scarab.uplc.cek.Cause(fail("the cause was discharged")))
+              )
+            ),
+            Vector("trace")
+          )
+        ),
+        ExUnits(1, 1),
+        Vector("trace")
+      )
+    for
+      _ <- withSpeculator(Map(block(1) -> Vector(request)), underlying = withCause) {
+        (ahead, _, _) =>
+          for
+            done <- settled(ahead, block(1))
+            _ <- ahead.ahead(header(1, 0), Bytes.empty)
+            _ <- done
+            tallies <- ahead.tallied
+          yield
+            assertEquals(tallies.retaining, 1L)
+            assertEquals(ahead.results.held._1, 0)
+      }
+      _ <- withSpeculator(Map(block(1) -> Vector(request)), underlying = deterministic(_ => true)) {
+        (ahead, _, _) =>
+          for
+            done <- settled(ahead, block(1))
+            _ <- ahead.ahead(header(1, 0), Bytes.empty)
+            _ <- done
+            tallies <- ahead.tallied
+          yield
+            assertEquals(tallies.evaluated, 1L)
+            assertEquals(ahead.results.held._1, 1)
+      }
+    yield ()
   }
 
   test("an answer that is no verdict is not kept") {

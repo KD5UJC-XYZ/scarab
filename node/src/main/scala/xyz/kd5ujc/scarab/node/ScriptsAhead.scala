@@ -58,9 +58,11 @@ import xyz.kd5ujc.scarab.plutus.{
   * be wrong in any way (a rollback, another fork, parameters changed at an epoch boundary, an
   * output read from another chain): its requests then differ from the worker's, are not found, and
   * the worker evaluates as without this. An answer that is no verdict (`EvalFailure.Unsupported`: a
-  * stack exhausted, a defect) is never kept, as the evaluator's own caches keep none.
+  * stack exhausted, a defect) is never kept, as the evaluator's own caches keep none; nor is a
+  * machine failure holding the term it is about, which can reach more than the bounds can see
+  * ([[ScriptsAhead.Results.keeps]]).
   *
-  * What is kept: the results of each block until the worker has applied it (the worker reaches the
+  * What is kept: the results of each block until the worker has applied it (the worker takes the
   * next block) or passes it by, and within bounds of blocks, entries and bytes
   * ([[ScriptsAhead.Limits]]); a result beyond them is not kept. The machines run on threads of
   * their own, at most [[ScriptsAhead.parallelism]] at once, never on the worker's Plutus permits.
@@ -230,14 +232,17 @@ final class ScriptsAhead[F[_]: Async] private (
   private def wanted(hash: Bytes): F[Boolean] =
     slots.get.map(_.get(hash).contains(Slot.Running))
 
-  /** `result` kept for `request` unless it is no verdict or the worker passed the block by. */
+  /** `result` kept for `request` unless it is not kept ([[ScriptsAhead.Results.keeps]]) or the
+    * worker passed the block by.
+    */
   private def kept(hash: Bytes, request: EvalRequest, result: EvalResult): F[Unit] =
-    result match
-      case EvalResult.Failure(_: EvalFailure.Unsupported, _, _) => tallies.update(_.noVerdict)
-      case verdict =>
+    ScriptsAhead.Results.keeps(result) match
+      case ScriptsAhead.Keeping.NoVerdict => tallies.update(_.noVerdict)
+      case ScriptsAhead.Keeping.Retaining => tallies.update(_.retains)
+      case ScriptsAhead.Keeping.Kept =>
         slots.get.map(_.get(hash)).flatMap {
           case Some(Slot.Running) | Some(Slot.Reached) =>
-            F.delay(results.put(hash, request, verdict))
+            F.delay(results.put(hash, request, result))
               .flatMap(kept => tallies.update(t => if kept then t.kept else t.overfull)) *>
               // a block passed by while its result was being kept: dropped again
               slots.get.map(_.get(hash)).flatMap {
@@ -301,23 +306,26 @@ object ScriptsAhead:
     * evaluated ahead (`skipped`: an input not resolved, a collection refused, the block's era or
     * chain not the tip's, the block reached or passed by first, its units beyond the block's
     * limit); scripts whose evaluation was not started because the worker reached or passed their
-    * block (`abandoned`); scripts evaluated and not kept, the bounds being full (`full`) or the
-    * answer no verdict (`unanswered`).
+    * block (`abandoned`); scripts evaluated and not kept, the bounds being full (`full`), the
+    * answer no verdict (`unanswered`) or a failure holding a term of the machine (`retaining`,
+    * [[Results.keeps]]).
     */
   final case class Tallies(
       evaluated: Long,
       skipped: Long,
       abandoned: Long,
       full: Long,
-      unanswered: Long
+      unanswered: Long,
+      retaining: Long
   ):
     def skip(transactions: Int): Tallies = copy(skipped = skipped + transactions)
     def kept: Tallies = copy(evaluated = evaluated + 1)
     def overfull: Tallies = copy(full = full + 1)
     def noVerdict: Tallies = copy(unanswered = unanswered + 1)
+    def retains: Tallies = copy(retaining = retaining + 1)
 
   object Tallies:
-    val zero: Tallies = Tallies(0, 0, 0, 0, 0)
+    val zero: Tallies = Tallies(0, 0, 0, 0, 0, 0)
     val abandoned: Tallies = zero.copy(abandoned = 1)
     given cats.Monoid[Tallies] with
       def empty: Tallies = zero
@@ -327,8 +335,13 @@ object ScriptsAhead:
           a.skipped + b.skipped,
           a.abandoned + b.abandoned,
           a.full + b.full,
-          a.unanswered + b.unanswered
+          a.unanswered + b.unanswered,
+          a.retaining + b.retaining
         )
+
+  /** Whether a result is kept ([[Results.keeps]]). */
+  enum Keeping:
+    case Kept, NoVerdict, Retaining
 
   /** The requests of a block's transactions, and the transactions with redeemers whose requests
     * were not collected (`skipped`).
@@ -542,21 +555,38 @@ object ScriptsAhead:
     def create(limits: Limits): Results = new Results(limits, new AtomicReference(Held.empty))
 
     /** The estimated heap of a kept result: its request's script and arguments, its cost model, the
-      * result's logs, and for a failure what its cause can keep, with a fixed charge per object.
+      * result's logs, with a fixed charge per object.
       */
     def weight(request: EvalRequest, result: EvalResult): Long =
       val logs = (result match
         case EvalResult.Success(_, logs)    => logs
         case EvalResult.Failure(_, _, logs) => logs
       ).iterator.map(_.length.toLong * 2 + 48).sum
-      // a failure keeps the term it is about (`Cause`), which can reach any value the machine made:
-      // charged as the machine's memory budget in 8-byte words, which bounds what it allocated
-      val cause = result match
-        case EvalResult.Success(_, _) => 0L
-        case EvalResult.Failure(_, _, _) =>
-          (request.budget.mem.max(0) * 8).min(BigInt(Long.MaxValue)).toLong
       256L + request.script.size + request.costModel.size * 24L +
-        request.args.iterator.map(data).sum + logs + cause
+        request.args.iterator.map(data).sum + logs
+
+    /** Whether `result` is kept: an answer that is no verdict never is, as the evaluator's own
+      * caches keep none; nor is a machine failure with the term it is about (`Cause`), which can
+      * hold any value the machine made and the decoded program's closures, more than [[weight]] can
+      * see. The rules evaluate such a script themselves, as without this; a success and a failure
+      * with no such term (an overspent budget, a V3 script's return value, a refused decoding or
+      * scope) are kept.
+      */
+    def keeps(result: EvalResult): Keeping = result match
+      case EvalResult.Failure(_: EvalFailure.Unsupported, _, _) => Keeping.NoVerdict
+      case EvalResult.Failure(
+            EvalFailure.Script(
+              xyz.kd5ujc.scarab.plutus.ScriptFailure.Uplc(
+                xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
+                  .Cek(xyz.kd5ujc.scarab.uplc.cek.CekFailure(_, Some(_))),
+                _
+              )
+            ),
+            _,
+            _
+          ) =>
+        Keeping.Retaining
+      case _ => Keeping.Kept
 
     /** The estimated heap of `root`, walked with a stack of its own (STK-1). */
     private def data(root: PlutusData): Long =
