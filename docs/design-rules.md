@@ -78,7 +78,7 @@ account, and not the person an agent works for unless that person holds the role
 | Python guards | `scripts/check_*.py`, run by `scripts/preflight` and the CI `scripts` job | as each rule says | as each rule says; each script's docstring has its detail |
 | Documentation check | `scripts/check_docs.py`, a guard like the others | `docs/**/*.md`, `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `changes/README.md`, outside fenced code; the other `changes/*.md` for relative links only | a new broken link or anchor, missing path or symbol, unregistered pin or stale "current" version. A finding listed in `docs/data/docs-check-baseline.json` passes, and one fixed must leave it; accepting a new one means rewriting the baseline, a diff a reviewer sees |
 | Crypto guards | `.github/workflows/security.yml`: semgrep with `.semgrep/scarab-crypto.yaml`, and `scripts/check_crypto_guard.py` | semgrep: every Scala and Java source but `tools`, `target` and `fixtures`; the containment guard: every Scala and Java source but `target`, `.git`, `.cache` and `fixtures`, so that it sees a reference that escapes its package | [CRY-1](#cry-1) |
-| Secret-path timing | `.github/workflows/secret-timing.yml`, nightly and on demand: `SecretPathTiming` (`tools`) run by `scripts/secret_timing.py` | the time of VRF proving, the VRF output and KES signing and evolution, and of the multiplications they make, against their secret, in a JVM on a GitHub-hosted runner | a secret target above dudect's threshold of 10 in two runs, a run whose noise controls failed counting a reading only above five times their level ([CRY-1](#cry-1)); a reading above 10 that does not repeat warns and refuses nothing, and a difference below 10 is not seen. It measures, it proves nothing: [timing of the secret paths](running/secret-timing.md) |
+| Secret-path timing | `.github/workflows/secret-timing.yml`, nightly and on demand: `SecretPathTiming` (`tools`) run by `scripts/secret_timing.py` | the time of VRF proving, the VRF output and KES signing and evolution, and of the multiplications they make, against their secret, in a JVM on a GitHub-hosted runner | a leak of a secret path's time as the rule of [timing of the secret paths](running/secret-timing.md#the-nightly-check) confirms it ([CRY-1](#cry-1)); what it warns of, refuses and cannot see is there. It measures, it proves nothing |
 | Java sources guard | `scripts/check_java_sources.py`, a guard like the others, against `docs/data/java-sources.json` and `docs/data/java-throw-baseline.json` | every tracked `.java` file under a `src/main/` directory, `tools` included | a Java main source that is not on the list or a listed one that is gone ([FUN-2](#fun-2) (f)); a Unicode escape in one, or a character javac ignores inside a token; and a count of `throw` in one, comments and literals aside, above the baseline ([ERR-4](#err-4)), which only shrinks, so a count cannot rise unless the change rewrites the baseline, a diff a reviewer sees |
 | Secret scan | gitleaks with `.gitleaks.toml`, in CI and `scripts/preflight` | full history | committed secrets ([FMT-3](#fmt-3)) |
 | SPDX step | `.github/workflows/ci.yml`, "SPDX header on every script and workflow" | `.py`, `.yml` and `sbtw` under `scripts/` and `.github/workflows/` | a file without the header ([CMT-4](#cmt-4)) |
@@ -1068,11 +1068,9 @@ only from package `xyz.kd5ujc.scarab.crypto.vrf`. Crypto code follows the rules 
   nothing on import; `Draft03Prover` calls `Draft03Math.h2c` alone. It reads names, not calls: that secret
   scalars never reach the variable-time math through another package, by reflection or under an unlisted name
   is review only (the guard's docstring). That the secret steps take a time independent of the secret is
-  measured, not enforced: the nightly `.github/workflows/secret-timing.yml` fails when one of them differs for a fixed
-  secret from random ones with a t statistic above 10 (dudect's threshold) in two of its three runs, a run whose
-  noise controls failed counting a reading only above five times their level, and warns when a reading above 10 is
-  not repeated. A difference that repeats below 10 stays green ([timing of the secret paths](running/secret-timing.md),
-  which says what else it cannot see).
+  measured, not enforced: the nightly `.github/workflows/secret-timing.yml` fails on a leak as the rule in
+  [timing of the secret paths](running/secret-timing.md#the-nightly-check) confirms it, which also says what it
+  cannot see.
 - **Why:** [#219](https://github.com/KD5UJC-XYZ/scarab/issues/219).
 
 <a id="cmt"></a>

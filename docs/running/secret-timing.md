@@ -27,12 +27,14 @@ The method is dudect's (Reparaz, Balasch and Verbauwhede, "Dude, is my code cons
 operation, two classes of its secret, one fixed and one random, are measured interleaved in a random order, with
 every input chosen before the timing starts: each class draws from a pool of 1,024 entries of its own (the fixed
 pool holds distinct copies of the fixed value), the i-th measurement takes entry i mod 1,024 of its class's pool, the
-two pools are made in one loop and held as one vector of pairs, an entry of each class in each pair and the class held
-first alternating, so that they lie in memory alike, and an array input is copied into one buffer that every
-measurement of the target passes. A key is used where it lies. Held as two vectors, the two pools ended in two regions
-of memory once the collector had moved them, one class's keys in each, and keys of one and the same seed in both
-classes then read as a difference; held in pairs they stay interleaved, and the same-seed control below watches for
-it. Each result is consumed whole after the second clock read.
+two pools are made in one loop and held as one vector of pairs, an entry of each class in each pair, the class made
+and held first in each pair drawn from a generator whose seed the report gives, so that they lie in memory alike, and
+an array input is copied into one buffer that every measurement of the target passes. A key is used where it lies.
+Held as two vectors, the two pools ended in two regions of memory once the collector had moved them, one class's keys
+in each, and keys of one and the same seed in both classes then read as a difference; held in pairs they stay
+interleaved, and the same-seed control below watches for it. The order within a pair is drawn rather than alternated:
+alternation puts the fixed class at the same two of every four positions in which objects are made, and a cost tied
+to those positions would fall on that class alone. Each result is consumed whole after the second clock read.
 
 The statistic. A target first times a calibration batch of a tenth of its measurements, in the same random order,
 takes the crops' cutoffs from it (dudect's percentiles, 1 − 0.5^(10(i + 1)/100) for crop i of 100) and discards it,
@@ -42,7 +44,10 @@ measurements below it. Two classes with no spread at all give 0 when their means
 they differ. A target's statistic is the larger of |t| on all measurements and the largest |t| over the crops that
 count. Above 10 is dudect's "probably not constant time" (its `t_threshold_moderate`), above 500 "definitely not"
 (`t_threshold_bananas`). The largest of up to 101 statistics is a heuristic: no significance level is corrected for
-taking the largest.
+taking the largest. A crop compares the classes below one cutoff, so two distributions of the same mean but of
+different shape (one wider, or with a second mode) give a large t in some crop: a reading says that the two classes'
+times are distributed differently, not that one is slower, and a difference of memory layout or of the timer's
+granularity can make them so as well as the secret.
 
 Differences from dudect's own program: dudect counts a crop only from 10,000 measurements of a class, which would
 leave a target of 25,000 measurements its crops above the 80th percentile only, where 1,000 keeps them from about the
@@ -70,7 +75,9 @@ Four controls run beside them:
 
 A diagnostic, never a verdict: for each class, the fastest measurement of every pool entry measured at least five
 times, and the entry whose fastest is the slowest; it is printed, and flagged in the report, when it is at least
-twice the median entry's fastest.
+twice the median entry's fastest. It needs entries measured five times, which the default sizes give (25,000
+measurements are about a dozen for each entry of a class); at smaller sizes no entry may reach it, and the tool prints
+which targets it was not computed for.
 
 ### What it does not cover
 
@@ -126,7 +133,9 @@ measurements is refused):
 2. A secret target **counts** in a clean run when its statistic is above 10, and in a noisy run when it is above 10
    and above five times the floor: the rule `TimingProbeMain` applies to a target against its noise control (t above
    10 and above five times the noise). A control that failed says the machine was noisy at its level, not that a
-   reading far above it is noise.
+   reading far above it is noise. A ratio of t statistics bounds no timing effect, though: a reading counted in a
+   noisy run is weaker evidence than one counted in a clean run, and the summary says when a confirmation rests on
+   noisy runs only.
 3. A **leak is confirmed** when one secret target counts in two runs.
 4. Otherwise the result is **inconclusive** when any secret target's statistic was above 10 in any run, counted or
    not, in a run of any kind (the summary names the target and its readings), or when fewer than two runs were clean.
@@ -148,8 +157,9 @@ seen at all: the job stays green.
 | 2 | inconclusive (the devnet scenarios' convention) | green, with a warning annotation: neither a pass nor a failure |
 | 3 | the check could not run (build, tool or record failed or refused, a file could not be written, the arguments are wrong, or the program failed) | red |
 
-The job's last step (`--outcome`) is green only when the summary gives the status the test step exited with and
-every run's record is there; a step that left no summary, or one that disagrees, is red whatever its status.
+The job's last step (`--outcome`) reads every run record the summary names, as `--reports` reads them, decides again,
+and is green only when that verdict is the summary's and the status the test step exited with; a summary, job summary,
+provenance or record that is missing, empty or malformed is red whatever the status.
 
 **What fixed against random can tell apart on these runners.** A fixed input processed again and again does not take
 the same time as changing inputs, in code that holds no secret at all. Measured on GitHub-hosted `ubuntu-24.04`
@@ -157,16 +167,19 @@ runners on 2026-11-27, with this method before its calibration batch and paired 
 `Scalar.reduceWide`, a fixed 64-byte input against random ones, read 6.1 to 13.5 on an Intel Xeon 6975P-C and 21 to
 36 on an AMD EPYC 9V74, while two different fixed inputs, each repeated, read 1.3 to 3.5 on both for the multiplications,
 the table selection and both field arithmetics. A fixed-against-random reading says that the time differs between a
-repeated input and changing ones; it does not say that it depends on which secret it is. Two fixed secrets against
-each other are immune to the repetition, and so is a target whose public input changes at every measurement (proving
-and the output, where H does). How large the effect is under the current method, on each CPU model, is what the
-nightly summaries show.
+repeated input and changing ones; it does not say that it depends on which secret it is. In the same runs, proving
+and the output, whose public input H changes at every measurement, read like the controls. Neither design is immune
+to the effect: proving and the output hash the seed and derive the same scalar on every call of the fixed class
+before H is used, so whatever repetition does to that part remains, and each of two fixed secrets may have a
+repetition effect of its own, which need not be the same. How large the effect is under the current method, on each
+CPU model, is what the nightly summaries show.
 
 Why one run is not enough, and why 10 and not less. With the classes interleaved at random, |t| of two classes of
 one distribution is close to a standard normal, and above 10 by chance essentially never, even as the largest of a
 target's crops. What makes a fixed-against-random |t| large without a leak is systematic: the harness (a fixed input
-that lies in memory differently from the random ones, which is why the pools are made alike, take turns and are staged
-into one buffer, and what the same-seed control watches) and the effect of a repeated value on the processor: the same
+that lies in memory differently from the random ones, which is why the pools are made alike, held in pairs in a drawn
+order and staged into one buffer, and what the same-seed control watches) and the effect of a repeated value on the
+processor: the same
 arithmetic on the same values, again and again, may take a slightly different time from the same arithmetic on
 changing values, which the field-arithmetic control measures and which says nothing of which value. A busy runner
 adds noise that cropping removes only in part.
@@ -185,8 +198,10 @@ change to the code, is the evidence that would restrict the check to some models
   above, and the floor of each run. Find what changed since the last night that was not red: the vendored curve code,
   the `secret` packages, `Sum6Key`, `Leaf` or `Draft03Key`, the JDK image (a new JDK compiles differently), or
   `SecretPathTiming` itself. Dispatch the workflow again (with five runs), and run it by hand on an idle machine. A
-  leak that repeats there is a finding about a secret: report it as [SECURITY.md](../../SECURITY.md#reporting) says,
-  and fix the code, not the check; the threshold, the rule and the sizes are not changed to make a run pass.
+  reading that repeats there is still a reading of time: it says the classes' times differ, which the harness, the
+  JVM or the CPU can make so as well as the code. Look for the cause before treating it as a finding about a secret,
+  report a finding as [SECURITY.md](../../SECURITY.md#reporting) says, and fix the code, not the check; the
+  threshold, the rule and the sizes are not changed to make a run pass.
 - **Inconclusive.** Either a secret target was above 10 without being confirmed, or fewer than two runs were clean;
   the summary says which, names the readings and the control that failed in each run. It is not evidence either
   way. A reading above 10 once: dispatch again and see whether the same target comes back. `control-random` above
@@ -218,18 +233,21 @@ did not exit 0, is refused, and records of different commits or sizes are decide
 python3 -I -B scripts/secret_timing.py --out "$(mktemp -d)" --reports run-a/run-*.json run-b/run-*.json
 ```
 
+It takes a record's identity as the tool wrote it: a copy of a record given a new identity would count as another
+run.
+
 The tool alone, in the JDK image, prints its table and the run's own assessment, and with a path writes the report:
 `java -XX:+UseSerialGC -Xbatch -cp <tools classpath> xyz.kd5ujc.scarab.crypto.vrf.SecretPathTiming [measurements
 [report]]` (the export of the classpath is in performance section 67).
 
 **Showing that it can fail.** After a change to the check, put a secret-dependent step into a multiplication the
 targets use, run the program, see the targets that take that multiplication confirmed as leaks and the others and
-the controls not, then restore the source and check that its diff is empty. Such changes were tried when the check
-was built, in a container on a developer's machine (the pull request has the numbers):
+the controls not, then restore the source and check that its diff is empty. Three such changes were tried when the
+check was built:
 
 - a return at once from `EdwardsPoint.multiplyRadix16` and the basepoint table's `multiplyRadix16` when the scalar's
   top digit is even: every secret target that multiplies was confirmed, and the evolution from period 0 to 1, which
-  does not, was not. The same-seed control rose with it, close to 10, since it signs with the code that leaks;
+  does not, was not;
 - a shortcut that returns the identity for a zero digit from the variable-base table's `select`, a change one might
   make for speed: proving, the output and the two `[k]H` targets were confirmed, and the targets that do not take that
   table were not;
