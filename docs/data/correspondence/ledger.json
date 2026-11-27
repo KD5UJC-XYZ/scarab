@@ -8678,6 +8678,16 @@
     },
     {
      "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/State/Account.hs",
+     "symbol": "AccountState BabbageEra",
+     "lines": [
+      12,
+      12
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/State/Account.hs",
      "symbol": "AccountState DijkstraEra",
@@ -8689,8 +8699,8 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "digest": "a2066799e434c4ee",
-   "note": "Conway's case and Dijkstra's, both `ConwayAccountState`"
+   "digest": "8d0623d9e161ae39",
+   "note": "Babbage's case `ShelleyAccountState`, Conway's and Dijkstra's `ConwayAccountState`"
   },
   "val ledger.era.conway.ConwayState.accounts": {
    "upstream": [
@@ -27794,7 +27804,7 @@
     "EraUtxosSuite"
    ],
    "note": "the fold over the outputs in the order of their inputs, as Map.foldl', with the state vocabulary's refusal of a credential or lovelace",
-   "digest": "4c8cdf0689cbf30a"
+   "digest": "06388ddab8ed6bd9"
   },
   "def ledger.era.UTxOs.txouts": {
    "upstream": [
@@ -44903,6 +44913,16 @@
     {
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "symbol": "GovState BabbageEra",
+     "lines": [
+      250,
+      250
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
      "symbol": "GovState",
      "lines": [
@@ -44923,8 +44943,8 @@
    ],
    "class": "Mirror",
    "structure": "same",
-   "note": "the family, ConwayGovState from Conway",
-   "digest": "ec97fc8e96f80e83"
+   "note": "the family, ShelleyGovState in Babbage, ConwayGovState from Conway",
+   "digest": "8a36d3695210e1e6"
   },
   "trait ledger.era.EraGov": {
    "upstream": [
@@ -50718,6 +50738,486 @@
    "note": "the reference's one `Version` is two types here, a protocol version's major and the decoder's version; this takes the first as the second",
    "digest": "000fd515b476030f"
   },
+  "trait ledger.era.ShelleyEraAccounts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Account.hs",
+     "symbol": "ShelleyEraAccounts",
+     "lines": [
+      158,
+      193
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "digest": "08d795a130b0e740"
+  },
+  "def ledger.era.ShelleyEraAccounts#mkShelleyAccountState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Account.hs",
+     "symbol": "mkShelleyAccountState",
+     "lines": [
+      159,
+      171
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "the class's default is each instance's",
+   "digest": "ed7238f69584cd9f"
+  },
+  "def ledger.era.ShelleyEraAccounts#accountsPtrsMapL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Account.hs",
+     "symbol": "accountsPtrsMapL",
+     "lines": [
+      173,
+      179
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "not exported, as the reference's is not: private to the era package",
+   "digest": "2daaaf135e71232d"
+  },
+  "def ledger.era.ShelleyEraAccounts#accountsPtrsMapG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Account.hs",
+     "symbol": "accountsPtrsMapG",
+     "lines": [
+      181,
+      183
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "digest": "3febb60326ea97d3"
+  },
+  "def ledger.era.ShelleyEraAccounts#ptrAccountStateG": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Account.hs",
+     "symbol": "ptrAccountStateG",
+     "lines": [
+      185,
+      193
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "digest": "6e054dde2d491efe"
+  },
+  "def ledger.era.ShelleyEraAccounts.shelleyAddAccountState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Account.hs",
+     "symbol": "shelleyAddAccountState",
+     "lines": [
+      195,
+      204
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "digest": "7db385d6fd54d02c"
+  },
+  "def ledger.era.ShelleyEraAccounts.registerShelleyAccount": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Account.hs",
+     "symbol": "registerShelleyAccount",
+     "lines": [
+      206,
+      219
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "digest": "36361fe8b0670053"
+  },
+  "def ledger.era.ShelleyEraAccounts.unregisterShelleyAccount": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Account.hs",
+     "symbol": "unregisterShelleyAccount",
+     "lines": [
+      221,
+      237
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "digest": "88cb5cbe285c6fca"
+  },
+  "val ledger.era.babbage.BabbageState.accounts": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/State/Account.hs",
+     "symbol": "EraAccounts BabbageEra",
+     "lines": [
+      11,
+      27
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/State/Account.hs",
+     "symbol": "ShelleyEraAccounts BabbageEra",
+     "lines": [
+      29,
+      29
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "Babbage's two accounts instances in one value, given in the root class's companion",
+   "digest": "fc277064b0e703bd"
+  },
+  "def ledger.era.EraCertState.shelleyCertsTotalDepositsTxBody": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/CertState.hs",
+     "symbol": "shelleyCertsTotalDepositsTxBody",
+     "lines": [
+      86,
+      89
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the state's pools read through `certPStateL`; no era's instance reaches it yet, Babbage's coming with its body (#85)",
+   "digest": "ff106212205a4f94"
+  },
+  "given ledger.era.EraStake.babbage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/State/Stake.hs",
+     "symbol": "EraStake BabbageEra",
+     "lines": [
+      18,
+      23
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbageStakeSuite"
+   ],
+   "note": "without resolveInstantStake, which the class here does not have",
+   "digest": "5f9e37d86d5ffc85"
+  },
+  "def ledger.era.EraStake.addShelleyInstantStake": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Stake.hs",
+     "symbol": "addShelleyInstantStake",
+     "lines": [
+      108,
+      110
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStakeSuite"
+   ],
+   "digest": "627e094760c36f71"
+  },
+  "def ledger.era.EraStake.deleteShelleyInstantStake": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Stake.hs",
+     "symbol": "deleteShelleyInstantStake",
+     "lines": [
+      112,
+      114
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStakeSuite"
+   ],
+   "digest": "53997d236eb7650a"
+  },
+  "def ledger.era.EraStake.applyUTxOShelleyInstantStake": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Stake.hs",
+     "symbol": "applyUTxOShelleyInstantStake",
+     "lines": [
+      116,
+      145
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbageStakeSuite"
+   ],
+   "note": "the fold over the outputs in the order of their inputs, as Map.foldl', with the state vocabulary's refusal of a credential or lovelace the state cannot hold",
+   "digest": "5d5ef2569c3b7de5"
+  },
+  "given ledger.era.EraGov.babbage": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "symbol": "EraGov BabbageEra",
+     "lines": [
+      249,
+      259
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "over Babbage's ShelleyGovState, no deposits",
+   "digest": "244a5f2a3dd6afc0"
+  },
+  "class ledger.era.ShelleyGovState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs",
+     "symbol": "ShelleyGovState",
+     "lines": [
+      63,
+      70
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "the fields in the reference's order; each proposed update kept with the bytes the node stores it by (KeptProposedPPUpdates, ADR 0006), which reproduce the stored record; the reference re-encodes the values, a difference visible in the Haskell-layout state answers for a non-canonical proposal (#85 item 7211463135)",
+   "digest": "7a015b66009de3df"
+  },
+  "def ledger.era.ShelleyGovState.curPParamsShelleyGovStateL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs",
+     "symbol": "curPParamsShelleyGovStateL",
+     "lines": [
+      74,
+      75
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "the field's lens",
+   "digest": "f8860bb05ab1c1a2"
+  },
+  "def ledger.era.ShelleyGovState.prevPParamsShelleyGovStateL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs",
+     "symbol": "prevPParamsShelleyGovStateL",
+     "lines": [
+      77,
+      78
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "the field's lens",
+   "digest": "fed36ab09c2035fd"
+  },
+  "def ledger.era.ShelleyGovState.futurePParamsShelleyGovStateL": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs",
+     "symbol": "futurePParamsShelleyGovStateL",
+     "lines": [
+      80,
+      82
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "the field's lens",
+   "digest": "9c8964b25d5aa492"
+  },
+  "def ledger.era.ShelleyGovState.emptyShelleyGovState": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs",
+     "symbol": "emptyShelleyGovState",
+     "lines": [
+      185,
+      192
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "digest": "4b7c0726b62132b7"
+  },
+  "class ledger.era.KeptProposedPPUpdates": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "symbol": "ProposedPPUpdates",
+     "lines": [
+      270,
+      274
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "each update kept with the bytes the node stores it by (ADR 0006), which reproduce the stored record; the reference re-encodes the values, a difference visible in the Haskell-layout state answers (DebugEpochState, DebugNewEpochState) for a non-canonical proposal (#85 item 7211463135); equal by the updates, as the reference's derived Eq",
+   "digest": "5f3251087b08b1ca"
+  },
+  "def ledger.era.KeptProposedPPUpdates#proposed": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "symbol": "ProposedPPUpdates",
+     "lines": [
+      270,
+      272
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "the reference's value, the updates without their stored bytes, in the order of the key hashes",
+   "digest": "c7a6dfa9ee7aeddd"
+  },
+  "def ledger.era.KeptProposedPPUpdates.empty": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "symbol": "emptyPPPUpdates",
+     "lines": [
+      294,
+      295
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "digest": "071f9889593fd454"
+  },
   "enum ledger.era.ShelleyDelegCert": {
    "upstream": [
     {
@@ -53022,7 +53522,8 @@
     "object ledger.state.PoolParamsBlsKey",
     "object ledger.state.StakePoolParams",
     "object ledger.state.UnitInterval",
-    "object ledger.state.Withdrawals"
+    "object ledger.state.Withdrawals",
+    "given ledger.era.EraAccounts.babbage"
    ]
   },
   {
@@ -53084,7 +53585,8 @@
     "object ledger.era.rules.BabbageUtxo",
     "object ledger.era.rules.ShelleyUtxo",
     "trait ledger.era.StoredTxOut",
-    "given ledger.era.StoredTxOut.dijkstra"
+    "given ledger.era.StoredTxOut.dijkstra",
+    "given ledger.era.StoredTxOut.babbage"
    ]
   },
   {
@@ -53201,7 +53703,9 @@
     "object ledger.era.rules.DijkstraSUBGOVCERT",
     "object ledger.era.rules.DijkstraSUBCERT",
     "object ledger.era.rules.DijkstraSUBCERTS",
-    "object ledger.era.rules.DijkstraSubEntities"
+    "object ledger.era.rules.DijkstraSubEntities",
+    "object ledger.era.ShelleyEraAccounts",
+    "object ledger.era.babbage.BabbageState"
    ]
   },
   {
@@ -53821,7 +54325,11 @@
     "given ledger.era.EnactState.given_CanEqual_EnactState_E_EnactState_E",
     "given ledger.era.FuturePParams.given_CanEqual_FuturePParams_E_FuturePParams_E",
     "given ledger.era.PulsingSnapshot.given_CanEqual_PulsingSnapshot_E_PulsingSnapshot_E",
-    "given ledger.era.RatifyState.given_CanEqual_RatifyState_E_RatifyState_E"
+    "given ledger.era.RatifyState.given_CanEqual_RatifyState_E_RatifyState_E",
+    "object ledger.era.ShelleyGovState",
+    "object ledger.era.KeptProposedPPUpdates",
+    "given ledger.era.ShelleyGovState.given_CanEqual_ShelleyGovState_E_ShelleyGovState_E",
+    "given ledger.era.KeptProposedPPUpdates.given_CanEqual_KeptProposedPPUpdates_E_KeptProposedPPUpdates_E"
    ]
   },
   {
@@ -54280,10 +54788,19 @@
    ]
   },
   {
-   "reason": "an update proposal of the eras before Conway with the bytes of its values, as the node stores it (ADR 0006), and its reading from that stored form; the reference stores the typed update and writes it canonically, so it has no counterpart (#85)",
+   "reason": "an update proposal of the eras before Conway, and each delegate's proposed update the governance state keeps (KeptPParamsUpdate), with the bytes of its values, as the node stores it (ADR 0006), and its reading from that stored form; the reference stores the typed update and writes it canonically, so it has no counterpart; the kept bytes reproduce the stored record, and the reference's re-encoding differs from them in the Haskell-layout state answers for a non-canonical proposal (#85 item 7211463135); a stored proposal with a legacy unread field is refused (#85 item 7222565136)",
    "definitions": [
     "class ledger.era.KeptUpdate",
-    "def ledger.era.KeptUpdate.fromStored"
+    "def ledger.era.KeptUpdate.fromStored",
+    "class ledger.era.KeptPParamsUpdate",
+    "object ledger.era.KeptPParamsUpdate",
+    "def ledger.era.KeptPParamsUpdate.fromStored",
+    "def ledger.era.KeptPParamsUpdate#equals",
+    "def ledger.era.KeptPParamsUpdate#hashCode",
+    "def ledger.era.KeptPParamsUpdate#toString",
+    "val ledger.era.KeptPParamsUpdate#stored",
+    "val ledger.era.KeptPParamsUpdate#update",
+    "given ledger.era.KeptPParamsUpdate.given_CanEqual_KeptPParamsUpdate_E_KeptPParamsUpdate_E"
    ]
   },
   {
@@ -54314,6 +54831,22 @@
     "object ledger.era.babbage.BabbageTxBody",
     "object ledger.era.babbage.BabbageTxCert",
     "object ledger.era.babbage.BabbageTxWits"
+   ]
+  },
+  {
+   "reason": "Babbage's governance state read from the node's flat record and written back over it, until the ledger state holds the era's record (#85): the era's parameter fields read from and written over the flat parameters, which hold every era's, and each proposed update read from and written as the bytes it keeps; the reference has no stored form to read, so it has no counterpart; a record whose stored proposal holds a legacy field an earlier build kept unread is refused (#85 item 7222565136)",
+   "definitions": [
+    "trait ledger.era.ShelleyGovStateRecord",
+    "object ledger.era.ShelleyGovStateRecord",
+    "given ledger.era.ShelleyGovStateRecord.babbage",
+    "def ledger.era.ShelleyGovStateRecord#pparams",
+    "def ledger.era.ShelleyGovStateRecord#storedPParams",
+    "def ledger.era.ShelleyGovStateRecord#pparamsOf",
+    "def ledger.era.ShelleyGovStateRecord#eraOf",
+    "def ledger.era.ShelleyGovStateRecord.fromStored",
+    "def ledger.era.ShelleyGovStateRecord.toStored",
+    "enum ledger.era.ShelleyGovStateReadError",
+    "enum ledger.era.ShelleyProposals"
    ]
   }
  ]

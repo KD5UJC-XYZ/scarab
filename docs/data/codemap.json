@@ -710,7 +710,7 @@
     {
       "module": "ledger",
       "path": "ledger/era",
-      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, what the eras share (output and script representations, certificate parts), the protocol parameters as higher-kinded data, the governance state with its classes, read from the node's flat record where the chain enters Dijkstra (`GovStateRecord`) and held whole in Dijkstra's state (`StoredGov`), the voting thresholds and environment of ratification, and the DRep pulser computed where it starts",
+      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, what the eras share (output and script representations, certificate parts), the protocol parameters as higher-kinded data, the governance state with its classes, read from the node's flat record where the chain enters Dijkstra (`GovStateRecord`) and held whole in Dijkstra's state (`StoredGov`), Babbage's read from the flat record and written back over it (`ShelleyGovStateRecord`), the voting thresholds and environment of ratification, and the DRep pulser computed where it starts",
       "entryPoints": [
         "Tx",
         "TxOut",
@@ -738,6 +738,9 @@
         "ConwayEraGov",
         "GovStateRecord",
         "StoredGov",
+        "ShelleyGovState",
+        "ShelleyGovStateRecord",
+        "ShelleyEraAccounts",
         "VotingThreshold",
         "RatifyEnv",
         "Committee",
@@ -751,6 +754,7 @@
         "EraValueSuite",
         "EraGovStateSuite",
         "EraGovStateStoredSuite",
+        "BabbageStateStoredSuite",
         "EraRatifySuite",
         "EraEpochGovSuite"
       ],
@@ -776,7 +780,7 @@
     {
       "module": "ledger",
       "path": "ledger/era/babbage",
-      "responsibility": "Babbage's own types: its native, Plutus and script types and its output, opaque outside their file; its protocol-parameter record; its certificate, witness set, auxiliary data, body and transaction, made by its decoders; its UTxO classes and annotated transaction",
+      "responsibility": "Babbage's own types: its native, Plutus and script types and its output, opaque outside their file; its protocol-parameter record; its certificate, witness set, auxiliary data, body and transaction, made by its decoders; its UTxO classes and annotated transaction; its instances of the accounts class",
       "entryPoints": [
         "BabbageTx",
         "BabbageTxBody",
@@ -786,7 +790,8 @@
         "BabbageScript",
         "BabbageTxOut",
         "BabbagePParams",
-        "BabbageEraUTxO"
+        "BabbageEraUTxO",
+        "BabbageState"
       ],
       "suites": [
         "EraCoreSuite",
@@ -795,7 +800,9 @@
         "BabbageTxSuite",
         "BabbageTxDifferentialSuite",
         "BabbagePlutusContextSuite",
-        "BabbagePlutusContextRefusalsSuite"
+        "BabbagePlutusContextRefusalsSuite",
+        "BabbageStakeSuite",
+        "BabbageStateStoredSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"

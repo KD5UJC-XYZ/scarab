@@ -113,6 +113,17 @@ object EraCertState:
       Coin.zero
     )
 
+  /** `shelleyCertsTotalDepositsTxBody` (`eras/shelley/impl/src/Cardano/Ledger/Shelley/State/
+    * CertState.hs:86-89`, cardano-ledger f649f975): the body's deposits, a pool registered when the
+    * state's pools have it.
+    */
+  def shelleyCertsTotalDepositsTxBody[E <: EraTag](
+      pp: PParams[E],
+      certState: CertState[E],
+      body: TxBody[TxLevel.Top, E]
+  )(using c: EraCertState[E], b: EraTxBody[E]): Coin =
+    b.getTotalDepositsTxBody(pp, c.certPStateL.get(certState).stakePools.contains, body)
+
   /** `conwayObligationCertState` (`Conway/State/CertState.hs:111-116`, cardano-ledger f649f975):
     * Shelley's, with the DReps' deposits.
     */

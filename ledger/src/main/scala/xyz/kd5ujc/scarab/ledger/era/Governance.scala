@@ -14,7 +14,16 @@ import xyz.kd5ujc.scarab.ledger.{
   DRepState as FlatDRepState,
   GovActionId
 }
-import xyz.kd5ujc.scarab.ledger.state.{Coin, Conway, Credential, Dijkstra, EraTag, Sorted, Staking}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Babbage,
+  Coin,
+  Conway,
+  Credential,
+  Dijkstra,
+  EraTag,
+  Sorted,
+  Staking
+}
 
 // The governance state of the eras from Conway, by era as the reference's is (cardano-ledger
 // f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs`, `Governance/Internal.hs`,
@@ -344,6 +353,23 @@ object EraGov:
         Coin.zero,
         Coin(proposalsGovStateL.get(st).pProps.toVector.foldMap(_.gasDeposit.value))
       )
+
+  /** `instance EraGov BabbageEra`
+    * (`eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs:249-259`, cardano-ledger f649f975):
+    * Shelley's record and lenses (`Shelley/Governance.hs:74-82, 185-192`), and no deposits
+    * (`obligationGovState = const mempty`).
+    */
+  given babbage: EraGov[Babbage] with
+    val pparamsOf: EraPParams[Babbage] = EraPParams.babbage
+    val emptyGovState: GovState[Babbage] =
+      ShelleyGovState.emptyShelleyGovState[Babbage](using pparamsOf)
+    val curPParamsGovStateL: Lens[GovState[Babbage], PParams[Babbage]] =
+      ShelleyGovState.curPParamsShelleyGovStateL[Babbage]
+    val prevPParamsGovStateL: Lens[GovState[Babbage], PParams[Babbage]] =
+      ShelleyGovState.prevPParamsShelleyGovStateL[Babbage]
+    val futurePParamsGovStateL: Lens[GovState[Babbage], FuturePParams[Babbage]] =
+      ShelleyGovState.futurePParamsShelleyGovStateL[Babbage]
+    def obligationGovState(st: GovState[Babbage]): Obligations = cats.Monoid[Obligations].empty
 
   given conway: ConwayEraGov[Conway] =
     overConwayGovState[Conway](EraPParams.conway, EraStake.conway, EraAccounts.conway)
