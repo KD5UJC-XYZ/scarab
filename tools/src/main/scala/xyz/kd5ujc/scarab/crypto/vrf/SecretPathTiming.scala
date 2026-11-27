@@ -42,14 +42,17 @@ import xyz.kd5ujc.scarab.crypto.vrf.secret.Draft03Key
   * their values. Every result is consumed after the second clock read, all of its bytes folded into
   * a sink printed at the end (an evolution's, the evolved key's bytes), so that no work is dead.
   *
-  * Three controls frame them: `random/random`, the `[k]H` multiplication with one pool of random
+  * Four controls frame them: `random/random`, the `[k]H` multiplication with one pool of random
   * scalars, the i-th measurement taking the same entry whichever its class, whose t estimates what
-  * this machine reports when there is nothing to find whatever the multiplication does; straight-
-  * line field arithmetic (Bouncy Castle's in place: squarings and multiplications, no table, no
-  * selection, no allocation) with an element drawn once against random ones, which estimates what
-  * the machine does with a repeated value against changing ones; and the variable-time
-  * double-and-add of `Ed25519Point.scalarMultiply` with a fixed scalar of one bit against random
-  * scalars, which leaks by construction and shows the test can see a leak here.
+  * this machine reports when there is nothing to find whatever the multiplication does; KES signing
+  * with keys of one seed in both classes, two pools made as the targets' are, which estimates what
+  * the harness itself makes of objects used where they lie (keys are not staged into one buffer,
+  * and an object made first in its pair was measured faster before the classes took turns);
+  * straight- line field arithmetic (Bouncy Castle's in place: squarings and multiplications, no
+  * table, no selection, no allocation) with an element drawn once against random ones, which
+  * estimates what the machine does with a repeated value against changing ones; and the
+  * variable-time double-and-add of `Ed25519Point.scalarMultiply` with a fixed scalar of one bit
+  * against random scalars, which leaks by construction and shows the test can see a leak here.
   *
   * The statistic. Each target times a calibration batch of a tenth of its measurements first, in
   * the same random order, and takes the crops' cutoffs from it alone; that batch is then discarded
@@ -63,11 +66,11 @@ import xyz.kd5ujc.scarab.crypto.vrf.secret.Draft03Key
   * with no significance level corrected for taking the largest.
   *
   * The controls say how far the run can be read: the run is not conclusive when the random/random
-  * control is above 10 (the machine reports a difference where there is none), when the
-  * field-arithmetic control is above 10 (a value repeated against changing ones differs here by
-  * itself), or when the variable-time control is not above 10 (the run could not see a leak that is
-  * there). The program prints that assessment; how runs are combined into a verdict is
-  * `scripts/secret_timing.py` 's, which recomputes it from the statistics
+  * or the same-seed control is above 10 (the machine or the harness reports a difference where
+  * there is none), when the field-arithmetic control is above 10 (a value repeated against changing
+  * ones differs here by itself), or when the variable-time control is not above 10 (the run could
+  * not see a leak that is there). The program prints that assessment; how runs are combined into a
+  * verdict is `scripts/secret_timing.py` 's, which recomputes it from the statistics
   * (docs/running/secret-timing.md).
   *
   * A diagnostic, never a verdict: for each class, every pool entry's fastest measurement, and the
@@ -422,9 +425,20 @@ object SecretPathTiming:
     def evolvedOnce(k: SigningKey): SigningKey =
       val moved = k.copy
       moved.evolve().fold(e => sys.error(e.message), _ => moved)
-    // the fixed and the random pool of a target, made in one loop, an entry of each in turn
+    // the fixed and the random pool of a target, made in one loop, an entry of each in turn, the
+    // class made first alternating: an object made first in its pair was measured faster when it
+    // is used where it lies (a key), so neither class may hold all of the first ones
     def paired[A](fixed: => A, random: => A): (Vector[A], Vector[A]) =
-      Vector.fill(Pool)((fixed, random)).unzip
+      Vector
+        .tabulate(Pool) { i =>
+          if i % 2 == 0 then
+            val first = fixed
+            (first, random)
+          else
+            val first = random
+            (fixed, first)
+        }
+        .unzip
     // an array input copied into the target's one buffer, which every measurement then passes
     def staged(size: Int): Array[Byte] => Array[Byte] =
       val buffer = new Array[Byte](size)
@@ -433,6 +447,7 @@ object SecretPathTiming:
         buffer
     val (fixedKeys, randomKeys) = paired(key(new Array[Byte](32)), key(bytes(32)))
     val (fixedKes, randomKes) = paired(kesKey(new Array[Byte](32)), kesKey(bytes(32)))
+    val (sameKes, sameKesOther) = paired(kesKey(new Array[Byte](32)), kesKey(new Array[Byte](32)))
     val (fixedKesNext, randomKesNext) =
       fixedKes.zip(randomKes).map((f, r) => (evolvedOnce(f), evolvedOnce(r))).unzip
     val messages = Vector.fill(Pool)(Bytes.fromArray(bytes(MessageBytes)))
@@ -592,6 +607,17 @@ object SecretPathTiming:
         staged(64),
         times,
         folded
+      ),
+      Target(
+        "control-keys",
+        "control: KES sign, one seed/the same seed",
+        Role.NoiseControl,
+        proofs,
+        withMessage(sameKes),
+        withMessage(sameKesOther),
+        identity,
+        kesSigned,
+        encoded
       ),
       Target(
         "control-field",

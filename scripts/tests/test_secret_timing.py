@@ -88,6 +88,9 @@ class RuleTest(unittest.TestCase):
         self.assertEqual(decision.above["kes-sign"], [(1, 100.0), (2, 100.0)], "the readings are named")
         decision = decided({"vrf-prove": 60.0, "control-random": 11.0}, {"vrf-prove": 60.0}, {})
         self.assertEqual(decision.status, timing.LEAK, "the random/random control's floor is used the same way")
+        decision = decided({"kes-sign": 30.0, "control-keys": 8.0}, {"kes-sign": 30.0, "control-keys": 12.0}, {})
+        self.assertEqual(decision.status, timing.INCONCLUSIVE, "the same-seed control's floor too: 30 is not 5 times 12")
+        self.assertEqual(decision.counted["kes-sign"], [1], "counted in the clean run only")
 
     def test_a_reading_above_the_threshold_once_is_never_no_leak(self):
         decision = decided({"vrf-prove": 13.0}, {}, {})

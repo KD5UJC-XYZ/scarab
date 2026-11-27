@@ -33,8 +33,8 @@ it, or the record is refused):
 
   - a run is blind when its variable-time control is not above the threshold: it could not see a leak that is
     there, and it votes neither way;
-  - otherwise its floor is the larger of its random/random and field-arithmetic controls' statistics; it is clean
-    when the floor is not above the threshold, noisy when it is;
+  - otherwise its floor is the largest of its noise controls' statistics (random/random, same seed) and its
+    field-arithmetic control's; it is clean when the floor is not above the threshold, noisy when it is;
   - in a clean run a secret target counts when its statistic is above the threshold, dudect's 10; in a noisy run
     when it is above the threshold and above `FACTOR` times the floor, the rule `TimingProbeMain` gives a target
     against its noise control ("t > 10 && t > 5 * noise");
@@ -95,6 +95,7 @@ ROSTER = {
     "kh-once": "secret",
     "kb-once": "secret",
     "control-random": "noise-control",
+    "control-keys": "noise-control",
     "control-field": "value-control",
     "control-vartime": "leak-control",
 }
@@ -151,7 +152,7 @@ class Run:
 
     @property
     def floor(self) -> float:
-        return max(self.statistic("control-random"), self.statistic("control-field"))
+        return max(target.statistic for target in self.targets if target.role in ("noise-control", "value-control"))
 
     @property
     def clean(self) -> bool:
@@ -400,8 +401,8 @@ def markdown(runs: list[Run], decision: Decision) -> str:
         f"{sum(1 for run in runs if run.kind == 'noisy')} noisy, {sum(1 for run in runs if run.blind)} blind; "
         + ", ".join(f"{size:,}" for size in sizes) + " measurements a multiplication; commit "
         + ", ".join(commits) + " |",
-        f"| Rule | a run is blind when its variable-time control is not above {limit}, noisy when its random/random "
-        f"or field-arithmetic control is above {limit}, clean otherwise; a secret target counts above {limit} in a "
+        f"| Rule | a run is blind when its variable-time control is not above {limit}, noisy when its random/random, "
+        f"same-seed or field-arithmetic control is above {limit}, clean otherwise; a secret target counts above {limit} in a "
         f"clean run, above {limit} and {FACTOR:g} times the floor in a noisy one; a leak is one target counted in "
         f"{CONFIRMATIONS} runs; any reading above {limit} that is not a leak is inconclusive; "
         "docs/running/secret-timing.md |",
