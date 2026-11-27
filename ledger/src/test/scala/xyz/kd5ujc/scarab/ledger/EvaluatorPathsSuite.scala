@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
-import xyz.kd5ujc.scarab.uplc.{Constant, Program, ProtocolMajor, Term}
+import xyz.kd5ujc.scarab.uplc.{Constant, PlutusLanguage, Program, ProtocolMajor, Term}
 import xyz.kd5ujc.scarab.uplc.cek.{
   BudgetMode,
   CaserBuiltin,
@@ -16,6 +16,7 @@ import xyz.kd5ujc.scarab.uplc.cek.{
 }
 import xyz.kd5ujc.scarab.uplc.cost.{EvaluationContext, ExBudget}
 import xyz.kd5ujc.scarab.uplc.ledger.{
+  EvaluationError,
   FreeVariableError,
   LedgerContext,
   LedgerEval,
@@ -55,6 +56,21 @@ class EvaluatorPathsSuite extends FunSuite:
       case CekResult.Failure(failure) => (Left(failure.error), failure.cause.map(_.term))
       case success: CekResult.Success => (Right(success.term), None)
     Seen(result, cause, report.logs, report.budget.spent)
+
+  /** The ledger's verdict as terms: a success, or a failure with the machine's error and the
+    * failure's cause (none for a V3 script that returned something other than `()`).
+    */
+  private enum Verdict:
+    case Succeeded
+    case Failed(error: Option[CekError], cause: Option[Term])
+
+  private def verdict(result: ScriptResult): (Verdict, ExBudget, Vector[String]) = result match
+    case ScriptResult.Success(spent, logs) => (Verdict.Succeeded, spent, logs)
+    case ScriptResult.Failure(EvaluationError.Cek(failure), spent, logs) =>
+      (Verdict.Failed(Some(failure.error), failure.cause.map(_.term)), spent, logs)
+    case ScriptResult.Failure(EvaluationError.InvalidReturnValue, spent, logs) =>
+      (Verdict.Failed(None, None), spent, logs)
+    case other => fail(s"not a verdict of the machine: $other")
 
   /** The limits a request runs within: its redeemer's budget, none, and fractions of what it
     * spends, so that a component runs out at several points.
@@ -107,8 +123,18 @@ class EvaluatorPathsSuite extends FunSuite:
         val report = CekMachine.run(now, mode, term)
         assertEquals(seen(report), seen(PresentCekMachine.run(before, mode, term)), s"$id $mode")
       }
-      val report = CekMachine.run(now, BudgetMode.Restricting(budget), term)
-      LedgerEval.evaluateScriptRestricting(
+      // the ledger's verdict on the request against the one `processLogsAndErrors`
+      // (`Eval.hs:306-324`, plutus 1.71.0.0) gives on the report before #1499
+      val report = PresentCekMachine.run(before, BudgetMode.Restricting(budget), term)
+      val expected: Verdict = report.result match
+        case CekResult.Failure(failure) =>
+          Verdict.Failed(Some(failure.error), failure.cause.map(_.term))
+        case CekResult.SuccessConstant(Constant.Unit) => Verdict.Succeeded
+        case _: CekResult.Success =>
+          r.language.evaluatedAs match
+            case PlutusLanguage.V1 | PlutusLanguage.V2 => Verdict.Succeeded
+            case PlutusLanguage.V3 | PlutusLanguage.V4 => Verdict.Failed(None, None)
+      val judged = LedgerEval.evaluateScriptRestricting(
         r.language,
         protocol,
         VerboseMode.Verbose,
@@ -116,15 +142,11 @@ class EvaluatorPathsSuite extends FunSuite:
         budget,
         program,
         r.args
-      ) match
-        case ScriptResult.Success(used, logs) =>
-          assertEquals((used, logs), (report.budget.spent, report.logs), id)
-        case ScriptResult.Failure(_, used, logs) =>
-          assertEquals((used, logs), (report.budget.spent, report.logs), id)
-        case ScriptResult.Unavailable(reason) => fail(s"$id: no verdict: $reason")
-      report.result match
-        case CekResult.Failure(_) => 1
-        case _                    => 0
+      )
+      assertEquals(verdict(judged), (expected, report.budget.spent, report.logs), id)
+      expected match
+        case Verdict.Failed(_, _) => 1
+        case Verdict.Succeeded    => 0
     }
     // both verdicts are among the compared evaluations at the redeemers' budgets
     assert(compared.sum >= 1 && compared.sum < compared.size, s"${compared.sum} failures")
