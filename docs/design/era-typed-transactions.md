@@ -2874,7 +2874,10 @@ Conway's rules on the classes follow as the rest of stage 2.
   flat rules for Conway; the flat BBODY and MEMPOOL themselves stay (owner decision 4).
   - The refusal encoders share their leaf writers, Conway's index and the era mismatch in `FailureCbor`, moved there
     as they were, so `ConwayFailureCbor` and `PreConwayFailureCbor` no longer borrow from the flat rules' Conway
-    encoder (`PredicateFailureCbor`), whose only users are the suites that compare with the flat MEMPOOL.
+    encoder (`PredicateFailureCbor`), whose only users were then the suites that compared with the flat MEMPOOL.
+    Stage 3 deleted it (C5), and then the Conway arms of the context error encoder (`ContextFailureCbor`, C11),
+    which only `ContextMatrixSuite` reached: its refused Conway collections are held to the reference's bytes through
+    Conway's era collection and `ConwayFailureCbor`.
   - The node's own refusals (Conway's free-text `ConwayMempoolFailure`) are written by `ConwayFailureCbor`, byte for
     byte as before (`LocalSubmissionSuite`). A flat refusal reaches `LocalSubmission.reasonItem` only from a ledger of
     an era from Shelley to Babbage; under any other it is `NoEncoding`, where it was written as Conway's flat refusal
