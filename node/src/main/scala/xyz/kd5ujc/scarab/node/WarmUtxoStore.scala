@@ -201,13 +201,20 @@ object WarmUtxoStore:
     /** A budget of `bytes` (the suites). */
     def bytes(bytes: Long): Budget = Budget(math.max(0L, bytes))
 
-    /** 256 MiB. At an encoding of 100 to 150 bytes, an entry costs 356 to 406 bytes ([[EntryBytes]]
-      * more), so the young population's seven eighths hold 580,000 to 660,000 entries: 13,000 to
-      * 15,000 blocks of 45 outputs (fewer survive the diff to be written, so more blocks), where
-      * #1484's spend-age curve puts about 40 percent of the spending reads that reach the store. A
-      * sixteenth of a 4 GiB heap; `--utxo-warm-mb` sets it.
+    /** 256 MiB, the largest default. At an encoding of 100 to 150 bytes, an entry costs 356 to 406
+      * bytes ([[EntryBytes]] more), so the young population's seven eighths hold 580,000 to 660,000
+      * entries: 13,000 to 15,000 blocks of 45 outputs (fewer survive the diff to be written, so more
+      * blocks), where #1484's spend-age curve puts about 40 percent of the spending reads that reach
+      * the store.
       */
     val Default: Budget = mib(256)
+
+    /** The budget when `--utxo-warm-mb` is not given, for a maximum heap of `maxHeap` bytes: a
+      * sixteenth of it, at most [[Default]] (192 MiB at `-Xmx3g`, 256 MiB from 4 GiB up), so that a
+      * small heap gives the tier no more of itself than a large one (the owner's choice, 2026-11-27,
+      * #1484).
+      */
+    def forHeap(maxHeap: Long): Budget = bytes(math.min(Default.bytes, maxHeap / 16))
 
   /** The heap an entry takes beyond its encoding, as charged: its key (the store's 34-byte key in a
     * [[Bytes]], 88 bytes), its encoding's array header and padding (about 20), its record, its

@@ -101,6 +101,15 @@ class WarmUtxoStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     }
   }
 
+  test("the default budget is a sixteenth of the maximum heap, at most 256 MiB") {
+    val mib = 1024L * 1024
+    assertEquals(Budget.forHeap(3072 * mib), Budget.mib(192))
+    assertEquals(Budget.forHeap(4096 * mib), Budget.Default)
+    assertEquals(Budget.forHeap(16384 * mib), Budget.Default)
+    assertEquals(Budget.forHeap(Long.MaxValue), Budget.Default)
+    assertEquals(Budget.forHeap(0L), Budget.mib(0))
+  }
+
   test("with a budget of 0 the tier holds nothing") {
     val t = Tier
       .empty(Budget.bytes(0))

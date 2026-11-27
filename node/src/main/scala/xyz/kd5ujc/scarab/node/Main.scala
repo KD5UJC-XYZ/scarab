@@ -546,7 +546,8 @@ object Main extends IOApp:
     *   default.
     * @param utxoWarmMb
     *   `--utxo-warm-mb N`: the heap budget, in MiB, of the warm tier in front of a RocksDB UTxO
-    *   store ([[WarmUtxoStore]], #1484); 0: no tier.
+    *   store ([[WarmUtxoStore]], #1484); 0: no tier; none: a sixteenth of the maximum heap, at most
+    *   256 MiB ([[WarmUtxoStore.Budget.forHeap]]).
     */
   final case class Options(
       genesisDir: Option[Path],
@@ -591,7 +592,7 @@ object Main extends IOApp:
       startAsNonProducingNode: Boolean = false,
       assertionsFile: Option[Path] = None,
       maxOutbound: Option[OutboundLimit.Connections] = None,
-      utxoWarmMb: Int = 256
+      utxoWarmMb: Option[Int] = None
   ):
     /** `ncStartAsNonProducingNode` of the reference: the flags give `Just True` or nothing
       * (`Parsers.hs` 70-72), the configuration file's `StartAsNonProducingNode` a value or nothing
@@ -837,8 +838,12 @@ object Main extends IOApp:
     (kind, options.db) match
       case ("rocksdb", Some(dir)) =>
         val root = fs2.io.file.Path.fromNioPath(dir) / "utxo"
-        val budget = WarmUtxoStore.Budget.mib(options.utxoWarmMb)
         for
+          budget <- Resource.eval(
+            options.utxoWarmMb.fold(
+              IO(Runtime.getRuntime.maxMemory).map(WarmUtxoStore.Budget.forHeap)
+            )(mib => IO.pure(WarmUtxoStore.Budget.mib(mib)))
+          )
           rocks <- RocksUtxoStore
             .resource[IO](root / "live", options.utxoCacheMb.toLong * 1024 * 1024)
           warm <- Resource.eval(
@@ -3339,7 +3344,7 @@ object Main extends IOApp:
             .fold(Right(256))(_.toIntOption.filter(_ > 0).toRight(invalid("utxo-cache-mb")))
           warmMb <- flags
             .get("utxo-warm-mb")
-            .fold(Right(256))(_.toIntOption.filter(_ >= 0).toRight(invalid("utxo-warm-mb")))
+            .traverse(_.toIntOption.filter(_ >= 0).toRight(invalid("utxo-warm-mb")))
           memoryReport <- flags
             .get("memory-report-seconds")
             .fold(Right(0))(_.toIntOption.filter(_ >= 0).toRight(invalid("memory-report-seconds")))
