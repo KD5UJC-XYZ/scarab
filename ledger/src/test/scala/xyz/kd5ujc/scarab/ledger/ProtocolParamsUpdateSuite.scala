@@ -3,12 +3,13 @@ package xyz.kd5ujc.scarab.ledger
 
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Babbage, EraTag, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Babbage, Conway, Dijkstra, EraTag, ShelleyBasedEra}
 
 /** Key 17 of a protocol-parameter update is the lovelace per UTxO word before Babbage
   * (`Alonzo/PParams.hs:664`, cardano-ledger f649f975) and per byte from Babbage; an update that
   * raises the version is applied by the rules of the era it was proposed in, and the translation to
-  * Babbage divides the per-word value by 8 (`Babbage/PParams.hs:389-391`).
+  * Babbage divides the per-word value by 8 (`Babbage/PParams.hs:389-391`). Key 18's cost models
+  * replace those in force up to Babbage and are merged into them from Conway.
   */
 class ProtocolParamsUpdateSuite extends FunSuite:
   private def hex(s: String): Bytes = Bytes.fromHex(s).fold(e => fail(e.toString), identity)
@@ -49,4 +50,29 @@ class ProtocolParamsUpdateSuite extends FunSuite:
     val after = applied[Babbage](babbage, 17 -> key17)
     assertEquals(after.coinsPerUTxOByte, BigInt(40000))
     assertEquals(after.coinsPerUTxOWord, babbage.coinsPerUTxOWord)
+  }
+
+  // PlutusV1's cost model alone (key 18), applied to parameters holding PlutusV1 and PlutusV2
+  private val onlyV1 = hex("a100" + "98a6" + "1864" * 166)
+  private val v1 = Vector.fill(166)(BigInt(100))
+
+  test("in Alonzo and Babbage key 18 replaces the cost models in force") {
+    // the class default `applyPPUpdates` (`Alonzo/PParams.hs:314`, `Babbage/PParams.hs:172`) sets
+    // each field the update names (`Core/PParams.hs:320-358, 379-392`, cardano-ledger f649f975)
+    assertEquals(alonzo.costModels.keySet, Set(0, 1))
+    assertEquals(applied[Alonzo](alonzo, 18 -> onlyV1).costModels.keySet, Set(0))
+    assertEquals(applied[Alonzo](alonzo, 18 -> onlyV1).costModels, Map(0 -> v1))
+    assertEquals(babbage.costModels.keySet, Set(0, 1))
+    assertEquals(applied[Babbage](babbage, 18 -> onlyV1).costModels.keySet, Set(0))
+    assertEquals(applied[Babbage](babbage, 18 -> onlyV1).costModels, Map(0 -> v1))
+  }
+
+  test("in Conway and Dijkstra key 18 merges into the cost models in force") {
+    // `updateCostModels` in `conwayApplyPPUpdates` (`Conway/PParams.hs:830-831, 1209`, cardano-ledger
+    // f649f975) and `dijkstraApplyPPUpdates` (`Dijkstra/PParams.hs:340-343, 711-712`,
+    // cardano-ledger 9df9f98c)
+    val conway = TestLedger.params(10)
+    val merged = Map(0 -> v1, 1 -> conway.costModels(1))
+    assertEquals(applied[Conway](conway, 18 -> onlyV1).costModels, merged)
+    assertEquals(applied[Dijkstra](conway, 18 -> onlyV1).costModels, merged)
   }

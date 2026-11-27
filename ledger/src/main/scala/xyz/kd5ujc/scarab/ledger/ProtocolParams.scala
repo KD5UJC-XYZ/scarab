@@ -427,7 +427,8 @@ object ProtocolParams:
     * Key 17 is per UTxO word in Alonzo (`Alonzo/PParams.hs:658-664`), per byte from Babbage
     * (`Babbage/PParams.hs:405-412`, cardano-ledger f649f975). A version update does not translate
     * parameters: [[rules.Translate.alonzoToBabbage]] converts the cost per word to the cost per
-    * byte when the ledger enters Babbage, including its future parameters.
+    * byte when the ledger enters Babbage, including its future parameters. Key 18 meets the cost
+    * models in force by the rule of the era ([[appliedCostModels]]).
     */
   def update[E <: EraTag](p: ProtocolParams, u: ParamUpdate)(using
       era: ShelleyBasedEra[E]
@@ -486,7 +487,9 @@ object ProtocolParams:
           else acc.copy(coinsPerUTxOWord = v)
         )
       ),
-      field(18)((p, n) => costModels(n).map(m => p.copy(costModels = p.costModels ++ m))),
+      field(18)((p, n) =>
+        costModels(n).map(m => p.copy(costModels = appliedCostModels(era)(p.costModels, m)))
+      ),
       field(19)((p, n) =>
         CborRead
           .arrayN(n, 2, DecodeField.Prices)
@@ -528,6 +531,27 @@ object ProtocolParams:
       )
     )
     steps.foldLeftM(p)((acc, step) => step(acc))
+
+  /** The cost models after an update that names `update`, by the era's `applyPPUpdates`:
+    *   - up to Babbage, the class default (no override in `Shelley/PParams.hs:164`,
+    *     `Allegra/PParams.hs:13`, `Mary/PParams.hs:20`, `Alonzo/PParams.hs:314`,
+    *     `Babbage/PParams.hs:172`), whose generic update replaces each field the update sets
+    *     (`Core/PParams.hs:320-358, 379-392`, cardano-ledger f649f975): the update's cost models
+    *     replace the whole map, and the languages it does not name are gone. Shelley to Mary have
+    *     no key 18 ([[ParamUpdate.Keys]]), so their case is not reached from a chain;
+    *   - from Conway, `updateCostModels` (`conwayApplyPPUpdates`, `Conway/PParams.hs:830-831,
+    *     1209`; `CostModels.hs:404-415`, cardano-ledger f649f975; `dijkstraApplyPPUpdates`,
+    *     `Dijkstra/PParams.hs:340-343, 711-712`, cardano-ledger 9df9f98c): the languages of the
+    *     update replace theirs and the others stay.
+    */
+  private def appliedCostModels[E <: EraTag](era: ShelleyBasedEra[E])(
+      current: Map[Int, Vector[BigInt]],
+      update: Map[Int, Vector[BigInt]]
+  ): Map[Int, Vector[BigInt]] = era match
+    case ShelleyBasedEra.SShelley | ShelleyBasedEra.SAllegra | ShelleyBasedEra.SMary |
+        ShelleyBasedEra.SAlonzo | ShelleyBasedEra.SBabbage =>
+      update
+    case ShelleyBasedEra.SConway | ShelleyBasedEra.SDijkstra => current ++ update
 
   private def rationals(n: Node, what: DecodeSite): Either[LedgerDecodeError, Vector[Rational]] =
     CborRead.array(n, what).flatMap(_.traverse(CborRead.rational(_, what, CborRead.Bound.Unit)))

@@ -905,6 +905,36 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     )
   }
 
+  // An update's cost models replace those in force before Conway: Alonzo and Babbage take the class
+  // default `applyPPUpdates` (`Alonzo/PParams.hs:314`, `Babbage/PParams.hs:172`), whose generic
+  // update sets each field the update names (`Core/PParams.hs:320-358, 379-392`, cardano-ledger
+  // f649f975). The parameters in force hold PlutusV1 (0) and PlutusV2 (1).
+  private def costModelsUpdate(language: String, count: String, n: Int): ParamUpdate =
+    val hex = "a1" + language + "98" + count + "1864" * n
+    ParamUpdate(Map(18 -> Bytes.fromHex(hex).fold(e => fail(e.toString), identity)))
+
+  test("an enacted Alonzo update naming only PlutusV1's cost model drops PlutusV2's") {
+    val pp = params(6)
+    assertEquals(pp.costModels.keySet, Set(0, 1))
+    val after = proposedIn[Alonzo](pp, costModelsUpdate("00", "a6", 166))
+    assertEquals(predicted(after).costModels.keySet, Set(0))
+    assertEquals(predicted(after).costModels, Map(0 -> Vector.fill(166)(BigInt(100))))
+    val adopted = paramsOf(as[Alonzo](afterLastBlock(after, boundaryGlobals)))
+    assertEquals(adopted.costModels.keySet, Set(0))
+    assertEquals(adopted.costModels, Map(0 -> Vector.fill(166)(BigInt(100))))
+  }
+
+  test("an enacted Babbage update naming only PlutusV2's cost model drops PlutusV1's") {
+    val pp = params(7)
+    assertEquals(pp.costModels.keySet, Set(0, 1))
+    val after = proposedIn[Babbage](pp, costModelsUpdate("01", "af", 175))
+    assertEquals(predicted(after).costModels.keySet, Set(1))
+    assertEquals(predicted(after).costModels, Map(1 -> Vector.fill(175)(BigInt(100))))
+    val adopted = paramsOf(as[Babbage](afterLastBlock(after, boundaryGlobals)))
+    assertEquals(adopted.costModels.keySet, Set(1))
+    assertEquals(adopted.costModels, Map(1 -> Vector.fill(175)(BigInt(100))))
+  }
+
   test(
     "the boundary that adopts protocol version 9 is a Conway transition and counts a dormant epoch"
   ) {

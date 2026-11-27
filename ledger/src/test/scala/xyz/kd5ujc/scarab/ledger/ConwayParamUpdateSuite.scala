@@ -180,6 +180,29 @@ class ConwayParamUpdateSuite extends FunSuite:
     assertEquals(enacted.prevIds.paramUpdate, Some(id))
   }
 
+  test("an enacted parameter change merges its cost models into those in force") {
+    // `conwayApplyPPUpdates` sets the cost models by `updateCostModels` (`Conway/PParams.hs:830-831,
+    // 1209`; `CostModels.hs:404-415`, cardano-ledger f649f975): the languages it names replace
+    // theirs, the others stay
+    val update = decoded("a1" + "12" + "a1" + "00" + "98a6" + "1864" * 166)
+    val st = EnactState(
+      None,
+      ConwayGenesis.noConstitution,
+      TestLedger.params(10),
+      TestLedger.params(10),
+      0,
+      Map.empty,
+      PrevIds()
+    )
+    assertEquals(st.params.costModels.keySet, Set(0, 1))
+    val id = GovActionId(Bytes(Vector.fill(32)(1.toByte)), 0)
+    val enacted = Ratify.enact(st, id, GovAction.ParameterChange(None, update, None))
+    assertEquals(
+      enacted.params.costModels,
+      Map(0 -> Vector.fill(166)(BigInt(100)), 1 -> st.params.costModels(1))
+    )
+  }
+
   test("the Plutus data of an update is the typed values in key order") {
     import xyz.kd5ujc.scarab.plutus.PlutusData
     import PlutusData.{I, List as PList, Map as PMap}
