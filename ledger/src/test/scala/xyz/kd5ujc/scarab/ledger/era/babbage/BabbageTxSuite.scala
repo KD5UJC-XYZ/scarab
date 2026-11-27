@@ -78,6 +78,9 @@ class BabbageTxSuite extends FunSuite:
   private def in(i: Int): TxIn = TxIn(hash(9, 32), i)
   private val out = ConwayTestKit.out(TestLedger.key().address(), 2000000)
 
+  /** A certificate of each of Babbage's kinds, the pool's retirement twice: a repeat, which
+    * Babbage's sequence of certificates keeps.
+    */
   private val certificates: Vector[Certificate] = Vector(
     Certificate.Register(Credential.Key(owner), None),
     Certificate.Unregister(Credential.Key(owner), None),
@@ -86,7 +89,6 @@ class BabbageTxSuite extends FunSuite:
     Certificate.GenesisDelegate(genesis, delegate, vrf),
     Certificate.MoveRewards(Pot.Reserves, Right(Map(Credential.Key(owner) -> BigInt(-5)))),
     Certificate.MoveRewards(Pot.Treasury, Left(1000)),
-    // a repeat, which Babbage's sequence of certificates keeps
     Certificate.RetirePool(pool, 300),
     Certificate.RegisterPool(
       PoolParams(
