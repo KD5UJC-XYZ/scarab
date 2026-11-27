@@ -90,8 +90,10 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
 
   private def compact(n: BigInt): CompactCoin = must(CompactCoin.fromBigInt(n))
 
-  /** A Conway ledger with three DReps, two pools, three delegating accounts and a funded payer. */
-  private final class World(val pv: Int):
+  /** A Conway ledger with three DReps, two pools, three delegating accounts and a funded payer;
+    * `tweak` changes its parameters.
+    */
+  private final class World(val pv: Int, tweak: ProtocolParams => ProtocolParams = identity):
     val payer = key()
     val dreps = Vector.fill(3)(key())
     val stakes = Vector.fill(3)(key())
@@ -102,23 +104,25 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     val fundIn: TxIn = txIn(77)
     val fundCoin: BigInt = 10000 * ada
     val treasury: BigInt = 100000 * ada
-    val params: ProtocolParams = TestLedger
-      .params(pv)
-      // no monetary expansion or treasury cut: the treasury moves only through governance
-      .copy(
-        drepDeposit = 500 * ada,
-        drepActivity = 20,
-        govActionDeposit = 1000 * ada,
-        govActionLifetime = 3,
-        committeeMaxTermLength = 100,
-        committeeMinSize = 0,
-        rho = Rational.zero,
-        tau = Rational.zero,
-        poolDeposit = 500 * ada,
-        poolVotingThresholds = PoolVotingThresholds(half, half, half, half, half),
-        drepVotingThresholds =
-          DRepVotingThresholds(half, half, half, half, half, half, half, half, half, half)
-      )
+    val params: ProtocolParams = tweak(
+      TestLedger
+        .params(pv)
+        // no monetary expansion or treasury cut: the treasury moves only through governance
+        .copy(
+          drepDeposit = 500 * ada,
+          drepActivity = 20,
+          govActionDeposit = 1000 * ada,
+          govActionLifetime = 3,
+          committeeMaxTermLength = 100,
+          committeeMinSize = 0,
+          rho = Rational.zero,
+          tau = Rational.zero,
+          poolDeposit = 500 * ada,
+          poolVotingThresholds = PoolVotingThresholds(half, half, half, half, half),
+          drepVotingThresholds =
+            DRepVotingThresholds(half, half, half, half, half, half, half, half, half, half)
+        )
+    )
 
     def poolParams(k: Key): PoolParams =
       PoolParams(
@@ -375,6 +379,162 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
   private def idOf(st: Step, index: Int): GovActionId = GovActionId(st.fund.id, index)
 
   // ---------------------------------------------------------------------------------------------
+
+  // The pulser takes the DReps as they stand at the boundary (`dpDRepState = vsDReps vState`,
+  // `Governance.hs:502-506`; `reDRepState = dpDRepState`, `DRepPulser.hs:401-405`; cardano-ledger
+  // f649f975), and RATIFY leaves out a DRep with `reCurrentEpoch > drepExpiry` (`Ratify.hs:262-268`).
+  // A transaction with a proposal bumps the live expiries by the dormant epochs (`Certs.hs:238-241`;
+  // `updateDormantDRepExpiries`, 257-267), which the ratification enacted at the next boundary must
+  // not see (blinklabs-io/dingo#6789). The boundary into epoch 6 is dormant because the only
+  // proposal lapsed after epoch 5 (`updateNumDormantEpochs`, `Epoch.hs:195-201`), so a proposal in
+  // epoch 6 bumps the DRep that voted on the motion from expired to active, after the pulser saw it
+  // expired.
+  //
+  // The motion of no confidence lapses after epoch 5, and the vote sets the voter's expiry to
+  // 5 + `drepActivity`; the other two DReps expired long before and stay expired through the bump;
+  // the SPOs have no say on the motion. Both proposals' deposits go to the account of a lapsed
+  // DRep, so they move no stake that is counted. With `alwaysNoConfidence` the account of the
+  // second DRep delegates to AlwaysNoConfidence instead, which counts as yes on the motion
+  // (`Ratify.hs:276-278`), and the motion needs two thirds of the DRep stake. `vote` is the voter's
+  // vote, none for silence.
+  private final case class BoundaryExpiry(
+      voter: Key,
+      e6: Step,
+      bumped: Step,
+      e7: Step,
+      motion: GovActionId
+  )
+
+  private def boundaryExpiry(
+      activity: Int,
+      vote: Option[Vote],
+      alwaysNoConfidence: Boolean
+  ): BoundaryExpiry =
+    val w = World(
+      10,
+      p =>
+        p.copy(
+          drepActivity = activity,
+          govActionLifetime = 0,
+          poolVotingThresholds = PoolVotingThresholds.zero,
+          drepVotingThresholds = p.drepVotingThresholds.copy(motionNoConfidence =
+            if alwaysNoConfidence then Rational(2, 3) else half
+          )
+        )
+    )
+    val voter = w.dreps(0)
+    val lapsed = w.dreps.drop(1).map(drepCredential)
+    val s0 = w.initial
+    // the voter's expiry is the one its vote sets under `drepActivity = 0`, so that it is the same
+    // when it is silent
+    val expired = native.ConwayNewEpochState.dreps.modify(dreps =>
+      lapsed
+        .foldLeft(dreps)((m, c) => m.updated(c, m(c).copy(expiry = EpochNo.fromUnsigned(3L))))
+        .updated(
+          drepCredential(voter),
+          dreps(drepCredential(voter)).copy(expiry = EpochNo.fromUnsigned(5L))
+        )
+    )(s0.nes)
+    val delegated =
+      if !alwaysNoConfidence then expired
+      else
+        val noConfidence = staking(w.stakes(1))
+        val accounts = native.ConwayNewEpochState.accounts.modify(a =>
+          a.copy(states =
+            a.states.updated(
+              noConfidence,
+              a.states(noConfidence).copy(drep = Some(native.DRep.DRepAlwaysNoConfidence))
+            )
+          )
+        )(expired)
+        native.ConwayNewEpochState.dreps.modify(dreps =>
+          dreps.updated(
+            lapsed(0),
+            dreps(lapsed(0)).copy(delegators = dreps(lapsed(0)).delegators - noConfidence)
+          )
+        )(accounts)
+    val start = s0.copy(nes = delegated)
+    val proposed = ok(
+      submit(
+        w,
+        start,
+        Vector.empty,
+        proposals = Vector(proposal(w, GovAction.NoConfidence(None), 2)),
+        deposits = 1000 * ada
+      )
+    )
+    val motion = idOf(proposed, 0)
+    val voted = vote.fold(proposed)(v =>
+      ok(submit(w, proposed, Vector(voter), votes = Vector(drepVote(voter, motion, v))))
+    )
+    val e6 = boundary(voted)
+    // epoch 6: an information action bumps the live expiries by the dormant epochs
+    val bumped = ok(
+      submit(
+        w,
+        e6,
+        Vector.empty,
+        proposals = Vector(proposal(w, GovAction.Info, 2)),
+        deposits = 1000 * ada
+      )
+    )
+    val e7 = boundary(bumped)
+    Vector(start -> "start", voted -> "voted", e6 -> "epoch 6", bumped -> "bumped", e7 -> "epoch 7")
+      .foreach(assertInvariants.tupled)
+    BoundaryExpiry(voter, e6, bumped, e7, motion)
+
+  /** The pulser started at the boundary into epoch 6 took the voter expired, and the proposal in
+    * epoch 6 made it active again in the live state.
+    */
+  private def assertBumpedAfterTheSnapshot(r: BoundaryExpiry): Unit =
+    assertEquals(r.e6.vState.numDormantEpochs.toBigInt, BigInt(1))
+    assertEquals(
+      r.e6.gov.drepPulsing.snapshot.drepState.get(r.voter.credential).map(_.expiry),
+      Some(BigInt(5))
+    )
+    assertEquals(r.bumped.drepState(r.voter).expiry.toBigInt, BigInt(6))
+    assertEquals(r.bumped.vState.numDormantEpochs.toBigInt, BigInt(0))
+
+  test("RATIFY reads the DRep expiries of the boundary, not the ones a later proposal bumps") {
+    val r = boundaryExpiry(activity = 0, Some(Vote.Yes), alwaysNoConfidence = false)
+    assertBumpedAfterTheSnapshot(r)
+    // the voter was left out, so the motion is not enacted: it lapsed and is removed, and the
+    // committee is as it was
+    assertEquals(r.e6.gov.drepPulsing.ratify.enacted.map(_.id), Vector.empty)
+    assert(r.e6.gov.committee.isDefined)
+    assertEquals(r.e7.gov.committee, r.e6.gov.committee)
+    assert(
+      !r.e7.gov.proposals.actions.exists(_.id == r.motion),
+      "the lapsed motion is still stored"
+    )
+    // the control: with the voter active at the boundary into epoch 6, the same vote carries the
+    // motion, so the outcome above turns on the expiry the pulser read alone
+    val control = boundaryExpiry(activity = 1, Some(Vote.Yes), alwaysNoConfidence = false)
+    assertEquals(control.e6.drepState(control.voter).expiry.toBigInt, BigInt(6))
+    assertEquals(control.e6.gov.drepPulsing.ratify.enacted.map(_.id), Vector(control.motion))
+    assertEquals(control.e7.gov.committee, None)
+  }
+
+  test(
+    "a DRep that a later proposal bumps does not hold back a motion by voting no, or by silence"
+  ) {
+    // a DRep that votes no, or does not vote, counts against the motion only while it is active
+    // (`Ratify.hs:266-275`, cardano-ledger f649f975); left out, the AlwaysNoConfidence stake alone
+    // carries the motion
+    Vector(Some(Vote.No), None).foreach { vote =>
+      val r = boundaryExpiry(activity = 0, vote, alwaysNoConfidence = true)
+      assertBumpedAfterTheSnapshot(r)
+      assertEquals(r.e6.gov.drepPulsing.ratify.enacted.map(_.id), Vector(r.motion), s"$vote")
+      assertEquals(r.e7.gov.committee, None, s"$vote")
+    }
+    // the control: with the voter active at the boundary into epoch 6, its no holds the motion
+    // to half of the stake, short of two thirds
+    val control = boundaryExpiry(activity = 1, Some(Vote.No), alwaysNoConfidence = true)
+    assertEquals(control.e6.drepState(control.voter).expiry.toBigInt, BigInt(6))
+    assertEquals(control.e6.gov.drepPulsing.ratify.enacted.map(_.id), Vector.empty)
+    assert(control.e6.gov.committee.isDefined)
+    assertEquals(control.e7.gov.committee, control.e6.gov.committee)
+  }
 
   test("a treasury withdrawal that the DReps accept is enacted two boundaries after the vote") {
     val w = World(10)
