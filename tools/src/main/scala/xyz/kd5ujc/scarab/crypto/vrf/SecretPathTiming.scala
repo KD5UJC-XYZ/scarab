@@ -2,58 +2,106 @@
 package xyz.kd5ujc.scarab.crypto.vrf
 
 import com.weavechain.curve25519.{Constants, EdwardsPoint, Scalar}
+import io.circe.Json
+import io.circe.syntax.*
+import java.nio.charset.StandardCharsets
+import java.nio.file.{Files, Paths}
 import java.security.SecureRandom
 import org.bouncycastle.math.ec.rfc7748.X25519Field
 import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning
+import xyz.kd5ujc.scarab.crypto.kes.Sum6KesSigning.SigningKey
 import xyz.kd5ujc.scarab.crypto.vrf.secret.Draft03Key
 
-/** A dudect-style timing test of the VRF prover's secret path (#1418): for each operation, two
-  * classes of secret input, one fixed and one random, measured interleaved in a random order, and
-  * Welch's t of the two classes' times, on all measurements and on each of 100 crops that keep the
-  * measurements below a percentile (Reparaz, Balasch and Verbauwhede, "Dude, is my code constant
-  * time?", DATE 2017, and the `dudect` program's percentiles). A program run by hand (TOOL-1),
-  * never a test: the numbers depend on the machine and its load.
+/** A dudect-style timing test of the secret paths of VRF proving and KES signing (#1418): for each
+  * operation, two classes of secret input, one fixed and one random, measured interleaved in a
+  * random order, and Welch's t of the two classes' times, on all measurements and on each of 100
+  * crops that keep the measurements below a percentile (Reparaz, Balasch and Verbauwhede, "Dude, is
+  * my code constant time?", DATE 2017, and the `dudect` program's percentiles). A program run by
+  * hand and by the scheduled workflow `secret-timing.yml` (TOOL-1), never a test: the numbers
+  * depend on the machine and its load.
   *
   * The operations: `prove` and `output` of `secret.Draft03Key` (the secret is the key, its seed;
-  * the public input H is the same for both classes at each measurement), and the two constant-time
-  * multiplications they make, `[k]H` and `[k]B` by radix-16 digits (the secret is the scalar; the
-  * fixed class is zero, whose digits select the identity from every table, and then a scalar drawn
-  * at random once, a secret like any other, so that an effect of the extreme value can be told from
-  * one of the secret's value in general). Every input is chosen before the timing starts. Each
-  * class draws its inputs from a pool of 1024 entries of its own (the fixed pool holds copies of
-  * the fixed value); the two pools of a target are made in one loop, an entry of each in turn, so
-  * that they lie in memory alike, and an array input is copied, untimed, into the one buffer that
-  * every measurement of its target then passes. The two classes run the same code over the same
-  * memory and differ only in their values. Three controls frame them: `random/random`, the `[k]H`
-  * multiplication with both classes drawn at random, whose t estimates what this machine reports
-  * when there is nothing to find; straight-line field arithmetic (Bouncy Castle's in place:
-  * squarings and multiplications, no table, no selection, no allocation) with an element drawn once
-  * against random ones, which estimates what the machine does with a repeated value against
-  * changing ones; and the variable-time double-and-add of `Ed25519Point.scalarMultiply` with a
-  * fixed scalar of one bit against random scalars, which leaks by construction and shows the test
-  * can see a leak here.
+  * the public input H is the same for both classes at each measurement); `sign` of a Sum6 KES key
+  * at period 0 and its evolution from period 1 to period 2, which generates a subtree of two leaves
+  * (`Sum6KesSigning`; the secret is the key's seed, the message the same for both classes at each
+  * measurement, and the evolution moves a copy of the key made, untimed, just before it); and the
+  * two constant-time multiplications they make, `[k]H` and `[k]B` by radix-16 digits (the secret is
+  * the scalar; the fixed class is zero, whose digits select the identity from every table, and then
+  * a scalar drawn at random once, a secret like any other, so that an effect of the extreme value
+  * can be told from one of the secret's value in general). Every input is chosen before the timing
+  * starts. Each class draws its inputs from a pool of 1024 entries of its own (the fixed pool holds
+  * copies of the fixed value); the two pools of a target are made in one loop, an entry of each in
+  * turn, so that they lie in memory alike, and an array input is copied, untimed, into the one
+  * buffer that every measurement of its target then passes. The two classes run the same code over
+  * the same memory and differ only in their values. Three controls frame them: `random/random`, the
+  * `[k]H` multiplication with both classes drawn at random from one pool, whose t estimates what
+  * this machine reports when there is nothing to find (from one pool, since two pools of random
+  * scalars differ by their draw, and a leak in the multiplication would turn that into a reading);
+  * straight-line field arithmetic (Bouncy Castle's in place: squarings and multiplications, no
+  * table, no selection, no allocation) with an element drawn once against random ones, which
+  * estimates what the machine does with a repeated value against changing ones; and the
+  * variable-time double-and-add of `Ed25519Point.scalarMultiply` with a fixed scalar of one bit
+  * against random scalars, which leaks by construction and shows the test can see a leak here.
   *
-  * How to read it: the verdict is on the larger of |t| on all measurements and the largest |t| over
-  * the crops. Above 10 is dudect's "probably not constant time", above 500 "definitely not"; below
-  * 10 it is "no leak found with this many measurements on this machine", which is a bounded
-  * negative observation. It cannot show constant time: the JIT compiles what it measures and may
-  * compile it differently on another JVM, flags or input history; the timer resolves tens of
-  * nanoseconds; collections and other threads add noise that cropping only partly removes; and a
-  * leak smaller than the noise at this sample size, or one through the cache that this machine's
-  * timing does not expose, is not seen. Compare each t with the `random/random` control's.
+  * How to read it: a target's statistic is the larger of |t| on all measurements and the largest |t|
+  * over the crops. Above 10 is dudect's "probably not constant time", above 500 "definitely not";
+  * below 10 it is "no leak found with this many measurements on this machine", which is a bounded
+  * negative observation. The controls decide whether the run says anything at all: it is
+  * inconclusive when the random/random control is above 10 (the machine reports a difference where
+  * there is none), when the field-arithmetic control is above 10 (a value repeated against changing
+  * ones differs here by itself, so a fixed-against-random difference of that size cannot be told
+  * from it), or when the variable-time control is not above 10 (the run could not see a leak built
+  * in by construction). In a conclusive run a secret target above 10 is a leak seen once, which the
+  * scheduled check confirms or not in other runs (docs/running/secret-timing.md). It cannot show
+  * constant time: the JIT compiles what it measures and may compile it differently on another JVM,
+  * flags or input history; the timer resolves tens of nanoseconds; collections and other threads
+  * add noise that cropping only partly removes; and a leak smaller than the noise at this sample
+  * size, or one through the cache that this machine's timing does not expose, is not seen.
   *
   * Run in the JDK image, on an idle machine, in a JVM of its own:
-  * `java -XX:+UseSerialGC -Xbatch -cp <tools runtime classpath> xyz.kd5ujc.scarab.crypto.vrf.SecretPathTiming [measurements]`
-  * (docs/performance/mainnet-follower.md, section 67, has the protocol and a run).
+  * `java -XX:+UseSerialGC -Xbatch -cp <tools runtime classpath> xyz.kd5ujc.scarab.crypto.vrf.SecretPathTiming [measurements [report]]`
+  * (docs/performance/mainnet-follower.md, section 67, has the protocol and a run). With `report`, a
+  * path, the results are also written there as JSON, which `scripts/secret_timing.py` reads. It
+  * exits 0 once it has measured every target, whatever it found; an operation that fails ends it
+  * with an exception.
   */
 object SecretPathTiming:
   private val Crops = 100
+
+  /** dudect's thresholds on |t|, its `t_threshold_moderate` and `t_threshold_bananas`. */
+  private val Probably = 10.0
+  private val Definitely = 500.0
+
+  /** The bytes of a message a KES key signs: about a Praos header body's. */
+  private val MessageBytes = 256
+
+  /** What a target is for: a secret path, or a control that decides whether the run is conclusive.
+    */
+  private enum Role(val label: String):
+    /** A secret path: above [[Probably]] in a conclusive run, a leak seen in that run. */
+    case Secret extends Role("secret")
+
+    /** Both classes random: above [[Probably]], the machine reports a difference where none is. */
+    case NoiseControl extends Role("noise-control")
+
+    /** Straight-line arithmetic, a value drawn once against random ones: above [[Probably]], a
+      * value repeated against changing ones differs on this machine by itself.
+      */
+    case ValueControl extends Role("value-control")
+
+    /** A variable-time multiplication: not above [[Probably]], the run cannot see a leak that is
+      * there by construction.
+      */
+    case LeakControl extends Role("leak-control")
 
   /** One operation and its two classes of input, the i-th of a pool of each: `stage` makes,
     * untimed, what the timed `op` is given, and the operation's result is a byte the sink keeps.
     */
   private final case class Target[A](
+      id: String,
       name: String,
+      role: Role,
       measurements: Int,
       fixed: Int => A,
       random: Int => A,
@@ -89,7 +137,36 @@ object SecretPathTiming:
       maxT: Double,
       atCrop: Int,
       sink: Int
-  )
+  ):
+    /** What the verdict is on: the larger of |t| on all measurements and the crops' largest. */
+    def statistic: Double = math.max(math.abs(t), maxT)
+
+  /** Why a run is inconclusive: a control, by its name, that read what it must not. */
+  private enum Flaw:
+    case Noisy(name: String, statistic: Double)
+    case ValueEffect(name: String, statistic: Double)
+    case Blind(name: String, statistic: Double)
+
+    def message: String = this match
+      case Noisy(name, s) =>
+        f"$name reads $s%.1f, above $Probably%.0f: this machine reports a difference where there is none"
+      case ValueEffect(name, s) =>
+        f"$name reads $s%.1f, above $Probably%.0f: a value repeated against changing ones differs here by itself"
+      case Blind(name, s) =>
+        f"$name reads $s%.1f, not above $Probably%.0f: this run could not see a leak that is there by construction"
+
+  /** The controls that read what they must not, in the order measured; none in a conclusive run. */
+  private def flaws(measured: Vector[(Target[?], Result)]): Vector[Flaw] =
+    measured.flatMap { (target, r) =>
+      target.role match
+        case Role.NoiseControl if r.statistic > Probably =>
+          Some(Flaw.Noisy(target.name, r.statistic))
+        case Role.ValueControl if r.statistic > Probably =>
+          Some(Flaw.ValueEffect(target.name, r.statistic))
+        case Role.LeakControl if r.statistic <= Probably =>
+          Some(Flaw.Blind(target.name, r.statistic))
+        case _ => None
+    }
 
   /** Measure `target`: warm both classes, then time `measurements` calls, each of a class drawn at
     * random, and compute the statistics.
@@ -139,12 +216,51 @@ object SecretPathTiming:
     Result(allFixed, allRandom, welch(allFixed, allRandom), maxT, atCrop, sink)
 
   private def verdict(t: Double): String =
-    if t > 500 then "definitely not constant time"
-    else if t > 10 then "probably not constant time"
+    if t > Definitely then "definitely not constant time"
+    else if t > Probably then "probably not constant time"
     else "no leak found at this size"
+
+  /** The run as JSON: its sizes and thresholds, every target's classes and statistics, whether the
+    * run is conclusive and why not.
+    */
+  private def report(
+      n: Int,
+      proofs: Int,
+      measured: Vector[(Target[?], Result)],
+      found: Vector[Flaw],
+      sink: Int
+  ): Json =
+    def side(s: Stats): Json = Json.obj("n" -> s.n.asJson, "mean_ns" -> s.mean.asJson)
+    Json.obj(
+      "tool" -> "SecretPathTiming".asJson,
+      "version" -> 1.asJson,
+      "measurements" -> n.asJson,
+      "proofs" -> proofs.asJson,
+      "crops" -> Crops.asJson,
+      "probably" -> Probably.asJson,
+      "definitely" -> Definitely.asJson,
+      "targets" -> measured.map { (target, r) =>
+        Json.obj(
+          "id" -> target.id.asJson,
+          "name" -> target.name.asJson,
+          "role" -> target.role.label.asJson,
+          "fixed" -> side(r.fixed),
+          "random" -> side(r.random),
+          "t_all" -> r.t.asJson,
+          "max_t_crops" -> r.maxT.asJson,
+          "at_crop" -> r.atCrop.asJson,
+          "statistic" -> r.statistic.asJson,
+          "over" -> (r.statistic > Probably).asJson
+        )
+      }.asJson,
+      "conclusive" -> found.isEmpty.asJson,
+      "flaws" -> found.map(_.message).asJson,
+      "sink" -> f"0x$sink%08x".asJson
+    )
 
   def main(args: Array[String]): Unit =
     val n = args.headOption.flatMap(_.toIntOption).getOrElse(100000)
+    val reportPath = args.lift(1).map(Paths.get(_))
     val random = new SecureRandom
     def bytes(k: Int): Array[Byte] =
       val out = new Array[Byte](k)
@@ -165,6 +281,12 @@ object SecretPathTiming:
     val hStrings = hPoints.map(p => Bytes.fromArray(p.compress().toByteArray))
     def key(seed: Array[Byte]): Draft03Key =
       Draft03Key.fromSeed(Bytes.fromArray(seed)).fold(e => sys.error(e.toString), identity)
+    def kesKey(seed: Array[Byte]): SigningKey =
+      Sum6KesSigning.generate(Bytes.fromArray(seed)).fold(e => sys.error(e.message), identity)
+    // a copy of `k` at the next period, which the pool keeps: each measurement moves a copy of it
+    def evolvedOnce(k: SigningKey): SigningKey =
+      val moved = k.copy
+      moved.evolve().fold(e => sys.error(e.message), _ => moved)
     // the fixed and the random pool of a target, made in one loop, an entry of each in turn
     def paired[A](fixed: => A, random: => A): (Vector[A], Vector[A]) =
       Vector.fill(pool)((fixed, random)).unzip
@@ -175,6 +297,10 @@ object SecretPathTiming:
         System.arraycopy(input, 0, buffer, 0, size)
         buffer
     val (fixedKeys, randomKeys) = paired(key(new Array[Byte](32)), key(bytes(32)))
+    val (fixedKes, randomKes) = paired(kesKey(new Array[Byte](32)), kesKey(bytes(32)))
+    val (fixedKesNext, randomKesNext) =
+      fixedKes.zip(randomKes).map((f, r) => (evolvedOnce(f), evolvedOnce(r))).unzip
+    val messages = Vector.fill(pool)(Bytes.fromArray(bytes(MessageBytes)))
     val drawnOnce = digitsOf(below255(bytes(32)))
     val oneBitScalar = Array.tabulate[Byte](32)(i => if i == 0 then 1 else 0)
     val (zeroDigits, randomDigits) = paired(new Array[Byte](64), digitsOf(below255(bytes(32))))
@@ -187,10 +313,18 @@ object SecretPathTiming:
     // a key and the H of the measurement: the same H for both classes at each index
     def withH(keys: Vector[Draft03Key])(i: Int): (Draft03Key, Bytes) =
       (keys(i % pool), hStrings(i % pool))
+    // a KES key and the message of the measurement: the same message for both classes at each index
+    def withMessage(keys: Vector[SigningKey])(i: Int): (SigningKey, Bytes) =
+      (keys(i % pool), messages(i % pool))
     def proved(input: (Draft03Key, Bytes)): Byte =
       input._1.prove(input._2).fold(e => sys.error(e.toString), _.proof.toArray(79))
     def output(input: (Draft03Key, Bytes)): Byte =
       input._1.output(input._2).fold(e => sys.error(e.toString), _.toArray(63))
+    // the last byte of the leaf's signature, S
+    def kesSigned(input: (SigningKey, Bytes)): Byte =
+      input._1.sign(input._2).fold(e => sys.error(e.message), _.toArray(63))
+    def kesEvolved(k: SigningKey): Byte =
+      k.evolve().fold(e => sys.error(e.message), _ => k.period.toByte)
     def times(e: Array[Byte]): Byte = h0.multiplyRadix16(e).compress().toByteArray()(0)
     def base(e: Array[Byte]): Byte =
       Constants.ED25519_BASEPOINT_TABLE.multiplyRadix16(e).compress().toByteArray()(0)
@@ -208,10 +342,16 @@ object SecretPathTiming:
       }
       x(0).toByte
     def from[A](pooled: Vector[A])(i: Int): A = pooled(i % pool)
+    // the same pool half a turn on: two classes that draw from one pool are alike whatever the
+    // operation does with each entry, where two pools of random entries differ by their draw, and
+    // an operation that leaks would make that difference a reading of the control
+    def halfTurn[A](pooled: Vector[A])(i: Int): A = pooled((i + pool / 2) % pool)
     val proofs = math.max(1000, n / 4)
     val targets: Vector[Target[?]] = Vector(
       Target(
+        "vrf-prove",
         "prove (secret: the key)",
+        Role.Secret,
         proofs,
         withH(fixedKeys),
         withH(randomKeys),
@@ -219,7 +359,9 @@ object SecretPathTiming:
         proved
       ),
       Target(
+        "vrf-output",
         "output (secret: the key)",
+        Role.Secret,
         proofs,
         withH(fixedKeys),
         withH(randomKeys),
@@ -227,7 +369,29 @@ object SecretPathTiming:
         output
       ),
       Target(
+        "kes-sign",
+        "KES sign, period 0 (secret: the key)",
+        Role.Secret,
+        proofs,
+        withMessage(fixedKes),
+        withMessage(randomKes),
+        identity,
+        kesSigned
+      ),
+      Target(
+        "kes-evolve",
+        "KES evolve, period 1 to 2 (secret: the key)",
+        Role.Secret,
+        proofs,
+        from(fixedKesNext),
+        from(randomKesNext),
+        _.copy,
+        kesEvolved
+      ),
+      Target(
+        "kh-zero",
         "[k]H, zero/random (secret: k)",
+        Role.Secret,
         n,
         from(zeroDigits),
         from(randomDigits),
@@ -235,7 +399,9 @@ object SecretPathTiming:
         times
       ),
       Target(
+        "kb-zero",
         "[k]B, zero/random (secret: k)",
+        Role.Secret,
         n,
         from(zeroDigits),
         from(randomDigits),
@@ -243,7 +409,9 @@ object SecretPathTiming:
         base
       ),
       Target(
+        "kh-once",
         "[k]H, k drawn once/random",
+        Role.Secret,
         n,
         from(typicalDigits),
         from(otherDigits),
@@ -251,7 +419,9 @@ object SecretPathTiming:
         times
       ),
       Target(
+        "kb-once",
         "[k]B, k drawn once/random",
+        Role.Secret,
         n,
         from(typicalDigits),
         from(otherDigits),
@@ -259,15 +429,19 @@ object SecretPathTiming:
         base
       ),
       Target(
+        "control-random",
         "control: [k]H, random/random",
+        Role.NoiseControl,
         n,
         from(otherDigits),
-        from(randomDigits),
+        halfTurn(otherDigits),
         staged(64),
         times
       ),
       Target(
+        "control-field",
         "control: field arithmetic, drawn once/random",
+        Role.ValueControl,
         n,
         from(fixedElements),
         from(randomElements),
@@ -275,7 +449,9 @@ object SecretPathTiming:
         field
       ),
       Target(
+        "control-vartime",
         "control: Ed25519Point.scalarMultiply, one bit/random",
+        Role.LeakControl,
         n,
         from(oneBit),
         from(randomScalars),
@@ -284,17 +460,35 @@ object SecretPathTiming:
       )
     )
     println(
-      s"SecretPathTiming: $n measurements a multiplication, $proofs a proof or output, $Crops crops"
+      s"SecretPathTiming: $n measurements a multiplication, $proofs a proof, output, signature or evolution, $Crops crops"
     )
     println(
       f"${"operation"}%-52s ${"fixed"}%8s ${"random"}%8s ${"ns fixed"}%10s ${"ns random"}%10s ${"t all"}%8s ${"max |t|"}%8s ${"crop"}%5s  verdict"
     )
-    val sinks = targets.map { target =>
+    val measured: Vector[(Target[?], Result)] = targets.map { target =>
       System.gc()
       val r = measure(target, random)
       println(
-        f"${target.name}%-52s ${r.fixed.n}%8d ${r.random.n}%8d ${r.fixed.mean}%10.0f ${r.random.mean}%10.0f ${r.t}%8.2f ${r.maxT}%8.2f ${r.atCrop}%5d  ${verdict(math.max(math.abs(r.t), r.maxT))}"
+        f"${target.name}%-52s ${r.fixed.n}%8d ${r.random.n}%8d ${r.fixed.mean}%10.0f ${r.random.mean}%10.0f ${r.t}%8.2f ${r.maxT}%8.2f ${r.atCrop}%5d  ${verdict(r.statistic)}"
       )
-      r.sink
+      (target, r)
     }
-    println(f"sink 0x${sinks.foldLeft(0)(_ ^ _)}%08x")
+    val sink = measured.foldLeft(0)(_ ^ _._2.sink)
+    println(f"sink 0x$sink%08x")
+    val found = flaws(measured)
+    val over = measured.collect {
+      case (target, r) if target.role == Role.Secret && r.statistic > Probably => target.name
+    }
+    println(
+      if found.nonEmpty then s"run: inconclusive: ${found.map(_.message).mkString("; ")}"
+      else if over.nonEmpty then
+        f"run: above $Probably%.0f in this run, to be repeated before it is a finding: ${over.mkString(", ")}"
+      else f"run: no secret target above $Probably%.0f"
+    )
+    reportPath.foreach(path =>
+      Files.writeString(
+        path,
+        report(n, proofs, measured, found, sink).spaces2,
+        StandardCharsets.UTF_8
+      )
+    )
