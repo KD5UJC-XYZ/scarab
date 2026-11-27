@@ -304,7 +304,7 @@ REQUIRED_BY_OTHER_GATES = (
     'docs/compatibility/persistence*.md',
     'docs/decisions.md',
     'fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/Targets.scala',
-    'docs/data/correspondence/*.json',
+    'docs/data/correspondence/**.json',
 )
 FORMAT_CHANGE_PATHS = OWNER_NAMED_PATHS + REQUIRED_BY_OTHER_GATES
 # Paths one storage format change may touch beyond FORMAT_CHANGE_PATHS, by the number of its pull request: an
