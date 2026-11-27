@@ -50244,15 +50244,6 @@
    ]
   },
   {
-   "reason": "the flat form of an era-typed GOV failure, one-way glue the comparisons with the flat rule read, and the action a failure carries that has no flat form: one no proposal it was given holds, or at Dijkstra a parameter change",
-   "definitions": [
-    "class ledger.era.rules.GovActionNotRead",
-    "def ledger.era.rules.ConwayGovPredFailure.readOf",
-    "def ledger.era.rules.ConwayGovPredFailure.toStored",
-    "object ledger.era.rules.ConwayGovPredFailure"
-   ]
-  },
-  {
    "reason": "the companion of Dijkstra's GOV failure type, with its equality with itself only",
    "definitions": [
     "given ledger.era.rules.DijkstraGovPredFailure.given_CanEqual_DijkstraGovPredFailure_E_DijkstraGovPredFailure_E",

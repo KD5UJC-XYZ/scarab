@@ -3,10 +3,6 @@ package xyz.kd5ujc.scarab.ledger
 
 /** GOV checks of Conway that need no state. */
 object GovChecks:
-  private[ledger] def isBootstrapAction(a: GovAction): Boolean = a match
-    case _: GovAction.ParameterChange | _: GovAction.HardFork | GovAction.Info => true
-    case _                                                                     => false
-
   /** `ppuWellFormed` (`Conway/PParams.hs:935-963`, f649f975): no zero where zero is meaningless,
     * the UTxO cost per byte only after the bootstrap phase, `nOpt` from protocol version 11, and a
     * non-empty update.
@@ -28,6 +24,3 @@ object GovChecks:
       case NOpt(v)                   => pp.protocolMajor < 11 || v.value != 0
       case _                         => true
     !u.isEmpty && u.params.forall(nonZero)
-
-  private[ledger] def canFollow(prev: (BigInt, BigInt), next: (BigInt, BigInt)): Boolean =
-    next == (prev._1 + 1, BigInt(0)) || next == (prev._1, prev._2 + 1)

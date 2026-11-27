@@ -11,8 +11,8 @@ import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
 
 /** The Conway refusals the flat rules' encoder wrote before it was deleted, and the judgments of
-  * the flat LEDGER and LEDGERS, recorded for the suites that hold Conway's era encoder and rules to
-  * them (`fixtures/conway-flat-refusals`, #85).
+  * the flat LEDGER, LEDGERS and GOV, recorded for the suites that hold Conway's era encoder and
+  * rules to them (`fixtures/conway-flat-refusals`, #85).
   */
 object FlatRecordings:
   private val Dir = Path.of("fixtures/conway-flat-refusals")
@@ -88,6 +88,13 @@ object FlatRecordings:
     val found = ledgerJudgments.filter((id, _) => id.startsWith(prefix))
     if found.isEmpty then Assertions.fail(s"no recording under $prefix")
     found
+
+  /** The judgments of Conway's era GOV and its predicates that the flat GOV gave the same of, in
+    * `ConwayGovChecksSuite` (`gov-judgments.jsonl`): each id to its cells, separated by spaces.
+    */
+  lazy val govJudgments: Map[String, Vector[String]] =
+    keyed("gov-judgments.jsonl", "id")(field("gov-judgments.jsonl", _, "r"))
+      .map((k, v) => k -> v.split(' ').toVector)
 
   /** A refusal's cell: `R:` and the digest of its `ApplyTxErr` bytes, every failure in its order.
     */
