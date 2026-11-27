@@ -143,7 +143,8 @@ class BabbageStateStoredSuite extends FunSuite:
   }
 
   /** What a state held: its proposed updates (this epoch's, the next's), whether its future
-    * parameters are known or potential, its accounts and their pointers.
+    * parameters are a prediction (`DefinitePParamsUpdate` or `PotentialPParamsUpdate`, of
+    * parameters or of none), its accounts and their pointers.
     */
   final case class Counts(
       cur: Int,
@@ -240,7 +241,12 @@ class BabbageStateStoredSuite extends FunSuite:
     Counts(
       g.curProposals.size,
       g.futureProposals.size,
-      g.futurePParams.nextParams.size,
+      g.futurePParams match
+        case StoredFuturePParams.NoPParamsUpdate => 0
+        case StoredFuturePParams.DefinitePParamsUpdate(_) |
+            StoredFuturePParams.PotentialPParamsUpdate(_) =>
+          1
+      ,
       0,
       0
     )
@@ -347,7 +353,7 @@ class BabbageStateStoredSuite extends FunSuite:
     }.toMap
     assertEquals(
       read,
-      Map("babbage-541" -> Counts(0, 0, 0, 3, 3), "babbage-727" -> Counts(3, 0, 1, 3, 3))
+      Map("babbage-541" -> Counts(0, 0, 1, 3, 3), "babbage-727" -> Counts(3, 0, 1, 3, 3))
     )
   }
 
@@ -361,9 +367,54 @@ class BabbageStateStoredSuite extends FunSuite:
     val counts = states.zipWithIndex
       .map((nes, i) => plus(governance(s"state $i", nes), accounts(s"state $i", nes)))
     assertEquals(states.size, 188)
-    // 185 states hold the three delegates' proposal and the parameters it makes; none holds a
-    // proposal for the next epoch
-    assertEquals(counts.foldLeft(noUpdate)(plus), Counts(555, 0, 185, 564, 564))
+    // 185 states hold the three delegates' proposal and the parameters it makes, the other three a
+    // potential update of no parameters; none holds a proposal for the next epoch
+    assertEquals(counts.foldLeft(noUpdate)(plus), Counts(555, 0, 188, 564, 564))
+  }
+
+  /** The node's parameter records each with other eras' fields of their own: the recorded states
+    * hold the same in every place, so this is what shows each record written back over its own
+    * place's record and not another's.
+    */
+  test("each parameter record is written back over the record of its own place") {
+    def place(n: Int): ProtocolParams =
+      sentinel.copy(coinsPerUTxOWord = n, drepDeposit = 10 * n, govActionDeposit = 100 * n)
+    val r = ShelleyGovStateRecord.babbage
+    val futures = Vector(
+      StoredFuturePParams.NoPParamsUpdate,
+      StoredFuturePParams.PotentialPParamsUpdate(None),
+      StoredFuturePParams.PotentialPParamsUpdate(Some(place(3))),
+      StoredFuturePParams.DefinitePParamsUpdate(place(3))
+    )
+    futures.foreach { future =>
+      val base = StoredShelleyGovState(Sorted.empty, Sorted.empty, place(1), place(2), future)
+      val era = right(s"$future")(ShelleyGovStateRecord.fromStored[Babbage](base))
+      assertEquals(ShelleyGovStateRecord.toStored[Babbage](era, base), base, s"$future")
+      // a base with the current and previous records swapped is written back as itself, not as
+      // the state read: the other eras' fields come from the base's place
+      val swapped = base.copy(curPParams = place(2), prevPParams = place(1))
+      val back = ShelleyGovStateRecord.toStored[Babbage](era, swapped)
+      assertEquals(back.curPParams.coinsPerUTxOWord, BigInt(2), s"$future")
+      assertEquals(back.prevPParams.coinsPerUTxOWord, BigInt(1), s"$future")
+      assertNotEquals(back, base, s"$future")
+    }
+    // future parameters where the base has none are written over its current record, from which
+    // the flat rules make them
+    val noFuture = StoredShelleyGovState(
+      Sorted.empty,
+      Sorted.empty,
+      place(1),
+      place(2),
+      StoredFuturePParams.NoPParamsUpdate
+    )
+    val era = right("no future")(ShelleyGovStateRecord.fromStored[Babbage](noFuture))
+    val predicted = EraGov.babbage.futurePParamsGovStateL.replace(
+      xyz.kd5ujc.scarab.ledger.era.FuturePParams.DefinitePParamsUpdate(era.sgsPrevPParams)
+    )(era)
+    assertEquals(
+      ShelleyGovStateRecord.toStored[Babbage](predicted, noFuture).futurePParams,
+      StoredFuturePParams.DefinitePParamsUpdate(r.storedPParams(era.sgsPrevPParams, place(1)))
+    )
   }
 
   /** A proposal of a field in a form other than the canonical one: the bytes the node keeps are

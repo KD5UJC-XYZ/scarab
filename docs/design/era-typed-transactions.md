@@ -3507,7 +3507,8 @@ Conway's rules on the classes follow as the rest of stage 2.
   - On the Haskell state `babbage-4000`, the native V10 snapshots `babbage-541` and `babbage-727` and the 188 Babbage
     states of the era-walking capture, the classes read what the flat code reads, field by field, and the
     governance state writes back identical, also over parameters that hold no Babbage value; 185 of the states hold
-    three delegates' proposals. Unregistering and registering each account again gives the flat DELEG's accounts and
+    three delegates' proposals. The recorded records hold the same other eras' fields in every place, so a
+    constructed state whose records differ there shows each written back over its own place's record. Unregistering and registering each account again gives the flat DELEG's accounts and
     pools. The instant stake gives the reference's Babbage results on the 32 cases of
     `fixtures/reference/instant-stake` (16 on pointer addresses) and the flat code's on the 22 recorded Babbage
     transactions of the V1 contexts, the two blocks of the capture that move outputs, and an output at each
