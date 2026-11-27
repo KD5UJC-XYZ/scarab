@@ -141,7 +141,9 @@ object ShelleyPpup:
       val pp = env.pp
       def epochNo(n: BigInt): F[EpochNo] =
         Sts.lift[F, LedgerDefect, EpochNo](EpochNo.fromBigInt(n).leftMap(LedgerFailure.Vocab(_)))
-      val firstIllegalProtVerUpdate: Option[ProtVer] =
+      // lazy, as the reference's `let` is: a judgment that checks no predicate (`ValidateNone`)
+      // skips `failOnJust` without scanning the proposals
+      lazy val firstIllegalProtVerUpdate: Option[ProtVer] =
         pup.updates.valuesIterator
           .map(_.update)
           .find(!hasLegalProtVerUpdate[E](pp, _))
