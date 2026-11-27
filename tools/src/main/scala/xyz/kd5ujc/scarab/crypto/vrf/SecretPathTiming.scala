@@ -36,23 +36,25 @@ import xyz.kd5ujc.scarab.crypto.vrf.secret.Draft03Key
   * extreme value can be told from one of the secret's value in general). Every input is chosen
   * before the timing starts. Each class draws its inputs from a pool of 1024 entries of its own
   * (the fixed pool holds copies of the fixed value), the i-th measurement the entry i mod 1024; the
-  * two pools of a target are made in one loop, an entry of each in turn, so that they lie in memory
-  * alike, and an array input is copied, untimed, into the one buffer that every measurement of its
-  * target then passes. The two classes run the same code over the same memory and differ only in
-  * their values. Every result is consumed after the second clock read, all of its bytes folded into
-  * a sink printed at the end (an evolution's, the evolved key's bytes), so that no work is dead.
+  * two pools of a target are made in one loop, an entry of each in turn, and held as one vector of
+  * pairs, the class first in a pair alternating ([[Pools]]), so that they lie in memory alike even
+  * after a collector has moved them; an array input is copied, untimed, into the one buffer that
+  * every measurement of its target then passes. The two classes run the same code over the same
+  * memory and differ only in their values. Every result is consumed after the second clock read,
+  * all of its bytes folded into a sink printed at the end (an evolution's, the evolved key's
+  * bytes), so that no work is dead.
   *
   * Four controls frame them: `random/random`, the `[k]H` multiplication with one pool of random
   * scalars, the i-th measurement taking the same entry whichever its class, whose t estimates what
   * this machine reports when there is nothing to find whatever the multiplication does; KES signing
   * with keys of one seed in both classes, two pools made as the targets' are, which estimates what
   * the harness itself makes of objects used where they lie (keys are not staged into one buffer,
-  * and an object made first in its pair was measured faster before the classes took turns);
-  * straight- line field arithmetic (Bouncy Castle's in place: squarings and multiplications, no
-  * table, no selection, no allocation) with an element drawn once against random ones, which
-  * estimates what the machine does with a repeated value against changing ones; and the
-  * variable-time double-and-add of `Ed25519Point.scalarMultiply` with a fixed scalar of one bit
-  * against random scalars, which leaks by construction and shows the test can see a leak here.
+  * and two pools held apart read as a difference, [[Pools]]); straight-line field arithmetic
+  * (Bouncy Castle's in place: squarings and multiplications, no table, no selection, no allocation)
+  * with an element drawn once against random ones, which estimates what the machine does with a
+  * repeated value against changing ones; and the variable-time double-and-add of
+  * `Ed25519Point.scalarMultiply` with a fixed scalar of one bit against random scalars, which leaks
+  * by construction and shows the test can see a leak here.
   *
   * The statistic. Each target times a calibration batch of a tenth of its measurements first, in
   * the same random order, and takes the crops' cutoffs from it alone; that batch is then discarded
@@ -396,6 +398,25 @@ object SecretPathTiming:
       "sink" -> f"0x$sink%08x".asJson
     )
 
+  /** The two pools of a target, held as one vector of pairs, an entry of each class in each pair
+    * and the class held first alternating from pair to pair. A copying collector moves what it
+    * finds in the order it finds it: two vectors of 1,024 entries each ended in two regions of
+    * memory, one class's objects in each, and keys of one and the same seed then read as a
+    * difference between the classes, since a key is used where it lies. Held in pairs, the classes
+    * stay interleaved.
+    */
+  private final class Pools[A](pairs: Vector[(A, A)]):
+    private def first(i: Int): Boolean = (i % Pool) % 2 == 0
+
+    /** The i-th measurement's entry of the fixed class. */
+    def fixed(i: Int): A = if first(i) then pairs(i % Pool)._1 else pairs(i % Pool)._2
+
+    /** The i-th measurement's entry of the random class. */
+    def random(i: Int): A = if first(i) then pairs(i % Pool)._2 else pairs(i % Pool)._1
+
+    /** `f` of every entry, the pairs kept as they are. */
+    def map[B](f: A => B): Pools[B] = Pools(pairs.map((a, b) => (f(a), f(b))))
+
   def main(args: Array[String]): Unit =
     val n = args.headOption.flatMap(_.toIntOption).getOrElse(100000)
     val reportPath = args.lift(1).map(Paths.get(_))
@@ -426,46 +447,42 @@ object SecretPathTiming:
       val moved = k.copy
       moved.evolve().fold(e => sys.error(e.message), _ => moved)
     // the fixed and the random pool of a target, made in one loop, an entry of each in turn, the
-    // class made first alternating: an object made first in its pair was measured faster when it
-    // is used where it lies (a key), so neither class may hold all of the first ones
-    def paired[A](fixed: => A, random: => A): (Vector[A], Vector[A]) =
-      Vector
-        .tabulate(Pool) { i =>
-          if i % 2 == 0 then
-            val first = fixed
-            (first, random)
-          else
-            val first = random
-            (fixed, first)
-        }
-        .unzip
+    // class made and held first alternating (Pools)
+    def paired[A](fixed: => A, random: => A): Pools[A] =
+      Pools(Vector.tabulate(Pool) { i =>
+        if i % 2 == 0 then
+          val first = fixed
+          (first, random)
+        else
+          val first = random
+          (first, fixed)
+      })
     // an array input copied into the target's one buffer, which every measurement then passes
     def staged(size: Int): Array[Byte] => Array[Byte] =
       val buffer = new Array[Byte](size)
       input =>
         System.arraycopy(input, 0, buffer, 0, size)
         buffer
-    val (fixedKeys, randomKeys) = paired(key(new Array[Byte](32)), key(bytes(32)))
-    val (fixedKes, randomKes) = paired(kesKey(new Array[Byte](32)), kesKey(bytes(32)))
-    val (sameKes, sameKesOther) = paired(kesKey(new Array[Byte](32)), kesKey(new Array[Byte](32)))
-    val (fixedKesNext, randomKesNext) =
-      fixedKes.zip(randomKes).map((f, r) => (evolvedOnce(f), evolvedOnce(r))).unzip
+    val vrfKeys = paired(key(new Array[Byte](32)), key(bytes(32)))
+    val kesKeys = paired(kesKey(new Array[Byte](32)), kesKey(bytes(32)))
+    val sameSeed = paired(kesKey(new Array[Byte](32)), kesKey(new Array[Byte](32)))
+    val kesKeysNext = kesKeys.map(evolvedOnce)
     val messages = Vector.fill(Pool)(Bytes.fromArray(bytes(MessageBytes)))
     val drawnOnce = digitsOf(below255(bytes(32)))
     val oneBitScalar = Array.tabulate[Byte](32)(i => if i == 0 then 1 else 0)
-    val (zeroDigits, randomDigits) = paired(new Array[Byte](64), digitsOf(below255(bytes(32))))
-    val (typicalDigits, otherDigits) = paired(drawnOnce.clone(), digitsOf(below255(bytes(32))))
-    val (oneBit, randomScalars) = paired(oneBitScalar.clone(), bytes(32))
+    val zeroScalars = paired(new Array[Byte](64), digitsOf(below255(bytes(32))))
+    val onceScalars = paired(drawnOnce.clone(), digitsOf(below255(bytes(32))))
+    val oneBitScalars = paired(oneBitScalar.clone(), bytes(32))
     val elementOnce = bytes(32)
-    val (fixedElements, randomElements) = paired(elementOnce.clone(), bytes(32))
+    val elements = paired(elementOnce.clone(), bytes(32))
     val h0: EdwardsPoint = hPoints(0)
     val controlPoint = Draft03Math.h2c(bytes(32), bytes(32))
     // a key and the H of the measurement: the same H for both classes at each index
-    def withH(keys: Vector[Draft03Key])(i: Int): (Draft03Key, Bytes) =
-      (keys(i % Pool), hStrings(i % Pool))
+    def withH(keys: Int => Draft03Key)(i: Int): (Draft03Key, Bytes) =
+      (keys(i), hStrings(i % Pool))
     // a KES key and the message of the measurement: the same message for both classes at each index
-    def withMessage(keys: Vector[SigningKey])(i: Int): (SigningKey, Bytes) =
-      (keys(i % Pool), messages(i % Pool))
+    def withMessage(keys: Int => SigningKey)(i: Int): (SigningKey, Bytes) =
+      (keys(i), messages(i % Pool))
     def proved(input: (Draft03Key, Bytes)): Proved =
       input._1.prove(input._2).fold(e => sys.error(e.toString), identity)
     def output(input: (Draft03Key, Bytes)): Bytes =
@@ -495,7 +512,6 @@ object SecretPathTiming:
     def limbs(x: Array[Int]): Int = x.foldLeft(0)((acc, v) => Integer.rotateLeft(acc, 1) ^ v)
     def proof(p: Proved): Int = folded(p.proof.toArray) ^ folded(p.output.toArray)
     def encoded(b: Bytes): Int = folded(b.toArray)
-    def from[A](pooled: Vector[A])(i: Int): A = pooled(i % Pool)
     val proofs = math.max(1000, n / 4)
     val targets: Vector[Target[?, ?]] = Vector(
       Target(
@@ -503,8 +519,8 @@ object SecretPathTiming:
         "prove (secret: the key)",
         Role.Secret,
         proofs,
-        withH(fixedKeys),
-        withH(randomKeys),
+        withH(vrfKeys.fixed),
+        withH(vrfKeys.random),
         identity,
         proved,
         proof
@@ -514,8 +530,8 @@ object SecretPathTiming:
         "output (secret: the key)",
         Role.Secret,
         proofs,
-        withH(fixedKeys),
-        withH(randomKeys),
+        withH(vrfKeys.fixed),
+        withH(vrfKeys.random),
         identity,
         output,
         encoded
@@ -525,8 +541,8 @@ object SecretPathTiming:
         "KES sign, period 0 (secret: the key)",
         Role.Secret,
         proofs,
-        withMessage(fixedKes),
-        withMessage(randomKes),
+        withMessage(kesKeys.fixed),
+        withMessage(kesKeys.random),
         identity,
         kesSigned,
         encoded
@@ -536,8 +552,8 @@ object SecretPathTiming:
         "KES evolve, period 0 to 1 (secret: the key)",
         Role.Secret,
         proofs,
-        from(fixedKes),
-        from(randomKes),
+        kesKeys.fixed,
+        kesKeys.random,
         _.copy,
         kesEvolved,
         evolvedKey
@@ -547,8 +563,8 @@ object SecretPathTiming:
         "KES evolve, period 1 to 2 (secret: the key)",
         Role.Secret,
         proofs,
-        from(fixedKesNext),
-        from(randomKesNext),
+        kesKeysNext.fixed,
+        kesKeysNext.random,
         _.copy,
         kesEvolved,
         evolvedKey
@@ -558,8 +574,8 @@ object SecretPathTiming:
         "[k]H, zero/random (secret: k)",
         Role.Secret,
         n,
-        from(zeroDigits),
-        from(randomDigits),
+        zeroScalars.fixed,
+        zeroScalars.random,
         staged(64),
         times,
         folded
@@ -569,8 +585,8 @@ object SecretPathTiming:
         "[k]B, zero/random (secret: k)",
         Role.Secret,
         n,
-        from(zeroDigits),
-        from(randomDigits),
+        zeroScalars.fixed,
+        zeroScalars.random,
         staged(64),
         base,
         folded
@@ -580,8 +596,8 @@ object SecretPathTiming:
         "[k]H, k drawn once/random",
         Role.Secret,
         n,
-        from(typicalDigits),
-        from(otherDigits),
+        onceScalars.fixed,
+        onceScalars.random,
         staged(64),
         times,
         folded
@@ -591,8 +607,8 @@ object SecretPathTiming:
         "[k]B, k drawn once/random",
         Role.Secret,
         n,
-        from(typicalDigits),
-        from(otherDigits),
+        onceScalars.fixed,
+        onceScalars.random,
         staged(64),
         base,
         folded
@@ -602,8 +618,8 @@ object SecretPathTiming:
         "control: [k]H, random/random",
         Role.NoiseControl,
         n,
-        from(otherDigits),
-        from(otherDigits),
+        onceScalars.random,
+        onceScalars.random,
         staged(64),
         times,
         folded
@@ -613,8 +629,8 @@ object SecretPathTiming:
         "control: KES sign, one seed/the same seed",
         Role.NoiseControl,
         proofs,
-        withMessage(sameKes),
-        withMessage(sameKesOther),
+        withMessage(sameSeed.fixed),
+        withMessage(sameSeed.random),
         identity,
         kesSigned,
         encoded
@@ -624,8 +640,8 @@ object SecretPathTiming:
         "control: field arithmetic, drawn once/random",
         Role.ValueControl,
         n,
-        from(fixedElements),
-        from(randomElements),
+        elements.fixed,
+        elements.random,
         staged(32),
         field,
         limbs
@@ -635,8 +651,8 @@ object SecretPathTiming:
         "control: Ed25519Point.scalarMultiply, one bit/random",
         Role.LeakControl,
         n,
-        from(oneBit),
-        from(randomScalars),
+        oneBitScalars.fixed,
+        oneBitScalars.random,
         staged(32),
         control,
         folded
