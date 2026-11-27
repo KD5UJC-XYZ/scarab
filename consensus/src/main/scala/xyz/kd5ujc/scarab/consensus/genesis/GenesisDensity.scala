@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.consensus.genesis
 
+import scala.annotation.tailrec
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 
 /** Genesis Governor.hs at consensus 82ecba329: candidate agreement and density bounds. Fragment
@@ -10,9 +11,34 @@ object GenesisDensity:
   final case class Fragment(anchor: Point, headers: Vector[Point.Block]):
     def tip: Point = headers.lastOption.getOrElse(anchor)
     def points: Vector[Point] = anchor +: headers
+
+    /** How far `point` is from the anchor: 0 the anchor, `i + 1` the header at index `i`. Found by
+      * its slot, as the reference's fragment finds a point (`splitAfterPoint` and `pointOnFragment`
+      * measure by slot, ouroboros-network c45735a56c567fa977969173d18943bac6bb3821
+      * `ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs` 430-432 and 498-508): a
+      * binary search for the first header of its slot, then the headers of that slot, which are
+      * more than one only for a Byron EBB and its successor.
+      */
+    def offsetOf(point: Point): Option[Int] =
+      if point == anchor then Some(0)
+      else
+        point match
+          case Point.Origin => None
+          case Point.Block(slot, _) =>
+            @tailrec def first(low: Int, high: Int): Int =
+              if low >= high then low
+              else
+                val mid = low + (high - low) / 2
+                if headers(mid).slot.value < slot.value then first(mid + 1, high)
+                else first(low, mid)
+            Iterator
+              .from(first(0, headers.size))
+              .takeWhile(i => i < headers.size && headers(i).slot == slot)
+              .find(i => headers(i) == point)
+              .map(_ + 1)
+
     def splitAfter(point: Point): Option[(Fragment, Fragment)] =
-      val index = points.indexOf(point)
-      Option.when(index >= 0)(
+      offsetOf(point).map(index =>
         (Fragment(anchor, headers.take(index)), Fragment(point, headers.drop(index)))
       )
 
@@ -118,8 +144,14 @@ object GenesisDensity:
   def sanitize(current: Fragment, limit: Fragment): Fragment =
     limit.splitAfter(current.anchor).fold(Fragment(current.anchor, Vector.empty))(_._2)
 
-  /** ChainSel.hs trimToLoE, represented as complete candidate fragments rather than ChainDiff.
-    * Count headers, including Byron EBBs; this is deliberately independent of block numbers.
+  /** ChainSel.hs trimToLoE (ouroboros-consensus 82ecba329 ChainSel.hs:803-845, 1144-1186 at
+    * 2416493b), represented as complete candidate fragments rather than ChainDiff. Count headers,
+    * including Byron EBBs; this is deliberately independent of block numbers.
+    *
+    * The candidate is cut at its newest point on the limit, searched from its tip. A point is
+    * looked up on the limit by its slot ([[Fragment.offsetOf]]), and one of a later slot than the
+    * limit's tip is not on it, as the limit's slots never decrease (the header gate's envelope
+    * check), so the search builds nothing of the limit's size (#1499).
     */
   def trim(
       k: Int,
@@ -131,15 +163,17 @@ object GenesisDensity:
       case None => Right(candidate)
       case Some(raw) =>
         val loe = sanitize(current, raw)
-        val limitPoints = loe.points.toSet
-        val index = candidate.points.lastIndexWhere(limitPoints.contains)
-        if index < 0 then Left(LoEError.CandidateDoesNotIntersectLimit)
-        else
-          val intersection = candidate.points(index)
-          val containsLimitTip = intersection == loe.tip
-          Right(
-            Fragment(
-              candidate.anchor,
-              candidate.headers.take(index + (if containsLimitTip then k else 0))
+        val tipSlot = slot(loe.tip)
+        def pointAt(i: Int): Point = if i == 0 then candidate.anchor else candidate.headers(i - 1)
+        Iterator
+          .range(candidate.headers.size, -1, -1)
+          .find(i => slot(pointAt(i)) <= tipSlot && loe.offsetOf(pointAt(i)).isDefined) match
+          case None => Left(LoEError.CandidateDoesNotIntersectLimit)
+          case Some(index) =>
+            val containsLimitTip = pointAt(index) == loe.tip
+            Right(
+              Fragment(
+                candidate.anchor,
+                candidate.headers.take(index + (if containsLimitTip then k else 0))
+              )
             )
-          )

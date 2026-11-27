@@ -168,15 +168,21 @@ final class GenesisGovernor[F[_]: Async] private (
     * Syncing phase reads the stored fragment, as Node/Genesis.hs:274 does; its previous value
     * remains until the watcher establishes the next shared prefix.
     */
-  def limit: F[Option[Fragment]] = state.get.map(s => limitOf(s, s.view.current))
+  def limit: F[Option[Fragment]] = state.get.map(s => limitOf(s, s.view.current.anchor))
 
-  /** Selection already holds its lock and supplies that snapshot, avoiding a second lock read. */
-  def limitAt(current: Fragment): F[Option[Fragment]] = state.get.map(limitOf(_, current))
+  /** Selection already holds its lock and supplies the anchor of that snapshot, avoiding a second
+    * lock read: the limit reads nothing else of the selection.
+    */
+  def limitAt(anchor: xyz.kd5ujc.scarab.protocol.ChainSync.Point): F[Option[Fragment]] =
+    state.get.map(limitOf(_, anchor))
 
-  private def limitOf(s: State[F], current: Fragment): Option[Fragment] =
+  private def limitOf(
+      s: State[F],
+      anchor: xyz.kd5ujc.scarab.protocol.ChainSync.Point
+  ): Option[Fragment] =
     if !config.enabled || s.phase == Gsm.Phase.CaughtUp then None
-    else if s.phase == Gsm.Phase.PreSyncing then Some(Fragment(current.anchor, Vector.empty))
-    else Some(s.limit.getOrElse(Fragment(current.anchor, Vector.empty)))
+    else if s.phase == Gsm.Phase.PreSyncing then Some(Fragment(anchor, Vector.empty))
+    else Some(s.limit.getOrElse(Fragment(anchor, Vector.empty)))
 
   def revision: F[Long] = state.get.map(_.revision)
 
