@@ -1,0 +1,40 @@
+{
+ "baseline": {
+  "class consensus.state.ExtLedgerState": null,
+  "class consensus.state.PerasState": [
+   {
+    "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Ledger/Peras.hs",
+    "lines": [
+     45,
+     54
+    ],
+    "repository": "IntersectMBO/ouroboros-consensus",
+    "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+    "symbol": "PerasState"
+   }
+  ],
+  "def consensus.state.EraLedgerState.era": null,
+  "def consensus.state.EraLedgerState.inEra": null,
+  "def consensus.state.EraLedgerState.toEra": null,
+  "def consensus.state.ExtLedgerState.Layout#stateLayout": null,
+  "enum consensus.state.EraLedgerState": null,
+  "enum consensus.state.ExtLedgerState.Layout": null,
+  "enum consensus.state.PerasResolver": null,
+  "given consensus.state.EraLedgerState.given_Diff_EraLedgerState": null,
+  "given consensus.state.EraLedgerState.given_Eq_EraLedgerState": null,
+  "given consensus.state.EraLedgerState.given_EraIndexed_EraLedgerState": null,
+  "given consensus.state.EraLedgerState.given_Show_EraLedgerState": null,
+  "given consensus.state.ExtLedgerState.given_Diff_ExtLedgerState": null,
+  "given consensus.state.ExtLedgerState.given_Eq_ExtLedgerState": null,
+  "given consensus.state.ExtLedgerState.given_Show_ExtLedgerState": null,
+  "object consensus.state.EraLedgerState": null,
+  "object consensus.state.ExtLedgerState": null,
+  "object consensus.state.PerasState": null,
+  "type consensus.state.CardanoLedgerState": null,
+  "val consensus.state.ExtLedgerState.headerState": null,
+  "val consensus.state.ExtLedgerState.layout": null,
+  "val consensus.state.ExtLedgerState.ledgerState": null,
+  "val consensus.state.PerasState.default": null
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/CardanoLedgerState.scala"
+}

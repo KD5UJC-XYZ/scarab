@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "def uplc.text.HaskellChar.escaped": null,
+  "def uplc.text.HaskellChar.isPrint": null,
+  "def uplc.text.HaskellChar.readLitChar": null,
+  "object uplc.text.HaskellChar": null,
+  "val uplc.text.HaskellChar.Window": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/text/HaskellChar.scala"
+}

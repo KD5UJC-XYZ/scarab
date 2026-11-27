@@ -1,0 +1,33 @@
+{
+ "baseline": {
+  "class ledger.byron.ByronParams": null,
+  "class ledger.byron.ByronParamsUpdate": null,
+  "class ledger.byron.SoftforkRule": null,
+  "class ledger.byron.TxFeePolicy": null,
+  "def ledger.byron.ByronParams#adoptionThreshold": null,
+  "def ledger.byron.ByronParamsUpdate#apply": null,
+  "def ledger.byron.ByronParamsUpdate.decode": null,
+  "def ledger.byron.ByronVersion.Error#message": null,
+  "def ledger.byron.ByronVersion.alt": null,
+  "def ledger.byron.ByronVersion.decode": null,
+  "def ledger.byron.ByronVersion.from": null,
+  "def ledger.byron.ByronVersion.major": null,
+  "def ledger.byron.ByronVersion.minor": null,
+  "def ledger.byron.ByronVersion.render": null,
+  "def ledger.byron.TxFeePolicy#minimumFee": null,
+  "def ledger.byron.TxFeePolicy.Error#message": null,
+  "def ledger.byron.TxFeePolicy.fromNano": null,
+  "def ledger.byron.TxFeePolicy.roundedSummand": null,
+  "enum ledger.byron.ByronVersion.Error": null,
+  "enum ledger.byron.ByronVersion.Field": null,
+  "enum ledger.byron.TxFeePolicy.Error": null,
+  "given ledger.byron.ByronVersion.given_Ordering_ByronVersion": null,
+  "object ledger.byron.ByronParamsUpdate": null,
+  "object ledger.byron.ByronVersion": null,
+  "object ledger.byron.TxFeePolicy": null,
+  "type ledger.byron.ByronVersion": null,
+  "val ledger.byron.ByronVersion.zero": null,
+  "val ledger.byron.TxFeePolicy.Nano": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronParams.scala"
+}

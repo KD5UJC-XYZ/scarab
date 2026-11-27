@@ -1,0 +1,25 @@
+{
+ "baseline": {
+  "class ledger.era.NativeForm.MultiSig": null,
+  "class ledger.era.NativeForm.Timelock": null,
+  "class ledger.era.NativeScriptRep": null,
+  "def ledger.era.NativeForm.Of#form": null,
+  "def ledger.era.NativeScriptRep#equals": null,
+  "def ledger.era.NativeScriptRep#hashCode": null,
+  "def ledger.era.NativeScriptRep.decode": null,
+  "given ledger.era.NativeForm.multiSig": null,
+  "given ledger.era.NativeForm.timelock": null,
+  "given ledger.era.NativeScriptRep.given_CanEqual_NativeScriptRep_F_NativeScriptRep_F": null,
+  "object ledger.era.NativeForm": null,
+  "object ledger.era.NativeScriptRep": null,
+  "trait ledger.era.NativeForm": null,
+  "trait ledger.era.NativeForm.Of": null,
+  "type ledger.era.MultiSig": null,
+  "type ledger.era.Timelock": null,
+  "val ledger.era.NativeScriptRep#children": null,
+  "val ledger.era.NativeScriptRep#hash": null,
+  "val ledger.era.NativeScriptRep#raw": null,
+  "val ledger.era.NativeScriptRep#script": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/NativeScriptRep.scala"
+}

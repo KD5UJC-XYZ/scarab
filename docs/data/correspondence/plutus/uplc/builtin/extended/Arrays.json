@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "def uplc.builtin.extended.Arrays.multiIndexArray": null,
+  "object uplc.builtin.extended.Arrays": null,
+  "val uplc.builtin.extended.Arrays.MaximumIndexCount": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/builtin/extended/Arrays.scala"
+}

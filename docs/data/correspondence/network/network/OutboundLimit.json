@@ -1,0 +1,24 @@
+{
+ "glue": [
+  {
+   "definitions": [
+    "class network.OutboundLimit.BelowTargets",
+    "class network.OutboundLimit.Needed",
+    "class network.OutboundLimit.NotPositive",
+    "def network.OutboundLimit.Connections.from",
+    "def network.OutboundLimit.Connections.value",
+    "def network.OutboundLimit.Needed#total",
+    "def network.OutboundLimit.Needed.of",
+    "def network.OutboundLimit.fits",
+    "enum network.OutboundLimit",
+    "enum network.OutboundLimit.Dial",
+    "object network.OutboundLimit",
+    "object network.OutboundLimit.Connections",
+    "object network.OutboundLimit.Needed",
+    "type network.OutboundLimit.Connections"
+   ],
+   "reason": "the opt-in outbound limit, a Deviation the owner approved (docs/decisions.md, networking, 2026-11-18): the reference's connection manager reserves a connection without any limit (acquireOutboundConnectionImpl, ConnectionManager/Core.hs:1390-1418 at ouroboros-network c45735a5), so the limit, its positive count, the kind of dial it counts or leaves out (local roots) and the check of a limit against what the governor dials at once have no counterpart"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/OutboundLimit.scala"
+}

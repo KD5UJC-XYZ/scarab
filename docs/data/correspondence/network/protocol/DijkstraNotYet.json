@@ -1,0 +1,7 @@
+{
+ "baseline": {
+  "def protocol.DijkstraNotYet#message": null,
+  "enum protocol.DijkstraNotYet": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/DijkstraNotYet.scala"
+}

@@ -1,0 +1,98 @@
+{
+ "entries": {
+  "def ledger.era.dijkstra.DijkstraTxWits.decode": {
+   "class": "Mirror",
+   "digest": "42beda89d4f3c206",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the witness set read from its item in one pass into the era's types (read), as the Leios build's block decoder reads it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      620,
+      721
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR (Annotator (AlonzoTxWitsRaw era))"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxWits.read": {
+   "class": "Mirror",
+   "digest": "8cdf50c8b77b01cf",
+   "evidence": [
+    "DijkstraOnePassSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the witness set read from its item straight into the era's types in one pass: the Leios build's keys, fields and refusals in its order, each script once by Dijkstra's readers (whose hashes the set's uniqueness and the map are by, the first of one hash kept), each datum and redeemer's data decoded once from its item (Data.read), the bytes of keys 4 and 5 kept; a purpose given twice the last read (Map.fromList). Its verdicts those the two passes it replaced gave, recorded (DijkstraOnePassExpected): on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      620,
+      721
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR (Annotator (AlonzoTxWitsRaw era))"
+    }
+   ]
+  },
+  "type ledger.era.dijkstra.DijkstraTxWits": {
+   "class": "Mirror",
+   "digest": "8fbf77b707c890d2",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraCoreSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxWits.hs",
+     "lines": [
+      19,
+      19
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "AlonzoTxWits DijkstraEra"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraTxWits.instance": {
+   "class": "Mirror",
+   "digest": "a9707d0ef1f66891",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxWits.hs",
+     "lines": [
+      18,
+      37
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraTxWits DijkstraEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.dijkstra.DijkstraTxWits.given_CanEqual_DijkstraTxWits_DijkstraTxWits",
+    "object ledger.era.dijkstra.DijkstraTxWits"
+   ],
+   "reason": "Dijkstra's transactions on the era types (#85): the companions holding their decoders, instances and CanEqual, Scala's equality, hash and rendering of each, which the reference derives, the fields both levels of a body share, held once, with the narrowing of a top-level body to its constructor, which the reference's GADT match does, and an account balance interval from the body reader's; the Plutus scripts made in Dijkstra's types from the language and bytes read; and the bounds' companions; the proof that a value was read from bytes by the decoders (`DijkstraTx.FromBytes`), which only `DijkstraTx` makes and keeps, and the witness set's and auxiliary data's readers from bytes through it"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraTxWits.scala"
+}

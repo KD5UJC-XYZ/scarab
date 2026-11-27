@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "def storage.RocksUtxoCheckpoint.resource": null,
+  "def storage.UtxoCheckpoint#entries": null,
+  "def storage.UtxoCheckpoint#flushed": null,
+  "object storage.RocksUtxoCheckpoint": null,
+  "trait storage.UtxoCheckpoint": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksUtxoCheckpoint.scala"
+}

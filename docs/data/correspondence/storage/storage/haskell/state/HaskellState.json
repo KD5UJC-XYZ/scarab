@@ -1,0 +1,11 @@
+{
+ "baseline": {
+  "class storage.haskell.state.StateNotWritable": null,
+  "def storage.haskell.state.HaskellState.decode": null,
+  "def storage.haskell.state.HaskellState.encode": null,
+  "def storage.haskell.state.HaskellState.encodeEpochState": null,
+  "object storage.haskell.state.HaskellState": null,
+  "val storage.haskell.state.HaskellState.limits": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellState.scala"
+}

@@ -1,0 +1,53 @@
+{
+ "baseline": {
+  "def storage.haskell.state.Envelope.arrayIn": null,
+  "def storage.haskell.state.Envelope.arrayNode": null,
+  "def storage.haskell.state.Envelope.bound": null,
+  "def storage.haskell.state.Envelope.current": null,
+  "def storage.haskell.state.Envelope.eraCodec": null,
+  "def storage.haskell.state.Envelope.past": null,
+  "def storage.haskell.state.Envelope.plainMapOf": null,
+  "def storage.haskell.state.Envelope.versioned": null,
+  "def storage.haskell.state.Envelope.versionedIn": null,
+  "def storage.haskell.state.Envelope.withOriginMaybe": null,
+  "def storage.haskell.state.Envelope.withOriginTagged": null,
+  "object storage.haskell.state.Envelope": null,
+  "val storage.haskell.state.Envelope.originalItem": null
+ },
+ "entries": {
+  "def storage.haskell.state.Envelope.telescope": {
+   "class": "Gap",
+   "digest": "ba2086ef0a5452f3",
+   "evidence": [
+    "LeiosLayoutSuite",
+    "LedgerFileSuite"
+   ],
+   "note": "one Past per finished era and then the Current, 1 + era index items, the era of the current state its length, as the reference's; the telescope is built with Telescope.make, so the eras abut. In the Leios build's layout every era is read and written, Dijkstra among them (LeiosLayoutSuite: the captured Dijkstra states byte for byte); in the 11.1 layout a telescope in Dijkstra is refused both ways (DijkstraNotYet.LedgerState), which the reference decodes; 11.x never enters Dijkstra, its major-version cap being 11",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Serialisation/Common.hs",
+     "lines": [
+      375,
+      395
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "encodeTelescope"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Serialisation/Common.hs",
+     "lines": [
+      397,
+      410
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "decodeTelescope"
+    }
+   ]
+  }
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Envelope.scala"
+}

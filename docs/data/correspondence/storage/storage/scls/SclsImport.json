@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "class storage.scls.SclsImport.Config": null,
+  "class storage.scls.SclsImport.Prepared": null,
+  "def storage.scls.SclsImport.Prepared#artifacts": null,
+  "def storage.scls.SclsImport.Prepared#checkpoint": null,
+  "def storage.scls.SclsImport.resource": null,
+  "enum storage.scls.SclsImport.Error": null,
+  "object storage.scls.SclsImport": null,
+  "val storage.scls.SclsImport.Prepared#admitted": null,
+  "val storage.scls.SclsImport.Prepared#directory": null,
+  "val storage.scls.SclsImport.Prepared#snapshot": null,
+  "val storage.scls.SclsImport.Prepared#utxo": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsImport.scala"
+}

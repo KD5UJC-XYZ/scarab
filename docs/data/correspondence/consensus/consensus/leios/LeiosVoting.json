@@ -1,0 +1,242 @@
+{
+ "entries": {
+  "class consensus.leios.LeiosVoteTiming": {
+   "class": "Mirror",
+   "digest": "9e6d3f68a598567c",
+   "note": "the equivocation wait and the window, as durations",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      2806,
+      2813
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "LeiosVoteTiming"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosVoteTiming#windowFrom": {
+   "class": "Mirror",
+   "digest": "6683975ccc3735ce",
+   "note": "voteAt and voteDeadline from the announcing slot's onset; the timers themselves are not built yet (#54)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoting.hs",
+     "lines": [
+      174,
+      211
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "newVoteTimers"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosVoteTiming.of": {
+   "class": "Mirror",
+   "digest": "e81afe4826a22ce2",
+   "note": "three announcement periods and one vote period, in milliseconds",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      2819,
+      2826
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosVoteTiming"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosVoting.decideLeiosCertify": {
+   "class": "Mirror",
+   "digest": "5f9317889343aa5a",
+   "note": "the ticked announcement and the era's gap, the Word64 slot difference against the gap, the closure lookup, the genesis error as a defect of its own, then queryCert of the tip; a typed outcome where the reference returns Nothing and traces, a certificate with the announced point the reference traces",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/NodeKernel/Forge.hs",
+     "lines": [
+      324,
+      396
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "decideLeiosCertify"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosVoting.minCertificationGap": {
+   "class": "Mirror",
+   "digest": "8ffc2cbd2dc7155b",
+   "note": "the gap of the era's slot length and the three periods",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      2834,
+      2841
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "minCertificationGap"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosVoting.seats": {
+   "class": "Mirror",
+   "digest": "a1ed32f80255de0b",
+   "note": "each key's seat by getLeiosSeatId, in the keys' order",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoting.hs",
+     "lines": [
+      342,
+      347
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "getLeiosSeatId"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosVoting.tipAnnouncerFor": {
+   "class": "Mirror",
+   "digest": "209a35dfd0c205f4",
+   "note": "the tip's hash when the last applied header's announcement is the point",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoting.hs",
+     "lines": [
+      571,
+      590
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "tipAnnouncerFor"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosVoting.vote": {
+   "class": "Mirror",
+   "digest": "522b886a9c66a324",
+   "note": "the deadline, the tip announcing the point, the committee and seats, the closure's verdict, the deadline again, then one signed vote per seat added to the vote state, every vote refused being VoteRejected; over a capability for the clock, the forker at the volatile tip, the closure validation and addVote",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoting.hs",
+     "lines": [
+      309,
+      419
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "goVote"
+    }
+   ]
+  },
+  "enum consensus.leios.EbClosureVerdict": {
+   "class": "Gap",
+   "digest": "919b4a17cd59bc6c",
+   "note": "valid (with the counts reapplied and applied), invalid, unreadable; the valid case carries no summed measure of the applied transactions, which the reference only traces",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7071535058",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosVoting.hs",
+     "lines": [
+      432,
+      444
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "EbClosureVerdict"
+    }
+   ]
+  },
+  "enum consensus.leios.LeiosNotVotedReason": {
+   "class": "Mirror",
+   "digest": "800512561bdfc501",
+   "note": "the six reasons in the reference's order; the ledger's rejection, the unreadable closure and the vote state's answers stay typed where the reference renders text",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      1839,
+      1860
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "LeiosNotVotedReason"
+    }
+   ]
+  },
+  "object consensus.leios.LeiosVoteTiming": {
+   "class": "Mirror",
+   "digest": "1b6b466b7ca7f590",
+   "note": "the default timing and the parameters' timing",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      2815,
+      2826
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosVoteTiming"
+    }
+   ]
+  },
+  "val consensus.leios.LeiosVoteTiming.default": {
+   "class": "Mirror",
+   "digest": "181dc39fcde75fbb",
+   "note": "3 s and 4 s",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      2815,
+      2816
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "defaultLeiosVoteTiming"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class consensus.leios.SelectionView",
+    "class consensus.leios.VotingKey",
+    "def consensus.leios.LeiosVotingEnv#addVote",
+    "def consensus.leios.LeiosVotingEnv#now",
+    "def consensus.leios.LeiosVotingEnv#selection",
+    "def consensus.leios.LeiosVotingEnv#validateClosure",
+    "def consensus.leios.VotingKey.of",
+    "enum consensus.leios.CertifyDecision",
+    "enum consensus.leios.CertifyDefect",
+    "enum consensus.leios.LeiosVotingDefect",
+    "object consensus.leios.LeiosVoting",
+    "object consensus.leios.VotingKey",
+    "trait consensus.leios.LeiosVotingEnv"
+   ],
+   "reason": "the Leios voting's Scala plumbing with no counterpart of its own: the companion of the decisions, a voting key kept with the verification key derived from it once (deriveVerKeyDSIGN in goVote), the capability goVote runs over and the view of the selection it reads (the reference's forker at the volatile tip), the typed outcome of decideLeiosCertify (the reference returns Maybe and traces), and the defects that are the reference's error calls (decideLeiosCertify's on genesis its own) or a native library failure (#54)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/leios/LeiosVoting.scala"
+}

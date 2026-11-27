@@ -1,0 +1,14 @@
+{
+ "baseline": {
+  "class ledger.ScriptContexts.Environment": null,
+  "def ledger.ScriptContexts.Blake2b32.hash": null,
+  "def ledger.ScriptContexts.Environment#conway": null,
+  "def ledger.ScriptContexts.Environment#refusesByron": null,
+  "def ledger.ScriptContexts.arguments": null,
+  "def ledger.ScriptContexts.changedParameters": null,
+  "def ledger.ScriptContexts.txInfo": null,
+  "object ledger.ScriptContexts": null,
+  "object ledger.ScriptContexts.Blake2b32": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ScriptContexts.scala"
+}

@@ -1,0 +1,45 @@
+{
+ "baseline": {
+  "class ledger.HeaderBodyEncoding.Fields": null,
+  "def ledger.HeaderBodyEncoding.encode": null,
+  "object ledger.HeaderBodyEncoding": null
+ },
+ "entries": {
+  "def ledger.HeaderBodyEncoding.leios": {
+   "class": "Mirror",
+   "digest": "ef14d8575fddaf0b",
+   "evidence": [
+    "LeiosEncodingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
+     "lines": [
+      278,
+      306
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "HeaderBodyRaw"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.HeaderBodyEncoding.bytes",
+    "def ledger.HeaderBodyEncoding.head",
+    "def ledger.HeaderBodyEncoding.join",
+    "def ledger.HeaderBodyEncoding.list",
+    "def ledger.HeaderBodyEncoding.uint",
+    "val ledger.HeaderBodyEncoding.False",
+    "val ledger.HeaderBodyEncoding.Null",
+    "val ledger.HeaderBodyEncoding.True"
+   ],
+   "reason": "the minimal CBOR writer of the header body encoders (shortest heads, definite lists), shared with the Leios block encoders; the reference's Encoding primitives (cardano-ledger-binary Encoding/Encoder.hs) have no single counterpart here"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/HeaderBodyEncoding.scala"
+}

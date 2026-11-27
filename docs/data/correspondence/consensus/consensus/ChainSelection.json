@@ -1,0 +1,54 @@
+{
+ "baseline": {
+  "class consensus.ChainSelection.Candidate": null,
+  "class consensus.ChainSelection.Local": null,
+  "class consensus.ChainSelection.LocalBlock": null,
+  "class consensus.SelectView": null,
+  "def consensus.ChainSelection.Candidate#extend": null,
+  "def consensus.ChainSelection.Candidate#rebase": null,
+  "def consensus.ChainSelection.Candidate#rollback": null,
+  "def consensus.ChainSelection.Candidate#tip": null,
+  "def consensus.ChainSelection.Candidate#tipHash": null,
+  "def consensus.ChainSelection.Local#contains": null,
+  "def consensus.ChainSelection.Local#depthTo": null,
+  "def consensus.ChainSelection.Local#extended": null,
+  "def consensus.ChainSelection.Local#rolledBackTo": null,
+  "def consensus.ChainSelection.Local#tipView": null,
+  "def consensus.ChainSelection.Local.of": null,
+  "def consensus.ChainSelection.decide": null,
+  "def consensus.ChainSelection.prefers": null,
+  "def consensus.ChainSelection.prefersCandidate": null,
+  "def consensus.ChainSelection.tiebreakerFor": null,
+  "def consensus.SelectView.of": null,
+  "enum consensus.ChainSelection.Decision": null,
+  "enum consensus.ChainSelection.Tiebreaker": null,
+  "object consensus.ChainSelection": null,
+  "object consensus.ChainSelection.Local": null,
+  "object consensus.SelectView": null,
+  "val consensus.ChainSelection.ConwayRestriction": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def consensus.ChainSelection.Local#blockPoints",
+    "def consensus.ChainSelection.Local#copy",
+    "def consensus.ChainSelection.Local#equals",
+    "def consensus.ChainSelection.Local#hashCode",
+    "def consensus.ChainSelection.Local#intersection",
+    "def consensus.ChainSelection.Local#toString",
+    "def consensus.ChainSelection.Local.apply",
+    "val consensus.ChainSelection.Local#anchor",
+    "val consensus.ChainSelection.Local#anchorView",
+    "val consensus.ChainSelection.Local#blocks"
+   ],
+   "reason": "the Optimisation of #1499 item 3 (approved 2026-11-27): the selection window's members its case class generated, written out now that it carries the index of its blocks; its blocks' points as a Genesis fragment reads them; and the newest point of a candidate on it, searched from the candidate's tip through that index as Follower.limitCandidate searched it before, where the reference intersects its AnchoredFragments. Scala plumbing with no counterpart of its own; equivalence suite GenesisProjectionSuite"
+  },
+  {
+   "definitions": [
+    "def consensus.ChainSelection.Local#placesOf"
+   ],
+   "reason": "the selected chain's index by hash, which chain selection's walks over the processed forest read to tell a selected block and the places a block's predecessor names, where the reference compares points on its AnchoredFragment; Scala plumbing with no counterpart of its own (#810)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/ChainSelection.scala"
+}

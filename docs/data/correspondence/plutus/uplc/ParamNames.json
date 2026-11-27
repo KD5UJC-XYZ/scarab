@@ -1,0 +1,73 @@
+{
+ "baseline": {
+  "def uplc.ParamNames.show": null,
+  "object uplc.ParamNames": null,
+  "val uplc.ParamNames.v1": null,
+  "val uplc.ParamNames.v2": null,
+  "val uplc.ParamNames.v3": null
+ },
+ "entries": {
+  "def uplc.ParamNames.evaluation": {
+   "class": "Mirror",
+   "digest": "8b4a5e8e35d9e83c",
+   "evidence": [
+    "EvaluationContextSuite",
+    "CostModelSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/EvaluationContext.hs",
+     "lines": [
+      46,
+      48
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "tagWithParamNames"
+    },
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/EvaluationContext.hs",
+     "lines": [
+      43,
+      45
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "tagWithParamNames"
+    }
+   ]
+  },
+  "val uplc.ParamNames.policyFilters": {
+   "class": "Mirror",
+   "digest": "56dc670836d4651b",
+   "evidence": [
+    "CostModelSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/ParamName.hs",
+     "lines": [
+      364,
+      371
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "KeepPolicies'cpu'arguments'intercept"
+    },
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/ParamName.hs",
+     "lines": [
+      382,
+      389
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "KeepPolicies'cpu'arguments'intercept"
+    }
+   ]
+  }
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/ParamNames.scala"
+}

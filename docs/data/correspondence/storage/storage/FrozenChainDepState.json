@@ -1,0 +1,14 @@
+{
+ "glue": [
+  {
+   "definitions": [
+    "def storage.FrozenChainDepState.live",
+    "enum storage.FrozenChainDepState.ChainDepState",
+    "object storage.FrozenChainDepState",
+    "val storage.FrozenChainDepState.codec"
+   ],
+   "reason": "the frozen chain-dependent states in the sidecar schemas of the snapshot versions before V10, and the native codecs of Praos2's state: Scarab's own persisted format, which keeps the bytes and fingerprints of its previous files; the reference keeps no such files and has no counterpart (#826)"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenChainDepState.scala"
+}

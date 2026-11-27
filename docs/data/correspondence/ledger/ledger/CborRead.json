@@ -1,0 +1,91 @@
+{
+ "baseline": {
+  "def ledger.CborRead.array": null,
+  "def ledger.CborRead.arrayN": null,
+  "def ledger.CborRead.bool": null,
+  "def ledger.CborRead.bytes": null,
+  "def ledger.CborRead.bytesN": null,
+  "def ledger.CborRead.decode": null,
+  "def ledger.CborRead.definite": null,
+  "def ledger.CborRead.fields": null,
+  "def ledger.CborRead.fits": null,
+  "def ledger.CborRead.indefinite": null,
+  "def ledger.CborRead.int": null,
+  "def ledger.CborRead.integer": null,
+  "def ledger.CborRead.kept": null,
+  "def ledger.CborRead.list": null,
+  "def ledger.CborRead.map": null,
+  "def ledger.CborRead.mapLength64": null,
+  "def ledger.CborRead.nonEmpty": null,
+  "def ledger.CborRead.oset": [
+   {
+    "file": "libs/cardano-data/src/Data/OSet/Strict.hs",
+    "lines": [
+     109,
+     110
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "decodeOSet"
+   }
+  ],
+  "def ledger.CborRead.ratio": null,
+  "def ledger.CborRead.rational": null,
+  "def ledger.CborRead.record": null,
+  "def ledger.CborRead.set": null,
+  "def ledger.CborRead.small": null,
+  "def ledger.CborRead.text": null,
+  "def ledger.CborRead.tolerantSet": null,
+  "def ledger.CborRead.uint": null,
+  "def ledger.CborRead.unique": null,
+  "def ledger.CborRead.url": null,
+  "enum ledger.CborRead.Bound": null,
+  "enum ledger.FieldKeys": null,
+  "object ledger.CborRead": null,
+  "type ledger.CborRead.Result": null
+ },
+ "entries": {
+  "def ledger.CborRead.enforceSize": {
+   "class": "Mirror",
+   "digest": "aae2adc3ab60f9e9",
+   "evidence": [
+    "BlockEnvelopeSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "lines": [
+      1403,
+      1404
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "enforceSize"
+    }
+   ]
+  },
+  "def ledger.CborRead.language": {
+   "class": "Mirror",
+   "digest": "55e5978f6e713e65",
+   "evidence": [
+    "CostModelDecodeSuite",
+    "CborDatasetSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "lines": [
+      331,
+      333
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR Language"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CborRead.scala"
+}

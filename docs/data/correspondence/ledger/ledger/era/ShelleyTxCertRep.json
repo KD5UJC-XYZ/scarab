@@ -1,0 +1,160 @@
+{
+ "entries": {
+  "class ledger.era.GenesisDelegCert": {
+   "class": "Mirror",
+   "digest": "a830ffc494d2ae54",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      289,
+      294
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "GenesisDelegCert"
+    }
+   ]
+  },
+  "class ledger.era.MIRCert": {
+   "class": "Mirror",
+   "digest": "ca956d1e648a2f7a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      368,
+      372
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "MIRCert"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyTxCertRep.getScriptWitnessShelleyTxCert": {
+   "class": "Mirror",
+   "digest": "feef5c8fa0fb2dea",
+   "evidence": [
+    "BabbageTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      577,
+      586
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getScriptWitnessShelleyTxCert"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyTxCertRep.getVKeyWitnessShelleyTxCert": {
+   "class": "Mirror",
+   "digest": "6fcc2d53411e783c",
+   "evidence": [
+    "BabbageTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      588,
+      598
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getVKeyWitnessShelleyTxCert"
+    }
+   ]
+  },
+  "enum ledger.era.MIRPot": {
+   "class": "Mirror",
+   "digest": "00783cbf73cf5290",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      316,
+      317
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "MIRPot"
+    }
+   ]
+  },
+  "enum ledger.era.MIRTarget": {
+   "class": "Mirror",
+   "digest": "592305122e3063eb",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      340,
+      343
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "MIRTarget"
+    }
+   ]
+  },
+  "enum ledger.era.ShelleyDelegCert": {
+   "class": "Mirror",
+   "digest": "7407d7350f241805",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      520,
+      527
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ShelleyDelegCert"
+    }
+   ]
+  },
+  "enum ledger.era.ShelleyTxCertRep": {
+   "class": "Mirror",
+   "digest": "2ac47b756d9f1a48",
+   "evidence": [
+    "BabbageTxDifferentialSuite",
+    "BabbageTxSuite"
+   ],
+   "note": "the representation the eras from Shelley to Babbage share, each era's certificate an opaque type over it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      393,
+      398
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ShelleyTxCert"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.ShelleyTxCertRep"
+   ],
+   "reason": "Babbage's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives, and the index of a purpose; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Babbage's (fromFlat), and the certificate's representation read only in Babbage's files. Scala containers and helpers with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/ShelleyTxCertRep.scala"
+}

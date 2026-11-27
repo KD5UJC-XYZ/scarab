@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "def plutus.UplcText.decode": null,
+  "def plutus.UplcText.evaluation": null,
+  "def plutus.UplcText.machine": null,
+  "def plutus.UplcText.unavailable": null,
+  "object plutus.UplcText": null
+ },
+ "source": "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/UplcText.scala"
+}

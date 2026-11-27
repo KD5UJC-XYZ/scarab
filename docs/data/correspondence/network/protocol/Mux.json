@@ -1,0 +1,30 @@
+{
+ "baseline": {
+  "class protocol.Mux.Decoder": null,
+  "class protocol.Mux.Header": null,
+  "class protocol.Mux.Limits": null,
+  "class protocol.Mux.Sdu": null,
+  "def protocol.Mux.Decoder#feed": null,
+  "def protocol.Mux.Decoder#finish": null,
+  "def protocol.Mux.Decoder#pendingBytes": null,
+  "def protocol.Mux.Decoder.create": null,
+  "def protocol.Mux.Error#message": null,
+  "def protocol.Mux.Sdu#header": null,
+  "def protocol.Mux.decode": null,
+  "def protocol.Mux.decodeHeader": null,
+  "def protocol.Mux.encode": null,
+  "def protocol.Mux.encodeHeader": null,
+  "def protocol.Mux.segment": null,
+  "def protocol.Mux.segmentBounded": null,
+  "def protocol.Mux.segmentProtocolMessage": null,
+  "enum protocol.Mux.Direction": null,
+  "enum protocol.Mux.Error": null,
+  "object protocol.Mux": null,
+  "object protocol.Mux.Decoder": null,
+  "val protocol.Mux.Decoder#limits": null,
+  "val protocol.Mux.HandshakeMaxMessageBytes": null,
+  "val protocol.Mux.HeaderBytes": null,
+  "val protocol.Mux.WireMaxPayloadBytes": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/Mux.scala"
+}

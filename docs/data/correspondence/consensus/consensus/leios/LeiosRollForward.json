@@ -1,0 +1,355 @@
+{
+ "entries": {
+  "class consensus.leios.AnnouncingHeader": {
+   "class": "Mirror",
+   "digest": "781fee67474e460e",
+   "evidence": [
+    "LeiosRollForwardSuite",
+    "LeiosNotifyRelaySuite"
+   ],
+   "note": "the header itself and its announcement, as ancHeader and ancAnnouncementFields; two are equal when their headers' hashes are, the one identity the dedup reads",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1739,
+      1753
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "AnnouncingHeader"
+    }
+   ]
+  },
+  "class consensus.leios.LeiosAnnouncements": {
+   "class": "Mirror",
+   "digest": "736e7a030f9a47e2",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "note": "the node's own selfPeer of CentralState; the relay queues and the gate are LeiosNotify's, not run",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "lines": [
+      57,
+      63
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "PeerState"
+    }
+   ]
+  },
+  "class consensus.leios.TwoCertificationClaims": {
+   "class": "Mirror",
+   "digest": "e39c51123c8c0a14",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1725,
+      1731
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ExnLeiosTwoCertificationClaims"
+    }
+   ]
+  },
+  "def consensus.leios.AnnouncingHeader#headerHash": {
+   "class": "Mirror",
+   "digest": "68fdffd14ef3ca6e",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "note": "headerHash (ancHeader a), what the Eq instance compares",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1752,
+      1753
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "AnnouncingHeader"
+    }
+   ]
+  },
+  "def consensus.leios.AnnouncingHeader.forged": {
+   "class": "Mirror",
+   "digest": "b34d18cd65de9102",
+   "evidence": [
+    "DijkstraForgeSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1768,
+      1772
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "mkForgedAnnouncingHeader"
+    }
+   ]
+  },
+  "def consensus.leios.AnnouncingHeader.of": {
+   "class": "Mirror",
+   "digest": "eb5bc99584529c1b",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "note": "the election of the header's slot and its issuer key's hash",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1755,
+      1761
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "mkAnnouncingHeader"
+    },
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs",
+     "lines": [
+      268,
+      286
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "headerElId"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosAnnouncements#extendLive": {
+   "class": "Mirror",
+   "digest": "0e87c636be843c48",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "lines": [
+      145,
+      169
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "extendLive"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosAnnouncements#prunedToImmTip": {
+   "class": "Mirror",
+   "digest": "9ed197d65ac0d8e2",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "lines": [
+      116,
+      126
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "prunePeerState"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosAnnouncements.empty": {
+   "class": "Mirror",
+   "digest": "1535345fefef2c95",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "lines": [
+      62,
+      63
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "emptyPeerState"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosRollForward.certRbOffer": {
+   "class": "Mirror",
+   "digest": "30b27f982afa11a1",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1631,
+      1643
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "recordCertRbOffer"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosRollForward.certifiedAnnouncement": {
+   "class": "Mirror",
+   "digest": "69ffab58438f7a82",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "note": "the pure half: whether the header certifies, and what its predecessor's state announced",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1671,
+      1694
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "checkMsgRollForwardForLeiosOffers"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosRollForward.noteCertificationClaim": {
+   "class": "Mirror",
+   "digest": "a6649024d43919a1",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "note": "the exception as a Left",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1716,
+      1723
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "noteCertificationClaim"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosRollForward.recordOffer": {
+   "class": "Mirror",
+   "digest": "2323ec8b7a3ab18a",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "note": "the update of the offerings; the wake is the caller's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1645,
+      1650
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "recordOffer"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosRollForward.stateAnnouncement": {
+   "class": "Mirror",
+   "digest": "af0ada67f1e265d4",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs",
+     "lines": [
+      327,
+      340
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "protocolStateLeiosAnnouncement"
+    }
+   ]
+  },
+  "enum consensus.leios.AnnouncementRefused": {
+   "class": "Mirror",
+   "digest": "2347d1c96ed39bc3",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "note": "the two counting cases, ErrRepeat and ErrThird; the others belong to LeiosNotify's validation",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "lines": [
+      126,
+      143
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ErrAnnouncement"
+    }
+   ]
+  },
+  "enum consensus.leios.ElState": {
+   "class": "Mirror",
+   "digest": "71cbf8f8760c3988",
+   "evidence": [
+    "LeiosRollForwardSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "lines": [
+      66,
+      78
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ElState"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given consensus.leios.AnnouncingHeader.given_Eq_AnnouncingHeader",
+    "object consensus.leios.AnnouncingHeader",
+    "object consensus.leios.LeiosAnnouncements",
+    "object consensus.leios.LeiosRollForward"
+   ],
+   "reason": "the companions holding the pure roll-forward functions and the announcement's equality instance: Scala plumbing with no counterpart (#54)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/leios/LeiosRollForward.scala"
+}

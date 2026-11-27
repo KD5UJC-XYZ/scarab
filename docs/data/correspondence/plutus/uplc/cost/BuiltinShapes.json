@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "def uplc.cost.BuiltinShapes.of": null,
+  "object uplc.cost.BuiltinShapes": null,
+  "val uplc.cost.BuiltinShapes.A": null,
+  "val uplc.cost.BuiltinShapes.B": null,
+  "val uplc.cost.BuiltinShapes.C": null,
+  "val uplc.cost.BuiltinShapes.D": null,
+  "val uplc.cost.BuiltinShapes.E": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cost/BuiltinShapes.scala"
+}

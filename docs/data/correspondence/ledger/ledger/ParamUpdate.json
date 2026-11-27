@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "class ledger.ParamUpdate": null,
+  "class ledger.ParamUpdate.Rules": null,
+  "def ledger.ParamUpdate.Rules.of": null,
+  "def ledger.ParamUpdate.protocolVersion": null,
+  "def ledger.ParamUpdate.read": null,
+  "def ledger.ParamUpdate.toBabbage": null,
+  "def ledger.ParamUpdate.typed": null,
+  "def ledger.ParamUpdate.winners": null,
+  "enum ledger.ParamUpdate.Keys": null,
+  "enum ledger.ParamUpdate.Typed": null,
+  "object ledger.ParamUpdate": null,
+  "object ledger.ParamUpdate.Rules": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ParamUpdate.scala"
+}

@@ -1,0 +1,157 @@
+{
+ "baseline": {
+  "def ledger.era.AllegraEraTxAuxData#nativeScripts": null,
+  "def ledger.era.AlonzoEraTxAuxData#plutusScripts": null,
+  "def ledger.era.EraTxAuxData#metadata": null,
+  "given ledger.era.EraTxAuxData.conway": null,
+  "object ledger.era.EraTxAuxData": null,
+  "trait ledger.era.AllegraEraTxAuxData": null,
+  "trait ledger.era.AlonzoEraTxAuxData": null,
+  "trait ledger.era.EraTxAuxData": null
+ },
+ "entries": {
+  "def ledger.era.AlonzoTxAuxData.isValidScript": {
+   "class": "Mirror",
+   "digest": "4dbf2d94c44e9606",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "a Plutus script's verdict, of its cached runnable's binary if the cache has its hash, is the decoder's, its Plutus scripts read by the `plutus` module's decoder, a capability given as an argument, whose `Unavailable` is returned as the script it has no verdict for, where the reference's decoding is pure; the reference's `error` case, a script neither native nor Plutus, is not a script an era has",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "lines": [
+      494,
+      515
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "isValidScript"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoTxAuxData.validateAlonzoTxAuxData": {
+   "class": "Mirror",
+   "digest": "30147c01cca3aff9",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "each Plutus script of a language the era has, by its hash, as `getAlonzoTxAuxDataScripts` (`:192-207`) gives it, taken as its binary and language where the reference makes it a script (`mkBinaryPlutusScript`, #85's item on AlonzoEraScript's builders); its Plutus scripts read by the `plutus` module's decoder, a capability given as an argument, whose `Unavailable` is returned as the script it has no verdict for, where the reference's decoding is pure; the scripts visited in the order they arrived (`plutusScriptsArrival`): where the decoder gives no verdict for several scripts, the defect names the first in the order they arrived, as the flat check's does (the reference's decoding always gives a verdict, so it has no such choice); the reference's 210 Conway observations of auxiliary data (`fixtures/reference/auxiliary-scripts`, its decoder and `validateTxAuxData` at protocols 9 to 11) run through the era types: decoded where the reference decodes, the hash, and valid where the reference's predicate is (EraPlutusContextSuite)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "lines": [
+      363,
+      373
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateAlonzoTxAuxData"
+    }
+   ]
+  },
+  "def ledger.era.EraTxAuxData#originalBytes": {
+   "class": "Mirror",
+   "digest": "8a3918a2f95c5bb8",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the bytes the auxiliary data arrived as, which its hash is of (`hashAnnotated`, through the superclass `SafeToHash`)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      499,
+      500
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hashTxAuxData"
+    }
+   ]
+  },
+  "def ledger.era.EraTxAuxData#validateTxAuxData": {
+   "class": "Mirror",
+   "digest": "e5dabc9ff7d4c3df",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "its Plutus scripts read by the `plutus` module's decoder, a capability given as an argument, whose `Unavailable` is returned as the script it has no verdict for, where the reference's decoding is pure; the reference's 210 Conway observations of auxiliary data (`fixtures/reference/auxiliary-scripts`, its decoder and `validateTxAuxData` at protocols 9 to 11) run through the era types: decoded where the reference decodes, the hash, and valid where the reference's predicate is (EraPlutusContextSuite)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      489,
+      489
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateTxAuxData"
+    }
+   ]
+  },
+  "def ledger.era.EraTxAuxData.hashTxAuxData": {
+   "class": "Mirror",
+   "digest": "66b0503473643e20",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      499,
+      500
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hashTxAuxData"
+    }
+   ]
+  },
+  "given ledger.era.EraTxAuxData.babbage": {
+   "class": "Mirror",
+   "digest": "649fcee43b64e046",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxAuxData.hs",
+     "lines": [
+      20,
+      22
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxAuxData BabbageEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.EraTxAuxData.dijkstra"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "class ledger.era.UnavailableScript",
+    "object ledger.era.AlonzoTxAuxData"
+   ],
+   "reason": "the annotated transaction's and Alonzo's auxiliary data's companions, holding their functions, and the defect of a script the `plutus` module's decoder gives no verdict for, with the flat checks' form of it"
+  },
+  {
+   "definitions": [
+    "def ledger.era.AlonzoEraTxAuxData#plutusScriptsArrival"
+   ],
+   "reason": "the order a witness set's scripts and auxiliary data's Plutus scripts arrived in, the node's own, which no verdict reads, only the choice of the first script the `plutus` module's decoder gives no verdict for, as the flat checks choose it (the reference's decoding always gives a verdict)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/EraTxAuxData.scala"
+}

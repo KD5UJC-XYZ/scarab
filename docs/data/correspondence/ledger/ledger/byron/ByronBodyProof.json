@@ -1,0 +1,7 @@
+{
+ "baseline": {
+  "def ledger.byron.ByronBodyProof.check": null,
+  "object ledger.byron.ByronBodyProof": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronBodyProof.scala"
+}

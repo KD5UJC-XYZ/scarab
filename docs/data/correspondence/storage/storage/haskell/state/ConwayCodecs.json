@@ -1,0 +1,84 @@
+{
+ "baseline": {
+  "def storage.haskell.state.ConwayCodecs.certificate": null,
+  "def storage.haskell.state.ConwayCodecs.certificates": null,
+  "def storage.haskell.state.ConwayCodecs.govAction": null,
+  "def storage.haskell.state.ConwayCodecs.govActionBounds": null,
+  "def storage.haskell.state.ConwayCodecs.poolFields": null,
+  "def storage.haskell.state.ConwayCodecs.proposal": null,
+  "def storage.haskell.state.ConwayCodecs.proposalProcedures": null,
+  "def storage.haskell.state.ConwayCodecs.redeemers": null,
+  "def storage.haskell.state.ConwayCodecs.votingProcedure": null,
+  "def storage.haskell.state.ConwayCodecs.votingProcedures": [
+   {
+    "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+    "lines": [
+     400,
+     406
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "VotingProcedures"
+   }
+  ],
+  "object storage.haskell.state.ConwayCodecs": null,
+  "val storage.haskell.state.ConwayCodecs.block": null,
+  "val storage.haskell.state.ConwayCodecs.bootstrapWitness": null,
+  "val storage.haskell.state.ConwayCodecs.costModels": null,
+  "val storage.haskell.state.ConwayCodecs.metadatum": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Metadata.hs",
+    "lines": [
+     126,
+     152
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "encodeMetadatum"
+   }
+  ],
+  "val storage.haskell.state.ConwayCodecs.parameterUpdate": null,
+  "val storage.haskell.state.ConwayCodecs.poolMetadataBytes": null,
+  "val storage.haskell.state.ConwayCodecs.poolRelays": null,
+  "val storage.haskell.state.ConwayCodecs.redeemer": null,
+  "val storage.haskell.state.ConwayCodecs.script": [
+   {
+    "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+    "lines": [
+     686,
+     689
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "encodeScript"
+   }
+  ],
+  "val storage.haskell.state.ConwayCodecs.vkeyWitness": null,
+  "val storage.haskell.state.ConwayCodecs.voter": null
+ },
+ "entries": {
+  "def storage.haskell.state.ConwayCodecs.poolFieldsWith": {
+   "class": "Mirror",
+   "digest": "204acf3869539dc0",
+   "evidence": [
+    "FuturePoolParamsCodecSuite",
+    "DijkstraEpochReferenceSuite"
+   ],
+   "note": "the flat fields with a third written after the VRF key hash, the voting key's place; the caller writes the list length and the key, where the reference computes both from the encoding version",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      716,
+      736
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "withStakePoolParamsFlatEncoding"
+    }
+   ]
+  }
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala"
+}

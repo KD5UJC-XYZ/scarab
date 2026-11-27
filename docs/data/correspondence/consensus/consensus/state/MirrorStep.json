@@ -1,0 +1,29 @@
+{
+ "baseline": {
+  "class consensus.state.Placement": null,
+  "def consensus.state.MirrorStep.afterVoting": null,
+  "def consensus.state.MirrorStep.afterVotingOf": null,
+  "def consensus.state.MirrorStep.block": null,
+  "def consensus.state.MirrorStep.byronBlock": null,
+  "def consensus.state.MirrorStep.handover": null,
+  "def consensus.state.MirrorStep.into": null,
+  "def consensus.state.MirrorStep.mapUtxo": null,
+  "def consensus.state.MirrorStep.nesOf": null,
+  "def consensus.state.MirrorStep.recounted": null,
+  "def consensus.state.MirrorStep.startOf": null,
+  "def consensus.state.MirrorStep.utxoOf": null,
+  "def consensus.state.MirrorStep.votingDeadline": null,
+  "def consensus.state.MirrorStep.withParams": null,
+  "def consensus.state.Placement#bound": null,
+  "object consensus.state.MirrorStep": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def consensus.state.MirrorStep.dijkstraBlock"
+   ],
+   "reason": "the mirror's plumbing for a Dijkstra block on the era types, which holds no flat block: the step of MirrorStep.block with the transaction bytes given, and the era history's horizon at the tip that the era rules' UTxO context reads as its EpochInfo (#54)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/MirrorStep.scala"
+}

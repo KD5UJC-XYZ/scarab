@@ -1,0 +1,14 @@
+{
+ "baseline": {
+  "class network.MuxJobPool": null,
+  "def network.MuxJobPool#cancel": null,
+  "def network.MuxJobPool#fork": null,
+  "def network.MuxJobPool#next": null,
+  "def network.MuxJobPool#size": null,
+  "def network.MuxJobPool#tryNext": null,
+  "def network.MuxJobPool.resource": null,
+  "enum network.MuxJobPool.Group": null,
+  "object network.MuxJobPool": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/MuxJobPool.scala"
+}

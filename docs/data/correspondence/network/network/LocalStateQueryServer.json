@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "def network.LocalStateQueryServer.Source#acquire": null,
+  "def network.LocalStateQueryServer.Source#forVersion": null,
+  "def network.LocalStateQueryServer.Source#queries": null,
+  "def network.LocalStateQueryServer.run": null,
+  "enum network.LocalStateQueryServer.AcquireFailure": null,
+  "object network.LocalStateQueryServer": null,
+  "trait network.LocalStateQueryServer.Source": null,
+  "type network.LocalStateQueryServer.Refusal": null,
+  "type network.LocalStateQueryServer.Session": null,
+  "val network.LocalStateQueryServer.Refusal": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/LocalStateQueryServer.scala"
+}

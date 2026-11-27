@@ -1,0 +1,11 @@
+{
+ "baseline": {
+  "def ledger.GenesisPoolFields.Error#message": null,
+  "def ledger.GenesisPoolFields.blsKey": null,
+  "def ledger.GenesisPoolFields.pool": null,
+  "def ledger.GenesisPoolFields.read": null,
+  "enum ledger.GenesisPoolFields.Error": null,
+  "object ledger.GenesisPoolFields": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/GenesisPoolFields.scala"
+}

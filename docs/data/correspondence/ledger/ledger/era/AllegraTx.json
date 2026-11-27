@@ -1,0 +1,56 @@
+{
+ "entries": {
+  "def ledger.era.AllegraScripts.evalTimelock": {
+   "class": "Mirror",
+   "digest": "2bb0efcff707b7d5",
+   "evidence": [
+    "AllegraTimelockSuite"
+   ],
+   "note": "over the representation every era from Allegra to Conway shares (Timelock), as the reference's over `Timelock era`; deferred and run as a trampoline (cats Eval, its lists by the short-circuiting forallM and existsM) where the reference recurses, stack safe for a script as deep as a transaction (STK-1); it evaluates the scripts the reference evaluates, in its order, and stops where it stops: all of a list at the first that fails, any at the first that holds, m of a list once m hold, none for a non-positive m (`isValidMOf`, Allegra/Scripts.hs:487-495); AllegraTimelockSuite checks the verdicts against the flat evaluation, the scripts asked about against those the reference asks about, and, on a small stack, a script nesting each kind of list in turn 6,000 levels deep and the preprod script of 5,383 levels",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs",
+     "lines": [
+      477,
+      497
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "evalTimelock"
+    }
+   ]
+  },
+  "def ledger.era.AllegraTx.validateTimelock": {
+   "class": "Mirror",
+   "digest": "7283334622da9e2a",
+   "evidence": [
+    "AllegraTimelockSuite"
+   ],
+   "note": "the era's native script given as the representation by its validateNativeScript (`NativeScript era ~ Timelock era`)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Tx.hs",
+     "lines": [
+      104,
+      110
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateTimelock"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.AllegraScripts",
+    "object ledger.era.AllegraTx"
+   ],
+   "reason": "the reading and writing of the node's stored UTxO set by the era-typed state change: a stored output read into the era (design §3.6 of docs/design/era-typed-transactions.md), extractKeys, restrictKeys and the left-biased union of Data.Map over the stored set, how the rules read stored outputs (StoredOutputs, whose default reads each where asked and whose instance in Conway's block run keeps what the run read, #85), and the defects the reference has no counterpart for (a script the evaluator gives no verdict for, a damaged store, an output outside the state's vocabulary), raised as no verdict; and the companions and module objects of UTXOS, Scala containers with no counterpart (#85); and the companions of UTXO's failure, its injection and its embedding of UTXOS, with the failure's equality with itself only; and the companions of UTXOW's failure, its injection and its embedding of UTXO, with the failure's equality with itself only, and the module objects of Allegra's native-script evaluation (Allegra/Scripts.hs, Allegra/Tx.hs); and the companions of SUBUTXO's and SUBUTXOW's failures and events, their injections and the embedding of SUBUTXO, with each type's equality with itself only"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/AllegraTx.scala"
+}

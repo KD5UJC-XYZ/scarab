@@ -1,0 +1,50 @@
+{
+ "baseline": {
+  "class ledger.ByronSpan": null,
+  "class ledger.EpochGeometry": null,
+  "def ledger.ByronSpan#slots": null,
+  "def ledger.ByronSpan.derived": null,
+  "def ledger.EpochGeometry#epochOf": null,
+  "def ledger.EpochGeometry#epochSlots": null,
+  "def ledger.EpochGeometry#firstShelleyEpoch": null,
+  "def ledger.EpochGeometry#firstShelleySlot": null,
+  "def ledger.EpochGeometry#firstSlot": null,
+  "def ledger.EpochGeometry#isByronSlot": null,
+  "def ledger.EpochGeometry#k": null,
+  "def ledger.EpochGeometry#resolved": null,
+  "def ledger.EpochGeometry#slotAt": null,
+  "def ledger.EpochGeometry#slotOfNoReturn": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Slot.hs",
+    "lines": [
+     106,
+     116
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "getTheSlotOfNoReturn"
+   }
+  ],
+  "def ledger.EpochGeometry#slotOffsetMillis": null,
+  "def ledger.EpochGeometry#slotStart": null,
+  "def ledger.EpochGeometry.checked": null,
+  "def ledger.EpochGeometry.slotOfNoReturn": null,
+  "object ledger.ByronSpan": null,
+  "object ledger.EpochGeometry": null,
+  "val ledger.ByronSpan.Absent": null,
+  "val ledger.EpochGeometry#randomnessStabilisationWindow": null,
+  "val ledger.EpochGeometry#stabilityWindow": [
+   {
+    "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/StabilityWindow.hs",
+    "lines": [
+     14,
+     27
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "computeStabilityWindow"
+   }
+  ]
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/EpochGeometry.scala"
+}

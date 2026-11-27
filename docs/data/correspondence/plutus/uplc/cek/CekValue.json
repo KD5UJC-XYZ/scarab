@@ -1,0 +1,40 @@
+{
+ "baseline": {
+  "class uplc.cek.CekValue": [
+   {
+    "file": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Evaluation/Machine/Cek/Internal.hs",
+    "lines": [
+     289,
+     320
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "CekValue"
+   }
+  ],
+  "class uplc.cek.CekValue.VBuiltin": null,
+  "class uplc.cek.CekValue.VCon": null,
+  "class uplc.cek.CekValue.VConstr": null,
+  "class uplc.cek.CekValue.VDelay": null,
+  "class uplc.cek.CekValue.VLamAbs": null,
+  "def uplc.cek.CekValue#equals": null,
+  "def uplc.cek.CekValue#hashCode": null,
+  "def uplc.cek.CekValue.VBuiltin#applied": null,
+  "def uplc.cek.CekValue.VBuiltin#expectsArgument": null,
+  "def uplc.cek.CekValue.VBuiltin#expectsForce": null,
+  "def uplc.cek.CekValue.VBuiltin#forced": null,
+  "def uplc.cek.CekValue.VBuiltin#saturated": null,
+  "def uplc.cek.CekValue.VBuiltin#toString": null,
+  "def uplc.cek.CekValue.VBuiltin.of": null,
+  "def uplc.cek.CekValue.VCon#toString": null,
+  "def uplc.cek.CekValue.VConstr#toString": null,
+  "def uplc.cek.CekValue.VDelay#toString": null,
+  "def uplc.cek.CekValue.VLamAbs#toString": null,
+  "def uplc.cek.CekValue.discharge": null,
+  "def uplc.cek.CekValue.dischargeApplied": null,
+  "given uplc.cek.CekValue.given_MachineValue_CekValue": null,
+  "object uplc.cek.CekValue": null,
+  "object uplc.cek.CekValue.VBuiltin": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cek/CekValue.scala"
+}

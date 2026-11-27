@@ -1,0 +1,32 @@
+{
+ "baseline": {
+  "def consensus.DijkstraCrossing.chainDepState": null,
+  "def consensus.DijkstraCrossing.forecast": null,
+  "def consensus.DijkstraCrossing.forecastBound": null,
+  "object consensus.DijkstraCrossing": null
+ },
+ "entries": {
+  "def consensus.DijkstraCrossing.forecastInEra": {
+   "class": "Mirror",
+   "digest": "b82b31066c8079bc",
+   "evidence": [
+    "DijkstraHeaderRulesSuite"
+   ],
+   "note": "the Dijkstra forecast's three cases (the tip's own view, TICKF's view before the exclusive bound of the stability window past the tip's successor, OutsideForecastRange after it) as the reference's; the view holds only the fields header validation reads (Praos2.LedgerView), not the committee, the quorum or the transaction-byte bound. DijkstraHeaderRulesSuite validates the public testnet's headers after its ledger state at slot 2,168,639 against it, the leader check on that state's stake, and its exclusive bound",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/SupportsProtocol.hs",
+     "lines": [
+      105,
+      140
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ledgerViewForecastAtPolyPraos"
+    }
+   ]
+  }
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/DijkstraCrossing.scala"
+}

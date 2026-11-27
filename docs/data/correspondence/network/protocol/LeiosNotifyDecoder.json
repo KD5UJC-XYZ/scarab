@@ -1,0 +1,84 @@
+{
+ "baseline": {
+  "def protocol.LeiosNotifyDecoder.decode": null,
+  "object protocol.LeiosNotifyDecoder": null
+ },
+ "entries": {
+  "def protocol.LeiosNotifyDecoder.decodeIdle": {
+   "class": "Mirror",
+   "digest": "8c45db02c7a8b039",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "decode from StIdle, the client's messages, which carry no header",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "lines": [
+      259,
+      396
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "codecLeiosNotify"
+    }
+   ]
+  },
+  "def protocol.LeiosNotifyDecoder.resumed": {
+   "class": "Mirror",
+   "digest": "605e5b73084c8ed7",
+   "note": "a message read on from a checkpoint: the frame, then each vote",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "lines": [
+      274,
+      388
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "decode"
+    }
+   ]
+  },
+  "enum protocol.LeiosNotifyDecoder.Checkpoint": {
+   "class": "Mirror",
+   "digest": "3f96482b26e83628",
+   "note": "the frame, or the votes of decodeVotes read so far",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "lines": [
+      383,
+      388
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "decodeVotes"
+    }
+   ]
+  },
+  "val protocol.LeiosNotifyDecoder.start": {
+   "class": "Mirror",
+   "digest": "b4f7cdaa9cf17553",
+   "note": "a message read from its start",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "lines": [
+      274,
+      283
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "decode"
+    }
+   ]
+  }
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/LeiosNotifyDecoder.scala"
+}

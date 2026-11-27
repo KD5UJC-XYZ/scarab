@@ -1,0 +1,44 @@
+{
+ "baseline": {
+  "class protocol.LeiosStream.Cursor": null,
+  "class protocol.LeiosStream.Head": null,
+  "def protocol.LeiosStream.bytes": null,
+  "def protocol.LeiosStream.check": null,
+  "def protocol.LeiosStream.definite": null,
+  "def protocol.LeiosStream.enforceSize": null,
+  "def protocol.LeiosStream.fail": null,
+  "def protocol.LeiosStream.fixed": null,
+  "def protocol.LeiosStream.length": null,
+  "def protocol.LeiosStream.point": null,
+  "def protocol.LeiosStream.pure": null,
+  "def protocol.LeiosStream.repeat": null,
+  "def protocol.LeiosStream.run": null,
+  "def protocol.LeiosStream.take": null,
+  "def protocol.LeiosStream.unsigned": null,
+  "object protocol.LeiosStream": null,
+  "type protocol.LeiosStream.Decoder": null,
+  "type protocol.LeiosStream.Result": null,
+  "val protocol.LeiosStream.break": null,
+  "val protocol.LeiosStream.byte": null,
+  "val protocol.LeiosStream.head": null,
+  "val protocol.LeiosStream.peek": null,
+  "val protocol.LeiosStream.position": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class protocol.LeiosStream.Entries",
+    "def protocol.LeiosStream.Entries#added",
+    "def protocol.LeiosStream.Entries#inOrder",
+    "def protocol.LeiosStream.Entries.none",
+    "def protocol.LeiosStream.collectionHead",
+    "def protocol.LeiosStream.collectionStep",
+    "def protocol.LeiosStream.resume",
+    "enum protocol.LeiosStream.Resumed",
+    "object protocol.LeiosStream.Entries"
+   ],
+   "reason": "the LeiosFetch codec read in steps, so that a message the driver receives in parts is read once and refused at the first token the codec refuses, as cborg's incremental decoder reads the reference's single Decoder: the checkpoints between steps and the one a message starts from, the runner that resumes from a checkpoint, and a counted collection's head and its next entry with the entries read so far (the bound checks of the reference's decodeBitmaps and of its transaction list); cborg's incremental decoding is the runtime's, with no definition to map (#54)"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/LeiosStream.scala"
+}

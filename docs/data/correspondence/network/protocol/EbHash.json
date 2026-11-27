@@ -1,0 +1,35 @@
+{
+ "baseline": {
+  "def protocol.EbHash.bytes": null,
+  "def protocol.EbHash.fromBytes": null,
+  "def protocol.LeiosTxHash.bytes": null,
+  "def protocol.LeiosTxHash.fromBytes": null,
+  "object protocol.EbHash": null,
+  "object protocol.LeiosTxHash": null,
+  "type protocol.EbHash": [
+   {
+    "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+    "lines": [
+     101,
+     103
+    ],
+    "repository": "IntersectMBO/ouroboros-consensus",
+    "revision": "7b239a16465f1e517a1f3dd2a3761a2b2a153b51",
+    "symbol": "EbHash"
+   }
+  ],
+  "type protocol.LeiosTxHash": [
+   {
+    "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+    "lines": [
+     144,
+     146
+    ],
+    "repository": "IntersectMBO/ouroboros-consensus",
+    "revision": "7b239a16465f1e517a1f3dd2a3761a2b2a153b51",
+    "symbol": "TxHash"
+   }
+  ]
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/EbHash.scala"
+}

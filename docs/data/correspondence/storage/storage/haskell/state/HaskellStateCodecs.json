@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "def storage.haskell.state.HaskellStateCodecs.proposalsReading": null,
+  "def storage.haskell.state.HaskellStateCodecs.stateLayout": null,
+  "def storage.haskell.state.LeiosStateCodecs.proposalsReading": null,
+  "def storage.haskell.state.LeiosStateCodecs.stateLayout": null,
+  "def storage.haskell.state.NativeLeiosStateCodecs.proposalsReading": null,
+  "def storage.haskell.state.NativeLeiosStateCodecs.stateLayout": null,
+  "def storage.haskell.state.NativeStateCodecs.proposalsReading": null,
+  "def storage.haskell.state.NativeStateCodecs.stateLayout": null,
+  "object storage.haskell.state.HaskellStateCodecs": null,
+  "object storage.haskell.state.LeiosStateCodecs": null,
+  "object storage.haskell.state.NativeLeiosStateCodecs": null,
+  "object storage.haskell.state.NativeStateCodecs": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellStateCodecs.scala"
+}

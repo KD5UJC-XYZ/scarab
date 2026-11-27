@@ -1,0 +1,51 @@
+{
+ "baseline": {
+  "class ledger.dijkstra.DijkstraTxIn": null,
+  "class ledger.dijkstra.DijkstraTxOut": null,
+  "class ledger.dijkstra.DijkstraValue": null,
+  "def ledger.dijkstra.DijkstraDatum.data": null,
+  "def ledger.dijkstra.DijkstraDatum.decode": null,
+  "def ledger.dijkstra.DijkstraDatum.hash": null,
+  "def ledger.dijkstra.DijkstraTxIn.decode": null,
+  "def ledger.dijkstra.DijkstraTxIn.nonEmptySet": null,
+  "def ledger.dijkstra.DijkstraTxIn.set": null,
+  "def ledger.dijkstra.DijkstraTxOut.decode": [
+   {
+    "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+    "lines": [
+     555,
+     592
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "decodeBabbageTxOut"
+   }
+  ],
+  "def ledger.dijkstra.DijkstraTxOut.list": null,
+  "def ledger.dijkstra.DijkstraValue.decode": null,
+  "def ledger.dijkstra.MultiAsset.decode": [
+   {
+    "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+    "lines": [
+     331,
+     352
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "decodeMultiAsset"
+   }
+  ],
+  "def ledger.dijkstra.MultiAsset.held": null,
+  "def ledger.dijkstra.MultiAsset.minted": null,
+  "def ledger.dijkstra.Sparse.read": null,
+  "enum ledger.dijkstra.DijkstraDatum": null,
+  "object ledger.dijkstra.DijkstraDatum": null,
+  "object ledger.dijkstra.DijkstraTxIn": null,
+  "object ledger.dijkstra.DijkstraTxOut": null,
+  "object ledger.dijkstra.DijkstraValue": null,
+  "object ledger.dijkstra.MultiAsset": null,
+  "object ledger.dijkstra.Sparse": null,
+  "type ledger.dijkstra.MultiAsset": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraOutputs.scala"
+}

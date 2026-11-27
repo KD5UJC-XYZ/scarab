@@ -1,0 +1,32 @@
+{
+ "baseline": {
+  "def uplc.builtin.extended.Lifted.arg": null,
+  "def uplc.builtin.extended.Lifted.bls": null,
+  "def uplc.builtin.extended.Lifted.denotation": null,
+  "def uplc.builtin.extended.Lifted.failed": null,
+  "def uplc.builtin.extended.Lifted.four": null,
+  "def uplc.builtin.extended.Lifted.logs": null,
+  "def uplc.builtin.extended.Lifted.one": null,
+  "def uplc.builtin.extended.Lifted.outcome": null,
+  "def uplc.builtin.extended.Lifted.structural": null,
+  "def uplc.builtin.extended.Lifted.three": null,
+  "def uplc.builtin.extended.Lifted.two": null,
+  "def uplc.builtin.extended.Lifted.wrongType": null,
+  "def uplc.builtin.extended.Reads#expected": null,
+  "def uplc.builtin.extended.Reads#read": null,
+  "given uplc.builtin.extended.Reads.given_Reads_BigInt": null,
+  "given uplc.builtin.extended.Reads.given_Reads_Boolean": null,
+  "given uplc.builtin.extended.Reads.given_Reads_Bytes": null,
+  "given uplc.builtin.extended.Reads.given_Reads_G1Element": null,
+  "given uplc.builtin.extended.Reads.given_Reads_G2Element": null,
+  "given uplc.builtin.extended.Reads.given_Reads_MlResult": null,
+  "given uplc.builtin.extended.Reads.given_Reads_PlutusData": null,
+  "given uplc.builtin.extended.Reads.given_Reads_Value": null,
+  "given uplc.builtin.extended.Reads.given_Reads_Vector_A": null,
+  "object uplc.builtin.extended.Lifted": null,
+  "object uplc.builtin.extended.Reads": null,
+  "trait uplc.builtin.extended.Reads": null,
+  "type uplc.builtin.extended.Result": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/builtin/extended/Lifted.scala"
+}

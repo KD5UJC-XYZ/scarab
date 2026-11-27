@@ -1,0 +1,32 @@
+{
+ "baseline": {
+  "class uplc.Signature": null,
+  "def uplc.Signature#arity": null,
+  "def uplc.Signature.Notation.array": null,
+  "def uplc.Signature.Notation.list": null,
+  "def uplc.Signature.Notation.opaque": null,
+  "def uplc.Signature.Notation.pair": null,
+  "def uplc.Signature.Parameter#variables": null,
+  "def uplc.Signature.Type#ground": null,
+  "def uplc.Signature.Type#variables": null,
+  "def uplc.Signature.apply": null,
+  "def uplc.Signature.variables": null,
+  "enum uplc.Signature.Parameter": null,
+  "enum uplc.Signature.Type": null,
+  "object uplc.Signature": null,
+  "object uplc.Signature.Notation": null,
+  "val uplc.Signature.Notation.a": null,
+  "val uplc.Signature.Notation.b": null,
+  "val uplc.Signature.Notation.bool": null,
+  "val uplc.Signature.Notation.bytestring": null,
+  "val uplc.Signature.Notation.data": null,
+  "val uplc.Signature.Notation.g1": null,
+  "val uplc.Signature.Notation.g2": null,
+  "val uplc.Signature.Notation.integer": null,
+  "val uplc.Signature.Notation.mlResult": null,
+  "val uplc.Signature.Notation.string": null,
+  "val uplc.Signature.Notation.unit": null,
+  "val uplc.Signature.Notation.value": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/Signature.scala"
+}

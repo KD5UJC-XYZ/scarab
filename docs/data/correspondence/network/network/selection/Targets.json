@@ -1,0 +1,22 @@
+{
+ "baseline": {
+  "class network.selection.Targets": null,
+  "def network.selection.Targets#revised": null,
+  "def network.selection.Targets#withActive": null,
+  "def network.selection.Targets#withActiveBig": null,
+  "def network.selection.Targets#withRoot": null,
+  "def network.selection.Targets.Problem#message": null,
+  "def network.selection.Targets.validated": null,
+  "enum network.selection.Targets.Kind": null,
+  "enum network.selection.Targets.Problem": null,
+  "object network.selection.Targets": null,
+  "val network.selection.Targets.ActiveCap": null,
+  "val network.selection.Targets.EstablishedCap": null,
+  "val network.selection.Targets.KnownCap": null,
+  "val network.selection.Targets.blockProducer": null,
+  "val network.selection.Targets.relay": null,
+  "val network.selection.Targets.sync": null,
+  "val network.selection.Targets.zero": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/Targets.scala"
+}

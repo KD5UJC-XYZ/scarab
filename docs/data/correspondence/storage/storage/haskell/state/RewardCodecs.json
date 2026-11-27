@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "given storage.haskell.state.RewardCodecs#leaderOnlyReward": null,
+  "given storage.haskell.state.RewardCodecs#likelihood": null,
+  "given storage.haskell.state.RewardCodecs#logWeight": null,
+  "given storage.haskell.state.RewardCodecs#nonMyopic": null,
+  "given storage.haskell.state.RewardCodecs#poolRewardInfo": null,
+  "given storage.haskell.state.RewardCodecs#pulsingRewUpdate": null,
+  "given storage.haskell.state.RewardCodecs#reward": null,
+  "given storage.haskell.state.RewardCodecs#rewardAns": null,
+  "given storage.haskell.state.RewardCodecs#rewardBlockCount": null,
+  "given storage.haskell.state.RewardCodecs#rewardFreeVars": null,
+  "given storage.haskell.state.RewardCodecs#rewardPulseSize": null,
+  "given storage.haskell.state.RewardCodecs#rewardPulser": null,
+  "given storage.haskell.state.RewardCodecs#rewardSet": null,
+  "given storage.haskell.state.RewardCodecs#rewardSnapShot": null,
+  "given storage.haskell.state.RewardCodecs#rewardType": null,
+  "given storage.haskell.state.RewardCodecs#rewardUpdate": null,
+  "given storage.haskell.state.RewardCodecs#singletonReward": null,
+  "trait storage.haskell.state.RewardCodecs": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/RewardCodecs.scala"
+}

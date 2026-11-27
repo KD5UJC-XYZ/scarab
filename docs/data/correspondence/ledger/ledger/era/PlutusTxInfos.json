@@ -1,0 +1,409 @@
+{
+ "entries": {
+  "def ledger.era.PlutusTxInfos.transAccountAddress": {
+   "class": "Mirror",
+   "digest": "9a01a4e4eda106a9",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      157,
+      158
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transAccountAddress"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transAccountAddressFlat": {
+   "class": "Mirror",
+   "digest": "05e17b07c02e18b7",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "of an account the node holds untyped (a governance action's)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      157,
+      158
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transAccountAddress"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transAddr": {
+   "class": "Mirror",
+   "digest": "2dfd9a58bb6a0481",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      147,
+      153
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transAddr"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transBoundedRational": {
+   "class": "Mirror",
+   "digest": "90ef3504ab3cf55b",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "through `fromHaskellRatio`, as 9df9f98c's (`PV3.fromHaskellRatio . unboundRational`)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      118,
+      119
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transBoundedRational"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      119,
+      120
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transBoundedRational"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transCoinToLovelace": {
+   "class": "Mirror",
+   "digest": "1d94963d660b0c39",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      203,
+      204
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transCoinToLovelace"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transCoinToValue": {
+   "class": "Mirror",
+   "digest": "653cc335004ca771",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      182,
+      183
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transCoinToValue"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transCred": {
+   "class": "Mirror",
+   "digest": "e79abf999c85f27d",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      139,
+      143
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transCred"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transCredFlat": {
+   "class": "Mirror",
+   "digest": "1f8eb02b15c30fa3",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "of a credential the node holds untyped (an address's, an account's, a voter's)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      139,
+      143
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transCred"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transDataHash": {
+   "class": "Mirror",
+   "digest": "b3593e7831f23dd9",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      121,
+      122
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transDataHash"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transDataPair": {
+   "class": "Mirror",
+   "digest": "74c089b0284bebd4",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "of the data read from its bytes",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      185,
+      186
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transDataPair"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transDatum": {
+   "class": "Mirror",
+   "digest": "6b070282fdef2b76",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "of the data read from its bytes",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      212,
+      213
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transDatum"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transEpochNo": {
+   "class": "Mirror",
+   "digest": "2467b2de895b626b",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      206,
+      207
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transEpochNo"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transKeyHash": {
+   "class": "Mirror",
+   "digest": "a5c5debbdce66c67",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      124,
+      125
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transKeyHash"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transKeyHashBytes": {
+   "class": "Mirror",
+   "digest": "f58321c6ce0c087f",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "of a key hash the node holds as its bytes (a required signer, a pool voter)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      124,
+      125
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transKeyHash"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transSafeHash": {
+   "class": "Mirror",
+   "digest": "5b0ffc950daaacb6",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      127,
+      128
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transSafeHash"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transScriptHash": {
+   "class": "Mirror",
+   "digest": "a61e7f3890763c89",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      130,
+      131
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transScriptHash"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transStakeReference": {
+   "class": "Mirror",
+   "digest": "63e34f345f077b8d",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      133,
+      137
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transStakeReference"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transTxId": {
+   "class": "Mirror",
+   "digest": "42a3dedbbc806786",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      176,
+      177
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transTxId"
+    }
+   ]
+  },
+  "def ledger.era.PlutusTxInfos.transTxIn": {
+   "class": "Mirror",
+   "digest": "fe12fe1adca4fcbd",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      179,
+      180
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transTxIn"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.PlutusTxInfos"
+   ],
+   "reason": "objects that stand for the reference's modules of functions (`Alonzo/Scripts.hs`, `State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`, the `TxInfo.hs` and `Context.hs` of the script context, the `Indexable` instances of `Alonzo/TxBody.hs`, plutus-ledger-api's `V1` to `V4`, plutus-tx's `Ratio`), which Scala needs to hold top-level functions under a name"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/PlutusTxInfos.scala"
+}

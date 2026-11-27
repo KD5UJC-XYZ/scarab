@@ -1,0 +1,30 @@
+{
+ "baseline": {
+  "class ledger.state.ConwayGovState": null,
+  "class ledger.state.DRComplete": null,
+  "class ledger.state.ShelleyGovState": null,
+  "def ledger.state.FuturePParams.definite": null,
+  "def ledger.state.FuturePParams.map": null,
+  "def ledger.state.FuturePParams.nextParams": null,
+  "enum ledger.state.FuturePParams": null,
+  "object ledger.state.ConwayGovState": null,
+  "object ledger.state.DRComplete": null,
+  "object ledger.state.FuturePParams": null,
+  "object ledger.state.ShelleyGovState": null,
+  "val ledger.state.ConwayGovState.committee": null,
+  "val ledger.state.ConwayGovState.constitution": null,
+  "val ledger.state.ConwayGovState.curPParams": null,
+  "val ledger.state.ConwayGovState.drepPulsing": null,
+  "val ledger.state.ConwayGovState.futurePParams": null,
+  "val ledger.state.ConwayGovState.prevPParams": null,
+  "val ledger.state.ConwayGovState.proposals": null,
+  "val ledger.state.DRComplete.ratify": null,
+  "val ledger.state.DRComplete.snapshot": null,
+  "val ledger.state.ShelleyGovState.curPParams": null,
+  "val ledger.state.ShelleyGovState.curProposals": null,
+  "val ledger.state.ShelleyGovState.futurePParams": null,
+  "val ledger.state.ShelleyGovState.futureProposals": null,
+  "val ledger.state.ShelleyGovState.prevPParams": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/GovState.scala"
+}

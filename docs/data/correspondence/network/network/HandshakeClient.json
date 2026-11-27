@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "class network.HandshakeClient.Agreed": null,
+  "def network.HandshakeClient.Agreed#ntnVersion": null,
+  "def network.HandshakeClient.run": null,
+  "object network.HandshakeClient": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/HandshakeClient.scala"
+}

@@ -1,0 +1,165 @@
+{
+ "baseline": {
+  "class storage.ReceivedBlocks.Residency": null,
+  "def storage.ReceivedBlocks#collect": null,
+  "def storage.ReceivedBlocks#get": null,
+  "def storage.ReceivedBlocks#hashes": null,
+  "def storage.ReceivedBlocks#holds": null,
+  "def storage.ReceivedBlocks#invalidate": null,
+  "def storage.ReceivedBlocks#original": null,
+  "def storage.ReceivedBlocks#put": null,
+  "def storage.ReceivedBlocks#refs": null,
+  "def storage.ReceivedBlocks#residency": null,
+  "def storage.ReceivedBlocks#restoreSelected": null,
+  "def storage.ReceivedBlocks.open": null,
+  "object storage.ReceivedBlocks": null,
+  "trait storage.ReceivedBlocks": null,
+  "val storage.ReceivedBlocks.DefaultCacheBytes": null
+ },
+ "entries": {
+  "class storage.ReceivedBlocks.Linked": {
+   "class": "Mirror",
+   "digest": "adb426558b5074cb",
+   "evidence": [
+    "ChainServerSuite",
+    "ReceivedBlocksSuite"
+   ],
+   "note": "the block's reference (hash, slot, number, boundary) and its predecessor, the fields of BlockInfo the iterator's path walk reads; the header's offset and size, which the reference keeps to read a header alone, are not kept. Evidence: the wire cases of ChainServerSuite assert each outcome of the reference's ChainDB iterator and BlockFetch server, as their source at the pins gives it, over a connection Scarab serves; no running reference node is asked",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/API.hs",
+     "lines": [
+      152,
+      160
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "BlockInfo"
+    }
+   ]
+  },
+  "def storage.ReceivedBlocks#links": {
+   "class": "Mirror",
+   "digest": "873fa035516e1be9",
+   "evidence": [
+    "ReceivedBlocksSuite",
+    "ChainServerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
+     "lines": [
+      553,
+      559
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "getBlockInfoImpl"
+    }
+   ]
+  },
+  "def storage.ReceivedBlocks.recovering": {
+   "class": "Gap",
+   "digest": "2bd1d2d54713a70b",
+   "note": "the open of the received log, as openDB opens the VolatileDB from its files (VolatileStore.openIndexWith): the names it does not read traced, each file validated in order and each cut traced just before it is made, the index built; the store answers a put of a held block with BlockAlreadyHere. Beside the reference's state it keeps Scarab-only state, a cache of recent bodies and the set of blocks refused since the open, and hands back the open's report (#1247) Where it differs: besides openDB's work it keeps a cache and the set of blocks refused since the open, and hands back the open's report; no differential comparison covers it (#1261).",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
+     "lines": [
+      200,
+      239
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "openDB"
+    }
+   ]
+  },
+  "enum storage.ReceivedBlocks.Predecessor": {
+   "class": "Mirror",
+   "digest": "ccf51ab3e81ba251",
+   "evidence": [
+    "ReceivedBlocksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/Block.hs",
+     "lines": [
+      185,
+      185
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "ChainHash"
+    }
+   ]
+  },
+  "type storage.ReceivedBlocks.Check": {
+   "class": "Deviation",
+   "digest": "2474ddc71d47f1e6",
+   "evidence": [
+    "ReceivedBlocksSuite",
+    "FetchedBlockIntegritySuite"
+   ],
+   "note": "the block decoder and integrity predicate the reference gives its VolatileDB (volCodecConfig, volCheckIntegrity, volValidationPolicy), as one function the node passes to the received log's open (ReceivedBlockRecovery.startUp), given the point the record stores as well: a record it refuses cannot be read and cuts its file, as parseBlockFile cuts at BlockReadErr or BlockCorruptedErr. Where it differs, by the approved Deviation of the decisions register's 2026-11-20 row (#1247): the node's check decodes the block, checks the record's point and checks the body against the header at every open, where the reference only decodes by default (NoValidation, VolatileDB/Impl.hs 188) and checks integrity (the header's own and the body against the header) only with ValidateAll, after an unclean shutdown or when the operator asks for it (ensureValidateAll, ChainDB/Impl/Args.hs 154-167); the header's own integrity is not checked here. ReceivedBlocksSuite and FetchedBlockIntegritySuite check the approved check; no suite compares it with the reference's validation policy, which it departs from by decision",
+   "record": "docs/decisions.md#genesis-storage-and-keys",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
+     "lines": [
+      159,
+      174
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "VolatileDbArgs"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
+     "lines": [
+      69,
+      107
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "parseBlockFile"
+    }
+   ]
+  },
+  "val storage.ReceivedBlocks.DefaultBlocksPerFile": {
+   "class": "Mirror",
+   "digest": "15e24a747a226ee0",
+   "evidence": [
+    "ReceivedBlocksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl.hs",
+     "lines": [
+      180,
+      189
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "volMaxBlocksPerFile"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class storage.ReceivedBlocks.Recovery"
+   ],
+   "reason": "what the received log's open found, its report and the cuts it made, handed back by ReceivedBlocks.recovering: ChainStorage emits the report as StorageEvent.ReceivedOpened, and each cut as it is told of it, through the open's callback; the reference's ChainDB traces the end of its VolatileDB's open with its newest slot (OpenedVolatileDB, Storage/ChainDB/Impl/Types.hs 829 at ouroboros-consensus 82ecba329)"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ReceivedBlocks.scala"
+}

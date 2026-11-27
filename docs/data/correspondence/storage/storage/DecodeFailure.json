@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def storage.DecodeFailure.binary": null,
+  "def storage.DecodeFailure.native": null,
+  "def storage.DecodeFailure.terminal": null,
+  "object storage.DecodeFailure": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/DecodeFailure.scala"
+}

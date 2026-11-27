@@ -1,0 +1,377 @@
+{
+ "entries": {
+  "class ledger.era.RatifyEnv": {
+   "class": "Mirror",
+   "digest": "bb174f0a37a694d1",
+   "note": "the Leios build's, its pools' stake the voting stake (VotingStakePoolDistr); f649f975's reads the same two numbers from the pool distribution; the committee state, the DReps' states and the pools are the node's typed records",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      560,
+      570
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "RatifyEnv"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      554,
+      564
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "RatifyEnv"
+    }
+   ]
+  },
+  "class ledger.era.RatifySignal": {
+   "class": "Mirror",
+   "digest": "053fe501a864edc0",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      546,
+      547
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "RatifySignal"
+    }
+   ]
+  },
+  "class ledger.era.VotingStakePoolDistr": {
+   "class": "Mirror",
+   "digest": "5438e8512d1f612b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      708,
+      714
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "VotingStakePoolDistr"
+    }
+   ]
+  },
+  "def ledger.era.DefaultVote.defaultStakePoolVote": {
+   "class": "Mirror",
+   "digest": "6fd36008f297f534",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "lines": [
+      560,
+      577
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "defaultStakePoolVote"
+    }
+   ]
+  },
+  "def ledger.era.RatifySignal.actionPriority": {
+   "class": "Mirror",
+   "digest": "ceb0aa9340a63956",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      534,
+      541
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "actionPriority"
+    }
+   ]
+  },
+  "def ledger.era.RatifySignal.reorderActions": {
+   "class": "Mirror",
+   "digest": "1728c5352bfcb22d",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      543,
+      544
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "reorderActions"
+    }
+   ]
+  },
+  "def ledger.era.VotingThreshold.isCommitteeVotingAllowed": {
+   "class": "Mirror",
+   "digest": "642d9bed305228b5",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      408,
+      424
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "isCommitteeVotingAllowed"
+    }
+   ]
+  },
+  "def ledger.era.VotingThreshold.isDRepVotingAllowed": {
+   "class": "Mirror",
+   "digest": "6560908ca13e7dd9",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      481,
+      491
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "isDRepVotingAllowed"
+    }
+   ]
+  },
+  "def ledger.era.VotingThreshold.isStakePoolVotingAllowed": {
+   "class": "Mirror",
+   "digest": "7a23704dd8782d4e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      350,
+      360
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "isStakePoolVotingAllowed"
+    }
+   ]
+  },
+  "def ledger.era.VotingThreshold.isVotingAllowed": {
+   "class": "Mirror",
+   "digest": "c9fd495af4d76a7a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      344,
+      348
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "isVotingAllowed"
+    }
+   ]
+  },
+  "def ledger.era.VotingThreshold.pparamsUpdateThreshold": {
+   "class": "Mirror",
+   "digest": "94619c0d5808ec58",
+   "note": "over the era's modifiedPPGroups, Dijkstra's keys 34 to 56 in the groups its record gives them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      311,
+      327
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "pparamsUpdateThreshold"
+    }
+   ]
+  },
+  "def ledger.era.VotingThreshold.toRatifyVotingThreshold": {
+   "class": "Mirror",
+   "digest": "45812e2a678c6896",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      338,
+      342
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toRatifyVotingThreshold"
+    }
+   ]
+  },
+  "def ledger.era.VotingThreshold.votingCommitteeThreshold": {
+   "class": "Mirror",
+   "digest": "1a33066b76e1797b",
+   "evidence": [
+    "EraRatifySuite",
+    "EraRatifyConformanceSuite",
+    "EraRatifyStoredSuite"
+   ],
+   "note": "the enact state's committee is the node's record, read at the reference's type (Committee.fromStored), a VocabError where it cannot be, which no record the node's decoders read or ENACT wrote holds",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      426,
+      442
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "votingCommitteeThreshold"
+    }
+   ]
+  },
+  "def ledger.era.VotingThreshold.votingCommitteeThresholdInternal": {
+   "class": "Mirror",
+   "digest": "c33399bd2f32c3ee",
+   "note": "the active members counted at the minimum's Word16, wrapping as fromIntegral does",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      444,
+      479
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "votingCommitteeThresholdInternal"
+    }
+   ]
+  },
+  "def ledger.era.VotingThreshold.votingDRepThreshold": {
+   "class": "Mirror",
+   "digest": "64994039ff89b75f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      493,
+      502
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "votingDRepThreshold"
+    }
+   ]
+  },
+  "def ledger.era.VotingThreshold.votingDRepThresholdInternal": {
+   "class": "Mirror",
+   "digest": "b910e6496b255e1a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      504,
+      532
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "votingDRepThresholdInternal"
+    }
+   ]
+  },
+  "def ledger.era.VotingThreshold.votingStakePoolThreshold": {
+   "class": "Mirror",
+   "digest": "eb3d261ef34697b8",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      362,
+      371
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "votingStakePoolThreshold"
+    }
+   ]
+  },
+  "def ledger.era.VotingThreshold.votingStakePoolThresholdInternal": {
+   "class": "Mirror",
+   "digest": "962c97998ec4340c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      373,
+      406
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "votingStakePoolThresholdInternal"
+    }
+   ]
+  },
+  "enum ledger.era.DefaultVote": {
+   "class": "Mirror",
+   "digest": "ab4582d582f2f9ab",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "lines": [
+      526,
+      536
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DefaultVote"
+    }
+   ]
+  },
+  "enum ledger.era.VotingThreshold": {
+   "class": "Mirror",
+   "digest": "fa203add3fd02522",
+   "note": "the constructor VotingThreshold is Threshold, the enum's own name being taken in its companion; the threshold a value, where the reference's is lazy",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      329,
+      336
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "VotingThreshold"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.DefaultVote.given_CanEqual_DefaultVote_DefaultVote",
+    "given ledger.era.VotingThreshold.given_CanEqual_VotingThreshold_VotingThreshold",
+    "object ledger.era.DefaultVote",
+    "object ledger.era.RatifySignal",
+    "object ledger.era.VotingThreshold"
+   ],
+   "reason": "RATIFY's and ENACT's era types (#85): the companions holding the reference's functions (each mapped by itself), their equality, which the reference derives, and the module objects of the two rules; the node's record of the committee read at the reference's Committee and written back, until the governance state holds the reference's committee"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/Ratify.scala"
+}

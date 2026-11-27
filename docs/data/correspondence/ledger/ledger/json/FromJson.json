@@ -1,0 +1,21 @@
+{
+ "baseline": {
+  "def ledger.json.FromJson.integer": null,
+  "def ledger.json.FromJson.natural": null,
+  "def ledger.json.FromJson.nonZeroWord64": null,
+  "def ledger.json.FromJson.rational": null,
+  "def ledger.json.FromJson.scientific": null,
+  "def ledger.json.FromJson.showRational": null,
+  "def ledger.json.FromJson.word": null,
+  "def ledger.json.FromJson.word64": null,
+  "def ledger.json.JsonKind.of": null,
+  "def ledger.json.NumberError#message": null,
+  "def ledger.json.RatioKey#key": null,
+  "enum ledger.json.JsonKind": null,
+  "enum ledger.json.NumberError": null,
+  "enum ledger.json.RatioKey": null,
+  "object ledger.json.FromJson": null,
+  "object ledger.json.JsonKind": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/FromJson.scala"
+}

@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "def storage.SnapshotV9.bindingAt": null,
+  "def storage.SnapshotV9.bindingBytes": null,
+  "def storage.SnapshotV9.bindingOf": null,
+  "def storage.SnapshotV9.boundHeader": null,
+  "def storage.SnapshotV9.framed": null,
+  "def storage.SnapshotV9.fromV8": null,
+  "def storage.SnapshotV9.located": null,
+  "def storage.SnapshotV9.sections": null,
+  "def storage.SnapshotV9.sidecarOf": null,
+  "object storage.SnapshotV9": null,
+  "val storage.SnapshotV9.Magic": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala"
+}

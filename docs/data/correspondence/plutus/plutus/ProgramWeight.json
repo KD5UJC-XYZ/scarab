@@ -1,0 +1,25 @@
+{
+ "glue": [
+  {
+   "definitions": [
+    "def plutus.ProgramWeight.constant",
+    "def plutus.ProgramWeight.entry",
+    "def plutus.ProgramWeight.of",
+    "def plutus.Weight.*",
+    "def plutus.Weight.+",
+    "def plutus.Weight.-",
+    "def plutus.Weight.bytes",
+    "def plutus.Weight.exceeds",
+    "def plutus.Weight.mebibytes",
+    "def plutus.Weight.toLong",
+    "object plutus.ProgramWeight",
+    "object plutus.Weight",
+    "type plutus.Weight",
+    "val plutus.Weight.unbounded",
+    "val plutus.Weight.zero"
+   ],
+   "reason": "Scarab's memoisation of the programs its own evaluator decodes, bounded by their number and by an estimate of the heap they hold: the least-recently-used map and its bounds, the weight of a decoded program, and the interpreter that holds the cache; internal to Scarab, it changes no result"
+  }
+ ],
+ "source": "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ProgramWeight.scala"
+}

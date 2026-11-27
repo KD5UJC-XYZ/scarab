@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "def network.genesis.PicosClock#now": null,
+  "def network.genesis.PicosClock#sleep": null,
+  "def network.genesis.PicosClock.system": null,
+  "object network.genesis.PicosClock": null,
+  "trait network.genesis.PicosClock": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/genesis/PicosClock.scala"
+}

@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "class storage.scls.SclsBase.Config": null,
+  "class storage.scls.SclsBase.Source": null,
+  "def storage.scls.SclsBase.Source#entries": null,
+  "def storage.scls.SclsBase.externalScratch": null,
+  "def storage.scls.SclsBase.resource": null,
+  "enum storage.scls.SclsBase.Error": null,
+  "object storage.scls.SclsBase": null,
+  "val storage.scls.SclsBase.Source#context": null,
+  "val storage.scls.SclsBase.Source#database": null,
+  "val storage.scls.SclsBase.Source#ledger": null,
+  "val storage.scls.SclsBase.Source#sidecar": null,
+  "val storage.scls.SclsBase.Source#snapshot": null,
+  "val storage.scls.SclsBase.Source#utxo": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsBase.scala"
+}

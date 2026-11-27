@@ -1,0 +1,116 @@
+{
+ "entries": {
+  "def ledger.era.rules.DijkstraUtxow.conwayToDijkstraUtxowPredFailure": {
+   "class": "Mirror",
+   "digest": "33c56cbc7478f3f4",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      436,
+      459
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "conwayToDijkstraUtxowPredFailure"
+    }
+   ]
+  },
+  "def ledger.era.rules.DijkstraUtxow.dijkstraUtxowTransition": {
+   "class": "Mirror",
+   "digest": "6dc9ee5aef029c03",
+   "evidence": [
+    "DijkstraRulesOracleSuite",
+    "DijkstraUtxowSuite"
+   ],
+   "note": "as Conway's babbageUtxowTransition: the node's signature checks and script decoder given, a check with no verdict raised as the node's LedgerDefect; the legacy mode's datums through missingRequiredDatumsAllowing; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO; a predicate's condition evaluated only when the judgment checks predicates (`Sts.validating`), as under ValidateNone the reference evaluates none (`Extended.hs:715-720`)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      216,
+      325
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraUtxowTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.DijkstraUtxow.validateGuardDatums": {
+   "class": "Mirror",
+   "digest": "30664a3cdc38e336",
+   "note": "of a body of either level, as SUBUTXOW reuses it; its failure the constructor it reports",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      465,
+      495
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "validateGuardDatums"
+    }
+   ]
+  },
+  "def ledger.era.rules.DijkstraUtxow.validateRequiredGuards": {
+   "class": "Mirror",
+   "digest": "32291b32b244685a",
+   "evidence": [
+    "DijkstraUtxowSuite"
+   ],
+   "note": "the guards' check of dijkstraUtxowTransition written as a predicate of its own, run on the signal as the reference runs it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      312,
+      318
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "missingGuards"
+    }
+   ]
+  },
+  "enum ledger.era.rules.DijkstraUtxowPredFailure": {
+   "class": "Mirror",
+   "digest": "70bef77bdfea0477",
+   "note": "its constructors in the reference's order, its fields at the node's types, as ConwayUtxowPredFailure's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      93,
+      143
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraUtxowPredFailure"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.rules.DijkstraUtxow"
+   ],
+   "reason": "the context the era-typed UTXO reads besides its environment: what the reference asks of Globals (the network, the system start, the era history at the tip, which the node's Globals does not hold), the STS policy runTestOnSignal reads, and the era's injection of Shelley's failures; the choice of Conway's injection by reference build until the builds are types (BuildRules, docs/design/reference-builds-as-types.md, #1063); and the module object of Conway's UTXO functions; and the private constructor of an era's injection, which only this package calls"
+  },
+  {
+   "definitions": [
+    "given ledger.era.rules.DijkstraUtxowPredFailure.given_CanEqual_DijkstraUtxowPredFailure_E_DijkstraUtxowPredFailure_E",
+    "object ledger.era.rules.DijkstraUtxowPredFailure"
+   ],
+   "reason": "the reading and writing of the node's stored UTxO set by the era-typed state change: a stored output read into the era (design §3.6 of docs/design/era-typed-transactions.md), extractKeys, restrictKeys and the left-biased union of Data.Map over the stored set, how the rules read stored outputs (StoredOutputs, whose default reads each where asked and whose instance in Conway's block run keeps what the run read, #85), and the defects the reference has no counterpart for (a script the evaluator gives no verdict for, a damaged store, an output outside the state's vocabulary), raised as no verdict; and the companions and module objects of UTXOS, Scala containers with no counterpart (#85); and the companions of UTXO's failure, its injection and its embedding of UTXOS, with the failure's equality with itself only; and the companions of UTXOW's failure, its injection and its embedding of UTXO, with the failure's equality with itself only, and the module objects of Allegra's native-script evaluation (Allegra/Scripts.hs, Allegra/Tx.hs); and the companions of SUBUTXO's and SUBUTXOW's failures and events, their injections and the embedding of SUBUTXO, with each type's equality with itself only"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/DijkstraUtxow.scala"
+}

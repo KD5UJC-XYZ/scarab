@@ -1,0 +1,28 @@
+{
+ "baseline": {
+  "def ledger.rules.UtxoTests.alonzo": null,
+  "def ledger.rules.UtxoTests.babbage": null,
+  "def ledger.rules.UtxoTests.badInputs": null,
+  "def ledger.rules.UtxoTests.bootAddrAttrsTooBig": null,
+  "def ledger.rules.UtxoTests.disjointRefInputs": null,
+  "def ledger.rules.UtxoTests.exUnitsTooBig": null,
+  "def ledger.rules.UtxoTests.feeTooSmall": null,
+  "def ledger.rules.UtxoTests.feesOK": null,
+  "def ledger.rules.UtxoTests.injectedBootAddrAttrsTooBig": null,
+  "def ledger.rules.UtxoTests.inputSetEmpty": null,
+  "def ledger.rules.UtxoTests.maxTxSize": null,
+  "def ledger.rules.UtxoTests.outputTooBig": null,
+  "def ledger.rules.UtxoTests.outputTooSmall": null,
+  "def ledger.rules.UtxoTests.shelleyAfterPpup": null,
+  "def ledger.rules.UtxoTests.shelleyBeforePpup": null,
+  "def ledger.rules.UtxoTests.timeToLive": null,
+  "def ledger.rules.UtxoTests.tooManyCollateralInputs": null,
+  "def ledger.rules.UtxoTests.validityInterval": null,
+  "def ledger.rules.UtxoTests.valueNotConserved": null,
+  "def ledger.rules.UtxoTests.wrongNetwork": null,
+  "def ledger.rules.UtxoTests.wrongNetworkInTxBody": null,
+  "def ledger.rules.UtxoTests.wrongNetworkWithdrawal": null,
+  "object ledger.rules.UtxoTests": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/UtxoTests.scala"
+}

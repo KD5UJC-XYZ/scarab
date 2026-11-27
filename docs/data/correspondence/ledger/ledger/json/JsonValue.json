@@ -1,0 +1,32 @@
+{
+ "baseline": {
+  "def ledger.json.JsonKey.fromString": null,
+  "def ledger.json.JsonKey.fromText": null,
+  "def ledger.json.JsonKey.text": null,
+  "def ledger.json.JsonObject.fromList": null,
+  "def ledger.json.JsonObject.get": null,
+  "def ledger.json.JsonObject.size": null,
+  "def ledger.json.JsonObject.toVector": null,
+  "def ledger.json.JsonText.asString": null,
+  "def ledger.json.JsonText.pack": null,
+  "def ledger.json.JsonValue#equals": null,
+  "def ledger.json.JsonValue#hashCode": null,
+  "def ledger.json.JsonValue#toString": null,
+  "enum ledger.json.JsonValue": null,
+  "given ledger.json.JsonKey.given_Ordering_JsonKey": null,
+  "given ledger.json.JsonKey.order": null,
+  "given ledger.json.JsonText.given_Ordering_JsonText": null,
+  "given ledger.json.JsonText.order": null,
+  "given ledger.json.JsonValue.given_Order_JsonValue": null,
+  "given ledger.json.JsonValue.given_Ordering_JsonValue": null,
+  "given ledger.json.JsonValue.given_Show_JsonValue": null,
+  "object ledger.json.JsonKey": null,
+  "object ledger.json.JsonObject": null,
+  "object ledger.json.JsonText": null,
+  "object ledger.json.JsonValue": null,
+  "type ledger.json.JsonKey": null,
+  "type ledger.json.JsonObject": null,
+  "type ledger.json.JsonText": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/JsonValue.scala"
+}

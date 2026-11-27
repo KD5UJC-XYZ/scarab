@@ -1,0 +1,60 @@
+{
+ "baseline": {
+  "class ledger.rules.Globals": null,
+  "def ledger.rules.Globals#activeSlotCoeff": null,
+  "def ledger.rules.Globals#epochOf": null,
+  "def ledger.rules.Globals#firstSlot": null,
+  "def ledger.rules.Globals#maxLovelaceSupply": null,
+  "def ledger.rules.Globals#networkId": null,
+  "def ledger.rules.Globals#quorum": null,
+  "def ledger.rules.Globals#randomnessStabilisationWindow": null,
+  "def ledger.rules.Globals#resolved": null,
+  "def ledger.rules.Globals#securityParameter": null,
+  "def ledger.rules.Globals#slotOfNoReturn": null,
+  "def ledger.rules.Globals#stabilityWindow": null
+ },
+ "entries": {
+  "def ledger.rules.Globals#maxKeyAgeEpochs": {
+   "class": "Mirror",
+   "digest": "a00234b00a94450c",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Snap.hs",
+     "lines": [
+      157,
+      165
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "maxKeyAgeEpochs"
+    }
+   ]
+  },
+  "def ledger.rules.Globals#systemStart": {
+   "class": "Mirror",
+   "digest": "5bc19435f77eb1f6",
+   "evidence": [
+    "SystemStartSuite"
+   ],
+   "note": "systemStart of Globals: SystemStart (sgSystemStart genesis), the Shelley genesis's, not the hard-fork combinator's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "lines": [
+      768,
+      789
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkShelleyGlobals"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Globals.scala"
+}

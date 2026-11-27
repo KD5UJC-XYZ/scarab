@@ -1,0 +1,31 @@
+{
+ "baseline": {
+  "class ledger.state.ConwayAccountState": null,
+  "class ledger.state.ConwayAccounts": null,
+  "class ledger.state.ConwayInstantStake": null,
+  "class ledger.state.ShelleyAccountState": null,
+  "class ledger.state.ShelleyAccounts": null,
+  "class ledger.state.ShelleyInstantStake": null,
+  "object ledger.state.ConwayAccountState": null,
+  "object ledger.state.ConwayAccounts": null,
+  "object ledger.state.ConwayInstantStake": null,
+  "object ledger.state.ShelleyAccountState": null,
+  "object ledger.state.ShelleyAccounts": null,
+  "object ledger.state.ShelleyInstantStake": null,
+  "val ledger.state.ConwayAccountState.balance": null,
+  "val ledger.state.ConwayAccountState.deposit": null,
+  "val ledger.state.ConwayAccountState.drep": null,
+  "val ledger.state.ConwayAccountState.pool": null,
+  "val ledger.state.ConwayAccounts.states": null,
+  "val ledger.state.ConwayInstantStake.credentialStake": null,
+  "val ledger.state.ShelleyAccountState.balance": null,
+  "val ledger.state.ShelleyAccountState.deposit": null,
+  "val ledger.state.ShelleyAccountState.pool": null,
+  "val ledger.state.ShelleyAccountState.ptr": null,
+  "val ledger.state.ShelleyAccounts.ptrs": null,
+  "val ledger.state.ShelleyAccounts.states": null,
+  "val ledger.state.ShelleyInstantStake.credentialStake": null,
+  "val ledger.state.ShelleyInstantStake.ptrStake": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Stake.scala"
+}

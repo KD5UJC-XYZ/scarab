@@ -1,0 +1,19 @@
+{
+ "baseline": {
+  "class ledger.era.BabbageTxOutRep": null,
+  "def ledger.era.BabbageTxOutRep#equals": null,
+  "def ledger.era.BabbageTxOutRep#hashCode": null,
+  "def ledger.era.BabbageTxOutRep.fromStored": null,
+  "object ledger.era.BabbageTxOutRep": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.era.BabbageTxOutRep.StoreRead",
+    "def ledger.era.BabbageTxOutRep.fromDecoded"
+   ],
+   "reason": "the reading of an output as an era's from the output the node's decoder read from a block or a transaction (its inline datum read as data, as the reference's `DecCBOR` of `BinaryData` reads it) and from the output the store keeps (taken unread, as its `MemPack`, through the unchecked constructors that ask for the evidence `StoreRead`, which `BabbageTxOutRep.fromStored` alone makes; its callers, each era's `fromStored`, are trusted to pass an output read from the store, as the reference trusts its `MemPack`, until a store that reads the era's outputs itself makes that a type, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6989194084), and the conversions between the era's datum and the stored output's; the reference decodes its output at its era's type and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/BabbageTxOutRep.scala"
+}

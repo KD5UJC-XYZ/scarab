@@ -1,0 +1,14 @@
+{
+ "baseline": {
+  "def network.genesis.LimitOnPatience#configure": null,
+  "def network.genesis.LimitOnPatience#jumpedTo": null,
+  "def network.genesis.LimitOnPatience#setPaused": null,
+  "def network.genesis.LimitOnPatience#snapshot": null,
+  "def network.genesis.LimitOnPatience#validated": null,
+  "def network.genesis.LimitOnPatience.resource": null,
+  "enum network.genesis.LimitOnPatience.PauseReason": null,
+  "object network.genesis.LimitOnPatience": null,
+  "trait network.genesis.LimitOnPatience": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/genesis/LimitOnPatience.scala"
+}

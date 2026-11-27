@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "class ledger.json.Scientific": null,
+  "def ledger.json.Scientific#equals": null,
+  "def ledger.json.Scientific#hashCode": null,
+  "def ledger.json.Scientific#normalize": null,
+  "def ledger.json.Scientific#showsPrec": null,
+  "def ledger.json.Scientific#toBoundedInteger": null,
+  "def ledger.json.Scientific#toString": null,
+  "def ledger.json.Scientific#wholeNumber": null,
+  "def ledger.json.Scientific.integerLog10": null,
+  "given ledger.json.Scientific.given_Order_Scientific": null,
+  "given ledger.json.Scientific.given_Ordering_Scientific": null,
+  "given ledger.json.Scientific.given_Show_Scientific": null,
+  "object ledger.json.Scientific": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/Scientific.scala"
+}

@@ -1,0 +1,107 @@
+{
+ "entries": {
+  "class ledger.era.rules.ConwayApplyTxError": {
+   "class": "Mirror",
+   "digest": "57b530392d9abe9c",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway.hs",
+     "lines": [
+      51,
+      53
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ApplyTxError ConwayEra"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempool.mempoolTransition": {
+   "class": "Mirror",
+   "digest": "bd310898cefb4fb9",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "note": "the mempool failure holds the node's typed cause (MempoolProblem) where the reference holds its Text, as ConwayLedgerPredFailure.ConwayMempoolFailure does; LEDGER through its embedding, the identity; the annotation given, through mempoolTransitionAnnotating",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Mempool.hs",
+     "lines": [
+      91,
+      138
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mempoolTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempool.mempoolTransitionAnnotating": {
+   "class": "Mirror",
+   "digest": "dabdbb19f8416c77",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "note": "the signal's annotation an effect forced where LEDGER first reads it, as the reference's AlonzoStAnnTx is strict in the transaction alone: the node's reading of the stored outputs the annotation is made from cannot fail before MEMPOOL's duplicate check",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Mempool.hs",
+     "lines": [
+      91,
+      138
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mempoolTransition"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      556,
+      565
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoStAnnTx"
+    }
+   ]
+  },
+  "given ledger.era.rules.ConwayApplyTxError.given_Semigroup_ConwayApplyTxError": {
+   "class": "Mirror",
+   "digest": "d4a5f42101bf64be",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway.hs",
+     "lines": [
+      53,
+      53
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Semigroup"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.rules.ConwayApplyTxError.given_CanEqual_ConwayApplyTxError_ConwayApplyTxError",
+    "object ledger.era.rules.ConwayApplyTxError",
+    "object ledger.era.rules.ConwayMempool"
+   ],
+   "reason": "the run of Conway's MEMPOOL as the node's pool will apply a transaction (#85, not wired yet), on the fused interpreter, with what it is judged with besides the environment and the state (Judging, its build, its UTXO context and its annotation, Annotation, which the node runs as Conway's mkStAnnTx and a test wraps to observe when the run annotates), and its outcome (its defects are ConwayBlockRun's, ConwayRuleDefect); the read of the stored outputs of a transaction's inputs into the era, which the reference's mempool takes from its ledger tables (getTransactionKeySets); and the module objects of MEMPOOL and of Conway's ApplyTxError, with the error's equality with itself only: Scala containers with no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/ConwayMempool.scala"
+}

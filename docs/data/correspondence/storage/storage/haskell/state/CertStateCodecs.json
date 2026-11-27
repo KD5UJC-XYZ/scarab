@@ -1,0 +1,63 @@
+{
+ "baseline": {
+  "class storage.haskell.state.StakePoolState11": null,
+  "def storage.haskell.state.CertStateCodecs#blsVerificationKey": null,
+  "def storage.haskell.state.CertStateCodecs#leiosPoolBlsKey": null,
+  "given storage.haskell.state.CertStateCodecs#blsKey": null,
+  "given storage.haskell.state.CertStateCodecs#blsKeyState": null,
+  "given storage.haskell.state.CertStateCodecs#committeeAuthorization": null,
+  "given storage.haskell.state.CertStateCodecs#committeeState": null,
+  "given storage.haskell.state.CertStateCodecs#conwayAccountState": null,
+  "given storage.haskell.state.CertStateCodecs#conwayAccounts": null,
+  "given storage.haskell.state.CertStateCodecs#conwayCertState": null,
+  "given storage.haskell.state.CertStateCodecs#dState": null,
+  "given storage.haskell.state.CertStateCodecs#drepState": null,
+  "given storage.haskell.state.CertStateCodecs#futureGenDeleg": null,
+  "given storage.haskell.state.CertStateCodecs#instantaneousRewards": null,
+  "given storage.haskell.state.CertStateCodecs#pState": null,
+  "given storage.haskell.state.CertStateCodecs#shelleyAccountState": null,
+  "given storage.haskell.state.CertStateCodecs#shelleyAccounts": null,
+  "given storage.haskell.state.CertStateCodecs#shelleyCertState": null,
+  "given storage.haskell.state.CertStateCodecs#stakePoolState": null,
+  "given storage.haskell.state.CertStateCodecs#vState": null,
+  "trait storage.haskell.state.CertStateCodecs": null
+ },
+ "entries": {
+  "given storage.haskell.state.CertStateCodecs#stakePoolParams": {
+   "class": "Mirror",
+   "digest": "5f865eb9fc59ee5a",
+   "evidence": [
+    "FuturePoolParamsCodecSuite",
+    "HaskellStateCodecSuite",
+    "LeiosLayoutSuite",
+    "DijkstraEpochReferenceSuite",
+    "LeiosQueryAnswersSuite"
+   ],
+   "note": "nine items written by the node's parameters' codec (poolParams), so the bytes of parameters without a key are those written before (FuturePoolParamsCodecSuite, both layouts). Read by that codec, then as the reference reads the two fields it keeps unread: the metadata as DecCBOR PoolMetadata at the state's version (PoolMetadata.read: a [url, hash] record, the url bounded by the version and its text chunked only in the Leios layout from version 12, the hash chunked from 12 in both) and the account's network 0 or 1 (decodeAccountAddressT, Address.hs:930-948 at f649f975), each refused with a typed error; the owner decided on 2026-11-19 (asked 19:18:13Z, decided 20:18:03Z, #85 item 38) that the state read matches the reference here. In the Leios layout from version 12 the voting key is read where the third of ten items is a list (decodeStakePoolParamsFlat) and written as ten items with the key third (withStakePoolParamsFlatEncoding, through ConwayCodecs.poolFieldsWith); below version 12 it is not written, as the reference drops it. Keyed parameters have their relays read as the reference reads them (PoolRelays.fromState); keyless ones keep the earlier reader, which takes any array and keeps its bytes. Reading and writing the key was approved under the format freeze on 2026-11-20 (#54), V10 changed in place",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      540,
+      589
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EncCBOR StakePoolParams"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      701,
+      772
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EncCBOR (StakePoolParams era)"
+    }
+   ]
+  }
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/CertStateCodecs.scala"
+}

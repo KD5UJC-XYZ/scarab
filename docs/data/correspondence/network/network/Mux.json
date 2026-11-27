@@ -1,0 +1,52 @@
+{
+ "baseline": {
+  "class network.Mux.Config": null,
+  "def network.Mux#abort": null,
+  "def network.Mux#awaitResponderActivity": null,
+  "def network.Mux#awaitResponderInput": null,
+  "def network.Mux#channel": null,
+  "def network.Mux#closed": null,
+  "def network.Mux#connectionId": null,
+  "def network.Mux#failure": null,
+  "def network.Mux#installApplication": null,
+  "def network.Mux.handshakeResource": null,
+  "def network.Mux.queuedOrClosed": null,
+  "def network.Mux.resource": null,
+  "def network.MuxChannel#flush": null,
+  "def network.MuxChannel#protocol": null,
+  "def network.MuxChannel#recv": null,
+  "def network.MuxChannel#send": null,
+  "object network.Mux": null,
+  "object network.Mux.Config": null,
+  "trait network.Mux": null,
+  "trait network.MuxChannel": null,
+  "type network.Mux.Role": null,
+  "val network.Mux.Config.nodeToClient": null,
+  "val network.Mux.Role": null
+ },
+ "entries": {
+  "def network.Mux.Config#sendLimit": {
+   "class": "Mirror",
+   "digest": "43e19df212e76fc6",
+   "evidence": [
+    "LeiosFetchProtocolSuite",
+    "MuxSuite"
+   ],
+   "note": "LeiosFetch's messages are sent whatever their size, as muxChannel's send bounds none; the other protocols keep the node's ceiling of maxMessageBytes",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "network-mux/src/Network/Mux.hs",
+     "lines": [
+      880,
+      937
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+     "symbol": "muxChannel"
+    }
+   ]
+  }
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/Mux.scala"
+}

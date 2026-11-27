@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "class network.BlockFetchClient.Settings": null,
+  "def network.BlockFetchClient#done": null,
+  "def network.BlockFetchClient#idle": null,
+  "def network.BlockFetchClient#requestBlocks": null,
+  "def network.BlockFetchClient#requestRange": null,
+  "def network.BlockFetchClient#requestRangeObserved": null,
+  "def network.BlockFetchClient#requestRangeStreaming": null,
+  "def network.BlockFetchClient.apply": null,
+  "def network.BlockFetchClient.resource": null,
+  "object network.BlockFetchClient": null,
+  "trait network.BlockFetchClient": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/BlockFetchClient.scala"
+}

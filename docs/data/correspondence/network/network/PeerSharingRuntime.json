@@ -1,0 +1,21 @@
+{
+ "baseline": {
+  "def network.PeerSharingRuntime.Client#done": null,
+  "def network.PeerSharingRuntime.Client#request": null,
+  "def network.PeerSharingRuntime.ClientWire#done": null,
+  "def network.PeerSharingRuntime.ClientWire#peers": null,
+  "def network.PeerSharingRuntime.ClientWire#receive": null,
+  "def network.PeerSharingRuntime.ClientWire#request": null,
+  "def network.PeerSharingRuntime.ServerWire#command": null,
+  "def network.PeerSharingRuntime.ServerWire#peers": null,
+  "def network.PeerSharingRuntime.client": null,
+  "def network.PeerSharingRuntime.server": null,
+  "enum network.PeerSharingRuntime.Command": null,
+  "object network.PeerSharingRuntime": null,
+  "trait network.PeerSharingRuntime.Client": null,
+  "trait network.PeerSharingRuntime.ClientWire": null,
+  "trait network.PeerSharingRuntime.ServerWire": null,
+  "type network.PeerSharingRuntime.ClientWire#Reply": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/PeerSharingRuntime.scala"
+}

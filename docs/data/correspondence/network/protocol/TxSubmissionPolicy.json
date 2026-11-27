@@ -1,0 +1,28 @@
+{
+ "baseline": {
+  "class protocol.TxSubmissionPolicy.Advertised": null,
+  "def protocol.TxSubmissionPolicy.Violation#message": null,
+  "def protocol.TxSubmissionPolicy.acknowledge": null,
+  "def protocol.TxSubmissionPolicy.bodies": null,
+  "def protocol.TxSubmissionPolicy.offers": null,
+  "def protocol.TxSubmissionPolicy.replyWithin": null,
+  "def protocol.TxSubmissionPolicy.timeLimit": [
+   {
+    "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/TxSubmission2/Codec.hs",
+    "lines": [
+     78,
+     91
+    ],
+    "repository": "IntersectMBO/ouroboros-network",
+    "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+    "symbol": "timeLimitsTxSubmission2"
+   }
+  ],
+  "enum protocol.TxSubmissionPolicy.Violation": null,
+  "object protocol.TxSubmissionPolicy": null,
+  "val protocol.TxSubmissionPolicy.MaxUnacknowledged": null,
+  "val protocol.TxSubmissionPolicy.ReplyByteLimit": null,
+  "val protocol.TxSubmissionPolicy.ShortWait": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/TxSubmissionPolicy.scala"
+}

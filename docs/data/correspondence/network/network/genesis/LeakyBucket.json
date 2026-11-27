@@ -1,0 +1,19 @@
+{
+ "baseline": {
+  "class network.genesis.LeakyBucket.Config": null,
+  "class network.genesis.LeakyBucket.State": null,
+  "def network.genesis.LeakyBucket.State#expired": null,
+  "def network.genesis.LeakyBucket.State#fill": null,
+  "def network.genesis.LeakyBucket.State#reconfigure": null,
+  "def network.genesis.LeakyBucket.State#setPaused": null,
+  "def network.genesis.LeakyBucket.State#snapshot": null,
+  "def network.genesis.LeakyBucket.State#waitMicros": null,
+  "def network.genesis.LeakyBucket.initial": null,
+  "object network.genesis.LeakyBucket": null,
+  "object network.genesis.LeakyBucket.Config": null,
+  "val network.genesis.LeakyBucket.Config.disabled": null,
+  "val network.genesis.LeakyBucket.Config.genesis": null,
+  "val network.genesis.LeakyBucket.PicosPerSecond": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/genesis/LeakyBucket.scala"
+}

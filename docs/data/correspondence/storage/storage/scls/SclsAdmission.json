@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "class storage.scls.SclsAdmission.Admitted": null,
+  "class storage.scls.SclsAdmission.Context": null,
+  "def storage.scls.SclsAdmission.check": null,
+  "enum storage.scls.SclsAdmission.Error": null,
+  "object storage.scls.SclsAdmission": null,
+  "val storage.scls.SclsAdmission.Admitted#context": null,
+  "val storage.scls.SclsAdmission.Admitted#incoming": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsAdmission.scala"
+}

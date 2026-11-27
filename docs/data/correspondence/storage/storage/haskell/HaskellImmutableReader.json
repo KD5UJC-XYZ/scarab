@@ -1,0 +1,14 @@
+{
+ "baseline": {
+  "class storage.haskell.ChunkContents": null,
+  "class storage.haskell.HaskellBlock": null,
+  "def storage.haskell.HaskellBlock#isEbb": null,
+  "def storage.haskell.HaskellImmutableReader#blocks": null,
+  "def storage.haskell.HaskellImmutableReader#chunks": null,
+  "def storage.haskell.HaskellImmutableReader#contents": null,
+  "def storage.haskell.HaskellImmutableReader.apply": null,
+  "object storage.haskell.HaskellImmutableReader": null,
+  "trait storage.haskell.HaskellImmutableReader": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/HaskellImmutableReader.scala"
+}

@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "def network.selection.Regime.afterHead": null,
+  "def network.selection.Regime.initial": null,
+  "def network.selection.Regime.kind": null,
+  "def network.selection.Regime.steady": null,
+  "enum network.selection.Regime.Kind": null,
+  "object network.selection.Regime": null,
+  "val network.selection.Regime.HeadStart": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/Regime.scala"
+}

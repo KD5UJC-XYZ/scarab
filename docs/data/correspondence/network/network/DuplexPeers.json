@@ -1,0 +1,353 @@
+{
+ "entries": {
+  "class network.DuplexPeers": {
+   "class": "Deviation",
+   "digest": "e3b1fbd8ec16f5fc",
+   "evidence": [
+    "DuplexPeersSuite",
+    "PeerSharingRuntimeSuite",
+    "OutboundDuplexPeerSuite"
+   ],
+   "note": "the inbound governor State's matureDuplexPeers (a Map) and freshDuplexPeers (an OrdPSQ keyed by address, ordered by registration time), and the timing of the inbound governor's steps that drive them (inboundGovernorStep). The fresh peers are a Map of each peer's registration time and data in place of the OrdPSQ: a different internal structure with the same observable behaviour (the maturation boundary, and what a registration and an unregistration do, each mapped below as a Mirror), which following the reference does not require (decisions register, reference fidelity, 2026-10-27: following the reference means following its observable behaviour; internal algorithms may differ). Registrations come from accepted duplex connections and, while the node listens, from dialled duplex ones that this side announces (OutboundPeers, Announcement), as the connection manager announces both (Core.hs 982-995, 1594-1630); the end of an accepted connection of either data flow unregisters its address. The class is that of the steps' timing, an approved deviation (decisions register, networking, 2026-11-19): the steps run in the node, outside this map's roots (PeerSharingRuntime.maturing, InboundGovernor.run), on each registration and unregistration and on inactionTimeout, where the reference's inbound governor also steps on its connections' other events, which Scarab's handles per connection; and a registration is stamped with the time the step handles it, where the reference stamps it with its step's time read before the wait. So an address becomes mature only once some registration of it still in force was handled at least 900 s earlier, and a single unreplaced registration matures within one more inactionTimeout when the steps run promptly; the reference can mature the same address earlier or later (docs/compatibility/network-peersharing.md, Inbound peers)",
+   "record": "docs/decisions.md#networking-and-local-clients",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor/State.hs",
+     "lines": [
+      98,
+      108
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "matureDuplexPeers"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor/State.hs",
+     "lines": [
+      96,
+      106
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "4646039f05eb809bd5252af17121644ec1dc0c2c",
+     "symbol": "matureDuplexPeers"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor/State.hs",
+     "lines": [
+      96,
+      106
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+     "symbol": "matureDuplexPeers"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      242,
+      275
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "inboundGovernorStep"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      244,
+      277
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "4646039f05eb809bd5252af17121644ec1dc0c2c",
+     "symbol": "inboundGovernorStep"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      243,
+      276
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+     "symbol": "inboundGovernorStep"
+    }
+   ]
+  },
+  "def network.DuplexPeers#matured": {
+   "class": "Mirror",
+   "digest": "6426ac48bdfb7957",
+   "note": "the MaturedDuplexPeers event: newly mature <> mature (left-biased, so Scala's mature ++ newly), and the rest as the fresh peers",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      547,
+      552
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "MaturedDuplexPeers"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      590,
+      598
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "4646039f05eb809bd5252af17121644ec1dc0c2c",
+     "symbol": "MaturedDuplexPeers"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      574,
+      582
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+     "symbol": "MaturedDuplexPeers"
+    }
+   ]
+  },
+  "def network.DuplexPeers#maturedPeers": {
+   "class": "Mirror",
+   "digest": "bb8b586e4f4dca1b",
+   "note": "atMostView at the time less inboundMaturePeerDelay (times <= time - 900 s): the due peers as a Map, and the rest; a partition of the fresh Map, the same decision as the OrdPSQ view",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      765,
+      772
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "maturedPeers"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      832,
+      839
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "4646039f05eb809bd5252af17121644ec1dc0c2c",
+     "symbol": "maturedPeers"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      796,
+      803
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+     "symbol": "maturedPeers"
+    }
+   ]
+  },
+  "def network.DuplexPeers#registered": {
+   "class": "Mirror",
+   "digest": "f483080a9a2aaf2e",
+   "note": "the Duplex branch of NewConnection's freshDuplexPeers update: OrdPSQ.insert at the given time (the reference's step's time, read before its wait; Scarab's caller passes the time the step handles it), replacing the time of a present fresh peer, mature peers untouched. The pins differ only for a connection id already tracked (c45735a5 372-392 re-inserts; 4646039f 296-304 and 2f1c154f 297-304 keep the state and its time); Scarab registers each duplex connection once, from its own handshake, so that branch has no counterpart",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      385,
+      391
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "freshDuplexPeers"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      373,
+      378
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "4646039f05eb809bd5252af17121644ec1dc0c2c",
+     "symbol": "freshDuplexPeers"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      374,
+      377
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+     "symbol": "freshDuplexPeers"
+    }
+   ]
+  },
+  "def network.DuplexPeers#unregistered": {
+   "class": "Mirror",
+   "digest": "7df615545736b5a3",
+   "note": "the peer half of unregisterConnection: the remote address leaves matureDuplexPeers and freshDuplexPeers, whatever the data flow of the connection that ended (Scarab tracks accepted unidirectional connections for this); the connection half is the connection's own lifecycle",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor/State.hs",
+     "lines": [
+      208,
+      222
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "unregisterConnection"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor/State.hs",
+     "lines": [
+      201,
+      215
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "4646039f05eb809bd5252af17121644ec1dc0c2c",
+     "symbol": "unregisterConnection"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor/State.hs",
+     "lines": [
+      201,
+      215
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+     "symbol": "unregisterConnection"
+    }
+   ]
+  },
+  "def network.DuplexPeers.empty": {
+   "class": "Mirror",
+   "digest": "6bd7c1567756c0df",
+   "note": "emptyState's matureDuplexPeers = Map.empty and freshDuplexPeers = OrdPSQ.empty",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      208,
+      214
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "emptyState"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      210,
+      216
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "4646039f05eb809bd5252af17121644ec1dc0c2c",
+     "symbol": "emptyState"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      209,
+      215
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+     "symbol": "emptyState"
+    }
+   ]
+  },
+  "val network.DuplexPeers.InactionTimeout": {
+   "class": "Mirror",
+   "digest": "4dfafa60a200de76",
+   "note": "31.415927 seconds, exactly, at all three pins",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      88,
+      92
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "inactionTimeout"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      89,
+      93
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "4646039f05eb809bd5252af17121644ec1dc0c2c",
+     "symbol": "inactionTimeout"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      89,
+      93
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+     "symbol": "inactionTimeout"
+    }
+   ]
+  },
+  "val network.DuplexPeers.MatureDelay": {
+   "class": "Mirror",
+   "digest": "6fc93525f14d0d96",
+   "note": "15 * 60 seconds at all three pins",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      84,
+      85
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "inboundMaturePeerDelay"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      85,
+      86
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "4646039f05eb809bd5252af17121644ec1dc0c2c",
+     "symbol": "inboundMaturePeerDelay"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/InboundGovernor.hs",
+     "lines": [
+      85,
+      86
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+     "symbol": "inboundMaturePeerDelay"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object network.DuplexPeers"
+   ],
+   "reason": "the companion of DuplexPeers, holding its constants and its empty value"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/DuplexPeers.scala"
+}

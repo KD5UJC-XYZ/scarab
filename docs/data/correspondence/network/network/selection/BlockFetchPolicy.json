@@ -1,0 +1,22 @@
+{
+ "baseline": {
+  "class network.selection.BlockFetchPolicy.Candidate": null,
+  "class network.selection.BlockFetchPolicy.Config": null,
+  "class network.selection.BlockFetchPolicy.Fragment": null,
+  "class network.selection.BlockFetchPolicy.Header": null,
+  "class network.selection.BlockFetchPolicy.InFlight": null,
+  "def network.selection.BlockFetchPolicy.Config#concurrency": null,
+  "def network.selection.BlockFetchPolicy.compareGsv": null,
+  "def network.selection.BlockFetchPolicy.decide": null,
+  "def network.selection.BlockFetchPolicy.filterFragments": null,
+  "def network.selection.BlockFetchPolicy.probabilityBand": null,
+  "def network.selection.BlockFetchPolicy.rank": null,
+  "def network.selection.BlockFetchPolicy.select": null,
+  "enum network.selection.BlockFetchPolicy.Decision": null,
+  "enum network.selection.BlockFetchPolicy.ProbabilityBand": null,
+  "enum network.selection.BlockFetchPolicy.Refusal": null,
+  "enum network.selection.BlockFetchPolicy.Status": null,
+  "object network.selection.BlockFetchPolicy": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/BlockFetchPolicy.scala"
+}

@@ -1,0 +1,177 @@
+{
+ "baseline": {
+  "class consensus.Praos2.AnnouncedBy": null,
+  "class consensus.Praos2.ChainState": null,
+  "class consensus.Praos2.Config": null,
+  "class consensus.Praos2.LedgerView": null,
+  "class consensus.Praos2.PoolStake": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/PoolDistr.hs",
+    "lines": [
+     65,
+     79
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "IndividualPoolStake"
+   }
+  ],
+  "class consensus.Praos2.State": null,
+  "class consensus.Praos2.Ticked": null,
+  "class consensus.Praos2.Tip": null,
+  "def consensus.Praos2.EpochInfo#epochOf": null,
+  "def consensus.Praos2.EpochInfo#epochSize": null,
+  "def consensus.Praos2.EpochInfo#firstSlot": null,
+  "def consensus.Praos2.EpochInfo#slotLengthMillis": null,
+  "def consensus.Praos2.EpochInfo.fromGeometry": null,
+  "def consensus.Praos2.minCertificationSlot": null,
+  "def consensus.Praos2.reupdate": null,
+  "def consensus.Praos2.tick": null,
+  "def consensus.Praos2.validate": null,
+  "def consensus.Praos2.validateProtocol": null,
+  "object consensus.Praos2": null,
+  "object consensus.Praos2.EpochInfo": null,
+  "trait consensus.Praos2.EpochInfo": null,
+  "type consensus.Praos2.Failure": null
+ },
+ "entries": {
+  "def consensus.Praos2.State.newEpoch": {
+   "class": "Mirror",
+   "digest": "54cbd7b635ee9528",
+   "evidence": [
+    "Praos2ReferenceSuite"
+   ],
+   "note": "the new-epoch branch of tickChainDepStatePolyPraos: the epoch nonce, the previous epoch nonce and the last epoch block nonce as the reference updates them, and the announcement cleared; the isNewEpoch decision is its callers' (Praos2.tick, and Praos.tick for a Praos2 state)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "lines": [
+      558,
+      587
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "tickChainDepStatePolyPraos"
+    }
+   ]
+  },
+  "def consensus.Praos2.additionalEnvelope": {
+   "class": "Mirror",
+   "digest": "dff276c15ee81ad3",
+   "note": "the Shelley envelope checks a ledger view decides: the obsolete node, the header's size, the body's size; shared by validate",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Ledger.hs",
+     "lines": [
+      802,
+      808
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "additionalEnvelopeChecks"
+    }
+   ]
+  },
+  "def consensus.Praos2.certificationGap": {
+   "class": "Mirror",
+   "digest": "b6d8c749927746ab",
+   "note": "3 announcement + vote + diffusion milliseconds over the slot length, rounded up; the zero slot length's error is a defect",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      2843,
+      2853
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "certificationGapOfPeriods"
+    }
+   ]
+  },
+  "def consensus.Praos2.validateAnnouncement": {
+   "class": "Mirror",
+   "digest": "1015f01bfb21ede5",
+   "evidence": [
+    "Praos2ReferenceSuite"
+   ],
+   "note": "the announcement's size, the VRF checks, then the KES period, the two signatures and the counter without its upper bound, CounterTooSmallOCERT and NoCounterForKeyHashOCERT read as StaleOCIN; no state produced",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs",
+     "lines": [
+      286,
+      321
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "validateAnnouncementChainDepState"
+    },
+    {
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "lines": [
+      692,
+      711
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosContextFreeHeaderChecks"
+    },
+    {
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "lines": [
+      810,
+      839
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "doValidateVRFSignature"
+    },
+    {
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "lines": [
+      879,
+      928
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "doValidateKESSignatureWorker"
+    }
+   ]
+  },
+  "enum consensus.Praos2.OcinStaleness": {
+   "class": "Mirror",
+   "digest": "c749df843b25e7c6",
+   "note": "FreshOCIN and StaleOCIN",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/Forker.hs",
+     "lines": [
+      814,
+      815
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "OCINStaleness"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given consensus.Praos2.AnnouncedBy.given_Eq_AnnouncedBy",
+    "given consensus.Praos2.AnnouncedBy.given_Show_AnnouncedBy",
+    "object consensus.Praos2.AnnouncedBy",
+    "object consensus.Praos2.State"
+   ],
+   "reason": "the instances of Praos2's state types that the chain-dependent state derives its equality, rendering and difference from, and the companions that hold them: Scala plumbing with no counterpart (#826)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos2.scala"
+}

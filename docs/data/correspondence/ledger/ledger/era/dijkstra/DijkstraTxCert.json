@@ -1,0 +1,170 @@
+{
+ "entries": {
+  "def ledger.era.dijkstra.DijkstraTxCert.dijkstraToConwayDelegCert": {
+   "class": "Mirror",
+   "digest": "9da623e7c7055964",
+   "evidence": [
+    "DijkstraTxCertSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+     "lines": [
+      396,
+      401
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraToConwayDelegCert"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxCert.dijkstraTotalRefundsTxCerts": {
+   "class": "Mirror",
+   "digest": "049f9faab9184589",
+   "evidence": [
+    "DijkstraTxCertSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+     "lines": [
+      263,
+      272
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraTotalRefundsTxCerts"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxCert.translate": {
+   "class": "Mirror",
+   "digest": "cca7806909d6243d",
+   "evidence": [
+    "DijkstraTxCertSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+     "lines": [
+      279,
+      295
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "upgradeTxCert"
+    }
+   ]
+  },
+  "enum ledger.era.dijkstra.DijkstraDelegCert": {
+   "class": "Mirror",
+   "digest": "e9e9e80a1d1844df",
+   "evidence": [
+    "DijkstraTxCertSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+     "lines": [
+      91,
+      96
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraDelegCert"
+    }
+   ]
+  },
+  "enum ledger.era.dijkstra.DijkstraTxCert": {
+   "class": "Mirror",
+   "digest": "374a71f70f9469a2",
+   "evidence": [
+    "DijkstraTxCertSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the pool certificates are the shared PoolCert, whose StakePoolParams holds a registration's BLS key (sppBlsKey, libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:479 at 9df9f98c); DijkstraTx's decoders read them from what the flat decoder read",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+     "lines": [
+      185,
+      189
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraTxCert"
+    }
+   ]
+  },
+  "enum ledger.era.dijkstra.DijkstraTxCertUpgradeError": {
+   "class": "Mirror",
+   "digest": "9f5495294f7a928b",
+   "evidence": [
+    "DijkstraTxCertSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+     "lines": [
+      191,
+      194
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraTxCertUpgradeError"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraTxCert.instance": {
+   "class": "Mirror",
+   "digest": "34f8ae861a813b23",
+   "evidence": [
+    "DijkstraTxCertSuite"
+   ],
+   "note": "upgradeTxCert is the translation (DijkstraTxCert.translate), as for the other eras",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+     "lines": [
+      274,
+      321
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraTxCert DijkstraEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+     "lines": [
+      353,
+      394
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ConwayEraTxCert DijkstraEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraDelegCert#credential",
+    "given ledger.era.dijkstra.DijkstraTxCert.given_CanEqual_DijkstraTxCert_DijkstraTxCert",
+    "given ledger.era.dijkstra.DijkstraTxCertUpgradeError.given_CanEqual_DijkstraTxCertUpgradeError_DijkstraTxCertUpgradeError",
+    "object ledger.era.dijkstra.DijkstraTxCert",
+    "object ledger.era.dijkstra.DijkstraTxCertUpgradeError"
+   ],
+   "reason": "Dijkstra's certificates and purposes on the era types (#85): the companions holding their instances, translations and CanEqual, the staking certificate's credential accessor, and the index of a redeemer key's purpose, which the reference reads through its derived instances"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraTxCert.scala"
+}

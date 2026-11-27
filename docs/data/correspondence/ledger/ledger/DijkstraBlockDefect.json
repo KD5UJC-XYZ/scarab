@@ -1,0 +1,12 @@
+{
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.DijkstraBlockDefect#message",
+    "enum ledger.DijkstraBlockDefect"
+   ],
+   "reason": "the node's stop for a Dijkstra block it cannot judge, typed where the reference meets a missing or undecodable closure with error (Forker.hs:1048-1052, 1084-1087, ouroboros-consensus 2416493b) or cannot hold the state; the Leios certification's defects, moved from consensus so that a refusal and a stop hold them typed; the renderings of both for the log (#54, #73)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/DijkstraBlockDefect.scala"
+}

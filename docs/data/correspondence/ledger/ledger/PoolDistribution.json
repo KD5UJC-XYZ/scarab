@@ -1,0 +1,7 @@
+{
+ "baseline": {
+  "class ledger.PoolDistribution": null,
+  "val ledger.PoolDistribution#total": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolDistribution.scala"
+}

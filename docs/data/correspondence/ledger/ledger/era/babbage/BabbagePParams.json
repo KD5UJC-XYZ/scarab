@@ -1,0 +1,643 @@
+{
+ "entries": {
+  "class ledger.era.babbage.BabbagePParams": {
+   "class": "Mirror",
+   "digest": "25d80c284fbf4680",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      89,
+      136
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "BabbagePParams"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.applyPPUpdates": {
+   "class": "Mirror",
+   "digest": "3aa79274b7cd983a",
+   "note": "the class default, genericApplyPPUpdates",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      172,
+      172
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPParams"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.emptyPParamsIdentity": {
+   "class": "Mirror",
+   "digest": "85df7821628974f7",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      177,
+      177
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyPParamsIdentity"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.emptyPParamsStrictMaybe": {
+   "class": "Mirror",
+   "digest": "4242c58ece094526",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      178,
+      178
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyPParamsStrictMaybe"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdA0L": {
+   "class": "Mirror",
+   "digest": "5bd37f334632dc5f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      192,
+      192
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdA0L"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdCoinsPerUTxOByteL": {
+   "class": "Mirror",
+   "digest": "3939d76b12a5ed9e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      247,
+      247
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCoinsPerUTxOByteL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdCollateralPercentageL": {
+   "class": "Mirror",
+   "digest": "8d18aa9822cc5717",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      241,
+      242
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCollateralPercentageL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdCostModelsL": {
+   "class": "Mirror",
+   "digest": "e689b056be2c4426",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      230,
+      230
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCostModelsL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdEMaxL": {
+   "class": "Mirror",
+   "digest": "23c3d4a099ea78fe",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      190,
+      190
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdEMaxL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdKeyDepositCompactL": {
+   "class": "Mirror",
+   "digest": "dfdf66a3b0d7e69c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      188,
+      188
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdKeyDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdMaxBBSizeL": {
+   "class": "Mirror",
+   "digest": "cc14f09cdcffb5bb",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      185,
+      185
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxBBSizeL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdMaxBHSizeL": {
+   "class": "Mirror",
+   "digest": "313ca1c3d6846fe3",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      187,
+      187
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxBHSizeL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdMaxBlockExUnitsL": {
+   "class": "Mirror",
+   "digest": "619a7d279afe4032",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      236,
+      239
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxBlockExUnitsL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdMaxCollateralInputsL": {
+   "class": "Mirror",
+   "digest": "638cbec6612abe23",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      243,
+      244
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxCollateralInputsL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdMaxTxExUnitsL": {
+   "class": "Mirror",
+   "digest": "e1d8baf0ff58ccf7",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      232,
+      235
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxTxExUnitsL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdMaxTxSizeL": {
+   "class": "Mirror",
+   "digest": "3680642514ee0d3b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      186,
+      186
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxTxSizeL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdMaxValSizeL": {
+   "class": "Mirror",
+   "digest": "a1dbc6ad0f2bd001",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      240,
+      240
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxValSizeL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdMinPoolCostCompactL": {
+   "class": "Mirror",
+   "digest": "acb1a54c8bddd9bd",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      196,
+      196
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMinPoolCostCompactL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdNOptL": {
+   "class": "Mirror",
+   "digest": "2c8ea06ef09e68d2",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      191,
+      191
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdNOptL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdPoolDepositCompactL": {
+   "class": "Mirror",
+   "digest": "71f56a5d5b39ec55",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      189,
+      189
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdPoolDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdPricesL": {
+   "class": "Mirror",
+   "digest": "934532bda75d9ff6",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      231,
+      231
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdPricesL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdProtocolVersionL": {
+   "class": "Mirror",
+   "digest": "84c0e5ae515875a6",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      195,
+      195
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdProtocolVersionL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdRhoL": {
+   "class": "Mirror",
+   "digest": "21e21626f33cd841",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      193,
+      193
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdRhoL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdTauL": {
+   "class": "Mirror",
+   "digest": "8b98148ba66b58ee",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      194,
+      194
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdTauL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdTxFeeFixedCompactL": {
+   "class": "Mirror",
+   "digest": "33c15bdd4f190759",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      184,
+      184
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdTxFeeFixedCompactL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageEraPParamsInstance.hkdTxFeePerByteL": {
+   "class": "Mirror",
+   "digest": "48a902a3b6e8e0f3",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      183,
+      183
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdTxFeePerByteL"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbagePParams.applyUpdates": {
+   "class": "Mirror",
+   "digest": "a530ee94c17d0ee9",
+   "evidence": [
+    "BabbagePParamsSuite"
+   ],
+   "note": "the class's generic default, which Babbage does not override: each set field replaces the parameter's whole",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      322,
+      358
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "genericApplyPPUpdates"
+    }
+   ]
+  },
+  "object ledger.era.babbage.BabbageEraPParamsInstance": {
+   "class": "Gap",
+   "digest": "3a3c95bc7954a8c0",
+   "evidence": [
+    "BabbagePParamsSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "Babbage's three instances and the protocol version's ranged class in one object, given in each class's companion; the instance's upgradePParamsHKD and downgradePParamsHKD (from and to Alonzo) need Alonzo's record and are not here yet (#85)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6896116597",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      172,
+      226
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPParams"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      228,
+      244
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraPParams"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      246,
+      247
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "BabbageEraPParams"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageEraPParamsInstance.eraPParams": {
+   "class": "Mirror",
+   "digest": "2bda4c4f1658ba3b",
+   "evidence": [
+    "BabbagePParamsSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      203,
+      226
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "eraPParams"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageEraPParamsInstance.ppDG": {
+   "class": "Mirror",
+   "digest": "f4f365a4eaa9e09b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      198,
+      198
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppDG"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageEraPParamsInstance.ppMaxPledgeLeverageG": {
+   "class": "Deviation",
+   "digest": "94b8ae92afa7bf22",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "a member at 9df9f98c that f649f975 lacks; up to Conway the class default, no limit",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6898975221",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      510,
+      516
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ppMaxPledgeLeverageG"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageEraPParamsInstance.ppMinPoolMarginG": {
+   "class": "Deviation",
+   "digest": "2dc972ce9752cc9a",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "a member at 9df9f98c that f649f975 lacks; up to Conway the class default, minBound",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6898975221",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      518,
+      524
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ppMinPoolMarginG"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbagePParams.empty": {
+   "class": "Mirror",
+   "digest": "b96806ac2960370e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      261,
+      287
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyBabbagePParams"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbagePParams.emptyUpdate": {
+   "class": "Mirror",
+   "digest": "75e66df8d967ff5b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      289,
+      314
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyBabbagePParamsUpdate"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.babbage.BabbagePParams"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "def ledger.era.babbage.BabbagePParams.fromStored",
+    "def ledger.era.babbage.BabbagePParams.toStored"
+   ],
+   "reason": "the conversions between Babbage's record and the parameters the node keeps (the flat `ProtocolParams`), both ways, and the readers of the stored fields at the reference's types they and Conway's share; the reference keeps the record itself and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbagePParams.scala"
+}

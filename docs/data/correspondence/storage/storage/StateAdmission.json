@@ -1,0 +1,14 @@
+{
+ "glue": [
+  {
+   "definitions": [
+    "def storage.StateAdmission.admit",
+    "def storage.StateAdmission.of",
+    "def storage.StateAdmission.restored",
+    "object storage.StateAdmission"
+   ],
+   "reason": "the admission of a ledger state that enters the node from a snapshot or an import, refusing one that no chain of the configured reference build reaches and that its rules would carry to another state than the reference's, and the snapshot format that applies it as a state comes in; the reference has no such check, no chain it runs reaching such a state (it decodes PState as it is, State/CertState.hs 257-265, cardano-ledger f649f975); refused rather than repaired by the owner's decision (asked 2026-11-18T08:22:34Z and decided 2026-11-18T14:21:46Z), docs/running/snapshots.md#unreachable-ledger-state"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateAdmission.scala"
+}

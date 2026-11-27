@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "def ledger.rules.Mir.step": null,
+  "def ledger.rules.Mir.sts": null,
+  "object ledger.rules.Mir": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Mir.scala"
+}

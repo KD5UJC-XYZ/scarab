@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "class uplc.cek.Cause": null,
+  "class uplc.cek.CekFailure": null,
+  "def uplc.cek.Cause#toString": null,
+  "def uplc.cek.Cause.apply": null,
+  "def uplc.cek.Cause.of": null,
+  "def uplc.cek.CekError#errorClass": null,
+  "enum uplc.cek.CaseBuiltinError": null,
+  "enum uplc.cek.CekError": null,
+  "object uplc.cek.Cause": null,
+  "val uplc.cek.Cause#term": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cek/CekError.scala"
+}

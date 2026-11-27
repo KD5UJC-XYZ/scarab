@@ -1,0 +1,63 @@
+{
+ "baseline": {
+  "given ledger.era.conway.ConwayTxWits.given_CanEqual_ConwayTxWits_ConwayTxWits": null,
+  "object ledger.era.conway.ConwayTxWits": null,
+  "val ledger.era.conway.ConwayTxWits.instance": null
+ },
+ "entries": {
+  "def ledger.era.conway.ConwayTxWits.decode": {
+   "class": "Mirror",
+   "digest": "0a4a64bca00c073c",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "a witness set read in one pass at version 9, below 12: the flat decoder's keys and refusals in its order (0, 1, 2, 3, 6, 7, 4, 5), each native script by Conway's reader with each level's bytes, each datum and redeemer's data decoded once from its item, each redeemer's purpose typed as it is read, the last of a purpose kept. Held to the reference's verdicts, refusals, ids and relayed bytes on every Conway case of the recorded reference corpora (ConwayEraReferenceSuite), and to the two passes it replaced on every recorded transaction, on mutants and on written cases (ConwayOnePassSuite); the first refusal is the two passes', which reads the keys in the flat decoder's order where the reference reads them as written (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      603,
+      703
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoTxWitsRaw era))"
+    }
+   ]
+  },
+  "type ledger.era.conway.ConwayTxWits": {
+   "class": "Mirror",
+   "digest": "ad97833e5375a208",
+   "evidence": [
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxWits.hs",
+     "lines": [
+      25,
+      25
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoTxWits ConwayEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.conway.ConwayTxWits.decodeByFlat",
+    "def ledger.era.conway.ConwayTxWits.fromItem"
+   ],
+   "reason": "Conway's one-pass decoders (#85): the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses), the output the first phase read with the flat output beside it and its second phase (ConwayTxOut.Read, ConwayTxOut.checked); the two passes they replaced, kept for the differential and the bench until the flat decoder goes at stage 6a (decodeByFlat, fromEnvelopeByFlat); and three readers of the flat decoder made visible to them, unchanged (TxBody.known, TxBody.networkId, Witnesses.exUnits). Scala containers and helpers of the decoders, with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayTxWits.scala"
+}

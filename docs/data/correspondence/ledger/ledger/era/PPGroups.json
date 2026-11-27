@@ -1,0 +1,107 @@
+{
+ "entries": {
+  "class ledger.era.PPGroups": {
+   "class": "Mirror",
+   "digest": "53987570a4f1155e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      534,
+      536
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PPGroups"
+    }
+   ]
+  },
+  "def ledger.era.THKD.apply": {
+   "class": "Mirror",
+   "digest": "72b27a4eef8e8d57",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      576,
+      576
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "THKD"
+    }
+   ]
+  },
+  "def ledger.era.THKD.ppGroup": {
+   "class": "Mirror",
+   "digest": "a342986345cbff7b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      625,
+      632
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppGroup"
+    }
+   ]
+  },
+  "def ledger.era.THKD.unTHKD": {
+   "class": "Mirror",
+   "digest": "c40beead6bddd411",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      576,
+      576
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "unTHKD"
+    }
+   ]
+  },
+  "type ledger.era.THKD": {
+   "class": "Mirror",
+   "digest": "1fc612d8946ccc47",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      576,
+      576
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "THKD"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.THKD.value",
+    "trait ledger.era.Groups"
+   ],
+   "reason": "Scala machinery with no counterpart: the probe and invariant wrapper that let a match type tell `Identity` from `StrictMaybe`, the names of the parameter groups' singleton types, constants checked when compiled, accessors of opaque types, and the checked constructors' typed refusals"
+  },
+  {
+   "definitions": [
+    "given ledger.era.PPGroups.given_Ordering_PPGroups",
+    "object ledger.era.PPGroups",
+    "object ledger.era.THKD"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/PPGroups.scala"
+}

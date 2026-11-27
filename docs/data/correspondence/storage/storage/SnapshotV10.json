@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "def storage.SnapshotV10.bindingOf": null,
+  "def storage.SnapshotV10.buildBytes": null,
+  "def storage.SnapshotV10.decode": null,
+  "def storage.SnapshotV10.encoded": null,
+  "def storage.SnapshotV10.format": null,
+  "def storage.SnapshotV10.framed": null,
+  "def storage.SnapshotV10.fromV9": null,
+  "def storage.SnapshotV10.recordedOf": null,
+  "def storage.SnapshotV10.sections": null,
+  "def storage.SnapshotV10.sidecarOf": null,
+  "def storage.SnapshotV10.wellFormed": null,
+  "object storage.SnapshotV10": null,
+  "val storage.SnapshotV10.Magic": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV10.scala"
+}

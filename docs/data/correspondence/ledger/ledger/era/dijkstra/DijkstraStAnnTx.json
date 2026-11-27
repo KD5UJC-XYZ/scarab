@@ -1,0 +1,148 @@
+{
+ "entries": {
+  "class ledger.era.dijkstra.DijkstraStAnnTx": {
+   "class": "Mirror",
+   "digest": "0e41676f88501e72",
+   "evidence": [
+    "DijkstraUTxOSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "made by `mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx` (`DijkstraStAnnTx`), whose collections are compared with the reference's on every level of the three Leios fixtures",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "lines": [
+      535,
+      557
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraStAnnTx"
+    }
+   ]
+  },
+  "class ledger.era.dijkstra.DijkstraStAnnTx.SubTx": {
+   "class": "Mirror",
+   "digest": "064e6b63b2b2ca96",
+   "evidence": [
+    "DijkstraUTxOSuite",
+    "DijkstraPlutusContextSuite",
+    "DijkstraClosureSuite",
+    "DijkstraLedgerSuite"
+   ],
+   "note": "made by `mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx` (`DijkstraStAnnTx`), whose collections are compared with the reference's on every level of the three Leios fixtures; every member but the transaction is a deferred value made when first read and kept (`cats.Eval`, `Eval.later`), as only the reference's transaction field is strict, so reading one member runs no other's computation (`DijkstraPlutusContextSuite`) and a rule run without its predicates (ValidateNone) makes none (`DijkstraClosureSuite`, `DijkstraLedgerSuite`)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "lines": [
+      547,
+      557
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraStAnnSubTx"
+    }
+   ]
+  },
+  "class ledger.era.dijkstra.DijkstraStAnnTx.TopTx": {
+   "class": "Mirror",
+   "digest": "a5e80fde6fe76472",
+   "evidence": [
+    "DijkstraUTxOSuite",
+    "DijkstraPlutusContextSuite",
+    "DijkstraClosureSuite",
+    "DijkstraLedgerSuite"
+   ],
+   "note": "the legacy mode is `PlutusLegacyMode` where the reference's is a `Bool` (TYP-4); made by `mkDijkstraStAnnTopTx` and `mkDijkstraStAnnSubTx` (`DijkstraStAnnTx`), whose collections are compared with the reference's on every level of the three Leios fixtures; every member but the transaction is a deferred value made when first read and kept (`cats.Eval`, `Eval.later`), as only the reference's transaction field is strict, so reading one member runs no other's computation (`DijkstraPlutusContextSuite`) and a rule run without its predicates (ValidateNone) makes none (`DijkstraClosureSuite`, `DijkstraLedgerSuite`)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "lines": [
+      536,
+      546
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraStAnnTopTx"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraStAnnTx.mkDijkstraStAnnSubTx": {
+   "class": "Mirror",
+   "digest": "0adf34ce2c65be65",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the epoch information and the system start are the one clock function of `LedgerTxInfo`; every member but the transaction deferred until read (`Eval.later`), as the reference's lazy fields; the top level's scripts provided and cache taken deferred",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra.hs",
+     "lines": [
+      171,
+      219
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkDijkstraStAnnSubTx"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraStAnnTx.mkDijkstraStAnnTopTx": {
+   "class": "Mirror",
+   "digest": "cf65e580cb7de42c",
+   "evidence": [
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the epoch information and the system start are the one clock function of `LedgerTxInfo`; written for Dijkstra, whose transaction family has sub-transactions; every member but the transaction deferred until read (`Eval.later`), as the reference's lazy fields",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra.hs",
+     "lines": [
+      111,
+      169
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkDijkstraStAnnTopTx"
+    }
+   ]
+  },
+  "enum ledger.era.dijkstra.PlutusLegacyMode": {
+   "class": "Mirror",
+   "digest": "1ce2c19bb23749e3",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "the reference's `Bool` field as a two-case enum, a choice of the mode the scripts run in (TYP-4); `Legacy` is the reference's `True`",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Tx.hs",
+     "lines": [
+      540,
+      540
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dsattPlutusLegacyMode"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.dijkstra.PlutusLegacyMode.given_CanEqual_PlutusLegacyMode_PlutusLegacyMode",
+    "object ledger.era.dijkstra.DijkstraStAnnTx",
+    "object ledger.era.dijkstra.PlutusLegacyMode"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraStAnnTx.scala"
+}

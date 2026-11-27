@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "class storage.haskell.state.AncillaryManifest": null,
+  "class storage.haskell.state.AncillaryManifest.File": null,
+  "def storage.haskell.state.AncillaryManifest#hash": null,
+  "def storage.haskell.state.AncillaryManifest#verify": null,
+  "def storage.haskell.state.AncillaryManifest.encode": null,
+  "def storage.haskell.state.AncillaryManifest.parse": null,
+  "def storage.haskell.state.AncillaryManifest.safePath": null,
+  "def storage.haskell.state.AncillaryManifest.verificationKey": null,
+  "enum storage.haskell.state.AncillaryManifest.DigestFailure": null,
+  "enum storage.haskell.state.AncillaryManifest.Error": null,
+  "enum storage.haskell.state.AncillaryManifest.KeyFailure": null,
+  "enum storage.haskell.state.AncillaryManifest.SignatureFailure": null,
+  "object storage.haskell.state.AncillaryManifest": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/AncillaryManifest.scala"
+}

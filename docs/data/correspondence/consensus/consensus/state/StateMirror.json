@@ -1,0 +1,43 @@
+{
+ "baseline": {
+  "class consensus.state.ConsensusMirrorEnv": null,
+  "class consensus.state.MirrorProvenance": null,
+  "class consensus.state.MirrorState": null,
+  "def consensus.state.MirrorProvenance#entered": null,
+  "def consensus.state.MirrorProvenance#epochBoundary": null,
+  "def consensus.state.MirrorProvenance#recovered": null,
+  "def consensus.state.MirrorProvenance.recorded": null,
+  "def consensus.state.StateMirror.anchorOf": null,
+  "enum consensus.state.MirrorExtras": null,
+  "enum consensus.state.StateMirrorError": null,
+  "given consensus.state.MirrorExtras.given_Eq_MirrorExtras": null,
+  "given consensus.state.MirrorExtras.given_Show_MirrorExtras": null,
+  "given consensus.state.MirrorProvenance.given_Diff_MirrorProvenance": null,
+  "given consensus.state.MirrorProvenance.given_Eq_MirrorProvenance": null,
+  "given consensus.state.MirrorProvenance.given_Show_MirrorProvenance": null,
+  "given consensus.state.MirrorState.given_Diff_MirrorState": null,
+  "given consensus.state.MirrorState.given_Eq_MirrorState": null,
+  "given consensus.state.MirrorState.given_Show_MirrorState": null,
+  "object consensus.state.MirrorExtras": null,
+  "object consensus.state.MirrorProvenance": null,
+  "object consensus.state.MirrorState": null,
+  "object consensus.state.StateMirror": null,
+  "object consensus.state.StateMirrorError": null,
+  "val consensus.state.MirrorProvenance.complete": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class consensus.state.RestoredParams",
+    "def consensus.state.RestoredParams.of",
+    "def consensus.state.RestoredParams.written",
+    "given consensus.state.RestoredParams.given_Diff_RestoredParams",
+    "given consensus.state.RestoredParams.given_Eq_RestoredParams",
+    "given consensus.state.RestoredParams.given_Show_RestoredParams",
+    "object consensus.state.RestoredParams"
+   ],
+   "reason": "a restored Dijkstra state's snapshot sidecar parameter records, held beside the mirror in memory so the sidecar is written again as it was read (the fields of the eras before Dijkstra, which Dijkstra's governance state has no place for, as the import wrote them), Dijkstra's own fields the governance state's; the reference's snapshot has no such sidecar, so this has no counterpart (#826)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/StateMirror.scala"
+}

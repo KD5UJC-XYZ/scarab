@@ -1,0 +1,14 @@
+{
+ "baseline": {
+  "class network.ChainSyncServer.Settings": null,
+  "def network.ChainSyncServer.Source#await": null,
+  "def network.ChainSyncServer.Source#intersect": null,
+  "def network.ChainSyncServer.Source#poll": null,
+  "def network.ChainSyncServer.run": null,
+  "enum network.ChainSyncServer.Update": null,
+  "object network.ChainSyncServer": null,
+  "trait network.ChainSyncServer.Source": null,
+  "val network.ChainSyncServer.NodeToClient": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/ChainSyncServer.scala"
+}

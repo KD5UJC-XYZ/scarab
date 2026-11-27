@@ -1,0 +1,198 @@
+{
+ "baseline": {
+  "def storage.haskell.state.Wire.Elements.decodeAll": null,
+  "def storage.haskell.state.Wire.Elements.decodeInto": null,
+  "def storage.haskell.state.Wire.Elements.decodePairsInto": null,
+  "def storage.haskell.state.Wire.Elements.foldInto": null,
+  "def storage.haskell.state.Wire.definiteMapOf": null,
+  "def storage.haskell.state.Wire.definiteSetOf": null,
+  "def storage.haskell.state.Wire.failure": null,
+  "def storage.haskell.state.Wire.hash": null,
+  "def storage.haskell.state.Wire.imap": null,
+  "def storage.haskell.state.Wire.interned": null,
+  "def storage.haskell.state.Wire.items": null,
+  "def storage.haskell.state.Wire.mapOf": null,
+  "def storage.haskell.state.Wire.nullable": null,
+  "def storage.haskell.state.Wire.ratio": null,
+  "def storage.haskell.state.Wire.seqOf": null,
+  "def storage.haskell.state.Wire.setOf": null,
+  "def storage.haskell.state.Wire.sortedMapOf": null,
+  "def storage.haskell.state.Wire.sortedSetOf": null,
+  "def storage.haskell.state.Wire.strictMaybe": null,
+  "def storage.haskell.state.Wire.unknownVariant": null,
+  "def storage.haskell.state.Wire.validated": null,
+  "def storage.haskell.state.Wire.variant": null,
+  "def storage.haskell.state.Wire.violation": null,
+  "def storage.haskell.state.Wire.word": null,
+  "def storage.haskell.state.Wire.writeOnly": null,
+  "def storage.haskell.state.atLeast": null,
+  "object storage.haskell.state.Wire": null,
+  "object storage.haskell.state.Wire.Elements": null,
+  "val storage.haskell.state.Wire.integer": null,
+  "val storage.haskell.state.Wire.nonNegativeInterval": null,
+  "val storage.haskell.state.Wire.nonce": null,
+  "val storage.haskell.state.Wire.unitInterval": null,
+  "val storage.haskell.state.Wire.word16": null,
+  "val storage.haskell.state.Wire.word32": null,
+  "val storage.haskell.state.Wire.word64": null
+ },
+ "entries": {
+  "def storage.haskell.state.Wire.nonNegativeIntervalAt": {
+   "class": "Gap",
+   "digest": "4fb752aaf0dc5459",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "a Rational in the interval's bounds, not a newtype over BoundedRatio; the numbers are read as Word64 from version 12 and as Integer before it",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6962334573",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      469,
+      486
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "NonNegativeInterval"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      407,
+      428
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR (BoundedRatio b a)"
+    },
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "lines": [
+      271,
+      280
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "decodeIntegralRational"
+    },
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
+     "lines": [
+      159,
+      167
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "decodeRationalWithTag"
+    }
+   ]
+  },
+  "def storage.haskell.state.Wire.positiveIntervalAt": {
+   "class": "Gap",
+   "digest": "6e1f30b0813ed6d4",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "a Rational in the interval's bounds, not a newtype over BoundedRatio; the numbers are read as Word64 from version 12 and as Integer before it",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6962334573",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      489,
+      510
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "PositiveInterval"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      407,
+      428
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR (BoundedRatio b a)"
+    },
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "lines": [
+      271,
+      280
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "decodeIntegralRational"
+    },
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
+     "lines": [
+      159,
+      167
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "decodeRationalWithTag"
+    }
+   ]
+  },
+  "def storage.haskell.state.Wire.unitIntervalAt": {
+   "class": "Gap",
+   "digest": "a53e9ffe1cd43f75",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "a Rational in the interval's bounds, not a newtype over BoundedRatio; the numbers are read as Word64 from version 12 and as Integer before it",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6962334573",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      544,
+      561
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "UnitInterval"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      407,
+      428
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR (BoundedRatio b a)"
+    },
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/DecCBOR.hs",
+     "lines": [
+      271,
+      280
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "decodeIntegralRational"
+    },
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Plain.hs",
+     "lines": [
+      159,
+      167
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "decodeRationalWithTag"
+    }
+   ]
+  }
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Wire.scala"
+}

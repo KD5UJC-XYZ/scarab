@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "def ledger.era.mary.MaryTimelock.decode": null,
+  "def ledger.era.mary.MaryTimelock.translate": null,
+  "def ledger.era.mary.MaryTxOut.fromStored": null,
+  "def ledger.era.mary.MaryTxOut.translate": null,
+  "given ledger.era.mary.MaryTimelock.given_CanEqual_MaryTimelock_MaryTimelock": null,
+  "given ledger.era.mary.MaryTxOut.given_CanEqual_MaryTxOut_MaryTxOut": null,
+  "object ledger.era.mary.MaryTimelock": null,
+  "object ledger.era.mary.MaryTxOut": null,
+  "type ledger.era.mary.MaryTimelock": null,
+  "type ledger.era.mary.MaryTxOut": null,
+  "val ledger.era.mary.MaryTimelock.instance": null,
+  "val ledger.era.mary.MaryTxOut.instance": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/mary/MaryTypes.scala"
+}

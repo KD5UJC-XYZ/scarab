@@ -1,0 +1,20 @@
+{
+ "baseline": {
+  "class protocol.EbPoint": null,
+  "class protocol.TxBitmaps": null,
+  "def protocol.LeiosWire.all": null,
+  "def protocol.LeiosWire.arrayWithVerbatim": null,
+  "def protocol.LeiosWire.bitmapsBytes": null,
+  "def protocol.LeiosWire.embed": null,
+  "def protocol.LeiosWire.encode": null,
+  "def protocol.LeiosWire.nodeOf": null,
+  "def protocol.LeiosWire.pointValue": null,
+  "def protocol.LeiosWire.tagged": null,
+  "def protocol.TxBitmaps#count": null,
+  "enum protocol.LeiosField": null,
+  "enum protocol.LeiosWireError": null,
+  "object protocol.LeiosWire": null,
+  "val protocol.LeiosWire.EncodingLimits": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/LeiosWire.scala"
+}

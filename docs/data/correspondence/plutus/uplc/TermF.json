@@ -1,0 +1,42 @@
+{
+ "baseline": {
+  "class uplc.Program": null,
+  "def uplc.Term.app": null,
+  "def uplc.Term.builtin": null,
+  "def uplc.Term.caseOf": null,
+  "def uplc.Term.constant": null,
+  "def uplc.Term.constr": null,
+  "def uplc.Term.delay": null,
+  "def uplc.Term.force": null,
+  "def uplc.Term.lam": null,
+  "def uplc.Term.variable": null,
+  "enum uplc.TermF": [
+   {
+    "file": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Core/Type.hs",
+    "lines": [
+     88,
+     114
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "Term"
+   }
+  ],
+  "given uplc.TermF.given_Traverse_TermF": null,
+  "object uplc.Term": null,
+  "object uplc.TermF": null,
+  "type uplc.ConstantValue": null,
+  "type uplc.Term": null,
+  "val uplc.Term.error": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def uplc.Program#withScope",
+    "val uplc.Program#scope"
+   ],
+   "reason": "an Optimisation of #1499 (owner approval 2026-11-27): the scope check that mkTermToEvaluate makes of the applied term (`Eval.hs:129-130`, plutus 1.70.0.0) made once for a decoded program and kept with it, since the arguments are constants and the check visits the function before its argument; ScopeAppliedSuite and EvaluatorPathsSuite show it equal to the walk of the applied term. A program the node's cache hands to other threads has the check made first, so that no thread waits for another's"
+  }
+ ],
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/TermF.scala"
+}

@@ -1,0 +1,6 @@
+{
+ "baseline": {
+  "class ledger.state.LedgerScalars": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/LedgerScalars.scala"
+}

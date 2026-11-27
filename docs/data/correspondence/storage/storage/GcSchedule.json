@@ -1,0 +1,230 @@
+{
+ "entries": {
+  "class storage.GcSchedule.Params": {
+   "class": "Mirror",
+   "digest": "90576c9de77b5bb7",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "lines": [
+      545,
+      552
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "GcParams"
+    }
+   ]
+  },
+  "class storage.GcSchedule.Scheduled": {
+   "class": "Mirror",
+   "digest": "f74adaf3dfd40a34",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "lines": [
+      534,
+      540
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "ScheduledGc"
+    }
+   ]
+  },
+  "def storage.GcSchedule#pending": {
+   "class": "Mirror",
+   "digest": "1071d7fe349efff5",
+   "evidence": [
+    "GcScheduleSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "lines": [
+      647,
+      652
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "dumpGcSchedule"
+    }
+   ]
+  },
+  "def storage.GcSchedule#run": {
+   "class": "Gap",
+   "digest": "ca238d24ec8b8bfa",
+   "note": "waits for the time of the oldest entry, reads its slot after the wait, takes it off the queue and collects it, one at a time, as gcScheduleRunner; where the reference's runner throws in its linked thread, a collection that fails, or an exception anywhere in the runner, ends it with a value (ADR 0017), which ChainStorage hands to the node to stop on (#1247) Where it differs: it ends with a value where the reference's runner throws, and waits again when the queue is empty after its wait; no differential comparison covers it (#1261). Both trace PerformedGC right after the collection (garbageCollectBlocks, Background.hs 448), so a tracer that fails ends the collection's runner in both.",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "lines": [
+      611,
+      645
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "gcScheduleRunner"
+    }
+   ]
+  },
+  "def storage.GcSchedule#schedule": {
+   "class": "Gap",
+   "digest": "81173512dc7f0c7d",
+   "note": "as scheduleGC: the entry at the time now plus the delay rounded up to the interval, in place of the last entry for the same time, else after it. Where it differs: it hands the entry back and its caller emits the ScheduledGC trace, where scheduleGC traces it itself; no differential comparison covers it (#1261). Both trace right after their enqueue (scheduleGC, Background.hs 576, ouroboros-consensus 82ecba329), so a tracer that fails propagates out of the step that copied the blocks in both; the reference has signalled its ledger maintenance by then, where Scarab brings its backing store forward after the trace. It is called once for each round of the copy runner, which copies the whole prefix the published chain aged past k and not yet copied, as the reference's copy runner does and schedules once (#1499)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "lines": [
+      557,
+      576
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "scheduleGC"
+    }
+   ]
+  },
+  "def storage.GcSchedule.apply": {
+   "class": "Mirror",
+   "digest": "68241cf5c149e621",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "note": "the queue's allocation only, as newGcSchedule allocates its queue; the schedule's methods are mapped on their own (#schedule, #pending, #run)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "lines": [
+      554,
+      555
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "newGcSchedule"
+    }
+   ]
+  },
+  "def storage.GcSchedule.scheduled": {
+   "class": "Mirror",
+   "digest": "3adce5962596d846",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "lines": [
+      566,
+      576
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "scheduleGC"
+    }
+   ]
+  },
+  "def storage.GcSchedule.timeFor": {
+   "class": "Mirror",
+   "digest": "84fb5cd844b176f8",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "note": "the time is rounded on the monotonic clock in nanoseconds, the reference's in picoseconds; a time past the clock's range is its largest value",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "lines": [
+      578,
+      591
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "computeTimeForGC"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "lines": [
+      593,
+      609
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "roundUpToInterval"
+    }
+   ]
+  },
+  "trait storage.GcSchedule": {
+   "class": "Gap",
+   "digest": "b69de4796ddef554",
+   "note": "the schedule of the received log's collections, as the reference's GcSchedule, which is a newtype over its queue (a StrictTVar of a StrictSeq of ScheduledGc) that scheduleGC, dumpGcSchedule and gcScheduleRunner take; here an algebra of those three operations (#schedule, #pending and #run, each mapped on its own), its queue a SignallingRef of a Vector of Scheduled that GcSchedule.apply allocates, as newGcSchedule allocates the queue (#1247) Where it differs: the queue is held behind the operations, not as the type's field; no differential comparison covers it (#1261).",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1261",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "lines": [
+      532,
+      532
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "GcSchedule"
+    }
+   ]
+  },
+  "val storage.GcSchedule.Params.Reference": {
+   "class": "Mirror",
+   "digest": "753343c565a66f32",
+   "evidence": [
+    "GcScheduleSuite",
+    "ReceivedCollectionSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Args.hs",
+     "lines": [
+      119,
+      124
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "defaultSpecificArgs"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def storage.GcSchedule.Params.of",
+    "object storage.GcSchedule",
+    "object storage.GcSchedule.Params"
+   ],
+   "reason": "the companions of the received log's collection schedule, and its parameters' constructor, which refuses an interval that is not positive (a precondition the reference states in a comment, roundUpToInterval, Storage/ChainDB/Impl/Background.hs 593-609 at ouroboros-consensus 82ecba329) and a negative delay"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/GcSchedule.scala"
+}

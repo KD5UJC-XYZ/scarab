@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "class storage.scls.SclsOutput.Builder": null,
+  "class storage.scls.SclsOutput.Config": null,
+  "def storage.scls.SclsOutput.Builder#finish": null,
+  "def storage.scls.SclsOutput.Builder#push": null,
+  "def storage.scls.SclsOutput.Config.fromInts": null,
+  "def storage.scls.SclsOutput.begin": null,
+  "enum storage.scls.SclsOutput.Error": null,
+  "object storage.scls.SclsOutput": null,
+  "object storage.scls.SclsOutput.Config": null,
+  "val storage.scls.SclsOutput.Config#chunkEntries": null,
+  "val storage.scls.SclsOutput.Config#limit": null,
+  "val storage.scls.SclsOutput.Config#recordBytes": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsOutput.scala"
+}

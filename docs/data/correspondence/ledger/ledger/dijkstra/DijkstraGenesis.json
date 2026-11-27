@@ -1,0 +1,31 @@
+{
+ "baseline": {
+  "class ledger.dijkstra.DijkstraGenesis": [
+   {
+    "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Genesis.hs",
+    "lines": [
+     32,
+     35
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "DijkstraGenesis"
+   }
+  ],
+  "def ledger.dijkstra.DijkstraGenesis#upgrade": null,
+  "def ledger.dijkstra.DijkstraGenesis.read": [
+   {
+    "file": "cardano-node/src/Cardano/Node/Protocol/Shelley.hs",
+    "lines": [
+     120,
+     140
+    ],
+    "repository": "IntersectMBO/cardano-node",
+    "revision": "b004fe0c50913dcdaa827a98e68a43d0ccce152a",
+    "symbol": "readGenesisAny"
+   }
+  ],
+  "object ledger.dijkstra.DijkstraGenesis": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraGenesis.scala"
+}

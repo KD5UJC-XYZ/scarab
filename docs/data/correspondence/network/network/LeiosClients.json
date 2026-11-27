@@ -1,0 +1,28 @@
+{
+ "baseline": {
+  "class network.LeiosFetchClient.Settings": null,
+  "class network.LeiosNotifyClient.Settings": null,
+  "class network.Observed": null,
+  "def network.LeiosDecode.result": null,
+  "def network.LeiosFetchClient#block": null,
+  "def network.LeiosFetchClient#done": null,
+  "def network.LeiosFetchClient.apply": null,
+  "def network.LeiosNotifyClient#quit": null,
+  "def network.LeiosNotifyClient#requestNext": null,
+  "def network.LeiosNotifyClient.apply": null,
+  "object network.LeiosDecode": null,
+  "object network.LeiosFetchClient": null,
+  "object network.LeiosNotifyClient": null,
+  "trait network.LeiosFetchClient": null,
+  "trait network.LeiosNotifyClient": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def network.LeiosDecode.restarting"
+   ],
+   "reason": "the Leios clients of the hand-run probe (LeiosProbe) read each prefix from its start: the Leios decoders keep no progress on a message not all of which has arrived; no node path uses them"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/LeiosClients.scala"
+}

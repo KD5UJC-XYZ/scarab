@@ -1,0 +1,77 @@
+{
+ "entries": {
+  "def ledger.era.DRepPulser.computeDRepDistr": {
+   "class": "Mirror",
+   "digest": "9830f68f9746d07a",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/DRepPulser.hs",
+     "lines": [
+      200,
+      242
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "computeDRepDistr"
+    }
+   ]
+  },
+  "def ledger.era.DRepPulser.setFreshDRepPulsingState": {
+   "class": "Mirror",
+   "digest": "66559475ac3c80c0",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "the pulser is computed to completion where it starts (finishDRepPulser of the fresh DRPulsing, DRepPulser.hs:388-430: every account in one pulse, then RATIFY over the reordered actions), as the node holds only DRComplete; the epoch state's governance record is not read, the era's governance state is an argument",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "lines": [
+      460,
+      520
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "setFreshDRepPulsingState"
+    }
+   ]
+  },
+  "def ledger.era.DRepPulser.toVotingStakePoolDistr": {
+   "class": "Mirror",
+   "digest": "2ce6333117e8e7e5",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      741,
+      746
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "toVotingStakePoolDistr"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.DRepPulser"
+   ],
+   "reason": "Dijkstra's EPOCH on the era types (#85): the epoch state it works on, the node's epoch state with the era's governance state beside it until the ledger state holds the era's record, its lens, and the module objects of EPOCH and of the DRep pulser, whose functions are each mapped by themselves"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/DRepPulser.scala"
+}

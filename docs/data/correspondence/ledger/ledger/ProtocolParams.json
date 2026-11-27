@@ -1,0 +1,35 @@
+{
+ "baseline": {
+  "class ledger.DRepVotingThresholds": null,
+  "class ledger.PoolVotingThresholds": null,
+  "class ledger.ProtocolParams": null,
+  "def ledger.DRepVotingThresholds#toVector": null,
+  "def ledger.DRepVotingThresholds.fromVector": null,
+  "def ledger.PoolVotingThresholds#toVector": null,
+  "def ledger.PoolVotingThresholds.fromVector": null,
+  "def ledger.ProtocolParams#effectiveD": null,
+  "def ledger.ProtocolParams#restrictsPoolMetadataHash": null,
+  "def ledger.ProtocolParams#validatesPoolRewardAccountNetwork": null,
+  "def ledger.ProtocolParams#version": null,
+  "def ledger.ProtocolParams.costModels": null,
+  "def ledger.ProtocolParams.fromGenesis": null,
+  "def ledger.ProtocolParams.injectedCostModels": null,
+  "def ledger.ProtocolParams.overlay": null,
+  "def ledger.ProtocolParams.translatedFromGenesis": null,
+  "def ledger.ProtocolParams.update": null,
+  "object ledger.DRepVotingThresholds": null,
+  "object ledger.PoolVotingThresholds": null,
+  "object ledger.ProtocolParams": null,
+  "val ledger.DRepVotingThresholds.zero": null,
+  "val ledger.PoolVotingThresholds.zero": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "val ledger.ProtocolParams.empty"
+   ],
+   "reason": "The governance family of each era as the ledger state holds it (#826): which record it is, Shelley's proposed updates, Conway's flat record or Dijkstra's era record (GovShape, its views and the flat records' proof, FlatGov, with its instances), the readers of the flat parameters over Dijkstra's record (GovStateRecord.view and futureView, over the zero record or, viewOver, a restored sidecar's record, ProtocolParams.empty the state's codec reads a parameter record over), the solidification of any era's future parameters (EraLedger.solidifyFuture, solidifyNextEpochPParams of each family), an action's state of an era from the flat record's items (ConwayProposals.actionOf), and a Dijkstra action other than a parameter change as the flat record holds it and the keys an update sets (DijkstraProposals.flatOrUpdate, updateKeys), which the state's codec and the node's projections write with: the reference holds each era's record itself, so it has none of these"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ProtocolParams.scala"
+}

@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "class network.BearerServer.Listening": null,
+  "def network.BearerServer.listen": null,
+  "enum network.BearerServer.Trace": null,
+  "object network.BearerServer": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/BearerServer.scala"
+}

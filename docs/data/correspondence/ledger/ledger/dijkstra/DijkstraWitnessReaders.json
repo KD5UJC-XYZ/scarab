@@ -1,0 +1,58 @@
+{
+ "baseline": {
+  "class ledger.dijkstra.DijkstraBootstrap": null
+ },
+ "entries": {
+  "def ledger.dijkstra.DijkstraWitnessReaders.bootstrapWitnesses": {
+   "class": "Mirror",
+   "digest": "875396eb173ff25b",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "key 2 of the witness set: a non-empty set, the tag 258 allowed, of decodeRecordNamed of the key, the signature, a 32-byte chain code and the attributes, no witness twice under its Ord",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Bootstrap.hs",
+     "lines": [
+      109,
+      113
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR BootstrapWitness"
+    }
+   ]
+  },
+  "def ledger.dijkstra.DijkstraWitnessReaders.vkeyWitnesses": {
+   "class": "Mirror",
+   "digest": "1f847cf732537417",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "key 0 of the witness set: a non-empty set, the tag 258 allowed, of decodeRecordNamed of a 32-byte key and a 64-byte signature, no witness twice",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/WitVKey.hs",
+     "lines": [
+      106,
+      110
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR (WitVKey kr)"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.dijkstra.DijkstraWitnessReaders"
+   ],
+   "reason": "the objects that hold the readers of a Dijkstra body's fields and of a witness set's key witnesses, which Dijkstra's era decoder and the stored state's codecs share, kept when the flat Dijkstra decoder that held them went (#85); the reference's readers are the instances of the types they read, mapped by each reader's own entry"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraWitnessReaders.scala"
+}

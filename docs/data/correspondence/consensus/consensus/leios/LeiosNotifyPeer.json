@@ -1,0 +1,198 @@
+{
+ "entries": {
+  "class consensus.leios.LeiosNotifyPeerState": {
+   "class": "Mirror",
+   "digest": "6761fc69f4043a97",
+   "note": "the slot pruned to, the peer's announcements for dedup and equivocation counting, and the parts it offered of each point",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      2145,
+      2157
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "LeiosNotifyPeerState"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosNotifyPeerState#announcedIt": {
+   "class": "Mirror",
+   "digest": "cf094a08c81bcc5c",
+   "note": "an announcement of the peer's among the elections of the point's slot names its endorser block",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      2244,
+      2250
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "announcedIt"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "lines": [
+      93,
+      108
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "announcementsInSlot"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosNotifyPeerState#blockOffer": {
+   "class": "Mirror",
+   "digest": "ec98c191465bcea5",
+   "evidence": [
+    "LeiosNotifyPeerStateSuite"
+   ],
+   "note": "too old, a repeat, a size of 0 or above maxLeiosEbBytesSize, no announcement, in that order; otherwise the body recorded at the size claimed",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      2207,
+      2241
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "checkLeiosBlockOffer"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosNotifyPeerState#closureOffer": {
+   "class": "Mirror",
+   "digest": "2b74f02847bd55a4",
+   "note": "too old, a repeat, no announcement; otherwise the closure recorded",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      2256,
+      2278
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "checkLeiosClosureOffer"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosNotifyPeerState#prunedToImmTip": {
+   "class": "Mirror",
+   "digest": "a8b3f179c4a3ceaf",
+   "note": "to a NotOrigin immutable tip above the slot pruned to: the announcements by prunePeerState, the offers below the tip dropped",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      2166,
+      2187
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "pruneLeiosNotifyPeerStateToImmTip"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosNotifyPeerState.onAnnouncement": {
+   "class": "Mirror",
+   "digest": "6ab8080a8009e9b8",
+   "note": "extendLive first (ErrRepeat, ErrThird), then the validation; VerdictTooOld and VerdictInvalid refuse, VerdictIgnore keeps the counted state, VerdictProcess runs the processing and keeps it; the trace is the caller's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "lines": [
+      201,
+      232
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "onAnnouncement"
+    }
+   ]
+  },
+  "enum consensus.leios.AnnouncementVerdict": {
+   "class": "Mirror",
+   "digest": "53329a88ea94f1cf",
+   "note": "the four verdicts of the validation callback",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "lines": [
+      180,
+      199
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "AnnouncementVerdict"
+    }
+   ]
+  },
+  "object consensus.leios.LeiosNotifyPeerState": {
+   "class": "Mirror",
+   "digest": "7b00d1af2cb2862a",
+   "note": "its companion",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      2158,
+      2164
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "emptyLeiosNotifyPeerState"
+    }
+   ]
+  },
+  "val consensus.leios.LeiosNotifyPeerState.MaxEbBytesSize": {
+   "class": "Mirror",
+   "digest": "d17610b26f1a5291",
+   "note": "600 * 1000",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "lines": [
+      213,
+      215
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "maxLeiosEbBytesSize"
+    }
+   ]
+  },
+  "val consensus.leios.LeiosNotifyPeerState.empty": {
+   "class": "Mirror",
+   "digest": "1a614357b1f5e0cc",
+   "note": "pruned to slot 0, nothing announced or offered",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      2158,
+      2164
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "emptyLeiosNotifyPeerState"
+    }
+   ]
+  }
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/leios/LeiosNotifyPeer.scala"
+}

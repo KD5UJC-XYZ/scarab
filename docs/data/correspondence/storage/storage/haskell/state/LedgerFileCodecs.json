@@ -1,0 +1,45 @@
+{
+ "baseline": {
+  "given storage.haskell.state.LedgerFileCodecs#haskellLedgerFile": null,
+  "given storage.haskell.state.LedgerFileCodecs#headerState": null,
+  "given storage.haskell.state.LedgerFileCodecs#perasResolver": null,
+  "given storage.haskell.state.LedgerFileCodecs#perasState": null,
+  "trait storage.haskell.state.LedgerFileCodecs": null
+ },
+ "entries": {
+  "given storage.haskell.state.LedgerFileCodecs#annTip": {
+   "class": "Gap",
+   "digest": "7fa4d5a2b52cf460",
+   "evidence": [
+    "LeiosLayoutSuite",
+    "LedgerFileSuite"
+   ],
+   "note": "[era index, the era's tip], a Shelley-based tip [slot, hash, block number] and Byron's with the boundary flag after them, as the reference's NS of the eras' AnnTip codecs; the model holds one AnnTip with a TipInfo per era kind where the reference's is per era. In the Leios build's layout a Dijkstra tip (era 7) is read and written (LeiosLayoutSuite, the captured Dijkstra states); in the 11.1 layout it is refused both ways (DijkstraNotYet.LedgerState), which the reference decodes",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Serialisation/SerialiseDisk.hs",
+     "lines": [
+      98,
+      116
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "distribAnnTip"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HeaderValidation.hs",
+     "lines": [
+      734,
+      756
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "defaultEncodeAnnTip"
+    }
+   ]
+  }
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/LedgerFileCodecs.scala"
+}

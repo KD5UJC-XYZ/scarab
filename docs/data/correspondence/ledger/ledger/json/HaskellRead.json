@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def ledger.json.HaskellRead.integer": null,
+  "def ledger.json.HaskellRead.natural": null,
+  "def ledger.json.HaskellRead.word64": null,
+  "object ledger.json.HaskellRead": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/HaskellRead.scala"
+}

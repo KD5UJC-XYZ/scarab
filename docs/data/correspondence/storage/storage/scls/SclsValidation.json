@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "class storage.scls.SclsValidation.Validator": null,
+  "class storage.scls.SclsValidation.VerifiedContainer": null,
+  "def storage.scls.SclsValidation.Validator#feed": null,
+  "def storage.scls.SclsValidation.Validator#finish": null,
+  "def storage.scls.SclsValidation.validate": null,
+  "def storage.scls.SclsValidation.validator": null,
+  "enum storage.scls.SclsValidation.CountField": null,
+  "enum storage.scls.SclsValidation.Error": null,
+  "enum storage.scls.SclsValidation.Expected": null,
+  "object storage.scls.SclsValidation": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsValidation.scala"
+}

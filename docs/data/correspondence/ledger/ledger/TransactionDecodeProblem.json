@@ -1,0 +1,22 @@
+{
+ "baseline": {
+  "def ledger.MempoolLedgerProblem#message": null,
+  "def ledger.MempoolProblem#message": null,
+  "def ledger.TransactionDecodeProblem#message": null,
+  "enum ledger.CapacityDimension": null,
+  "enum ledger.MempoolLedgerProblem": null,
+  "enum ledger.MempoolProblem": null,
+  "enum ledger.TransactionDecodeProblem": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.MempoolProblem.genTxId",
+    "def ledger.MempoolProblem.shown",
+    "object ledger.MempoolProblem"
+   ],
+   "reason": "the text of the mempool's too-slow refusal, which ouroboros-consensus writes into Conway's ConwayMempoolFailure (`Mempool/Update.hs` 278-283 at 82ecba32, 279-284 at 808e4005): renderings of the reference's `Show DiffTime` (time 1.12.2) and of its derived `Show` of a hard-fork transaction id; the ledger has no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/TransactionDecodeProblem.scala"
+}

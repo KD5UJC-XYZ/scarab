@@ -1,0 +1,25 @@
+{
+ "baseline": {
+  "object ledger.rules.MuslData": null,
+  "object ledger.rules.MuslData.Exp": null,
+  "object ledger.rules.MuslData.Log": null,
+  "object ledger.rules.MuslData.PowLog": null,
+  "val ledger.rules.MuslData.Exp.invln2N": null,
+  "val ledger.rules.MuslData.Exp.negln2hiN": null,
+  "val ledger.rules.MuslData.Exp.negln2loN": null,
+  "val ledger.rules.MuslData.Exp.poly": null,
+  "val ledger.rules.MuslData.Exp.shift": null,
+  "val ledger.rules.MuslData.Exp.tab": null,
+  "val ledger.rules.MuslData.Log.ln2hi": null,
+  "val ledger.rules.MuslData.Log.ln2lo": null,
+  "val ledger.rules.MuslData.Log.poly": null,
+  "val ledger.rules.MuslData.Log.poly1": null,
+  "val ledger.rules.MuslData.Log.tab": null,
+  "val ledger.rules.MuslData.Log.tab2": null,
+  "val ledger.rules.MuslData.PowLog.ln2hi": null,
+  "val ledger.rules.MuslData.PowLog.ln2lo": null,
+  "val ledger.rules.MuslData.PowLog.poly": null,
+  "val ledger.rules.MuslData.PowLog.tab": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/MuslData.scala"
+}

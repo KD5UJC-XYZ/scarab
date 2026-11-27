@@ -1,0 +1,7 @@
+{
+ "baseline": {
+  "def protocol.ConnectionError#message": null,
+  "enum protocol.ConnectionError": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ConnectionError.scala"
+}

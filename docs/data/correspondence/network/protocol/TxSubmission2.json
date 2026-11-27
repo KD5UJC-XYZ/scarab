@@ -1,0 +1,115 @@
+{
+ "baseline": {
+  "class protocol.RelayOffer": null,
+  "class protocol.TxSubmission2.Inventory": null,
+  "def protocol.TxSubmission2.Inventory#requestIds": null,
+  "def protocol.TxSubmission2.Inventory#requestTxs": null,
+  "def protocol.TxSubmission2.Inventory.create": null,
+  "def protocol.TxSubmission2.TransactionReader#body": null,
+  "def protocol.TxSubmission2.TransactionReader#read": null,
+  "def protocol.TxSubmission2.advertisedSize": null,
+  "def protocol.TxSubmission2.bodyId": null,
+  "def protocol.TxSubmission2.codec": null,
+  "def protocol.TxSubmission2.decode": null,
+  "def protocol.TxSubmission2.decodePrefix": null,
+  "def protocol.TxSubmission2.encode": null,
+  "def protocol.TxSubmission2.fromEngine": null,
+  "def protocol.TxSubmission2.maxMessageBytes": null,
+  "def protocol.TxSubmission2.toEngine": null,
+  "def protocol.TxSubmission2.transition": null,
+  "enum protocol.TxSubmission2.Message": null,
+  "object protocol.TxSubmission2.Inventory": null,
+  "trait protocol.TxSubmission2.TransactionReader": null,
+  "type protocol.TxSubmission2.State": null,
+  "val protocol.TxSubmission2.MaxBatch": null,
+  "val protocol.TxSubmission2.MaxMessageBytes": null,
+  "val protocol.TxSubmission2.MaxOriginalBytes": null,
+  "val protocol.TxSubmission2.MiniProtocolId": null,
+  "val protocol.TxSubmission2.State": null
+ },
+ "entries": {
+  "class protocol.TxSubmission2.EraTx": {
+   "class": "Mirror",
+   "digest": "a4ea297cb917a4b2",
+   "note": "the era of the NS and the transaction's bytes, which the era's GenTx carries CBOR-in-CBOR",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/AcrossEras.hs",
+     "lines": [
+      127,
+      127
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "OneEraGenTx"
+    }
+   ]
+  },
+  "class protocol.TxSubmission2.EraTxId": {
+   "class": "Mirror",
+   "digest": "81ebf727ca1bec4c",
+   "note": "the era of the NS and, in a Shelley-based era, its 32-byte id; where the reference compares ids, by the hash alone whatever the era (OneEraGenTxId's Eq and Ord, lines 167-181), the node compares the id (TxSubmission2Runtime.eraRules, the sink's known)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/AcrossEras.hs",
+     "lines": [
+      128,
+      128
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "OneEraGenTxId"
+    }
+   ]
+  },
+  "def protocol.TxSubmission2.eraCodec": {
+   "class": "Gap",
+   "digest": "4a92ba985c7840b1",
+   "note": "[era, #6.24(tx)] and [era, id] of every Shelley-based era, each transaction read by the decoders of the era it names; a Byron GenTx or GenTxId, which the reference decodes, is a protocol error here",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/934",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Serialisation/SerialiseNodeToNode.hs",
+     "lines": [
+      156,
+      166
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "dispatchDecoder"
+    }
+   ]
+  },
+  "object protocol.TxSubmission2": {
+   "class": "Gap",
+   "digest": "aacb19cb02468398",
+   "note": "the node runs eraCodec, which carries the GenTx and GenTxId of every Shelley-based era under the era's index, as the reference's dispatchEncoder and dispatchDecoder do; a Byron GenTx or GenTxId is a protocol error here, where the reference decodes it and its mempool refuses it with the era mismatch. codec, Conway's alone, is the view the Message facade keeps",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/934",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Serialisation/SerialiseNodeToNode.hs",
+     "lines": [
+      156,
+      166
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "dispatchDecoder"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.TxSubmission2.fromEraEngine"
+   ],
+   "reason": "the Message facade's view of an engine message of eraCodec, in a runtime violation's report: each id and transaction without its era"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/TxSubmission2.scala"
+}

@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "type network.Errno": null,
+  "type network.ErrnoCause": null,
+  "type network.IoErrorType": null,
+  "type network.SystemCall": null,
+  "type network.SystemCallError": null,
+  "val network.Errno": null,
+  "val network.ErrnoCause": null,
+  "val network.IoErrorType": null,
+  "val network.SystemCall": null,
+  "val network.SystemCallError": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/SystemError.scala"
+}

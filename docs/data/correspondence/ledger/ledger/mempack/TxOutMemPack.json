@@ -1,0 +1,24 @@
+{
+ "baseline": {
+  "class ledger.mempack.RefScript": null,
+  "class ledger.mempack.TxOutParts": null,
+  "def ledger.mempack.TxOutMemPack.decode": null,
+  "def ledger.mempack.TxOutMemPack.decodeParts": null,
+  "def ledger.mempack.TxOutMemPack.encode": null,
+  "def ledger.mempack.TxOutMemPack.encodeParts": null,
+  "def ledger.mempack.TxOutMemPack.parts": null,
+  "def ledger.mempack.TxOutMemPack.toTxOut": null,
+  "def ledger.mempack.TxOutMemPack.withNativeReference": null,
+  "object ledger.mempack.TxOutMemPack": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.mempack.TxOutMemPack.partsOf",
+    "def ledger.mempack.TxOutMemPack.toTxOutOf"
+   ],
+   "reason": "the MemPack output's conversions in an era: the flat output the store keeps to the parts MemPack packs, its reference script read from the output's bytes as the era reads one, and back, a native script kept as the stored output keeps it; the reference packs and unpacks the era's own output (`MemPack (BabbageTxOut era)`) and has no counterpart (#826)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/mempack/TxOutMemPack.scala"
+}

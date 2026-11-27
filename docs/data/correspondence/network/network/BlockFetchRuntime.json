@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "class network.BlockFetchRuntime.ClientSettings": null,
+  "class network.BlockFetchRuntime.ServerSettings": null,
+  "class network.BlockFetchRuntime.Timeouts": null,
+  "def network.BlockFetchRuntime.Blocks#range": null,
+  "def network.BlockFetchRuntime.Client#done": null,
+  "def network.BlockFetchRuntime.Client#idle": null,
+  "def network.BlockFetchRuntime.Client#requestBlocks": null,
+  "def network.BlockFetchRuntime.Client#requestRange": null,
+  "def network.BlockFetchRuntime.Client#requestRangeObserved": null,
+  "def network.BlockFetchRuntime.Client#requestRangeStreaming": null,
+  "def network.BlockFetchRuntime.client": null,
+  "def network.BlockFetchRuntime.resource": null,
+  "def network.BlockFetchRuntime.run": null,
+  "enum network.BlockFetchRuntime.BatchOutcome": null,
+  "enum network.BlockFetchRuntime.Event": null,
+  "object network.BlockFetchRuntime": null,
+  "trait network.BlockFetchRuntime.Blocks": null,
+  "trait network.BlockFetchRuntime.Client": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/BlockFetchRuntime.scala"
+}

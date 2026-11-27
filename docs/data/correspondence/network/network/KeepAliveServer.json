@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "class network.KeepAliveServer.Settings": null,
+  "def network.KeepAliveServer.run": null,
+  "object network.KeepAliveServer": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/KeepAliveServer.scala"
+}

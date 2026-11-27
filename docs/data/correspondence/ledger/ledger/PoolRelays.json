@@ -1,0 +1,75 @@
+{
+ "baseline": {
+  "class ledger.Ipv4": null,
+  "class ledger.Ipv6": null,
+  "def ledger.Ipv4#octets": null,
+  "def ledger.Ipv4#render": null,
+  "def ledger.Ipv6#octets": null,
+  "def ledger.Ipv6#render": null,
+  "def ledger.Ipv6#wire": null,
+  "def ledger.Ipv6.fromWire": null,
+  "def ledger.Ipv6.swapWords": null,
+  "def ledger.LedgerRelay#skipped": null,
+  "def ledger.PoolRelay#ledgerRelay": null,
+  "def ledger.PoolRelays.connectable": null,
+  "def ledger.PoolRelays.decode": null,
+  "def ledger.PoolRelays.decodeState": null,
+  "def ledger.PoolRelays.decodeWire": null,
+  "def ledger.PoolRelays.encode": null,
+  "def ledger.PoolRelays.fromBody": null,
+  "def ledger.PoolRelays.ledgerRelays": null,
+  "def ledger.PoolRelays.peerRelays": null,
+  "def ledger.RelayIp#octets": null,
+  "def ledger.RelayIp#render": null,
+  "def ledger.RelayIp.be": null,
+  "def ledger.RelayIp.compress": null,
+  "def ledger.RelayIp.fromOctets": null,
+  "def ledger.RelayPort.fromInt": null,
+  "def ledger.RelayPort.toInt": null,
+  "enum ledger.LedgerRelay": null,
+  "enum ledger.PoolRelay": null,
+  "enum ledger.PoolRelayError": null,
+  "object ledger.Ipv6": null,
+  "object ledger.PoolRelays": null,
+  "object ledger.RelayIp": null,
+  "object ledger.RelayPort": null,
+  "trait ledger.RelayIp": null,
+  "type ledger.RelayPort": null,
+  "val ledger.PoolRelays.MaxDnsNameBytes": null,
+  "val ledger.RelayPort.MaxValue": null
+ },
+ "entries": {
+  "def ledger.PoolRelays.fromState": {
+   "class": "Mirror",
+   "digest": "fb87394681268175",
+   "evidence": [
+    "FuturePoolParamsCodecSuite"
+   ],
+   "note": "the relays of a pool's parameters in a ledger state, read for the validation the reference's decoder makes: tags 0 to 2 of their lengths, a 16-bit port, an address in the version's byte-string form, a DNS name of at most 64 or 128 bytes, its text chunked only in the Leios layout from version 12 (decodeString, Decoding/Decoder.hs:1564-1598); the parameters keep the bytes",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      458,
+      473
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR StakePoolRelay"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      692,
+      698
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR DnsName"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PoolRelays.scala"
+}

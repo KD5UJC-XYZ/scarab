@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "def uplc.flat.ConstantDecoder.plan": null,
+  "def uplc.flat.ConstantDecoder.read": null,
+  "def uplc.flat.ConstantDecoder.value": null,
+  "enum uplc.flat.ConstantDecoder.Plan": null,
+  "object uplc.flat.ConstantDecoder": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/flat/ConstantDecoder.scala"
+}

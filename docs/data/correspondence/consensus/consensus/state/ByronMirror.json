@@ -1,0 +1,7 @@
+{
+ "baseline": {
+  "def consensus.state.ByronMirror.of": null,
+  "object consensus.state.ByronMirror": null
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/ByronMirror.scala"
+}

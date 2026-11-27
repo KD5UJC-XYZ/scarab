@@ -1,0 +1,27 @@
+{
+ "baseline": {
+  "class storage.LedgerSnapshots.Restored": null,
+  "class storage.LedgerSnapshots.Skipped": null,
+  "class storage.LedgerSnapshots.Written": null,
+  "class storage.StateSnapshot": null,
+  "def storage.FileLedgerSnapshots.closed": null,
+  "def storage.FileLedgerSnapshots.deleted": null,
+  "def storage.FileLedgerSnapshots.digest": null,
+  "def storage.FileLedgerSnapshots.isSnapshot": null,
+  "def storage.FileLedgerSnapshots.nameOf": null,
+  "def storage.FileLedgerSnapshots.open": null,
+  "def storage.FileLedgerSnapshots.verified": null,
+  "def storage.LedgerSnapshots#list": null,
+  "def storage.LedgerSnapshots#restore": null,
+  "def storage.LedgerSnapshots#write": null,
+  "def storage.LedgerSnapshots.Fallback.of": null,
+  "enum storage.LedgerSnapshots.Fallback": null,
+  "enum storage.LedgerSnapshots.Unused": null,
+  "object storage.FileLedgerSnapshots": null,
+  "object storage.LedgerSnapshots": null,
+  "object storage.LedgerSnapshots.Fallback": null,
+  "trait storage.LedgerSnapshots": null,
+  "val storage.FileLedgerSnapshots.DigestSize": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshots.scala"
+}

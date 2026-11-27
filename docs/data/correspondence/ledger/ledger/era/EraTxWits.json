@@ -1,0 +1,69 @@
+{
+ "baseline": {
+  "def ledger.era.AlonzoEraTxWits#datsTxWits": null,
+  "def ledger.era.AlonzoEraTxWits#rdmrsTxWits": null,
+  "def ledger.era.AlonzoEraTxWits#scriptsOf": null,
+  "def ledger.era.EraTxWits#addrTxWits": null,
+  "def ledger.era.EraTxWits#bootAddrTxWits": null,
+  "def ledger.era.EraTxWits#scriptTxWits": null,
+  "def ledger.era.EraTxWits#scriptsOf": null,
+  "given ledger.era.EraTxWits.conway": null,
+  "object ledger.era.EraTxWits": null,
+  "trait ledger.era.AlonzoEraTxWits": null,
+  "trait ledger.era.EraTxWits": null
+ },
+ "entries": {
+  "def ledger.era.EraTxWits.keyHashWitnessesTxWits": {
+   "class": "Mirror",
+   "digest": "524ff963c9b71fda",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      538,
+      545
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "keyHashWitnessesTxWits"
+    }
+   ]
+  },
+  "given ledger.era.EraTxWits.babbage": {
+   "class": "Mirror",
+   "digest": "e70fcad7b82dbda7",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxWits.hs",
+     "lines": [
+      26,
+      26
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxWits BabbageEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.EraTxWits.dijkstra"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "def ledger.era.EraTxWits#scriptTxWitsArrival"
+   ],
+   "reason": "the order a witness set's scripts and auxiliary data's Plutus scripts arrived in, the node's own, which no verdict reads, only the choice of the first script the `plutus` module's decoder gives no verdict for, as the flat checks choose it (the reference's decoding always gives a verdict)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/EraTxWits.scala"
+}

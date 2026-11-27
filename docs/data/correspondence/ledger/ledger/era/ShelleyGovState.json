@@ -1,0 +1,212 @@
+{
+ "entries": {
+  "class ledger.era.KeptProposedPPUpdates": {
+   "class": "Mirror",
+   "digest": "5f3251087b08b1ca",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "each update kept with the bytes the node stores it by (ADR 0006), which reproduce the stored record; the reference re-encodes the values, a difference visible in the Haskell-layout state answers (DebugEpochState, DebugNewEpochState) for a non-canonical proposal (#85 item 7211463135); equal by the updates, as the reference's derived Eq",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      270,
+      274
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ProposedPPUpdates"
+    }
+   ]
+  },
+  "class ledger.era.ShelleyGovState": {
+   "class": "Mirror",
+   "digest": "7a015b66009de3df",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "the fields in the reference's order; each proposed update kept with the bytes the node stores it by (KeptProposedPPUpdates, ADR 0006), which reproduce the stored record; the reference re-encodes the values, a difference visible in the Haskell-layout state answers for a non-canonical proposal (#85 item 7211463135)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs",
+     "lines": [
+      63,
+      70
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ShelleyGovState"
+    }
+   ]
+  },
+  "def ledger.era.KeptProposedPPUpdates#proposed": {
+   "class": "Mirror",
+   "digest": "c7a6dfa9ee7aeddd",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "the reference's value, the updates without their stored bytes, in the order of the key hashes",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      270,
+      272
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ProposedPPUpdates"
+    }
+   ]
+  },
+  "def ledger.era.KeptProposedPPUpdates.empty": {
+   "class": "Mirror",
+   "digest": "071f9889593fd454",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      294,
+      295
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyPPPUpdates"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyGovState.curPParamsShelleyGovStateL": {
+   "class": "Mirror",
+   "digest": "f8860bb05ab1c1a2",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "the field's lens",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs",
+     "lines": [
+      74,
+      75
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "curPParamsShelleyGovStateL"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyGovState.emptyShelleyGovState": {
+   "class": "Mirror",
+   "digest": "4b7c0726b62132b7",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs",
+     "lines": [
+      185,
+      192
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyShelleyGovState"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyGovState.futurePParamsShelleyGovStateL": {
+   "class": "Mirror",
+   "digest": "9c8964b25d5aa492",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "the field's lens",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs",
+     "lines": [
+      80,
+      82
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "futurePParamsShelleyGovStateL"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyGovState.prevPParamsShelleyGovStateL": {
+   "class": "Mirror",
+   "digest": "fed36ab09c2035fd",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "the field's lens",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs",
+     "lines": [
+      77,
+      78
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "prevPParamsShelleyGovStateL"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.ShelleyGovStateRecord#eraOf",
+    "def ledger.era.ShelleyGovStateRecord#pparams",
+    "def ledger.era.ShelleyGovStateRecord#pparamsOf",
+    "def ledger.era.ShelleyGovStateRecord#storedPParams",
+    "def ledger.era.ShelleyGovStateRecord.fromStored",
+    "def ledger.era.ShelleyGovStateRecord.toStored",
+    "enum ledger.era.ShelleyGovStateReadError",
+    "enum ledger.era.ShelleyProposals",
+    "given ledger.era.ShelleyGovStateRecord.babbage",
+    "object ledger.era.ShelleyGovStateRecord",
+    "trait ledger.era.ShelleyGovStateRecord"
+   ],
+   "reason": "Babbage's governance state read from the node's flat record and written back over it, until the ledger state holds the era's record (#85): the era's parameter fields read from and written over the flat parameters, which hold every era's, and each proposed update read from and written as the bytes it keeps; the reference has no stored form to read, so it has no counterpart; a record whose stored proposal holds a legacy field an earlier build kept unread is refused (#85 item 7222565136)"
+  },
+  {
+   "definitions": [
+    "class ledger.era.KeptPParamsUpdate",
+    "def ledger.era.KeptPParamsUpdate#equals",
+    "def ledger.era.KeptPParamsUpdate#hashCode",
+    "def ledger.era.KeptPParamsUpdate#toString",
+    "def ledger.era.KeptPParamsUpdate.fromStored",
+    "given ledger.era.KeptPParamsUpdate.given_CanEqual_KeptPParamsUpdate_E_KeptPParamsUpdate_E",
+    "object ledger.era.KeptPParamsUpdate",
+    "val ledger.era.KeptPParamsUpdate#stored",
+    "val ledger.era.KeptPParamsUpdate#update"
+   ],
+   "reason": "an update proposal of the eras before Conway, and each delegate's proposed update the governance state keeps (KeptPParamsUpdate), with the bytes of its values, as the node stores it (ADR 0006), and its reading from that stored form; the reference stores the typed update and writes it canonically, so it has no counterpart; the kept bytes reproduce the stored record, and the reference's re-encoding differs from them in the Haskell-layout state answers for a non-canonical proposal (#85 item 7211463135); a stored proposal with a legacy unread field is refused (#85 item 7222565136)"
+  },
+  {
+   "definitions": [
+    "given ledger.era.KeptProposedPPUpdates.given_CanEqual_KeptProposedPPUpdates_E_KeptProposedPPUpdates_E",
+    "given ledger.era.ShelleyGovState.given_CanEqual_ShelleyGovState_E_ShelleyGovState_E",
+    "object ledger.era.KeptProposedPPUpdates",
+    "object ledger.era.ShelleyGovState"
+   ],
+   "reason": "the companions of the era's governance records and classes, and the equality of the records, which the reference derives"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/ShelleyGovState.scala"
+}

@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "class network.ChainSyncPipelineDecision.Policy": null,
+  "class network.ChainSyncPipelineDecision.Window": null,
+  "def network.ChainSyncPipelineDecision.Policy#decide": null,
+  "def network.ChainSyncPipelineDecision.Window.checked": null,
+  "enum network.ChainSyncPipelineDecision.Action": null,
+  "enum network.ChainSyncPipelineDecision.Error": null,
+  "enum network.ChainSyncPipelineDecision.Phase": null,
+  "object network.ChainSyncPipelineDecision": null,
+  "object network.ChainSyncPipelineDecision.Window": null,
+  "val network.ChainSyncPipelineDecision.Window.Default": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/ChainSyncPipelineDecision.scala"
+}

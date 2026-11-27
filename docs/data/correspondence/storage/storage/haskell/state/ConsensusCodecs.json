@@ -1,0 +1,84 @@
+{
+ "baseline": {
+  "def storage.haskell.state.ConsensusCodecs#shelleyLedgerState": null,
+  "given storage.haskell.state.ConsensusCodecs#pbftState": null,
+  "given storage.haskell.state.ConsensusCodecs#perasRound": null,
+  "given storage.haskell.state.ConsensusCodecs#praosState": null,
+  "given storage.haskell.state.ConsensusCodecs#prtclState": null,
+  "given storage.haskell.state.ConsensusCodecs#shelleyTip": null,
+  "given storage.haskell.state.ConsensusCodecs#shelleyTransition": null,
+  "given storage.haskell.state.ConsensusCodecs#ticknState": null,
+  "given storage.haskell.state.ConsensusCodecs#tpraosLedgerState": null,
+  "given storage.haskell.state.ConsensusCodecs#tpraosState": null,
+  "trait storage.haskell.state.ConsensusCodecs": null,
+  "val storage.haskell.state.ConsensusCodecs#chainDepStateOf": null
+ },
+ "entries": {
+  "given storage.haskell.state.ConsensusCodecs#praos2State": {
+   "class": "Gap",
+   "digest": "b7d12f6ad3bcdea7",
+   "evidence": [
+    "LeiosLayoutSuite"
+   ],
+   "note": "version 1 and nine fields, the ninth the announcement as encodeStrictMaybe encodeAnnouncedBy ([] or [[issuer, hash, size]]), the bytes the reference writes; the types differ: Praos2.State holds Praos's eight fields as a PraosState with the announcement beside them where the reference's record is flat, and the announced size is a Long checked to a Word32 on writing where the reference holds a Word32. The 11.1 layout has no Praos2 and does not write one. LeiosLayoutSuite reads the Praos2 state of a captured Leios devnet state (no announcement), checks each of its nine fields against the values read off the file's raw bytes, and writes it back byte for byte; it reads and writes the public testnet's state at slot 2,168,639 whole, whose Praos2 state holds an announcement",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "lines": [
+      368,
+      419
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "Serialise (PolyPraosState proto)"
+    },
+    {
+     "file": "ouroboros-consensus-protocol/src/ouroboros-consensus-protocol/Ouroboros/Consensus/Protocol/PolyPraos.hs",
+     "lines": [
+      339,
+      348
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "encodeAnnouncedBy"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "lines": [
+      169,
+      173
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EbReferencesAnnouncement"
+    }
+   ]
+  },
+  "val storage.haskell.state.ConsensusCodecs#ledgerFileEra": {
+   "class": "Gap",
+   "digest": "964876440d66e35c",
+   "evidence": [
+    "LeiosLayoutSuite",
+    "LedgerFileSuite"
+   ],
+   "note": "the ledger state of the era at a telescope's index: a Shelley-based era's [2, [tip, NewEpochState, transition, fourth field]] read into the mirror, Byron's ChainValidationState kept as the original item (not modelled, so written as read). Dijkstra's is read and written in the Leios build's layout, at version 12 (LeiosLayoutSuite, the captured Dijkstra states byte for byte), and refused both ways in the 11.1 layout (DijkstraNotYet.LedgerState), which the reference decodes",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Ledger.hs",
+     "lines": [
+      885,
+      922
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "encodeShelleyLedgerState"
+    }
+   ]
+  }
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConsensusCodecs.scala"
+}

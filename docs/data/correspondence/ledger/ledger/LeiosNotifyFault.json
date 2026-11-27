@@ -1,0 +1,142 @@
+{
+ "entries": {
+  "enum ledger.AnnouncementError": {
+   "class": "Mirror",
+   "digest": "e92542659c006cec",
+   "note": "ErrRepeat, ErrThird, ErrInvalid, ErrTooOld",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements.hs",
+     "lines": [
+      126,
+      143
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ErrAnnouncement"
+    }
+   ]
+  },
+  "enum ledger.AnnouncementInvalidity": {
+   "class": "Mirror",
+   "digest": "631895819e39056e",
+   "evidence": [
+    "LeiosNotifyClientSuite"
+   ],
+   "note": "OutsideHorizon, SlotBeforeImmutableTip, HeaderInvalid, RbHeaderEnvelopeInvalid; NoAnnouncement is no case, since the client reads the announcement before it validates (mkAnnouncingHeader) and a header without one is ExnLeiosBlockAnnouncementMissing",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements/Validate.hs",
+     "lines": [
+      61,
+      99
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "AnnouncementInvalidity"
+    }
+   ]
+  },
+  "enum ledger.InvalidOffer": {
+   "class": "Mirror",
+   "digest": "658e16c056da7616",
+   "note": "the five refusals of an offer, the sizes Word32 as BytesSize is",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1875,
+      1946
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ExnLeiosInvalidOffer"
+    }
+   ]
+  },
+  "enum ledger.LeiosNotifyFault": {
+   "class": "Mirror",
+   "digest": "c1e19e003f386a8f",
+   "evidence": [
+    "LeiosNotifyClientSuite"
+   ],
+   "note": "the exceptions the client's handler throws, typed: the announcement missing, an announcement refused (ReactToAnnouncementError), the onset past the history's horizon (announcementValidity's PastHorizonException), an offer refused, an unexpected MsgCanceled",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      615,
+      768
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "hLeiosNotifyClient"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1860,
+      1873
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ExnInvalidLeiosAnnouncement"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1995,
+      1999
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ExnLeiosBlockAnnouncementMissing"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      445,
+      446
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "LeiosNotifyException"
+    }
+   ]
+  },
+  "enum ledger.OfferedPart": {
+   "class": "Mirror",
+   "digest": "9e869c1d32db2eb5",
+   "note": "the body or the closure",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1989,
+      1990
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "OfferedBodyOrClosure"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.AnnouncementError#message",
+    "def ledger.AnnouncementInvalidity#message",
+    "def ledger.InvalidOffer#message",
+    "def ledger.LeiosNotifyFault#message"
+   ],
+   "reason": "the rendering of the LeiosNotify client's refusals as log text (#54)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosNotifyFault.scala"
+}

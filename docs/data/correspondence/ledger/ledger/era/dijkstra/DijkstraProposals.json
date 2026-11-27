@@ -1,0 +1,49 @@
+{
+ "entries": {
+  "def ledger.era.dijkstra.DijkstraProposals.proposal": {
+   "class": "Mirror",
+   "digest": "d4358fab527dd454",
+   "evidence": [
+    "EraGovStateSuite"
+   ],
+   "note": "the decoder at version 12 of a stored proposal: DijkstraProposal.decode then DijkstraProcedures.proposal",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      567,
+      580
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ProposalProcedure"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraProposals.flatOrUpdate",
+    "def ledger.era.dijkstra.DijkstraProposals.updateKeys"
+   ],
+   "reason": "The governance family of each era as the ledger state holds it (#826): which record it is, Shelley's proposed updates, Conway's flat record or Dijkstra's era record (GovShape, its views and the flat records' proof, FlatGov, with its instances), the readers of the flat parameters over Dijkstra's record (GovStateRecord.view and futureView, over the zero record or, viewOver, a restored sidecar's record, ProtocolParams.empty the state's codec reads a parameter record over), the solidification of any era's future parameters (EraLedger.solidifyFuture, solidifyNextEpochPParams of each family), an action's state of an era from the flat record's items (ConwayProposals.actionOf), and a Dijkstra action other than a parameter change as the flat record holds it and the keys an update sets (DijkstraProposals.flatOrUpdate, updateKeys), which the state's codec and the node's projections write with: the reference holds each era's record itself, so it has none of these"
+  },
+  {
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraConway.action",
+    "def ledger.era.dijkstra.DijkstraConway.actionId",
+    "def ledger.era.dijkstra.DijkstraConway.anchor",
+    "def ledger.era.dijkstra.DijkstraConway.proposal",
+    "def ledger.era.dijkstra.DijkstraProposals.action",
+    "def ledger.era.dijkstra.DijkstraProposals.fromFlat",
+    "def ledger.era.dijkstra.DijkstraProposals.fromStored",
+    "object ledger.era.dijkstra.DijkstraConway",
+    "object ledger.era.dijkstra.DijkstraProposals"
+   ],
+   "reason": "the node's flat governance record read into the era's governance state, its parameters, proposals and action states, until the ledger state holds the era's record (#85): Dijkstra's ledger state holds the era's record, read from Conway's flat one where the chain enters Dijkstra; nothing writes the era's governance state back whole; and Dijkstra's proposals as the flat decoder reads them in the flat record's form, every action but a parameter change, which is given back (DijkstraConway), for SUBLEDGER's committee proposals beside ConwayProposals.storedWith (the Gap of #85's item 6923349468)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraProposals.scala"
+}

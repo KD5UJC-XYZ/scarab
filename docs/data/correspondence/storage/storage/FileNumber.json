@@ -1,0 +1,19 @@
+{
+ "glue": [
+  {
+   "definitions": [
+    "def storage.FileNumber.padded",
+    "object storage.FileNumber"
+   ],
+   "reason": "the decimal numbers in Scarab's own storage file names, written in ASCII digits under every locale; the reference writes the numbers of its own file names with show, which writes ASCII digits"
+  },
+  {
+   "definitions": [
+    "def storage.FileNumber.numberOf",
+    "enum storage.FileNameProblem"
+   ],
+   "reason": "the numbers of Scarab's own storage file names read back from ASCII digits only, and a name in a locale's digits, or a volatile log's name that reads as a number but is not the name the log writes for it, refused as a typed error; the reference reads the numbers of its own file names with readMaybe, which takes ASCII digits only, and passes over a name it cannot read, which its VolatileDB traces (InvalidFileNames) and Scarab's received log logs too"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FileNumber.scala"
+}

@@ -1,0 +1,188 @@
+{
+ "baseline": {
+  "class ledger.state.ActiveStake": null,
+  "class ledger.state.BlsKey": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+    "lines": [
+     490,
+     494
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "BlsKey"
+   }
+  ],
+  "class ledger.state.BlsKeyState": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+    "lines": [
+     547,
+     551
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "BlsKeyState"
+   }
+  ],
+  "class ledger.state.IndividualPoolStake": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/PoolDistr.hs",
+    "lines": [
+     65,
+     79
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "IndividualPoolStake"
+   }
+  ],
+  "class ledger.state.LeiosCommittee": null,
+  "class ledger.state.LeiosSeat": [
+   {
+    "file": "cardano-crypto-leios/src/Cardano/Crypto/Leios.hs",
+    "lines": [
+     131,
+     139
+    ],
+    "repository": "IntersectMBO/cardano-base",
+    "revision": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+    "symbol": "LeiosSeat"
+   }
+  ],
+  "class ledger.state.PoolDistr": null,
+  "class ledger.state.SnapShot": null,
+  "class ledger.state.SnapShots": null,
+  "class ledger.state.StakePoolSnapShot": null,
+  "class ledger.state.StakeWithDelegation": null,
+  "def ledger.state.ActiveStake.total": null,
+  "def ledger.state.PoolBlsKey#stateLayout": null,
+  "def ledger.state.PoolBlsKey.certified": null,
+  "def ledger.state.PoolDistr.calculate": null,
+  "def ledger.state.PoolDistr.of": null,
+  "def ledger.state.PoolParamsBlsKey#registered": null,
+  "def ledger.state.SnapShot.totalActiveStake": null,
+  "def ledger.state.SnapShots.Layout#stateLayout": null,
+  "def ledger.state.SnapShots.emptyOf": null,
+  "def ledger.state.SnapShots.markPoolDistr": null,
+  "enum ledger.state.PoolBlsKey": null,
+  "enum ledger.state.PoolParamsBlsKey": null,
+  "enum ledger.state.SnapShots.Layout": null,
+  "object ledger.state.ActiveStake": null,
+  "object ledger.state.IndividualPoolStake": null,
+  "object ledger.state.LeiosCommittee": null,
+  "object ledger.state.PoolBlsKey": null,
+  "object ledger.state.PoolDistr": null,
+  "object ledger.state.SnapShot": null,
+  "object ledger.state.SnapShots": null,
+  "object ledger.state.StakePoolSnapShot": null,
+  "object ledger.state.StakeWithDelegation": null,
+  "val ledger.state.ActiveStake.empty": null,
+  "val ledger.state.ActiveStake.entries": null,
+  "val ledger.state.IndividualPoolStake.blsKey": null,
+  "val ledger.state.IndividualPoolStake.stake": null,
+  "val ledger.state.IndividualPoolStake.totalPoolStake": null,
+  "val ledger.state.IndividualPoolStake.vrf": null,
+  "val ledger.state.LeiosCommittee.empty": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/LeiosCommittee.hs",
+    "lines": [
+     41,
+     45
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "emptyLeiosCommittee"
+   }
+  ],
+  "val ledger.state.PoolDistr.distribution": null,
+  "val ledger.state.PoolDistr.empty": null,
+  "val ledger.state.PoolDistr.totalActiveStake": null,
+  "val ledger.state.SnapShot#poolDistr": null,
+  "val ledger.state.SnapShot.activeStake": null,
+  "val ledger.state.SnapShot.empty": null,
+  "val ledger.state.SnapShot.pools": null,
+  "val ledger.state.SnapShots.empty": null,
+  "val ledger.state.SnapShots.fee": null,
+  "val ledger.state.SnapShots.go": null,
+  "val ledger.state.SnapShots.layout": null,
+  "val ledger.state.SnapShots.mark": null,
+  "val ledger.state.SnapShots.set": null,
+  "val ledger.state.StakePoolSnapShot.accountId": null,
+  "val ledger.state.StakePoolSnapShot.blsKey": null,
+  "val ledger.state.StakePoolSnapShot.cost": null,
+  "val ledger.state.StakePoolSnapShot.margin": null,
+  "val ledger.state.StakePoolSnapShot.numDelegators": null,
+  "val ledger.state.StakePoolSnapShot.pledge": null,
+  "val ledger.state.StakePoolSnapShot.selfDelegatedOwners": null,
+  "val ledger.state.StakePoolSnapShot.selfDelegatedOwnersStake": null,
+  "val ledger.state.StakePoolSnapShot.stake": null,
+  "val ledger.state.StakePoolSnapShot.stakeRatio": null,
+  "val ledger.state.StakePoolSnapShot.vrf": null,
+  "val ledger.state.StakeWithDelegation.delegation": null,
+  "val ledger.state.StakeWithDelegation.stake": null
+ },
+ "entries": {
+  "def ledger.state.BlsKeyState.register": {
+   "class": "Mirror",
+   "digest": "91f1332684693448",
+   "evidence": [
+    "DijkstraPoolReapSuite",
+    "DijkstraEpochReferenceSuite"
+   ],
+   "note": "registerBlsKey, local to mkStakePoolState",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      288,
+      320
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkStakePoolState"
+    }
+   ]
+  },
+  "def ledger.state.PoolParamsBlsKey.certified": {
+   "class": "Mirror",
+   "digest": "9e5ae59d9c0eb756",
+   "note": "a registration before Dijkstra reads no key: a body is read at its era's lowest version, 9 for Conway, and the key from version 12 only",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      746,
+      772
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "decodeStakePoolParamsFlat"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.state.PoolParamsBlsKey"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "object ledger.state.BlsKeyState"
+   ],
+   "reason": "the companion of BlsKeyState, and the type of POOLREAP's voting key on adoption, which the reference passes to mkStakePoolState as an argument; neither has a counterpart"
+  },
+  {
+   "definitions": [
+    "def ledger.state.PoolParamsBlsKey.stateLayout"
+   ],
+   "reason": "the conversions between the node's flat pool parameters, reward accounts and withdrawals and the state's (the flat rules and decoders read the node's, and the state holds the reference's types), each refusal the vocabulary's; and the instances and rendering that hold the state's pool parameters', metadata's and withdrawals' equality, the reference's derived Eq; the metadata of a term a decoder already read, as POOL reads its hash again (held); the decoder version of a stored record's ProtVer; and POOL's refusal of parameters of another layout than the state they go into, a defect the reference, one build, never meets"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/SnapShots.scala"
+}

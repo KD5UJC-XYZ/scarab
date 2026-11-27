@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "class ledger.Account": null,
+  "class ledger.DRepState": null,
+  "class ledger.PoolState": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/RatifyView.scala"
+}

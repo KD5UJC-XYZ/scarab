@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "given storage.haskell.state.NodeOrders.given_Order_Bytes": null,
+  "given storage.haskell.state.NodeOrders.given_Order_Credential": null,
+  "given storage.haskell.state.NodeOrders.given_Order_DRep": null,
+  "given storage.haskell.state.NodeOrders.given_Order_GovActionId": null,
+  "given storage.haskell.state.NodeOrders.given_Order_RewardAccount": null,
+  "given storage.haskell.state.NodeOrders.given_Order_TxIn": null,
+  "object storage.haskell.state.NodeOrders": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeOrders.scala"
+}

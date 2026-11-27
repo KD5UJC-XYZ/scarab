@@ -1,0 +1,145 @@
+{
+ "baseline": {
+  "class ledger.era.Redeemers": null,
+  "class ledger.era.TxDats": null,
+  "def ledger.era.Redeemers#equals": null,
+  "def ledger.era.Redeemers#hashCode": null,
+  "def ledger.era.Redeemers#toString": null,
+  "def ledger.era.TxDats#equals": null,
+  "def ledger.era.TxDats#hashCode": null,
+  "def ledger.era.TxDats#toString": null,
+  "given ledger.era.Redeemers.given_CanEqual_Redeemers_P_Redeemers_P": null,
+  "given ledger.era.TxDats.given_CanEqual_TxDats_TxDats": null,
+  "object ledger.era.Redeemers": null,
+  "object ledger.era.TxDats": null,
+  "val ledger.era.Redeemers#entries": null,
+  "val ledger.era.Redeemers#raw": null
+ },
+ "entries": {
+  "class ledger.era.Data": {
+   "class": "Mirror",
+   "digest": "7f405de25b251c07",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
+   ],
+   "note": "decoded Plutus data with the bytes it arrived as, made only by decoding them; not indexed by the era, as the era types' TxDats and Redeemers that hold it are not",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "lines": [
+      111,
+      113
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Data"
+    }
+   ]
+  },
+  "def ledger.era.Data#equals": {
+   "class": "Mirror",
+   "digest": "046be3dfcbbcb79e",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
+   ],
+   "note": "the derived Eq of `MemoBytes`, by the bytes and the value",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "lines": [
+      112,
+      112
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Eq"
+    }
+   ]
+  },
+  "def ledger.era.Data#hashData": {
+   "class": "Mirror",
+   "digest": "bf80ef7b14a8e378",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "lines": [
+      259,
+      260
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hashData"
+    }
+   ]
+  },
+  "def ledger.era.Data.decode": {
+   "class": "Mirror",
+   "digest": "6a0cf2ad6a9582aa",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
+   ],
+   "note": "the bytes of one item read as Plutus data (`PlutusData`'s `decCBOR`, lines 99-100), kept with it, as `Mem` keeps them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "lines": [
+      121,
+      125
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (Data era))"
+    }
+   ]
+  },
+  "def ledger.era.Data.read": {
+   "class": "Mirror",
+   "digest": "a99b39ccbcf96bbe",
+   "evidence": [
+    "DijkstraOnePassSuite"
+   ],
+   "note": "the data of an item its decoder has already read, with the item's bytes (Mem: the bytes the annotator saw, the value Cborg.decode read): what Data.decode reads from those bytes, without decoding them again; every form of data (constructor tags 102, 121 to 127 and 1280 to 1400, big numbers at and past 64 bits, byte strings chunked at 64 bytes, nested lists and maps) and the refused ones read the same as through the bytes",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "lines": [
+      100,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR (Annotator (Data era))"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.Data#hashCode",
+    "def ledger.era.Data#toString"
+   ],
+   "reason": "Scala runtime support with no counterpart: a hashCode consistent with the equality the reference derives, and a toString, which the reference's derived Show renders differently"
+  },
+  {
+   "definitions": [
+    "given ledger.era.Data.given_CanEqual_Data_Data",
+    "object ledger.era.Data"
+   ],
+   "reason": "objects that hold an era's instances of the accounts and certificate-state classes, the reference's functions over those classes (each mapped by itself), or CanEqual; Scala containers with no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/WitnessCollections.scala"
+}

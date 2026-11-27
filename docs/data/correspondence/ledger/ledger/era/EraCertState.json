@@ -1,0 +1,443 @@
+{
+ "entries": {
+  "class ledger.era.Obligations": {
+   "class": "Mirror",
+   "digest": "25d60d8d3e4cc243",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      427,
+      433
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Obligations"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraCertState#accountsOf": {
+   "class": "Mirror",
+   "digest": "2636298297b0dea6",
+   "note": "the superclass ConwayEraAccounts era as a member, so an era has one instance of each class",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/CertState.hs",
+     "lines": [
+      83,
+      83
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayEraAccounts era"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraCertState#certVStateL": {
+   "class": "Mirror",
+   "digest": "e20e3e0c92a42c78",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/CertState.hs",
+     "lines": [
+      84,
+      84
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "certVStateL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraCertState.dRepToCred": {
+   "class": "Mirror",
+   "digest": "5d01a91a59475193",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/DRep.hs",
+     "lines": [
+      121,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "dRepToCred"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraCertState.unDelegReDelegDRep": {
+   "class": "Mirror",
+   "digest": "07c198ace8301feb",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/VState.hs",
+     "lines": [
+      120,
+      143
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "unDelegReDelegDRep"
+    }
+   ]
+  },
+  "def ledger.era.EraCertState#accountsOf": {
+   "class": "Mirror",
+   "digest": "5c46e39164efd15e",
+   "note": "the superclass EraAccounts era as a member, so an era has one instance of each class",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      359,
+      359
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraAccounts era"
+    }
+   ]
+  },
+  "def ledger.era.EraCertState#certDStateL": {
+   "class": "Mirror",
+   "digest": "e9dc8ff6fe862ca2",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      379,
+      379
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "certDStateL"
+    }
+   ]
+  },
+  "def ledger.era.EraCertState#certPStateL": {
+   "class": "Mirror",
+   "digest": "83583aaa783542a1",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      381,
+      381
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "certPStateL"
+    }
+   ]
+  },
+  "def ledger.era.EraCertState#certsTotalDepositsTxBody": {
+   "class": "Mirror",
+   "digest": "6ac2c33b4f303b9d",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      390,
+      395
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "certsTotalDepositsTxBody"
+    }
+   ]
+  },
+  "def ledger.era.EraCertState#certsTotalRefundsTxBody": {
+   "class": "Mirror",
+   "digest": "2b7f3d0a63c0e3a2",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      397,
+      401
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "certsTotalRefundsTxBody"
+    }
+   ]
+  },
+  "def ledger.era.EraCertState#obligationCertState": {
+   "class": "Mirror",
+   "digest": "771f77d70acd2671",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      388,
+      388
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "obligationCertState"
+    }
+   ]
+  },
+  "def ledger.era.EraCertState.conwayCertsTotalDepositsTxBody": {
+   "class": "Mirror",
+   "digest": "eef8805461689f97",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the state's pools read through `certPStateL`, the lens on the record's field the reference matches",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/CertState.hs",
+     "lines": [
+      118,
+      121
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "conwayCertsTotalDepositsTxBody"
+    }
+   ]
+  },
+  "def ledger.era.EraCertState.conwayObligationCertState": {
+   "class": "Mirror",
+   "digest": "50d78b524a7eb61b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/CertState.hs",
+     "lines": [
+      111,
+      116
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "conwayObligationCertState"
+    }
+   ]
+  },
+  "def ledger.era.EraCertState.shelleyCertsTotalDepositsTxBody": {
+   "class": "Mirror",
+   "digest": "ff106212205a4f94",
+   "note": "the state's pools read through `certPStateL`; no era's instance reaches it yet, Babbage's coming with its body (#85)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/CertState.hs",
+     "lines": [
+      86,
+      89
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "shelleyCertsTotalDepositsTxBody"
+    }
+   ]
+  },
+  "def ledger.era.EraCertState.shelleyCertsTotalRefundsTxBody": {
+   "class": "Mirror",
+   "digest": "c539ccc55b7ffe31",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/CertState.hs",
+     "lines": [
+      91,
+      94
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "shelleyCertsTotalRefundsTxBody"
+    }
+   ]
+  },
+  "def ledger.era.EraCertState.shelleyObligationCertState": {
+   "class": "Mirror",
+   "digest": "c1d45a3c7c863359",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/CertState.hs",
+     "lines": [
+      77,
+      84
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "shelleyObligationCertState"
+    }
+   ]
+  },
+  "def ledger.era.EraCertState.unDelegReDelegStakePool": {
+   "class": "Mirror",
+   "digest": "2b2c25871a259d12",
+   "evidence": [
+    "ConwayCertsChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      281,
+      300
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "unDelegReDelegStakePool"
+    }
+   ]
+  },
+  "def ledger.era.Obligations.sumObligation": {
+   "class": "Mirror",
+   "digest": "dc92a5ec7024cf41",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      437,
+      438
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "sumObligation"
+    }
+   ]
+  },
+  "given ledger.era.EraCertState.conway": {
+   "class": "Mirror",
+   "digest": "ae469aa35d02af70",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/CertState.hs",
+     "lines": [
+      123,
+      123
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraCertState ConwayEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/CertState.hs",
+     "lines": [
+      138,
+      138
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayEraCertState ConwayEra"
+    }
+   ]
+  },
+  "given ledger.era.Obligations.given_Monoid_Obligations": {
+   "class": "Mirror",
+   "digest": "ab0d239149d43458",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      440,
+      447
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Semigroup Obligations"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      449,
+      450
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Monoid Obligations"
+    }
+   ]
+  },
+  "trait ledger.era.ConwayEraCertState": {
+   "class": "Mirror",
+   "digest": "f68130d9dbc1eef7",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/CertState.hs",
+     "lines": [
+      83,
+      84
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayEraCertState"
+    }
+   ]
+  },
+  "trait ledger.era.EraCertState": {
+   "class": "Gap",
+   "digest": "af505cdd9ab0b1d8",
+   "note": "the members are the reference's; the Default, encoding and JSON superclasses have no counterpart here",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      358,
+      401
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraCertState"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.EraCertState.dijkstra"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "given ledger.era.Obligations.given_CanEqual_Obligations_Obligations",
+    "object ledger.era.ConwayEraCertState",
+    "object ledger.era.EraCertState",
+    "object ledger.era.Obligations"
+   ],
+   "reason": "objects that hold an era's instances of the accounts and certificate-state classes, the reference's functions over those classes (each mapped by itself), or CanEqual; Scala containers with no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/EraCertState.scala"
+}

@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "def ledger.rules.NewEpoch.applyRewardUpdate": null,
+  "def ledger.rules.NewEpoch.sts": null,
+  "def ledger.rules.NewEpoch.withinEpoch": null,
+  "object ledger.rules.NewEpoch": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.rules.NewEpoch.boundaryLayout"
+   ],
+   "reason": "Dijkstra's tick on the node's path (#85, #826): the governance state of a Dijkstra state, the era's record the ledger state holds, taken out before the era's rules and put back after them (StoredGov.onRecord, recordOf), written into the epoch state the node's reward update and RUPD read (synced), the error of the one reading of Conway's flat record into Dijkstra's (StoredGovError, at the translation), the new-epoch state with the era's governance state beside it and its lenses, the module objects of TICK and NEWEPOCH, whose rules are each mapped by themselves, and the node's layout fields of the new-epoch state that NEWEPOCH sets"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/NewEpoch.scala"
+}

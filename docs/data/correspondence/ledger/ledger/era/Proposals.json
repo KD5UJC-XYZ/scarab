@@ -1,0 +1,873 @@
+{
+ "entries": {
+  "class ledger.era.GovActionState": {
+   "class": "Mirror",
+   "digest": "82eb7c2e897400b4",
+   "note": "the votes keyed by the voters' role-typed credentials and pool key hash, ordered as the reference's Map",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      219,
+      228
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "GovActionState"
+    }
+   ]
+  },
+  "class ledger.era.GovRelation": {
+   "class": "Mirror",
+   "digest": "375a0065669e651a",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      674,
+      679
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "GovRelation"
+    }
+   ]
+  },
+  "class ledger.era.PEdges": {
+   "class": "Mirror",
+   "digest": "a9fe24f65bbe4104",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      191,
+      197
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PEdges"
+    }
+   ]
+  },
+  "class ledger.era.PGraph": {
+   "class": "Mirror",
+   "digest": "9a077c08792a0b76",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      200,
+      204
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PGraph"
+    }
+   ]
+  },
+  "class ledger.era.PRoot": {
+   "class": "Mirror",
+   "digest": "340ef94baaa1c6bf",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      173,
+      179
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PRoot"
+    }
+   ]
+  },
+  "class ledger.era.Proposals": {
+   "class": "Mirror",
+   "digest": "af8164c49481d786",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      238,
+      243
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Proposals"
+    }
+   ]
+  },
+  "def ledger.era.GovActionParent#apply": {
+   "class": "Mirror",
+   "digest": "98cf688d06334b51",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      791,
+      801
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "withGovActionParent"
+    }
+   ]
+  },
+  "def ledger.era.GovActionState#gasAction": {
+   "class": "Mirror",
+   "digest": "4cd61c79a05f2d52",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      261,
+      262
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "gasAction"
+    }
+   ]
+  },
+  "def ledger.era.GovActionState#gasDeposit": {
+   "class": "Mirror",
+   "digest": "468da24753d6648b",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      249,
+      250
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "gasDeposit"
+    }
+   ]
+  },
+  "def ledger.era.GovActionState#gasReturnAddr": {
+   "class": "Mirror",
+   "digest": "7aab3c6cb896697c",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      255,
+      256
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "gasReturnAddr"
+    }
+   ]
+  },
+  "def ledger.era.GovActionState.withGovActionParent": {
+   "class": "Mirror",
+   "digest": "6d02fed5130a63e6",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "note": "the rank-2 function over a lens of every purpose is the trait GovActionParent over GovRelationL",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      791,
+      811
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "withGovActionParent"
+    }
+   ]
+  },
+  "def ledger.era.GovRelation.hoistGovRelation": {
+   "class": "Mirror",
+   "digest": "c9abafd3bac58b24",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      781,
+      788
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hoistGovRelation"
+    }
+   ]
+  },
+  "def ledger.era.GovRelationL#get": {
+   "class": "Mirror",
+   "digest": "b7df3afd17aadf14",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      769,
+      779
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "grPParamUpdateL"
+    }
+   ]
+  },
+  "def ledger.era.GovRelationL#modify": {
+   "class": "Mirror",
+   "digest": "860428693508da34",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "note": "the lens's %~",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      769,
+      779
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "grPParamUpdateL"
+    }
+   ]
+  },
+  "def ledger.era.GovRelationL#set": {
+   "class": "Mirror",
+   "digest": "7ec04c8717f9a65d",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      769,
+      779
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "grPParamUpdateL"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.empty": {
+   "class": "Mirror",
+   "digest": "365c777bea78d2db",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "note": "def & pRootsL .~ fromPrevGovActionIds pgais",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      338,
+      357
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkProposals"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.fromPrevGovActionIds": {
+   "class": "Mirror",
+   "digest": "dc92473a0006f882",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      605,
+      606
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "fromPrevGovActionIds"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.mapProposals": {
+   "class": "Mirror",
+   "digest": "cea63001adbf158d",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      258,
+      259
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mapProposals"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.mkProposals": {
+   "class": "Mirror",
+   "digest": "643469592c92f66c",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "note": "the action that cannot be added and a store rebuilt with other actions than the record (an id held twice) as typed ProposalsReadErrors in place of fail",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      338,
+      357
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkProposals"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.proposalsActions": {
+   "class": "Mirror",
+   "digest": "f61f08ec76b1f15a",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      559,
+      562
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "proposalsActions"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.proposalsActionsMap": {
+   "class": "Mirror",
+   "digest": "c74b8d3b6ba8cc23",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      588,
+      591
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "proposalsActionsMap"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.proposalsAddAction": {
+   "class": "Mirror",
+   "digest": "ee70dea1524566f0",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "note": "with runProposalsAddAction; checkInvariantAfterAddition is an assertion, compiled out of the node",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      297,
+      336
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "proposalsAddAction"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.proposalsAddVote": {
+   "class": "Mirror",
+   "digest": "55316c38afeeacfa",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      410,
+      430
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "proposalsAddVote"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.proposalsApplyEnactment": {
+   "class": "Mirror",
+   "digest": "9a77ce01c4da2254",
+   "evidence": [
+    "EraEpochGovSuite",
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      492,
+      556
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "proposalsApplyEnactment"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.proposalsDeposits": {
+   "class": "Mirror",
+   "digest": "9514f8feea5f3274",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "a return account's credential is read at the stake credential's type, its refusal a VocabError, which the decoder of an account address refused",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      566,
+      580
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "proposalsDeposits"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.proposalsLookupId": {
+   "class": "Mirror",
+   "digest": "9c8b463a67635973",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      596,
+      600
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "proposalsLookupId"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.proposalsRemoveIds": {
+   "class": "Mirror",
+   "digest": "a09e921f512b9e0e",
+   "evidence": [
+    "EraEpochGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      435,
+      461
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "proposalsRemoveIds"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.proposalsRemoveWithDescendants": {
+   "class": "Mirror",
+   "digest": "6cf7c5fee0145a82",
+   "evidence": [
+    "EraEpochGovSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "getAllDescendants walks the graph with a work list where the reference recurses (STK-1), the same set over the forest proposalsAddAction builds; on the Leios build's remove-branches case (fixtures/reference/dijkstra-epoch/governance.json) the enacted action's competing sibling with its descendant and an expired action with its descendant are removed, and the surviving ordered proposals, the roots and the removed action maps are the build's",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      465,
+      483
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "proposalsRemoveWithDescendants"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.proposalsWithPurpose": {
+   "class": "Mirror",
+   "digest": "c91e48f11e8b24b6",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the lookup of the tree's ids alone: the fallback for a store whose tree and map disagree (assert False) is not taken, as the store's construction rules that out",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      274,
+      291
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "proposalsWithPurpose"
+    }
+   ]
+  },
+  "def ledger.era.Proposals.toPrevGovActionIds": {
+   "class": "Mirror",
+   "digest": "734a8f9b2d7244da",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      602,
+      603
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toPrevGovActionIds"
+    }
+   ]
+  },
+  "enum ledger.era.Voter": {
+   "class": "Mirror",
+   "digest": "b4c50ad3a8bab113",
+   "evidence": [
+    "EraGovStateSuite",
+    "EraGovStateStoredSuite"
+   ],
+   "note": "the key a vote is held under in an action's state; the votes of a transaction still carry the node's flat voter (#85)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      338,
+      342
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Voter"
+    }
+   ]
+  },
+  "object ledger.era.GovActionState": {
+   "class": "Mirror",
+   "digest": "af3d3e8599f2760c",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      219,
+      228
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "GovActionState"
+    }
+   ]
+  },
+  "object ledger.era.GovRelation": {
+   "class": "Mirror",
+   "digest": "4a0a4907287a9c52",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      674,
+      679
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "GovRelation"
+    }
+   ]
+  },
+  "object ledger.era.Proposals": {
+   "class": "Mirror",
+   "digest": "d1953140ab7a9764",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Proposals.hs",
+     "lines": [
+      238,
+      243
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Proposals"
+    }
+   ]
+  },
+  "trait ledger.era.GovActionParent": {
+   "class": "Mirror",
+   "digest": "2c765eeaf68e9ed5",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "note": "the rank-2 argument of withGovActionParent as a trait with a method polymorphic in the purpose",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      791,
+      801
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "withGovActionParent"
+    }
+   ]
+  },
+  "trait ledger.era.GovRelationL": {
+   "class": "Mirror",
+   "digest": "e615533b089d8a59",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "note": "the rank-2 lens type `forall f. Lens' (GovRelation f) (f (GovPurposeId p))` as a trait with methods polymorphic in f",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      769,
+      779
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "grPParamUpdateL"
+    }
+   ]
+  },
+  "val ledger.era.GovRelation.grCommitteeL": {
+   "class": "Mirror",
+   "digest": "b7fd36baa3ebf7fb",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      775,
+      776
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "grCommitteeL"
+    }
+   ]
+  },
+  "val ledger.era.GovRelation.grConstitutionL": {
+   "class": "Mirror",
+   "digest": "e8568f3155148ac2",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      778,
+      779
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "grConstitutionL"
+    }
+   ]
+  },
+  "val ledger.era.GovRelation.grHardForkL": {
+   "class": "Mirror",
+   "digest": "ebb59a70d2485f12",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      772,
+      773
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "grHardForkL"
+    }
+   ]
+  },
+  "val ledger.era.GovRelation.grPParamUpdateL": {
+   "class": "Mirror",
+   "digest": "b0aadd0f1a50db37",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      769,
+      770
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "grPParamUpdateL"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.Voter"
+   ],
+   "reason": "the companions of the era's governance records and classes, and the equality of the records, which the reference derives"
+  },
+  {
+   "definitions": [
+    "def ledger.era.Voter.fromFlat",
+    "def ledger.era.Voter.toFlat"
+   ],
+   "reason": "the node's flat governance record read into the era's governance state, its parameters, proposals and action states, until the ledger state holds the era's record (#85): Dijkstra's ledger state holds the era's record, read from Conway's flat one where the chain enters Dijkstra; nothing writes the era's governance state back whole; and Dijkstra's proposals as the flat decoder reads them in the flat record's form, every action but a parameter change, which is given back (DijkstraConway), for SUBLEDGER's committee proposals beside ConwayProposals.storedWith (the Gap of #85's item 6923349468)"
+  },
+  {
+   "definitions": [
+    "enum ledger.era.ProposalsReadError"
+   ],
+   "reason": "the node's record of the proposals read into Conway's and written back: what is stored does not change (design §3.6), and the reference keeps no other record"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/Proposals.scala"
+}

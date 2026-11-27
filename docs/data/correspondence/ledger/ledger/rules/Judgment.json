@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "def ledger.rules.Judgment.flatten": null,
+  "def ledger.rules.Judgment.judge": null,
+  "def ledger.rules.Judgment.run": null,
+  "def ledger.rules.Refusal#split": null,
+  "given ledger.rules.Refusal.ledger": null,
+  "object ledger.rules.Judgment": null,
+  "object ledger.rules.Refusal": null,
+  "trait ledger.rules.Refusal": null,
+  "type ledger.rules.Refusal#Defect": null,
+  "type ledger.rules.Refusal#Predicate": null,
+  "type ledger.rules.Refusal.Aux": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Judgment.scala"
+}

@@ -1,0 +1,27 @@
+{
+ "baseline": {
+  "def uplc.cost.SatInt.*": null,
+  "def uplc.cost.SatInt.+": null,
+  "def uplc.cost.SatInt.-": null,
+  "def uplc.cost.SatInt.<": null,
+  "def uplc.cost.SatInt.<=": null,
+  "def uplc.cost.SatInt.>": null,
+  "def uplc.cost.SatInt.>=": null,
+  "def uplc.cost.SatInt.apply": null,
+  "def uplc.cost.SatInt.clamp": null,
+  "def uplc.cost.SatInt.compare": null,
+  "def uplc.cost.SatInt.dividedBy": null,
+  "def uplc.cost.SatInt.max": null,
+  "def uplc.cost.SatInt.min": null,
+  "def uplc.cost.SatInt.toBigInt": null,
+  "def uplc.cost.SatInt.toLong": null,
+  "def uplc.cost.SatInt.unary_": null,
+  "given uplc.cost.SatInt.given_Ordering_SatInt": null,
+  "object uplc.cost.SatInt": null,
+  "type uplc.cost.SatInt": null,
+  "val uplc.cost.SatInt.maxValue": null,
+  "val uplc.cost.SatInt.minValue": null,
+  "val uplc.cost.SatInt.zero": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cost/SatInt.scala"
+}

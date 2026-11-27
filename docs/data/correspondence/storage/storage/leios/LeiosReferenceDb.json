@@ -1,0 +1,153 @@
+{
+ "entries": {
+  "def storage.leios.LeiosReferenceDb.exportFrom": {
+   "class": "Mirror",
+   "digest": "dbae726f6b1c7ae2",
+   "evidence": [
+    "LeiosReferenceDbSuite"
+   ],
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Connection.hs",
+     "lines": [
+      62,
+      73
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "initialiseLeiosDbFiles"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Insert.hs",
+     "lines": [
+      337,
+      343
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "allocateClosure"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Queries.hs",
+     "lines": [
+      142,
+      148
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "sql_copy_insert_eb"
+    }
+   ]
+  },
+  "def storage.leios.LeiosReferenceDb.importInto": {
+   "class": "Mirror",
+   "digest": "5d9bd88db4337927",
+   "evidence": [
+    "LeiosReferenceDbSuite",
+    "HaskellImportSuite"
+   ],
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Completion.hs",
+     "lines": [
+      53,
+      72
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "scanMissing"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Read.hs",
+     "lines": [
+      136,
+      166
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "sqlLookupEbClosure"
+    }
+   ]
+  },
+  "def storage.leios.LeiosReferenceDb.schema": {
+   "class": "Mirror",
+   "digest": "f6f11782dfba10e9",
+   "evidence": [
+    "LeiosReferenceDbSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Schema.hs",
+     "lines": [
+      16,
+      52
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "sql_schema_vol"
+    }
+   ]
+  },
+  "val storage.leios.LeiosReferenceDb.Pragmas": {
+   "class": "Mirror",
+   "digest": "aca12c64feff9c09",
+   "evidence": [
+    "LeiosReferenceDbSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Connection.hs",
+     "lines": [
+      84,
+      113
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "connectionPragmas"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LeiosDB/Impl/SQLite/Connection.hs",
+     "lines": [
+      117,
+      130
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "creationPragmas"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def storage.leios.LeiosReferenceDb.Error#message",
+    "enum storage.leios.LeiosReferenceDb.Error"
+   ],
+   "reason": "closed typed errors of the import and export and their messages, where the reference throws a LeiosDbException with a message (ERR-1)"
+  },
+  {
+   "definitions": [
+    "def storage.leios.LeiosReferenceDb.snapshot"
+   ],
+   "reason": "how an import of the reference's SQLite files keeps them whole, which the reference, having no import, does not have: each file read inside one read transaction, so each partition is that file at one moment, and the store it fills built apart and published in place of the previous one once both files are read (by `import-haskell-db` only once the blocks are imported, so a source the target's chain is not in leaves the target's store), so an import again never merges into what an earlier one left"
+  },
+  {
+   "definitions": [
+    "class storage.leios.LeiosReferenceDb.Counts",
+    "def storage.leios.LeiosReferenceDb.Counts#+",
+    "def storage.leios.LeiosReferenceDb.present",
+    "enum storage.leios.LeiosReferenceDb.Partition",
+    "object storage.leios.LeiosReferenceDb",
+    "object storage.leios.LeiosReferenceDb.Counts",
+    "val storage.leios.LeiosReferenceDb.Counts.zero"
+   ],
+   "reason": "the import and export of the reference's SQLite files, which the reference does not have: their files, counts and the check that a database has both"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/leios/LeiosReferenceDb.scala"
+}

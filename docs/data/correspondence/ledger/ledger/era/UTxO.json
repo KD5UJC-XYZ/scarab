@@ -1,0 +1,23 @@
+{
+ "entries": {
+  "class ledger.era.UTxO": {
+   "class": "Mirror",
+   "digest": "051df68e56c4b27a",
+   "note": "each output at its era's type",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      92,
+      92
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "UTxO"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/UTxO.scala"
+}

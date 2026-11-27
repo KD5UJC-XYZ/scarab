@@ -1,0 +1,20 @@
+{
+ "baseline": {
+  "def uplc.ProtocolMajor.apply": null,
+  "def uplc.ProtocolMajor.value": null,
+  "given uplc.ProtocolMajor.given_Ordering_ProtocolMajor": null,
+  "object uplc.ProtocolMajor": null,
+  "type uplc.ProtocolMajor": null,
+  "val uplc.ProtocolMajor.Allegra": null,
+  "val uplc.ProtocolMajor.Alonzo": null,
+  "val uplc.ProtocolMajor.Chang": null,
+  "val uplc.ProtocolMajor.Dijkstra": null,
+  "val uplc.ProtocolMajor.Mary": null,
+  "val uplc.ProtocolMajor.Plomin": null,
+  "val uplc.ProtocolMajor.Shelley": null,
+  "val uplc.ProtocolMajor.Valentine": null,
+  "val uplc.ProtocolMajor.VanRossem": null,
+  "val uplc.ProtocolMajor.Vasil": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/ProtocolMajor.scala"
+}

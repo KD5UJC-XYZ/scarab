@@ -1,0 +1,36 @@
+{
+ "entries": {
+  "enum ledger.LeiosExtValidationError": {
+   "class": "Mirror",
+   "digest": "90875d862bf717b6",
+   "evidence": [
+    "LeiosCertificationSuite"
+   ],
+   "note": "the four constructors applyBlock raises, with their fields in the reference's order (LeiosPoint as EbPoint, LeiosCert as the BLS layer's Certificate); LeiosCertificateForecastRejected, chain selection's verdict, is not a case of block application and is not here",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      1436,
+      1459
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "LeiosExtValidationError"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.LeiosCertificationDefect#message",
+    "def ledger.LeiosExtValidationError#message",
+    "enum ledger.LeiosCertificationDefect"
+   ],
+   "reason": "the node's stop for a Dijkstra block it cannot judge, typed where the reference meets a missing or undecodable closure with error (Forker.hs:1048-1052, 1084-1087, ouroboros-consensus 2416493b) or cannot hold the state; the Leios certification's defects, moved from consensus so that a refusal and a stop hold them typed; the renderings of both for the log (#54, #73)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosCertificationErrors.scala"
+}

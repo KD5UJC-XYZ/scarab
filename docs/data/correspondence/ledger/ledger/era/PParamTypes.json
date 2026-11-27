@@ -1,0 +1,607 @@
+{
+ "entries": {
+  "class ledger.era.MaxPledgeLeverage": {
+   "class": "Mirror",
+   "digest": "9b6ed4cfeb620d0d",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      369,
+      373
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "MaxPledgeLeverage"
+    }
+   ]
+  },
+  "class ledger.era.OrdExUnits": {
+   "class": "Mirror",
+   "digest": "4b26be53f67fc117",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      413,
+      415
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "OrdExUnits"
+    }
+   ]
+  },
+  "class ledger.era.Prices": {
+   "class": "Mirror",
+   "digest": "23223745ab3013c3",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs",
+     "lines": [
+      159,
+      163
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Prices"
+    }
+   ]
+  },
+  "class ledger.era.ProtVer": {
+   "class": "Mirror",
+   "digest": "7e770cd35f293564",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      211,
+      214
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ProtVer"
+    }
+   ]
+  },
+  "def ledger.era.CoinPerByte.apply": {
+   "class": "Mirror",
+   "digest": "4fff98910cb418ec",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+     "lines": [
+      220,
+      222
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CoinPerByte"
+    }
+   ]
+  },
+  "def ledger.era.CoinPerByte.unCoinPerByte": {
+   "class": "Mirror",
+   "digest": "489a91f8373f8595",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+     "lines": [
+      220,
+      222
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "unCoinPerByte"
+    }
+   ]
+  },
+  "def ledger.era.CostModels.int64Model": {
+   "class": "Mirror",
+   "digest": "f4aa951a1a17a320",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the model under a tag, its parameters as the `Int64`s the reference's `cmValues :: [Int64]` holds, which `CostModels.from` proves of every model",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+     "lines": [
+      107,
+      107
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "cmValues"
+    }
+   ]
+  },
+  "def ledger.era.CostModels.singleton": {
+   "class": "Mirror",
+   "digest": "c79e10efe4fcfe12",
+   "note": "`mkCostModels . Map.singleton lang`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+     "lines": [
+      418,
+      419
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkCostModels"
+    }
+   ]
+  },
+  "def ledger.era.CostModels.updated": {
+   "class": "Mirror",
+   "digest": "2828c1b1695c32bb",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+     "lines": [
+      404,
+      415
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "updateCostModels"
+    }
+   ]
+  },
+  "def ledger.era.NonNegativeInterval.boundRational": {
+   "class": "Mirror",
+   "digest": "d7f3961e25bfe387",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      333,
+      333
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "boundRational"
+    }
+   ]
+  },
+  "def ledger.era.OrdExUnits.hkdUnits": {
+   "class": "Mirror",
+   "digest": "db71a6fc0ad12477",
+   "note": "the `hkdMap unOrdExUnits` and `hkdMap OrdExUnits` of each record holding the units as OrdExUnits",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      232,
+      235
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxTxExUnitsL"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      916,
+      918
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxTxExUnitsL"
+    }
+   ]
+  },
+  "def ledger.era.PositiveInterval.boundRational": {
+   "class": "Mirror",
+   "digest": "e4c12e362c0d020a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      333,
+      333
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "boundRational"
+    }
+   ]
+  },
+  "def ledger.era.Version.getVersion32": {
+   "class": "Mirror",
+   "digest": "762cec2983c2b0cd",
+   "evidence": [
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "the version's Word32 (Unsigned[W32]); the reference returns the Word32 it stores (Version.hs:144), Scarab holds the version as a bounded Int and narrows it modulo 2^32, which is the identity for every version (at most 13); DijkstraRulesOracleSuite's bbody/major-13 case checks the encoded refusal",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs",
+     "lines": [
+      143,
+      145
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getVersion32"
+    }
+   ]
+  },
+  "def ledger.era.Version.mkVersion": {
+   "class": "Mirror",
+   "digest": "98f8ef2262500c7c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs",
+     "lines": [
+      101,
+      107
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkVersion"
+    }
+   ]
+  },
+  "type ledger.era.CoinPerByte": {
+   "class": "Mirror",
+   "digest": "1751a4f08a507b79",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs",
+     "lines": [
+      220,
+      222
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CoinPerByte"
+    }
+   ]
+  },
+  "type ledger.era.CostModels": {
+   "class": "Gap",
+   "digest": "0b8021b1503689c9",
+   "note": "the valid models (known languages) and the unknown ones (unknown tags) in one map by tag, a tag being in only one of the two; the reference's pair of maps orders differently, and a known language's evaluation context is the cost-model decoder's to check",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6896247213",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+     "lines": [
+      378,
+      382
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CostModels"
+    }
+   ]
+  },
+  "type ledger.era.ExUnits": {
+   "class": "Mirror",
+   "digest": "a5e0f36432fc440e",
+   "note": "over the node's units, holding only those with no negative component, as Natural's are",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs",
+     "lines": [
+      102,
+      104
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ExUnits"
+    }
+   ]
+  },
+  "type ledger.era.NonNegativeInterval": {
+   "class": "Mirror",
+   "digest": "de950958c5874f69",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      468,
+      481
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "NonNegativeInterval"
+    }
+   ]
+  },
+  "type ledger.era.PositiveInterval": {
+   "class": "Mirror",
+   "digest": "912931df770e9747",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      488,
+      501
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PositiveInterval"
+    }
+   ]
+  },
+  "type ledger.era.UnitInterval": {
+   "class": "Mirror",
+   "digest": "e5c7599a17060173",
+   "note": "the state's UnitInterval (ledger.state), which the pool parameters hold",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      543,
+      556
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "UnitInterval"
+    }
+   ]
+  },
+  "type ledger.era.Version": {
+   "class": "Mirror",
+   "digest": "047c3363e3c4cc8d",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs",
+     "lines": [
+      55,
+      56
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Version"
+    }
+   ]
+  },
+  "val ledger.era.CostModels.empty": {
+   "class": "Mirror",
+   "digest": "aaff763dfc881534",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/CostModels.hs",
+     "lines": [
+      397,
+      398
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyCostModels"
+    }
+   ]
+  },
+  "val ledger.era.ExUnits.zero": {
+   "class": "Mirror",
+   "digest": "142d3305f08b5eae",
+   "note": "the value emptyConwayPParams gives the field",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      987,
+      1022
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyConwayPParams"
+    }
+   ]
+  },
+  "val ledger.era.MaxPledgeLeverage.none": {
+   "class": "Mirror",
+   "digest": "253fcd8702434eed",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "`MaxPledgeLeverage SNothing`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      514,
+      514
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ppMaxPledgeLeverageG"
+    }
+   ]
+  },
+  "val ledger.era.NonNegativeInterval.zero": {
+   "class": "Mirror",
+   "digest": "98b03734b2a3acce",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      483,
+      485
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "minBound"
+    }
+   ]
+  },
+  "val ledger.era.OrdExUnits.zero": {
+   "class": "Mirror",
+   "digest": "ca048a567e385bb2",
+   "note": "the value emptyConwayPParams gives the field",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      987,
+      1022
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyConwayPParams"
+    }
+   ]
+  },
+  "val ledger.era.PositiveInterval.minBound": {
+   "class": "Mirror",
+   "digest": "109baa5608bcd6e0",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "positiveIntervalEpsilon, 1 % 10 ^ 19",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      504,
+      510
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "minBound"
+    }
+   ]
+  },
+  "val ledger.era.PositiveInterval.oneAndAFifth": {
+   "class": "Mirror",
+   "digest": "9d4ce99e8d9981c5",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      983,
+      984
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppRefScriptCostMultiplierG"
+    }
+   ]
+  },
+  "val ledger.era.Prices.zero": {
+   "class": "Mirror",
+   "digest": "72db1dfeb6ee18de",
+   "note": "the value emptyConwayPParams gives the field",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      987,
+      1022
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyConwayPParams"
+    }
+   ]
+  },
+  "val ledger.era.UnitInterval": {
+   "class": "Mirror",
+   "digest": "2757f120828691ce",
+   "note": "the companion of the state's UnitInterval (ledger.state), under the era's name",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      543,
+      556
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "UnitInterval"
+    }
+   ]
+  },
+  "val ledger.era.Version.Max": {
+   "class": "Mirror",
+   "digest": "d12c2bc94208f008",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs",
+     "lines": [
+      63,
+      63
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "MaxVersion"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.CostModels.models",
+    "def ledger.era.ExUnits.units",
+    "def ledger.era.NonNegativeInterval.rational",
+    "def ledger.era.PositiveInterval.rational",
+    "def ledger.era.Version.lit",
+    "def ledger.era.Version.value",
+    "enum ledger.era.PParamsError"
+   ],
+   "reason": "Scala machinery with no counterpart: the probe and invariant wrapper that let a match type tell `Identity` from `StrictMaybe`, the names of the parameter groups' singleton types, constants checked when compiled, accessors of opaque types, and the checked constructors' typed refusals"
+  },
+  {
+   "definitions": [
+    "given ledger.era.Version.given_Ordering_Version",
+    "object ledger.era.CoinPerByte",
+    "object ledger.era.CostModels",
+    "object ledger.era.ExUnits",
+    "object ledger.era.MaxPledgeLeverage",
+    "object ledger.era.NonNegativeInterval",
+    "object ledger.era.OrdExUnits",
+    "object ledger.era.PositiveInterval",
+    "object ledger.era.Prices",
+    "object ledger.era.Version"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "def ledger.era.CostModels.from",
+    "def ledger.era.ExUnits.from"
+   ],
+   "reason": "the conversions between the parameters the node keeps (the flat `ProtocolParams`, the decoded `ConwayParamUpdate` and the flat voting thresholds) and the era's record; the reference keeps the record itself and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/PParamTypes.scala"
+}

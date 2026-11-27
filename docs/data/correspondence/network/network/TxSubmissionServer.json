@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "class network.TxSubmissionServer.Settings": null,
+  "def network.TxSubmissionServer.Sink#known": null,
+  "def network.TxSubmissionServer.Sink#reader": null,
+  "def network.TxSubmissionServer.Sink#submit": null,
+  "def network.TxSubmissionServer.run": null,
+  "object network.TxSubmissionServer": null,
+  "trait network.TxSubmissionServer.Sink": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/TxSubmissionServer.scala"
+}

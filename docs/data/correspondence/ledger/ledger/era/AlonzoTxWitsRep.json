@@ -1,0 +1,355 @@
+{
+ "entries": {
+  "class ledger.era.AlonzoTxWitsRep": {
+   "class": "Mirror",
+   "digest": "74a9a19889173999",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "note": "the representation Conway's and Dijkstra's witness sets share, each era's an opaque type over it, parameterised by the era's script and purpose; the bytes the set arrived as are kept, with those of its datums and redeemers (`TxDats`, `Redeemers`), and the scripts' order of arrival",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      249,
+      255
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoTxWitsRaw"
+    }
+   ]
+  },
+  "class ledger.era.AlonzoTxWitsRep.Instance": {
+   "class": "Mirror",
+   "digest": "401752ba7d159e3e",
+   "evidence": [
+    "DijkstraTxSuite",
+    "DijkstraUTxOSuite",
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "Alonzo's lenses, written once for every era whose witness set is the representation; getters only, where the reference's lenses also set a field and rebuild the memoized bytes",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      421,
+      464
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "addrAlonzoTxWitsL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoTxWitsRep.Instance#addrTxWits": {
+   "class": "Mirror",
+   "digest": "739737160279b8b1",
+   "evidence": [
+    "DijkstraTxSuite",
+    "DijkstraUTxOSuite",
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the set's memoized bytes (`lensMemoRawType`); the node builds a witness set only by its era's decoder and never sets a field",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      421,
+      428
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "addrAlonzoTxWitsL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoTxWitsRep.Instance#bootAddrTxWits": {
+   "class": "Mirror",
+   "digest": "d8be59af7ca2e7da",
+   "evidence": [
+    "DijkstraTxSuite",
+    "DijkstraUTxOSuite",
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the set's memoized bytes (`lensMemoRawType`); the node builds a witness set only by its era's decoder and never sets a field",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      430,
+      437
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "bootAddrAlonzoTxWitsL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoTxWitsRep.Instance#datsTxWits": {
+   "class": "Mirror",
+   "digest": "abc830a49559d880",
+   "evidence": [
+    "DijkstraTxSuite",
+    "DijkstraUTxOSuite",
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the set's memoized bytes (`lensMemoRawType`); the node builds a witness set only by its era's decoder and never sets a field",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      448,
+      455
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "datsAlonzoTxWitsL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoTxWitsRep.Instance#rdmrsTxWits": {
+   "class": "Mirror",
+   "digest": "bdf7f5818e486fff",
+   "evidence": [
+    "DijkstraTxSuite",
+    "DijkstraUTxOSuite",
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the set's memoized bytes (`lensMemoRawType`); the node builds a witness set only by its era's decoder and never sets a field",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      457,
+      464
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "rdmrsAlonzoTxWitsL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoTxWitsRep.Instance#scriptTxWits": {
+   "class": "Mirror",
+   "digest": "3aeaeb1082df23b4",
+   "evidence": [
+    "DijkstraTxSuite",
+    "DijkstraUTxOSuite",
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "a getter only: the reference's lens also sets the field and rebuilds the set's memoized bytes (`lensMemoRawType`); the node builds a witness set only by its era's decoder and never sets a field",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      439,
+      446
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "scriptAlonzoTxWitsL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoTxWitsRep.Instance#scriptsOf": {
+   "class": "Mirror",
+   "digest": "fb7107b83b7ad61e",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      480,
+      480
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraScript era"
+    }
+   ]
+  },
+  "val ledger.era.AlonzoTxWitsRep#bootstrap": {
+   "class": "Mirror",
+   "digest": "576999c6e1373fb8",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "note": "the set's witnesses one per address root, in the roots' order (`BootstrapWitness.set`)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      251,
+      251
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atwrBootAddrTxWits"
+    }
+   ]
+  },
+  "val ledger.era.AlonzoTxWitsRep#datums": {
+   "class": "Mirror",
+   "digest": "aa01be81b32a9353",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      253,
+      253
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atwrDatsTxWits"
+    }
+   ]
+  },
+  "val ledger.era.AlonzoTxWitsRep#raw": {
+   "class": "Mirror",
+   "digest": "820f2db25161a7ca",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "note": "the bytes the set arrived as, which the reference's `MemoBytes` keeps",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      266,
+      266
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "MkAlonzoTxWits"
+    }
+   ]
+  },
+  "val ledger.era.AlonzoTxWitsRep#redeemers": {
+   "class": "Mirror",
+   "digest": "4d9c496b747c9ce3",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      254,
+      254
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atwrRdmrsTxWits"
+    }
+   ]
+  },
+  "val ledger.era.AlonzoTxWitsRep#scripts": {
+   "class": "Mirror",
+   "digest": "8e0f9a2cb09219b7",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      252,
+      252
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atwrScriptTxWits"
+    }
+   ]
+  },
+  "val ledger.era.AlonzoTxWitsRep#vkeys": {
+   "class": "Mirror",
+   "digest": "bbb44d8a7d328956",
+   "evidence": [
+    "DijkstraTxSuite",
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      250,
+      250
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atwrAddrTxWits"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.AlonzoTxWitsRep.Instance#scriptTxWitsArrival",
+    "val ledger.era.AlonzoTxWitsRep#scriptArrival"
+   ],
+   "reason": "the order a witness set's scripts and auxiliary data's Plutus scripts arrived in, the node's own, which no verdict reads, only the choice of the first script the `plutus` module's decoder gives no verdict for, as the flat checks choose it (the reference's decoding always gives a verdict)"
+  },
+  {
+   "definitions": [
+    "class ledger.era.AlonzoTxWitsRep.Fields",
+    "def ledger.era.AlonzoTxWitsRep#equals",
+    "def ledger.era.AlonzoTxWitsRep#hashCode",
+    "def ledger.era.AlonzoTxWitsRep#toString",
+    "def ledger.era.AlonzoTxWitsRep.Fields#bootstrap",
+    "def ledger.era.AlonzoTxWitsRep.Fields#datums",
+    "def ledger.era.AlonzoTxWitsRep.Fields#raw",
+    "def ledger.era.AlonzoTxWitsRep.Fields#redeemers",
+    "def ledger.era.AlonzoTxWitsRep.Fields#rep",
+    "def ledger.era.AlonzoTxWitsRep.Fields#scriptArrival",
+    "def ledger.era.AlonzoTxWitsRep.Fields#scripts",
+    "def ledger.era.AlonzoTxWitsRep.Fields#vkeys",
+    "object ledger.era.AlonzoTxWitsRep"
+   ],
+   "reason": "the shared representations of the era types (#85): their companions; Scala's equality and rendering of each, where the reference derives `Eq` and `Show`; the hash code over the same fields, Scala's own (the reference's `SafeToHash` hashes the serialized bytes, which `raw` keeps and the era's hash functions read); and the read-only forwarders of an era's opaque type to its representation's fields, which only the era's own file can give the evidence for, where the reference reads the fields through its lenses and `getMemoRawType`"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/AlonzoTxWitsRep.scala"
+}

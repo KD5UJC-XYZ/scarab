@@ -1,0 +1,277 @@
+{
+ "entries": {
+  "def ledger.era.EraStake#addInstantStake": {
+   "class": "Mirror",
+   "digest": "8e03daadcb199d19",
+   "evidence": [
+    "EraUtxosSuite"
+   ],
+   "note": "returns the state vocabulary's refusal",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/Stake.hs",
+     "lines": [
+      195,
+      195
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "addInstantStake"
+    }
+   ]
+  },
+  "def ledger.era.EraStake#deleteInstantStake": {
+   "class": "Mirror",
+   "digest": "87b0ff1b689765e1",
+   "evidence": [
+    "EraUtxosSuite"
+   ],
+   "note": "returns the state vocabulary's refusal",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/Stake.hs",
+     "lines": [
+      199,
+      199
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "deleteInstantStake"
+    }
+   ]
+  },
+  "def ledger.era.EraStake#instantStakeCredentialsL": {
+   "class": "Mirror",
+   "digest": "abe8a30ab3d9d94d",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/Stake.hs",
+     "lines": [
+      191,
+      191
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "instantStakeCredentialsL"
+    }
+   ]
+  },
+  "def ledger.era.EraStake.addConwayInstantStake": {
+   "class": "Mirror",
+   "digest": "3ba3423e49b396ac",
+   "evidence": [
+    "EraUtxosSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/Stake.hs",
+     "lines": [
+      87,
+      89
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "addConwayInstantStake"
+    }
+   ]
+  },
+  "def ledger.era.EraStake.addShelleyInstantStake": {
+   "class": "Mirror",
+   "digest": "627e094760c36f71",
+   "evidence": [
+    "BabbageStakeSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Stake.hs",
+     "lines": [
+      108,
+      110
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "addShelleyInstantStake"
+    }
+   ]
+  },
+  "def ledger.era.EraStake.applyUTxOConwayInstantStake": {
+   "class": "Mirror",
+   "digest": "06388ddab8ed6bd9",
+   "evidence": [
+    "EraUtxosSuite"
+   ],
+   "note": "the fold over the outputs in the order of their inputs, as Map.foldl', with the state vocabulary's refusal of a credential or lovelace",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/Stake.hs",
+     "lines": [
+      95,
+      121
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "applyUTxOConwayInstantStake"
+    }
+   ]
+  },
+  "def ledger.era.EraStake.applyUTxOShelleyInstantStake": {
+   "class": "Mirror",
+   "digest": "5d5ef2569c3b7de5",
+   "evidence": [
+    "BabbageStakeSuite"
+   ],
+   "note": "the fold over the outputs in the order of their inputs, as Map.foldl', with the state vocabulary's refusal of a credential or lovelace the state cannot hold",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Stake.hs",
+     "lines": [
+      116,
+      145
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "applyUTxOShelleyInstantStake"
+    }
+   ]
+  },
+  "def ledger.era.EraStake.deleteConwayInstantStake": {
+   "class": "Mirror",
+   "digest": "899feb6c7376cd3a",
+   "evidence": [
+    "EraUtxosSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/Stake.hs",
+     "lines": [
+      91,
+      93
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "deleteConwayInstantStake"
+    }
+   ]
+  },
+  "def ledger.era.EraStake.deleteShelleyInstantStake": {
+   "class": "Mirror",
+   "digest": "53997d236eb7650a",
+   "evidence": [
+    "BabbageStakeSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/State/Stake.hs",
+     "lines": [
+      112,
+      114
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "deleteShelleyInstantStake"
+    }
+   ]
+  },
+  "given ledger.era.EraStake.babbage": {
+   "class": "Mirror",
+   "digest": "5f9e37d86d5ffc85",
+   "evidence": [
+    "BabbageStakeSuite"
+   ],
+   "note": "without resolveInstantStake, which the class here does not have",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/State/Stake.hs",
+     "lines": [
+      18,
+      23
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraStake BabbageEra"
+    }
+   ]
+  },
+  "given ledger.era.EraStake.conway": {
+   "class": "Mirror",
+   "digest": "4ada48e55585beda",
+   "evidence": [
+    "EraUtxosSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/Stake.hs",
+     "lines": [
+      76,
+      81
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraStake ConwayEra"
+    }
+   ]
+  },
+  "given ledger.era.EraStake.dijkstra": {
+   "class": "Mirror",
+   "digest": "61d6609784f4d18f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/State/Stake.hs",
+     "lines": [
+      18,
+      23
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraStake DijkstraEra"
+    }
+   ]
+  },
+  "trait ledger.era.EraStake": {
+   "class": "Mirror",
+   "digest": "ecdbdf2bf40d90ef",
+   "evidence": [
+    "EraUtxosSuite"
+   ],
+   "note": "the two members the UTxO rules use; each returns the state vocabulary's refusal of an output's stake credential or lovelace, which the reference reads with none",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/Stake.hs",
+     "lines": [
+      182,
+      206
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraStake"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.EraStake"
+   ],
+   "reason": "the reading and writing of the node's stored UTxO set by the era-typed state change: a stored output read into the era (design §3.6 of docs/design/era-typed-transactions.md), extractKeys, restrictKeys and the left-biased union of Data.Map over the stored set, how the rules read stored outputs (StoredOutputs, whose default reads each where asked and whose instance in Conway's block run keeps what the run read, #85), and the defects the reference has no counterpart for (a script the evaluator gives no verdict for, a damaged store, an output outside the state's vocabulary), raised as no verdict; and the companions and module objects of UTXOS, Scala containers with no counterpart (#85); and the companions of UTXO's failure, its injection and its embedding of UTXOS, with the failure's equality with itself only; and the companions of UTXOW's failure, its injection and its embedding of UTXO, with the failure's equality with itself only, and the module objects of Allegra's native-script evaluation (Allegra/Scripts.hs, Allegra/Tx.hs); and the companions of SUBUTXO's and SUBUTXOW's failures and events, their injections and the embedding of SUBUTXO, with each type's equality with itself only"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/EraStake.scala"
+}

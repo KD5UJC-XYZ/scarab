@@ -1,0 +1,65 @@
+{
+ "baseline": {
+  "class ledger.ConwayParamUpdate": null,
+  "class ledger.ConwayParamUpdate.Entry": null,
+  "class ledger.Unsigned.Bound": null,
+  "def ledger.ConwayParam#applyTo": null,
+  "def ledger.ConwayParam.Records#rational": null,
+  "def ledger.ConwayParam.Records#record": null,
+  "def ledger.ConwayParam.Records.at": null,
+  "def ledger.ConwayParam.at": null,
+  "def ledger.ConwayParam.everyEra": null,
+  "def ledger.ConwayParam.exUnits": null,
+  "def ledger.ConwayParamUpdate#applyTo": null,
+  "def ledger.ConwayParamUpdate#byKey": null,
+  "def ledger.ConwayParamUpdate#collectFirst": null,
+  "def ledger.ConwayParamUpdate#encodings": null,
+  "def ledger.ConwayParamUpdate#isEmpty": null,
+  "def ledger.ConwayParamUpdate#keys": null,
+  "def ledger.ConwayParamUpdate#params": null,
+  "def ledger.ConwayParamUpdate.decode": null,
+  "def ledger.ConwayParamUpdate.decodeStored": null,
+  "def ledger.ConwayParamUpdate.fromEncoded": null,
+  "def ledger.Unsigned.from": null,
+  "def ledger.Unsigned.read": null,
+  "def ledger.Unsigned.value": null,
+  "enum ledger.ConwayParam": null,
+  "enum ledger.ConwayParam.Records": null,
+  "enum ledger.DRepGroup": null,
+  "enum ledger.StakePoolGroup": null,
+  "given ledger.Unsigned.Bound.w16": null,
+  "given ledger.Unsigned.Bound.w32": null,
+  "given ledger.Unsigned.Bound.w64": null,
+  "given ledger.Unsigned.Bound.w8": null,
+  "object ledger.ConwayParam": null,
+  "object ledger.ConwayParam.Records": null,
+  "object ledger.ConwayParamUpdate": null,
+  "object ledger.Unsigned": null,
+  "object ledger.Unsigned.Bound": null,
+  "object ledger.Unsigned.Width": null,
+  "trait ledger.Unsigned.Width": null,
+  "trait ledger.Unsigned.Width.W16": null,
+  "trait ledger.Unsigned.Width.W32": null,
+  "trait ledger.Unsigned.Width.W64": null,
+  "trait ledger.Unsigned.Width.W8": null,
+  "type ledger.Unsigned": null,
+  "val ledger.ConwayParam.decoders": null,
+  "val ledger.ConwayParam.stored": null,
+  "val ledger.ConwayParamUpdate.empty": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.Unsigned.lit"
+   ],
+   "reason": "Scala machinery with no counterpart: the probe and invariant wrapper that let a match type tell `Identity` from `StrictMaybe`, the names of the parameter groups' singleton types, constants checked when compiled, accessors of opaque types, and the checked constructors' typed refusals"
+  },
+  {
+   "definitions": [
+    "def ledger.Unsigned.wrapping"
+   ],
+   "reason": "`fromIntegral` into a word of a given width (Haskell's base library, which no pinned repository holds): the integer modulo 2^width, as the reference narrows a position or a count into a Word32"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConwayParamUpdate.scala"
+}

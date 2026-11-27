@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def ledger.rules.MuslMath.exp": null,
+  "def ledger.rules.MuslMath.log": null,
+  "def ledger.rules.MuslMath.pow": null,
+  "object ledger.rules.MuslMath": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/MuslMath.scala"
+}

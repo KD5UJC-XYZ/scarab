@@ -1,0 +1,49 @@
+{
+ "baseline": {
+  "class consensus.HardForkConfig": null,
+  "def consensus.HardForkConfig#eraOf": null,
+  "def consensus.HardForkConfig#initialEra": null,
+  "def consensus.HardForkConfig#transition": null,
+  "def consensus.HardForkConfig#trigger": null,
+  "def consensus.HardForkConfig.eraProtVerLow": null,
+  "def consensus.HardForkConfig.fromEpochs": null,
+  "def consensus.HardForkConfig.next": null,
+  "enum consensus.ForkTrigger": null,
+  "object consensus.HardForkConfig": null,
+  "val consensus.HardForkConfig.MaxMajorProtVer": null,
+  "val consensus.HardForkConfig.Sequence": null,
+  "val consensus.HardForkConfig.default": null
+ },
+ "entries": {
+  "def consensus.HardForkConfig#check": {
+   "class": "Gap",
+   "digest": "ebaab53d9a99ed4c",
+   "note": "HeaderProtVerTooHigh is checked with the envelope here; the reference checks it in Conway's BBODY rule",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/935",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Protocol/EnvelopeChecks.hs",
+     "lines": [
+      77,
+      91
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "envelopeCheck"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      294,
+      312
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "checkHeaderProtVerTooHigh"
+    }
+   ]
+  }
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/HardFork.scala"
+}

@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "class network.ReceiveBuffer": null,
+  "def network.ReceiveBuffer#append": null,
+  "def network.ReceiveBuffer#clear": null,
+  "def network.ReceiveBuffer#consume": null,
+  "def network.ReceiveBuffer#size": null,
+  "def network.ReceiveBuffer#view": null,
+  "def network.ReceiveBuffer.room": null,
+  "enum network.ReceiveBuffer.Room": null,
+  "object network.ReceiveBuffer": null,
+  "val network.ReceiveBuffer.MaxArray": null,
+  "val network.ReceiveBuffer.MinCapacity": null,
+  "val network.ReceiveBuffer.NoBytes": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/ReceiveBuffer.scala"
+}

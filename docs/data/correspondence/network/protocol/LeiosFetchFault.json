@@ -1,0 +1,55 @@
+{
+ "entries": {
+  "enum protocol.LeiosFetchFault": {
+   "class": "Mirror",
+   "digest": "576f0fd2ff881034",
+   "evidence": [
+    "LeiosFetchArrivalSuite"
+   ],
+   "note": "invalidReply's errors a case each, beside ExnLeiosWellHashedBodyRejected's two; BodyNotStorable has no counterpart: unreachable, it keeps LeiosEb's construction total",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      849,
+      1172
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "processLeiosBlock"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1395,
+      1588
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "processLeiosBlockTxs"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1972,
+      1986
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ExnLeiosWellHashedBodyRejected"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.LeiosFetchFault#message",
+    "object protocol.LeiosFetchFault"
+   ],
+   "reason": "the Leios answers' Scala plumbing with no counterpart of its own: the fault's rendering and companion, the total constructors of the wire's words, a Word32 by fromIntegral and a slot bounded into a Word64, and the hot stop a client registers so that it reads the governor's Terminate first, which the reference's client reads from controlMessageSTM in the same transaction as its next request (#54)"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/LeiosFetchFault.scala"
+}

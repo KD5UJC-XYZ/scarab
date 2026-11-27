@@ -1,0 +1,8 @@
+{
+ "_comment": "Networking: the mini-protocol codecs and state machines (module protocol) and the bearer, multiplexer, connection manager, protocol clients and servers, and peer selection (module network). Their reference is ouroboros-network, and ouroboros-consensus for the block and transaction types the protocols carry. docs/design/correspondence-map.md says what an entry holds; scripts/check_correspondence.py checks it.",
+ "area": "network",
+ "roots": [
+  "protocol/src/main/scala",
+  "network/src/main/scala"
+ ]
+}

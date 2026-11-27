@@ -1,0 +1,43 @@
+{
+ "baseline": {
+  "class ledger.ByronDelegation": null,
+  "class ledger.ByronGenesis": null,
+  "class ledger.ShelleyGenesis": null,
+  "def ledger.ByronGenesis#epochSlots": null,
+  "def ledger.ByronGenesis#slotLengthMillis": null,
+  "def ledger.ByronGenesisFile.avvmBalances": null,
+  "def ledger.ByronGenesisFile.avvmKey": null,
+  "def ledger.ByronGenesisFile.fromJson": null,
+  "def ledger.ByronGenesisFile.genesisBalances": null,
+  "def ledger.ByronGenesisFile.nonAvvmBalances": null,
+  "def ledger.ByronGenesisFile.parse": null,
+  "def ledger.ByronGenesisFile.read": [
+   {
+    "file": "eras/byron/ledger/impl/src/Cardano/Chain/Genesis/Data.hs",
+    "lines": [
+     165,
+     181
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "readGenesisData"
+   }
+  ],
+  "def ledger.Genesis.field": null,
+  "def ledger.Genesis.shelley": null,
+  "def ledger.Genesis.withByronPrefix": null,
+  "def ledger.Genesis.withSystemStart": null,
+  "object ledger.ByronGenesisFile": null,
+  "object ledger.Genesis": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.ShelleyGenesis#maxKesEvolutions",
+    "def ledger.ShelleyGenesis#slotsPerKesPeriod"
+   ],
+   "reason": "mainnet's KES constants for tests and tools whose state comes from no genesis file, and the genesis's KES constants as numbers for their existing readers; the reference reads them from the genesis record and has no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Genesis.scala"
+}

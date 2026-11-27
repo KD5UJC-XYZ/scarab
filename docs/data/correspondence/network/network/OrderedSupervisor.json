@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "def network.OrderedSupervisor.apply": null,
+  "def network.OrderedSupervisor.observed": null,
+  "object network.OrderedSupervisor": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/OrderedSupervisor.scala"
+}

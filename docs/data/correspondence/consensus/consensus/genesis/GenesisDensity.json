@@ -1,0 +1,51 @@
+{
+ "baseline": {
+  "class consensus.genesis.GenesisDensity.Bounds": null,
+  "class consensus.genesis.GenesisDensity.Fragment": null,
+  "class consensus.genesis.GenesisDensity.PeerState": null,
+  "class consensus.genesis.GenesisDensity.Result": null,
+  "class consensus.genesis.GenesisDensity.Shared": null,
+  "def consensus.genesis.GenesisDensity.Fragment#points": null,
+  "def consensus.genesis.GenesisDensity.Fragment#splitAfter": null,
+  "def consensus.genesis.GenesisDensity.Fragment#tip": null,
+  "def consensus.genesis.GenesisDensity.densityDisconnect": null,
+  "def consensus.genesis.GenesisDensity.firstSlotAfter": null,
+  "def consensus.genesis.GenesisDensity.sanitize": null,
+  "def consensus.genesis.GenesisDensity.sharedCandidatePrefix": null,
+  "def consensus.genesis.GenesisDensity.trim": null,
+  "enum consensus.genesis.GenesisDensity.LatestSlot": null,
+  "enum consensus.genesis.GenesisDensity.LoEError": null,
+  "object consensus.genesis.GenesisDensity": null
+ },
+ "entries": {
+  "def consensus.genesis.GenesisDensity.Fragment#offsetOf": {
+   "class": "Mirror",
+   "digest": "3c27528fd7058cc8",
+   "note": "a point found by its slot and then compared whole, as the finger tree's slot measure finds it; a binary search over the headers' slots (#1499)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      498,
+      508
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "splitAfterPoint"
+    },
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      430,
+      432
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "pointOnFragment"
+    }
+   ]
+  }
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/genesis/GenesisDensity.scala"
+}

@@ -1,0 +1,75 @@
+{
+ "baseline": {
+  "class consensus.state.ShelleyLedgerState": null,
+  "class consensus.state.ShelleyTip": null,
+  "class consensus.state.ShelleyTransition": null,
+  "def consensus.state.PerasRoundNo.apply": null,
+  "def consensus.state.PerasRoundNo.word": null,
+  "def consensus.state.ShelleyLedgerState.Layout#after": null,
+  "def consensus.state.ShelleyLedgerState.Layout#stateLayout": null,
+  "def consensus.state.ShelleyLedgerState.Layout.atOrigin": null,
+  "def consensus.state.ShelleyLedgerState.layout": null,
+  "def consensus.state.ShelleyLedgerState.nes": null,
+  "def consensus.state.ShelleyLedgerState.tip": null,
+  "def consensus.state.ShelleyLedgerState.transition": null,
+  "def consensus.state.StateEq.withOrigin": null,
+  "def consensus.state.Word32.bits": null,
+  "def consensus.state.Word32.fromUnsigned": null,
+  "def consensus.state.Word32.toLong": null,
+  "enum consensus.state.ShelleyLedgerState.Layout": null,
+  "given consensus.state.PerasRoundNo.given_Order_PerasRoundNo": null,
+  "given consensus.state.PerasRoundNo.given_Show_PerasRoundNo": null,
+  "given consensus.state.ShelleyLedgerState.given_Diff_ShelleyLedgerState_E": null,
+  "given consensus.state.ShelleyLedgerState.given_Eq_ShelleyLedgerState_E": null,
+  "given consensus.state.ShelleyLedgerState.given_Show_ShelleyLedgerState_E": null,
+  "given consensus.state.Word32.given_Order_Word32": null,
+  "given consensus.state.Word32.given_Show_Word32": null,
+  "object consensus.state.PerasRoundNo": null,
+  "object consensus.state.ShelleyLedgerState": null,
+  "object consensus.state.ShelleyLedgerState.Layout": null,
+  "object consensus.state.ShelleyTip": null,
+  "object consensus.state.ShelleyTransition": null,
+  "object consensus.state.StateEq": null,
+  "object consensus.state.Word32": null,
+  "type consensus.state.PerasRoundNo": null,
+  "type consensus.state.Word32": null,
+  "val consensus.state.ShelleyTip.blockNo": null,
+  "val consensus.state.ShelleyTip.hash": null,
+  "val consensus.state.ShelleyTip.slot": null,
+  "val consensus.state.ShelleyTransition.afterVoting": null
+ },
+ "entries": {
+  "def consensus.state.ShelleyLedgerState.Layout#afterBytes": {
+   "class": "Mirror",
+   "digest": "cccc217e11d452ee",
+   "evidence": [
+    "MirrorDijkstraSuite"
+   ],
+   "note": "shelleyCumulativeTxBytes after a Dijkstra block: the closure's bytes, which applyLeiosClosure adds to the unticked state, and the block's, which applyHelper adds, given as one sum modulo 2^64",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Ledger.hs",
+     "lines": [
+      749,
+      756
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "applyHelper"
+    },
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Leios.hs",
+     "lines": [
+      223,
+      230
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "applyLeiosClosure"
+    }
+   ]
+  }
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/ShelleyLedgerState.scala"
+}

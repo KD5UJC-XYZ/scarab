@@ -1,0 +1,25 @@
+{
+ "baseline": {
+  "class uplc.cek.Context": [
+   {
+    "file": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Evaluation/Machine/Cek/Internal.hs",
+    "lines": [
+     724,
+     751
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "Context"
+   }
+  ],
+  "class uplc.cek.Context.AwaitArg": null,
+  "class uplc.cek.Context.AwaitFunTerm": null,
+  "class uplc.cek.Context.AwaitFunValues": null,
+  "class uplc.cek.Context.Cases": null,
+  "class uplc.cek.Context.Constr": null,
+  "class uplc.cek.Context.Force": null,
+  "object uplc.cek.Context": null,
+  "object uplc.cek.Context.NoFrame": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cek/Context.scala"
+}

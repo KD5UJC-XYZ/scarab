@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "class uplc.flat.Got": null,
+  "class uplc.flat.Input": null,
+  "def uplc.flat.Input#bit": null,
+  "def uplc.flat.Input#bits": null,
+  "def uplc.flat.Input#byteString": null,
+  "def uplc.flat.Input#filler": null,
+  "def uplc.flat.Input#integer": null,
+  "def uplc.flat.Input#natural": null,
+  "def uplc.flat.Input#word64": null,
+  "val uplc.flat.Input#bitLength": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/flat/Input.scala"
+}

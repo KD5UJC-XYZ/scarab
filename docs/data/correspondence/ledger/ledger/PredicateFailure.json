@@ -1,0 +1,28 @@
+{
+ "baseline": {
+  "class ledger.Mismatch": null,
+  "class ledger.PlutusFailure": null,
+  "def ledger.PredicateFailure#detail": null,
+  "def ledger.PredicateFailure#ruleName": null,
+  "def ledger.PredicateFailure.deleg": null,
+  "def ledger.PredicateFailure.gov": null,
+  "def ledger.PredicateFailure.govCert": null,
+  "def ledger.PredicateFailure.pool": null,
+  "def ledger.PredicateFailure.utxo": null,
+  "def ledger.PredicateFailure.utxow": null,
+  "enum ledger.CertFailure": null,
+  "enum ledger.CertsFailure": null,
+  "enum ledger.DelegFailure": null,
+  "enum ledger.GovCertFailure": null,
+  "enum ledger.GovFailure": null,
+  "enum ledger.PoolFailure": null,
+  "enum ledger.PpupFailure": null,
+  "enum ledger.PredicateFailure": null,
+  "enum ledger.UtxoFailure": null,
+  "enum ledger.UtxosFailure": null,
+  "enum ledger.UtxowFailure": null,
+  "enum ledger.VotingPeriod": null,
+  "object ledger.PredicateFailure": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PredicateFailure.scala"
+}

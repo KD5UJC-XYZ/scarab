@@ -1,0 +1,473 @@
+{
+ "entries": {
+  "class ledger.era.BabbageTxInfoResult": {
+   "class": "Mirror",
+   "digest": "c70908c27f5994e2",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "each field computed when first read, as the reference keeps them lazy",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      230,
+      233
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "BabbageTxInfoResult"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      233,
+      236
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "BabbageTxInfoResult"
+    }
+   ]
+  },
+  "def ledger.era.BabbageTxInfo.toPlutusV2Args": {
+   "class": "Mirror",
+   "digest": "31d21f15a2c2910b",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the spending datum, through `AlonzoTxInfo.spendingDatum`, read before the purpose, whose translation cannot fail for the one purpose that has a datum",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      437,
+      458
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "toPlutusV2Args"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      437,
+      458
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "toPlutusV2Args"
+    }
+   ]
+  },
+  "def ledger.era.BabbageTxInfo.transRedeemer": {
+   "class": "Mirror",
+   "digest": "1303043435cc3517",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      188,
+      189
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transRedeemer"
+    }
+   ]
+  },
+  "def ledger.era.BabbageTxInfo.transRedeemerPointerV2V3": {
+   "class": "Mirror",
+   "digest": "c77fe9825edaa1a8",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "f649f975's `transRedeemerPtr` (`Babbage/TxInfo.hs:191-207`), of the transaction's information",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      195,
+      211
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transRedeemerPointerV2V3"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      195,
+      211
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "transRedeemerPointerV2V3"
+    }
+   ]
+  },
+  "def ledger.era.BabbageTxInfo.transReferenceScript": {
+   "class": "Mirror",
+   "digest": "d9c4486959aa6403",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      100,
+      106
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transReferenceScript"
+    }
+   ]
+  },
+  "def ledger.era.BabbageTxInfo.transTxInInfoV1": {
+   "class": "Mirror",
+   "digest": "0b0417a623f792ce",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      159,
+      172
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transTxInInfoV1"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      161,
+      174
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transTxInInfoV1"
+    }
+   ]
+  },
+  "def ledger.era.BabbageTxInfo.transTxInInfoV2": {
+   "class": "Mirror",
+   "digest": "bc896f22a92ad081",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      174,
+      186
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transTxInInfoV2"
+    }
+   ]
+  },
+  "def ledger.era.BabbageTxInfo.transTxOutV1": {
+   "class": "Mirror",
+   "digest": "3f8a88e08cdce73d",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "whether there is an inline datum asked through `dataTxOutF`, which reads it as data, as the reference's strict `SJust` forces `binaryDataToData`; an inline datum taken unread that does not read is the node's own Undecodable where the reference raises error",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      112,
+      128
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transTxOutV1"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      110,
+      126
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transTxOutV1"
+    }
+   ]
+  },
+  "def ledger.era.BabbageTxInfo.transTxOutV2": {
+   "class": "Mirror",
+   "digest": "3abd995d16208179",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
+   ],
+   "note": "the inline datum through `binaryDataToData`, whose failure, which only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach, is the node's own `Undecodable` where the reference raises `error`; it is read only for an address that is not Byron, where the reference forces its lazy `datum`, so a Byron address is refused first, as in the flat path",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      130,
+      156
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transTxOutV2"
+    }
+   ]
+  },
+  "def ledger.era.BabbageTxInfo.transTxRedeemers": {
+   "class": "Mirror",
+   "digest": "4fc6d2db42bbdfeb",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      215,
+      229
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transTxRedeemers"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      215,
+      229
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "transTxRedeemers"
+    }
+   ]
+  },
+  "enum ledger.era.BabbageContextError": {
+   "class": "Mirror",
+   "digest": "b122eebfafe07845",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      253,
+      260
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "BabbageContextError"
+    }
+   ]
+  },
+  "val ledger.era.BabbageTxInfo.context": {
+   "class": "Mirror",
+   "digest": "3fdd26de2621db14",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "each language's information computed when first looked up",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      228,
+      251
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPlutusContext BabbageEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      231,
+      254
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraPlutusContext BabbageEra"
+    }
+   ]
+  },
+  "val ledger.era.BabbageTxInfo.plutusV1": {
+   "class": "Mirror",
+   "digest": "d9210dd5879bf644",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "a body's outputs are zipped with the transaction indices, as the reference zips them with [minBound ..] :: [TxIx] (TxIx.enumerate), so none past 65,535 is translated",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      319,
+      359
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 BabbageEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      359,
+      396
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 BabbageEra"
+    }
+   ]
+  },
+  "val ledger.era.BabbageTxInfo.plutusV2": {
+   "class": "Mirror",
+   "digest": "0dbb9f4ab2a32a68",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "a body's outputs are zipped with the transaction indices, as the reference zips them with [minBound ..] :: [TxIx] (TxIx.enumerate), so none past 65,535 is translated",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      361,
+      401
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 BabbageEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      398,
+      435
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 BabbageEra"
+    }
+   ]
+  },
+  "val ledger.era.BabbageTxInfoResult#tirPlutusV1": {
+   "class": "Mirror",
+   "digest": "0bef8bd13064b81d",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the field the reference's lookup matches",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      249,
+      249
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "lookupTxInfoResult SPlutusV1"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      252,
+      252
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "lookupTxInfoResult SPlutusV1"
+    }
+   ]
+  },
+  "val ledger.era.BabbageTxInfoResult#tirPlutusV2": {
+   "class": "Mirror",
+   "digest": "c9a7ddff2b47cd9e",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the field the reference's lookup matches",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      250,
+      250
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "lookupTxInfoResult SPlutusV2"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "lines": [
+      253,
+      253
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "lookupTxInfoResult SPlutusV2"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.BabbageTxInfo"
+   ],
+   "reason": "objects that stand for the reference's modules of functions (`Alonzo/Scripts.hs`, `State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`, the `TxInfo.hs` and `Context.hs` of the script context, the `Indexable` instances of `Alonzo/TxBody.hs`, plutus-ledger-api's `V1` to `V4`, plutus-tx's `Ratio`), which Scala needs to hold top-level functions under a name"
+  },
+  {
+   "definitions": [
+    "def ledger.era.BabbageTxInfo.undecodable"
+   ],
+   "reason": "the failure of an inline datum taken unread (`BabbageTxOutRep.fromStored`) that does not read as data, as an era's context error: the node's own, where the reference's `binaryDataToData` raises `error` (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/BabbageTxInfo.scala"
+}

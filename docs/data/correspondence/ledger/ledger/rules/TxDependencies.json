@@ -1,0 +1,20 @@
+{
+ "baseline": {
+  "def ledger.rules.TxDependencies.batches": null,
+  "def ledger.rules.TxDependencies.levels": null,
+  "object ledger.rules.TxDependencies": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.rules.TxDependencies.Footprint",
+    "def ledger.rules.TxDependencies.Footprint.of",
+    "def ledger.rules.TxDependencies.levelsOf",
+    "def ledger.rules.TxDependencies.scheduled",
+    "object ledger.rules.TxDependencies.Footprint"
+   ],
+   "reason": "the contract of a block body whose Plutus scripts the node evaluates in bounded parallel workers after an ordered preparation (ADR 0018, Scarab's own: the reference evaluates them where it collects them): a body program and its plan (Phase2.Program, Phase2.Plan) that the node's one scheduler runs, each plan's completions of its own type so that another plan's do not type-check, the sealed recorder of a preparation's jobs (Phase2.Recorder, captured, the flat rules' Preparation), the dependency graph over transactions' footprints (TxDependencies.Footprint, levelsOf, scheduled), and the capability through which an era's UTXOS evaluates a transaction's collected scripts, now or deferred into a preparation with no verdict, and is told of a transaction whose scripts it could not collect (Phase2Deferral, uncollected, #85); and the floor of declared work below which the node runs a body serially, a performance choice that no verdict depends on (Phase2.pays, payingSteps, each body's preparable and declared, #85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/TxDependencies.scala"
+}

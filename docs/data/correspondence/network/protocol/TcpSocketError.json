@@ -1,0 +1,14 @@
+{
+ "baseline": {
+  "def protocol.SocketSetting.configured": null,
+  "def protocol.SocketStep#location": null,
+  "enum protocol.SocketFamily": null,
+  "enum protocol.SocketSetting": null,
+  "enum protocol.SocketStep": null,
+  "enum protocol.TcpSocketError": null,
+  "given protocol.TcpSocketError.given_Show_E": null,
+  "object protocol.SocketSetting": null,
+  "object protocol.TcpSocketError": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/TcpSocketError.scala"
+}

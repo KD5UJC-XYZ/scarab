@@ -1,0 +1,50 @@
+{
+ "baseline": {
+  "def uplc.builtin.core.CoreVariant.of": null,
+  "enum uplc.builtin.core.CoreVariant": null,
+  "object uplc.builtin.core.CoreVariant": null
+ },
+ "entries": {
+  "def uplc.builtin.core.CoreVariant#ensurableByteString": {
+   "class": "Mirror",
+   "digest": "0bc1371c5d545e19",
+   "evidence": [
+    "CoreUnliftingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs",
+     "lines": [
+      2813,
+      2820
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "ensurableByteString"
+    }
+   ]
+  },
+  "def uplc.builtin.core.CoreVariant#ensurableInteger": {
+   "class": "Mirror",
+   "digest": "b4256509198bb0e7",
+   "evidence": [
+    "CoreUnliftingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs",
+     "lines": [
+      2806,
+      2811
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "ensurableInteger"
+    }
+   ]
+  }
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/builtin/core/CoreVariant.scala"
+}

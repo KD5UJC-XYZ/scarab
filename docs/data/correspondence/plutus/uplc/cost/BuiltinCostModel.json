@@ -1,0 +1,20 @@
+{
+ "baseline": {
+  "class uplc.cost.BuiltinCostModel": [
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/BuiltinCostModel.hs",
+    "lines": [
+     79,
+     208
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "BuiltinCostModelBase"
+   }
+  ],
+  "def uplc.cost.BuiltinCostModel#leaves": null,
+  "def uplc.cost.BuiltinCostModel#tags": null,
+  "def uplc.cost.BuiltinCostModel#traverse": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cost/BuiltinCostModel.scala"
+}

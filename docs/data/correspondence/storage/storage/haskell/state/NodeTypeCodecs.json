@@ -1,0 +1,209 @@
+{
+ "baseline": {
+  "def storage.haskell.state.NodeTypeCodecs#proposalsReading": null,
+  "given storage.haskell.state.NodeTypeCodecs#committee": null,
+  "given storage.haskell.state.NodeTypeCodecs#constitution": null,
+  "given storage.haskell.state.NodeTypeCodecs#conwayParamUpdate": null,
+  "given storage.haskell.state.NodeTypeCodecs#enactState": null,
+  "given storage.haskell.state.NodeTypeCodecs#genDelegPair": null,
+  "given storage.haskell.state.NodeTypeCodecs#govAction": null,
+  "given storage.haskell.state.NodeTypeCodecs#govActionId": null,
+  "given storage.haskell.state.NodeTypeCodecs#govActionState": null,
+  "given storage.haskell.state.NodeTypeCodecs#nodeCredential": null,
+  "given storage.haskell.state.NodeTypeCodecs#nodeDRep": null,
+  "given storage.haskell.state.NodeTypeCodecs#nodeDRepState": null,
+  "given storage.haskell.state.NodeTypeCodecs#paramUpdate": null,
+  "given storage.haskell.state.NodeTypeCodecs#poolParams": null,
+  "given storage.haskell.state.NodeTypeCodecs#prevIds": null,
+  "given storage.haskell.state.NodeTypeCodecs#proposal": null,
+  "given storage.haskell.state.NodeTypeCodecs#proposals": null,
+  "given storage.haskell.state.NodeTypeCodecs#pulsingSnapshot": null,
+  "given storage.haskell.state.NodeTypeCodecs#ratifyState": null,
+  "given storage.haskell.state.NodeTypeCodecs#rewardAccount": null,
+  "given storage.haskell.state.NodeTypeCodecs#vote": null,
+  "trait storage.haskell.state.NodeTypeCodecs": null,
+  "val storage.haskell.state.NodeTypeCodecs#poolMetadata": null,
+  "val storage.haskell.state.NodeTypeCodecs#rawItem": null,
+  "val storage.haskell.state.NodeTypeCodecs#relays": null
+ },
+ "entries": {
+  "def storage.haskell.state.NodeTypeCodecs#dijkstraGovState": {
+   "class": "Mirror",
+   "digest": "87b126a702607d46",
+   "evidence": [
+    "V10BodyGoldenSuite",
+    "DijkstraParamProposalSuite",
+    "EraGovStateStoredSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "lines": [
+      363,
+      373
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EncCBOR (ConwayGovState era)"
+    }
+   ]
+  },
+  "def storage.haskell.state.NodeTypeCodecs#dijkstraPParams": {
+   "class": "Mirror",
+   "digest": "2ed1e862fa1a4064",
+   "evidence": [
+    "V10BodyGoldenSuite",
+    "DijkstraParamProposalSuite",
+    "EraGovStateStoredSuite"
+   ],
+   "note": "the era's codecs of the parameters (PParams.encodePParams, decodePParams); the 11.1 layout's Dijkstra parameters refused both ways",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      204,
+      219
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EncCBOR (PParams era)"
+    }
+   ]
+  },
+  "def storage.haskell.state.NodeTypeCodecs#dijkstraProposal": {
+   "class": "Mirror",
+   "digest": "fca268aaa389e7f6",
+   "evidence": [
+    "V10BodyGoldenSuite",
+    "DijkstraParamProposalSuite",
+    "EraGovStateStoredSuite"
+   ],
+   "note": "read by Dijkstra's decoder of a proposal at version 12 (DijkstraProposals.proposal); an action other than a parameter change written by the flat record's writer, which writes the same values",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Procedures.hs",
+     "lines": [
+      582,
+      589
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EncCBOR (ProposalProcedure era)"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      250,
+      262
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EncCBOR (PParamsUpdate era)"
+    }
+   ]
+  },
+  "def storage.haskell.state.NodeTypeCodecs#dijkstraRatifyState": {
+   "class": "Mirror",
+   "digest": "12a50393dcb4caec",
+   "evidence": [
+    "V10BodyGoldenSuite",
+    "DijkstraParamProposalSuite",
+    "EraGovStateStoredSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      670,
+      678
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EncCBOR (RatifyState era)"
+    }
+   ]
+  },
+  "def storage.haskell.state.NodeTypeCodecs#enactStateWith": {
+   "class": "Mirror",
+   "digest": "2e607cf0ca4dd48b",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      235,
+      245
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EncCBOR (EnactState era)"
+    }
+   ]
+  },
+  "def storage.haskell.state.NodeTypeCodecs#poolParamsWithSlot": {
+   "class": "Mirror",
+   "digest": "13eedd12517ba138",
+   "evidence": [
+    "FuturePoolParamsCodecSuite",
+    "DijkstraEpochStateSuite"
+   ],
+   "note": "the ten items with the third read by the slot's codec: none for the node's parameters (refused as DijkstraNotYet.PoolParamsBlsKey where it is a key), the key for the state's parameters; the reference peeks at the third item's type instead",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      746,
+      771
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "decodeStakePoolParamsFlat"
+    }
+   ]
+  },
+  "def storage.haskell.state.NodeTypeCodecs#ratifyStateWith": {
+   "class": "Mirror",
+   "digest": "795d5479bf002e09",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/Internal.hs",
+     "lines": [
+      670,
+      678
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EncCBOR (RatifyState era)"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "enum storage.haskell.state.EraGovReadError"
+   ],
+   "reason": "Why a stored value of a Dijkstra state's governance state is not a value of the era's types (#826), the decode error the state's codec gives with the era's typed cause: the reference's decoder reads the era's types directly and has no such step"
+  },
+  {
+   "definitions": [
+    "class storage.haskell.state.PoolParamsBlsSlot",
+    "def storage.haskell.state.PoolParamsBlsSlot#params"
+   ],
+   "reason": "the ten items of a StakePoolParams of the Leios layout from version 12 whose third holds no BLS key, and their conversion to the held nine; Scarab's PoolParams has no key, so the reader that uses them (NodeTypeCodecs.poolParams, which cites decodeStakePoolParamsFlat, cardano-ledger 9df9f98c State/StakePool.hs:744-771) reads ten items through this record"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/NodeTypeCodecs.scala"
+}

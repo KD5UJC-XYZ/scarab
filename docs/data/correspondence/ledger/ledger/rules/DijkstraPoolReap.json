@@ -1,0 +1,87 @@
+{
+ "entries": {
+  "object ledger.rules.DijkstraPoolReap": {
+   "class": "Mirror",
+   "digest": "79b94a4c72768d8e",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/PoolReap.hs",
+     "lines": [
+      104,
+      212
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "poolReapTransition"
+    }
+   ]
+  },
+  "val ledger.rules.DijkstraPoolReap.adopt": {
+   "class": "Mirror",
+   "digest": "b48c0741a38ffbf4",
+   "evidence": [
+    "DijkstraPoolReapSuite",
+    "DijkstraEpochReferenceSuite"
+   ],
+   "note": "the voting key of mkStakePoolState e (currentState ^. spsBlsKeyL) futureParams; a pool's state or parameters of the 11.1 layout, which a Dijkstra state does not hold, are refused as DijkstraNotYet.LedgerState, as Dijkstra's SNAP refuses its snapshots",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/PoolReap.hs",
+     "lines": [
+      104,
+      141
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "poolReapTransition"
+    }
+   ]
+  },
+  "val ledger.rules.DijkstraPoolReap.release": {
+   "class": "Mirror",
+   "digest": "f821a7e0c4d5a802",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/PoolReap.hs",
+     "lines": [
+      104,
+      212
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "poolReapTransition"
+    }
+   ]
+  },
+  "val ledger.rules.DijkstraPoolReap.sts": {
+   "class": "Mirror",
+   "digest": "99f5c5db9fd97b4e",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/PoolReap.hs",
+     "lines": [
+      104,
+      212
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "poolReapTransition"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/DijkstraPoolReap.scala"
+}

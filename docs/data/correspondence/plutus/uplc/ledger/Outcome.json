@@ -1,0 +1,35 @@
+{
+ "baseline": {
+  "class uplc.ledger.LedgerOutcome.Refused": null,
+  "class uplc.ledger.ScriptResult.Failure": null,
+  "class uplc.ledger.ScriptResult.Success": null,
+  "class uplc.ledger.ScriptResult.Unavailable": null,
+  "def uplc.ledger.EvaluationError#stage": null,
+  "def uplc.ledger.LedgerOutcome#failedAt": null,
+  "def uplc.ledger.LedgerOutcome.Refused#failedAt": null,
+  "def uplc.ledger.ScriptResult.Failure#failedAt": null,
+  "def uplc.ledger.ScriptResult.Success#failedAt": null,
+  "def uplc.ledger.ScriptResult.Unavailable#failedAt": null,
+  "def uplc.ledger.Stage#name": null,
+  "enum uplc.ledger.EvaluationError": null,
+  "enum uplc.ledger.Stage": null,
+  "enum uplc.ledger.Unavailability": null,
+  "enum uplc.ledger.VerboseMode": [
+   {
+    "file": "plutus-ledger-api/src/PlutusLedgerApi/Common/Eval.hs",
+    "lines": [
+     88,
+     95
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "VerboseMode"
+   }
+  ],
+  "object uplc.ledger.LedgerOutcome": null,
+  "object uplc.ledger.ScriptResult": null,
+  "trait uplc.ledger.LedgerOutcome": null,
+  "trait uplc.ledger.ScriptResult": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/ledger/Outcome.scala"
+}

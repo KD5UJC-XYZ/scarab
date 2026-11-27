@@ -1,0 +1,35 @@
+{
+ "baseline": {
+  "class ledger.rules.UtxoEnv": null,
+  "def ledger.rules.InstantStakeOps.update": null,
+  "def ledger.rules.Utxos.scripts": null,
+  "def ledger.rules.Utxow.checks": null,
+  "def ledger.rules.Utxow.record": null,
+  "object ledger.rules.InstantStakeOps": null,
+  "object ledger.rules.Utxos": [
+   {
+    "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxos.hs",
+    "lines": [
+     207,
+     224
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "utxosTransition"
+   }
+  ],
+  "object ledger.rules.Utxow": [
+   {
+    "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxow.hs",
+    "lines": [
+     308,
+     393
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "babbageUtxowTransition"
+   }
+  ]
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Utxo.scala"
+}

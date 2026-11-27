@@ -1,0 +1,216 @@
+{
+ "baseline": {
+  "class storage.FileImmutableStore.Entry": null,
+  "class storage.ImmutableStore.OpenReport": null,
+  "class storage.ImmutableStore.Stored": null,
+  "def storage.FileImmutableStore.Entry#end": null,
+  "def storage.FileImmutableStore.crcOf": null,
+  "def storage.FileImmutableStore.encode": null,
+  "def storage.FileImmutableStore.entries": null,
+  "def storage.FileImmutableStore.firstBlockReadOnly": null,
+  "def storage.FileImmutableStore.formatMigration": null,
+  "def storage.FileImmutableStore.indexMigration": null,
+  "def storage.FileImmutableStore.open": null,
+  "def storage.FileImmutableStore.preflightReadOnly": null,
+  "def storage.ImmutableStore#append": null,
+  "def storage.ImmutableStore#byBlockNo": null,
+  "def storage.ImmutableStore#get": null,
+  "def storage.ImmutableStore#pointAtOrAfterSlot": null,
+  "def storage.ImmutableStore#pointsAtSlot": null,
+  "def storage.ImmutableStore#stream": null,
+  "def storage.ImmutableStore#sync": null,
+  "def storage.ImmutableStore#tip": null,
+  "enum storage.ImmutableReadError": null,
+  "object storage.FileImmutableStore": null,
+  "object storage.ImmutableStore": null,
+  "trait storage.ImmutableStore": null,
+  "val storage.FileImmutableStore.DefaultChunkSlots": null,
+  "val storage.FileImmutableStore.EntrySize": null,
+  "val storage.FileImmutableStore.FormatText": null,
+  "val storage.FileImmutableStore.HeaderSize": null,
+  "val storage.FileImmutableStore.IndexMagic": null
+ },
+ "entries": {
+  "class storage.FileImmutableStore.IndexCache": {
+   "class": "Deviation",
+   "digest": "6dfc58894fc03669",
+   "evidence": [
+    "ImmutableServingSuite"
+   ],
+   "note": "the reference's past chunks (an IntPSQ by time of last use) and their number, bounded at 250 chunks; here a map by chunk with an index ordered by (time of last use, order of use), and the number of entries held, bounded at 270,000 entries; the chunk appended to is held apart, in Current, as currentChunkInfo is. ImmutableServingSuite checks the approved policy; no suite compares it with the reference, whose bound it departs from by decision",
+   "record": "docs/decisions.md#genesis-storage-and-keys",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl/Index/Cache.hs",
+     "lines": [
+      193,
+      209
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "pastChunksInfo"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl.hs",
+     "lines": [
+      189,
+      193
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "pastChunksToCache"
+    }
+   ]
+  },
+  "def storage.FileImmutableStore.IndexCache#added": {
+   "class": "Deviation",
+   "digest": "c1084d816c6ee09b",
+   "evidence": [
+    "ImmutableServingSuite"
+   ],
+   "note": "the reference adds a chunk, then drops the least recently used one if more than 250 are held (composed at getChunkInfo and openPrimaryIndex); here it adds the chunk, then drops the least recently used until the entries held are within the bound, and does not hold an index larger than the bound. ImmutableServingSuite checks the approved policy; no suite compares it with the reference, whose bound it departs from by decision",
+   "record": "docs/decisions.md#genesis-storage-and-keys",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl/Index/Cache.hs",
+     "lines": [
+      251,
+      279
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "addPastChunkInfo"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl/Index/Cache.hs",
+     "lines": [
+      289,
+      316
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "evictIfNecessary"
+    }
+   ]
+  },
+  "def storage.FileImmutableStore.IndexCache#expired": {
+   "class": "Mirror",
+   "digest": "ab4fd30bdd1109cd",
+   "evidence": [
+    "ImmutableServingSuite"
+   ],
+   "note": "garbageCollect's decision: every chunk last used at or before now less the expiry is dropped; here by walking the cache's index ordered by last use, where the reference takes a view of its IntPSQ, and with the age taken as now less the use; the trace event (TracePastChunksExpired) is not emitted, as the store emits none of the cache's TraceCacheEvent. ImmutableServingSuite checks the expiry over time under TestControl; no suite compares it with the reference",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl/Index/Cache.hs",
+     "lines": [
+      478,
+      494
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "atMostView"
+    }
+   ]
+  },
+  "def storage.FileImmutableStore.IndexCache#lookup": {
+   "class": "Mirror",
+   "digest": "c1b28c8f722c9323",
+   "evidence": [
+    "ImmutableServingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl/Index/Cache.hs",
+     "lines": [
+      318,
+      335
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "lookupPastChunkInfo"
+    }
+   ]
+  },
+  "def storage.ImmutableStore#refOf": {
+   "class": "Mirror",
+   "digest": "aae023bb0d47d5d9",
+   "evidence": [
+    "HaskellImportSuite",
+    "ImmutableServingSuite",
+    "ChainServerSuite"
+   ],
+   "note": "getBlockComponent for the components a point's index entry answers (GetSlot, GetHash, GetIsEBB): getSlotInfo finds the point in the primary and secondary indexes and extractBlockComponent answers them from the entry, the block not read. Here one method gives the entry's slot, hash, boundary flag and block number (which the reference's secondary index does not hold), found in the chunk's entries as the store holds them, and the chunk file is not opened (the reference opens it, Impl.hs 466-469). HaskellImportSuite compares what it finds, for every block and for another hash at each slot, with the reference's own primary and secondary indexes: the Preview ImmutableDB cardano-node 11.1.3 wrote, and a Byron-to-Conway database with boundary blocks written by the reference's encoding rules; the other suites check that no block is read",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl.hs",
+     "lines": [
+      447,
+      496
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "getBlockComponentImpl"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl/Iterator.hs",
+     "lines": [
+      281,
+      352
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "getSlotInfo"
+    }
+   ]
+  },
+  "val storage.FileImmutableStore.IndexCache.empty": {
+   "class": "Mirror",
+   "digest": "2527fff7977f7286",
+   "note": "the past chunks' part of emptyCached; the chunk appended to is held apart, in Current",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/Impl/Index/Cache.hs",
+     "lines": [
+      385,
+      386
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "pastChunksInfo"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def storage.FileImmutableStore.alongside"
+   ],
+   "reason": "plumbing: a fiber for the life of a resource that ends with its failure as a value (FIB-2), raised again where it is landed and at release; it runs the index cache's expiry, which the reference starts with forkLinkedThread (Index/Cache.hs 428-432, ouroboros-consensus 82ecba32), whose link throws a failure to the owner at once, where here the owner meets it at release; the expiry has no failure of its own"
+  },
+  {
+   "definitions": [
+    "object storage.FileImmutableStore.IndexCache"
+   ],
+   "reason": "plumbing: the companion object that holds the empty index cache of the immutable store"
+  },
+  {
+   "definitions": [
+    "def storage.ImmutableReads#all",
+    "def storage.ImmutableReads#range",
+    "def storage.ImmutableReads.files",
+    "object storage.ImmutableReads",
+    "trait storage.ImmutableReads"
+   ],
+   "reason": "plumbing: the immutable store's reads of its own chunk and index files (Scarab's own format) as an algebra with one interpreter over fs2's Files, so that a suite can count what serving a block reads"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ImmutableStore.scala"
+}

@@ -1,0 +1,40 @@
+{
+ "baseline": {
+  "class ledger.rules.EraLedger.AccountView": null,
+  "def ledger.rules.EraLedger.accounts": null,
+  "def ledger.rules.EraLedger.activeStake": null,
+  "def ledger.rules.EraLedger.clearPoolDelegations": null,
+  "def ledger.rules.EraLedger.credit": null,
+  "def ledger.rules.EraLedger.creditAscending": null,
+  "def ledger.rules.EraLedger.creditStates": null,
+  "def ledger.rules.EraLedger.curPParams": null,
+  "def ledger.rules.EraLedger.futureGenDelegs": null,
+  "def ledger.rules.EraLedger.futurePParams": null,
+  "def ledger.rules.EraLedger.genDelegs": null,
+  "def ledger.rules.EraLedger.iRewards": null,
+  "def ledger.rules.EraLedger.isRegistered": null,
+  "def ledger.rules.EraLedger.keyDeposits": null,
+  "def ledger.rules.EraLedger.mergeStates": null,
+  "def ledger.rules.EraLedger.pState": null,
+  "def ledger.rules.EraLedger.predictFuture": null,
+  "def ledger.rules.EraLedger.prevPParams": null,
+  "def ledger.rules.EraLedger.registered": null,
+  "def ledger.rules.EraLedger.registeredAscending": null,
+  "def ledger.rules.EraLedger.shelleyGov": null,
+  "def ledger.rules.EraLedger.solidify": null,
+  "def ledger.rules.EraLedger.withGenDelegs": null,
+  "def ledger.rules.EraLedger.withIRewards": null,
+  "def ledger.rules.EraLedger.withPParams": null,
+  "def ledger.rules.EraLedger.withPState": null,
+  "object ledger.rules.EraLedger": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.rules.EraLedger.solidifyFuture"
+   ],
+   "reason": "The governance family of each era as the ledger state holds it (#826): which record it is, Shelley's proposed updates, Conway's flat record or Dijkstra's era record (GovShape, its views and the flat records' proof, FlatGov, with its instances), the readers of the flat parameters over Dijkstra's record (GovStateRecord.view and futureView, over the zero record or, viewOver, a restored sidecar's record, ProtocolParams.empty the state's codec reads a parameter record over), the solidification of any era's future parameters (EraLedger.solidifyFuture, solidifyNextEpochPParams of each family), an action's state of an era from the flat record's items (ConwayProposals.actionOf), and a Dijkstra action other than a parameter change as the flat record holds it and the keys an update sets (DijkstraProposals.flatOrUpdate, updateKeys), which the state's codec and the node's projections write with: the reference holds each era's record itself, so it has none of these"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/EraLedger.scala"
+}

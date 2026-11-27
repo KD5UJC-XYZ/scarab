@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "def ledger.state.Word64.bits": null,
+  "def ledger.state.Word64.decimal": null,
+  "def ledger.state.Word64.fromBigInt": null,
+  "def ledger.state.Word64.fromUnsigned": null,
+  "def ledger.state.Word64.isZero": null,
+  "def ledger.state.Word64.successor": null,
+  "def ledger.state.Word64.toBigInt": null,
+  "def ledger.state.Word64.wrappingAdd": null,
+  "def ledger.state.Word64.wrappingMultiply": null,
+  "def ledger.state.Word64.wrappingSubtract": null,
+  "given ledger.state.Word64.given_Order_Word64": null,
+  "given ledger.state.Word64.given_Show_Word64": null,
+  "object ledger.state.Word64": null,
+  "type ledger.state.Word64": null,
+  "val ledger.state.Word64.max": null,
+  "val ledger.state.Word64.order": null,
+  "val ledger.state.Word64.show": null,
+  "val ledger.state.Word64.zero": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Word64.scala"
+}

@@ -1,0 +1,32 @@
+{
+ "baseline": {
+  "class ledger.Utxo": null,
+  "class ledger.Utxo.Change": null,
+  "def ledger.Utxo#++": null,
+  "def ledger.Utxo#--": null,
+  "def ledger.Utxo#at": null,
+  "def ledger.Utxo#changesAfter": null,
+  "def ledger.Utxo#changesSince": null,
+  "def ledger.Utxo#contains": null,
+  "def ledger.Utxo#get": null,
+  "def ledger.Utxo#isEmpty": null,
+  "def ledger.Utxo#iterator": null,
+  "def ledger.Utxo#keys": null,
+  "def ledger.Utxo#matching": null,
+  "def ledger.Utxo#missing": null,
+  "def ledger.Utxo#removeKnown": null,
+  "def ledger.Utxo#settled": null,
+  "def ledger.Utxo#size": null,
+  "def ledger.Utxo#toMap": null,
+  "def ledger.Utxo#toVector": null,
+  "def ledger.Utxo#updated": null,
+  "def ledger.Utxo#valuesIterator": null,
+  "def ledger.Utxo#withResident": null,
+  "def ledger.Utxo.apply": null,
+  "def ledger.Utxo.fromMap": null,
+  "object ledger.Utxo": null,
+  "val ledger.Utxo.TrimEvery": null,
+  "val ledger.Utxo.empty": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Utxo.scala"
+}

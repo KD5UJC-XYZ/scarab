@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def storage.FrozenEra.live": null,
+  "enum storage.FrozenEra.Era": null,
+  "object storage.FrozenEra": null,
+  "val storage.FrozenEra.codec": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenEra.scala"
+}

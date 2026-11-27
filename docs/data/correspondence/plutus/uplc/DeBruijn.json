@@ -1,0 +1,11 @@
+{
+ "baseline": {
+  "def uplc.DeBruijn.apply": null,
+  "def uplc.DeBruijn.fromInt": null,
+  "def uplc.DeBruijn.index": null,
+  "given uplc.DeBruijn.given_Ordering_DeBruijn": null,
+  "object uplc.DeBruijn": null,
+  "type uplc.DeBruijn": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/DeBruijn.scala"
+}

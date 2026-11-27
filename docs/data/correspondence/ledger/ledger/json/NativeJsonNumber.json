@@ -1,0 +1,7 @@
+{
+ "baseline": {
+  "def ledger.json.NativeJsonNumber.read": null,
+  "object ledger.json.NativeJsonNumber": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/NativeJsonNumber.scala"
+}

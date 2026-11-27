@@ -1,0 +1,33 @@
+{
+ "baseline": {
+  "class uplc.bls.MlResult.Element": null,
+  "def uplc.bls.MlResult.fromRaw": null,
+  "def uplc.bls.MlResult.ofTarget": null,
+  "def uplc.bls.MlResult.raw": null,
+  "def uplc.bls.MlResult.target": null,
+  "object uplc.bls.MlResult": null,
+  "type uplc.bls.MlResult": [
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
+    "lines": [
+     149,
+     149
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "DefaultUniBLS12_381_MlResult"
+   },
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/Pairing.hs",
+    "lines": [
+     39,
+     44
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "MlResult"
+   }
+  ]
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/bls/MlResult.scala"
+}

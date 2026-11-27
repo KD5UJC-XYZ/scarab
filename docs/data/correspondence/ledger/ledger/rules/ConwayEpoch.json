@@ -1,0 +1,99 @@
+{
+ "baseline": {
+  "def ledger.rules.ConwayEpoch.predictFuturePParams": null,
+  "def ledger.rules.ConwayEpoch.sts": null,
+  "def ledger.rules.ConwayEpoch.totalObligation": null,
+  "def ledger.rules.HardFork.apply": null,
+  "def ledger.rules.HardFork.updateDRepDelegations": null,
+  "object ledger.rules.ConwayEpoch": null,
+  "object ledger.rules.HardFork": null
+ },
+ "entries": {
+  "def ledger.rules.ConwayEpoch.enact": {
+   "class": "Mirror",
+   "digest": "8657a352c5105405",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "LeiosEpochReferenceSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs",
+     "lines": [
+      248,
+      376
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "epochTransition"
+    }
+   ]
+  },
+  "def ledger.rules.ConwayEpoch.withFreshPulser": {
+   "class": "Mirror",
+   "digest": "f0552f8e1060c18b",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "LeiosEpochReferenceSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "lines": [
+      462,
+      520
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "setFreshDRepPulsingState"
+    }
+   ]
+  },
+  "def ledger.rules.HardFork.populateVRFKeyHashes": {
+   "class": "Mirror",
+   "digest": "e3d8966bf7587207",
+   "evidence": [
+    "ConwayGovernanceSuite",
+    "ConwayLedgerSuite",
+    "DijkstraTranslationSuite"
+   ],
+   "note": "one counterpart per build, selected by the reference build: 11.1 (f649f975) adds the pools to the map it has; 11.2 (29a7d656) and the Leios build (9df9f98c) recompute it, through Translate.populateVRFKeyHashes. Under 11.1 the map it adds to is the reference's: a state below 11 whose map is not empty, which no chain of 11.1.3 reaches, is refused where it is restored or imported (storage.StateAdmission). Total: a waiting re-registration's VRF key hash is a VRFVerKeyHash of the state's parameters, so none is refused (#85 item 38)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/HardFork.hs",
+     "lines": [
+      107,
+      125
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "populateVRFKeyHashes"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      525,
+      535
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "populateVRFKeyHashes"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      528,
+      538
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "populateVRFKeyHashes"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ConwayEpoch.scala"
+}

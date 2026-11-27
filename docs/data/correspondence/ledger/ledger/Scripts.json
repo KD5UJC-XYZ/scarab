@@ -1,0 +1,39 @@
+{
+ "baseline": {
+  "class ledger.Script": null,
+  "def ledger.NativeScript#equals": null,
+  "def ledger.NativeScript#eval": null,
+  "def ledger.NativeScript#hashCode": null,
+  "def ledger.NativeScript#toString": null,
+  "def ledger.NativeScript.DecodeError#message": null,
+  "def ledger.NativeScript.Form.of": null,
+  "def ledger.NativeScript.decode": null,
+  "def ledger.Script.decode": null,
+  "def ledger.Script.decodeWrapped": null,
+  "def ledger.Script.decodeWrappedWithBytes": null,
+  "def ledger.Script.native": null,
+  "def ledger.Script.nativeOf": null,
+  "def ledger.Script.plutus": null,
+  "def ledger.ScriptKind#isPlutus": null,
+  "def ledger.ScriptKind.newest": null,
+  "enum ledger.NativeScript": null,
+  "enum ledger.NativeScript.DecodeError": null,
+  "enum ledger.NativeScript.Form": null,
+  "enum ledger.ScriptKind": null,
+  "given ledger.NativeScript.given_Tree_NativeScript": null,
+  "object ledger.NativeScript": null,
+  "object ledger.NativeScript.Form": null,
+  "object ledger.Script": null,
+  "object ledger.ScriptKind": null,
+  "val ledger.ScriptKind.newestKnown": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.Script#withoutBytes"
+   ],
+   "reason": "how an output holds its reference script: by its hash and tree, without the bytes a script read from them keeps, which the output re-reads from its own encoding (#998); the reference's output holds the script whole, so this representation has no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Scripts.scala"
+}

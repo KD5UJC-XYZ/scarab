@@ -1,0 +1,14 @@
+{
+ "glue": [
+  {
+   "definitions": [
+    "def storage.FrozenScriptKind.live",
+    "enum storage.FrozenScriptKind.ScriptKind",
+    "object storage.FrozenScriptKind",
+    "val storage.FrozenScriptKind.codec"
+   ],
+   "reason": "the frozen kinds of a stored script in the sidecar schemas of the snapshot versions before V10, and the script's codec over a kind's codec: Scarab's own persisted format, which keeps the bytes and fingerprints of its previous files; the reference keeps no such files and has no counterpart (#85, #54)"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenScriptKind.scala"
+}

@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "class ledger.rules.Hfc.Pending": null,
+  "def ledger.rules.Hfc.pending": null,
+  "def ledger.rules.Hfc.tick": null,
+  "object ledger.rules.Hfc": null,
+  "type ledger.rules.Hfc.Transition": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Hfc.scala"
+}

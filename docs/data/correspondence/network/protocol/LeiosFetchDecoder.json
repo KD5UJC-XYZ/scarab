@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "def protocol.LeiosFetchDecoder.decode": null,
+  "object protocol.LeiosFetchDecoder": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.LeiosFetchDecoder.resumed",
+    "enum protocol.LeiosFetchDecoder.Checkpoint",
+    "val protocol.LeiosFetchDecoder.start"
+   ],
+   "reason": "the LeiosFetch codec read in steps, so that a message the driver receives in parts is read once and refused at the first token the codec refuses, as cborg's incremental decoder reads the reference's single Decoder: the checkpoints between steps and the one a message starts from, the runner that resumes from a checkpoint, and a counted collection's head and its next entry with the entries read so far (the bound checks of the reference's decodeBitmaps and of its transaction list); cborg's incremental decoding is the runtime's, with no definition to map (#54)"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/LeiosFetchDecoder.scala"
+}

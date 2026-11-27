@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "class storage.SnapshotMigration.NodeSnapshotMigration": null,
+  "class storage.SnapshotMigration.Refused": null,
+  "class storage.SnapshotMigration.Report": null,
+  "def storage.SnapshotMigration#preflight": null,
+  "def storage.SnapshotMigration#run": null,
+  "def storage.SnapshotMigration.NodeSnapshotMigration#detect": null,
+  "def storage.SnapshotMigration.NodeSnapshotMigration#preflight": null,
+  "def storage.SnapshotMigration.NodeSnapshotMigration#run": null,
+  "def storage.SnapshotMigration.NodeSnapshotMigration#step": null,
+  "def storage.SnapshotMigration.converted": null,
+  "def storage.SnapshotMigration.preflight": null,
+  "def storage.SnapshotMigration.toCurrent": null,
+  "def storage.SnapshotMigration.versionOf": null,
+  "object storage.SnapshotMigration": null,
+  "object storage.SnapshotMigration.Report": null,
+  "trait storage.SnapshotMigration": null,
+  "val storage.SnapshotMigration.NodeSnapshotMigration#kind": null,
+  "val storage.SnapshotMigration.Report.empty": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotMigration.scala"
+}

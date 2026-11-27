@@ -1,0 +1,33 @@
+{
+ "baseline": {
+  "class consensus.Scheduling": null,
+  "class consensus.SchedulingReport": null,
+  "class consensus.SchedulingReport.Step": null,
+  "class consensus.SchedulingStats": null,
+  "def consensus.Compute#timed": null,
+  "def consensus.Compute#timedF": null,
+  "def consensus.Compute#within": null,
+  "def consensus.Compute.inline": null,
+  "def consensus.Compute.measured": null,
+  "def consensus.Compute.pool": null,
+  "def consensus.Scheduling.inline": null,
+  "def consensus.Scheduling.monitor": null,
+  "def consensus.Scheduling.resource": null,
+  "def consensus.SchedulingReport#longest": null,
+  "def consensus.SchedulingReport#merge": null,
+  "def consensus.SchedulingReport#stepCount": null,
+  "def consensus.SchedulingStats#step": null,
+  "def consensus.SchedulingStats#timer": null,
+  "def consensus.SchedulingStats#total": null,
+  "def consensus.SchedulingStats#window": null,
+  "def consensus.SchedulingStats.create": null,
+  "given consensus.SchedulingReport.given_cats_kernel_CommutativeMonoid_SchedulingReport": null,
+  "object consensus.Compute": null,
+  "object consensus.Scheduling": null,
+  "object consensus.SchedulingReport": null,
+  "object consensus.SchedulingStats": null,
+  "trait consensus.Compute": null,
+  "val consensus.SchedulingReport.empty": null
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Scheduling.scala"
+}

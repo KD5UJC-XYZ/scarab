@@ -1,0 +1,55 @@
+{
+ "baseline": {
+  "def storage.haskell.state.GovStateCodecs#futurePParams": null,
+  "def storage.haskell.state.GovStateCodecs#shelleyGovState": null,
+  "given storage.haskell.state.GovStateCodecs#conwayGovState": null,
+  "given storage.haskell.state.GovStateCodecs#conwayInstantStake": null,
+  "given storage.haskell.state.GovStateCodecs#drComplete": null,
+  "given storage.haskell.state.GovStateCodecs#shelleyInstantStake": null,
+  "given storage.haskell.state.GovStateCodecs#utxoTables": null,
+  "trait storage.haskell.state.GovStateCodecs": null
+ },
+ "entries": {
+  "def storage.haskell.state.GovStateCodecs#conwayGovStateWith": {
+   "class": "Mirror",
+   "digest": "ee0aff64c8b9a7cb",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "lines": [
+      363,
+      373
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EncCBOR (ConwayGovState era)"
+    }
+   ]
+  },
+  "def storage.haskell.state.GovStateCodecs#drCompleteWith": {
+   "class": "Mirror",
+   "digest": "b7d4061c467fe0af",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance/DRepPulser.hs",
+     "lines": [
+      468,
+      472
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EncCBOR (DRepPulsingState era)"
+    }
+   ]
+  }
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/GovStateCodecs.scala"
+}

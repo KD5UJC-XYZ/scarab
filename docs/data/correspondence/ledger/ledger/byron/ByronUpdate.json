@@ -1,0 +1,29 @@
+{
+ "baseline": {
+  "class ledger.byron.AppVersion": null,
+  "class ledger.byron.ByronProposal": null,
+  "class ledger.byron.ByronUpdate.Env": null,
+  "class ledger.byron.ByronVote": null,
+  "class ledger.byron.CandidateUpdate": null,
+  "class ledger.byron.ProtocolProposal": null,
+  "class ledger.byron.SoftwareProposal": null,
+  "class ledger.byron.UpdatePayload": null,
+  "class ledger.byron.UpdateState": null,
+  "def ledger.byron.ByronUpdate.Env#delegatorOf": null,
+  "def ledger.byron.ByronUpdate.Env#isDelegate": null,
+  "def ledger.byron.ByronUpdate.initial": null,
+  "def ledger.byron.ByronUpdate.refusedAs": null,
+  "def ledger.byron.ByronUpdate.register": null,
+  "def ledger.byron.ByronUpdate.registerEndorsement": null,
+  "def ledger.byron.ByronUpdate.registerEpoch": null,
+  "def ledger.byron.ByronUpdate.registerProposal": null,
+  "def ledger.byron.ByronUpdate.registerVotes": null,
+  "def ledger.byron.UpdateError#message": null,
+  "def ledger.byron.UpdatePayload.decode": null,
+  "enum ledger.byron.UpdateError": null,
+  "object ledger.byron.ByronUpdate": null,
+  "object ledger.byron.UpdatePayload": null,
+  "val ledger.byron.UpdatePayload.empty": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronUpdate.scala"
+}

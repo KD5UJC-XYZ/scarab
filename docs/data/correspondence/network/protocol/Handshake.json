@@ -1,0 +1,246 @@
+{
+ "baseline": {
+  "class protocol.Handshake.Client": null,
+  "class protocol.Handshake.Data": null,
+  "class protocol.Handshake.DecodeError": null,
+  "def protocol.Handshake.Client#receive": null,
+  "def protocol.Handshake.DataCodec#agree": null,
+  "def protocol.Handshake.DataCodec#decode": null,
+  "def protocol.Handshake.DataCodec#refusalText": null,
+  "def protocol.Handshake.VersionCodec#decode": null,
+  "def protocol.Handshake.VersionCodec#encode": null,
+  "def protocol.Handshake.clientStart": null,
+  "def protocol.Handshake.dataTerm": null,
+  "def protocol.Handshake.decode": null,
+  "def protocol.Handshake.decodeData": null,
+  "def protocol.Handshake.decodePrefix": null,
+  "def protocol.Handshake.decodeReason": null,
+  "def protocol.Handshake.defaultNodeToNode": null,
+  "def protocol.Handshake.encode": null,
+  "def protocol.Handshake.encodeReason": null,
+  "def protocol.Handshake.nodeToClientOffers": null,
+  "def protocol.Handshake.nodeToNodeOffers": null,
+  "def protocol.Handshake.proposal": null,
+  "def protocol.Handshake.recognized": null,
+  "def protocol.Handshake.refusal": null,
+  "def protocol.Handshake.responder": null,
+  "def protocol.Handshake.wireVersion": null,
+  "enum protocol.Handshake.Message": null,
+  "enum protocol.Handshake.Reason": null,
+  "enum protocol.Handshake.Result": null,
+  "enum protocol.Handshake.SelectionError": null,
+  "enum protocol.Handshake.Suite": null,
+  "enum protocol.Handshake.Term": null,
+  "enum protocol.Handshake.WireMessage": null,
+  "enum protocol.Handshake.WireReason": null,
+  "given protocol.Handshake.VersionCodec.given_VersionCodec_NtcVersion": null,
+  "given protocol.Handshake.VersionCodec.given_VersionCodec_NtnVersion": null,
+  "object protocol.Handshake.VersionCodec": null,
+  "trait protocol.Handshake.DataCodec": null,
+  "trait protocol.Handshake.VersionCodec": null
+ },
+ "entries": {
+  "def protocol.Handshake.acceptOrRefuse": {
+   "class": "Mirror",
+   "digest": "9db19c30f0fdd2c7",
+   "note": "greatest common version, else VersionMismatch of the local versions in ascending order; decode its data, else HandshakeDecodeError; accept it, else Refused. Failures stay typed (SelectionError) and refusal renders their text. Offers are a Vector its callers keep distinct (proposal refuses duplicates); the branch for a common version missing from the offers cannot be taken",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Client.hs",
+     "lines": [
+      191,
+      222
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "acceptOrRefuse"
+    }
+   ]
+  },
+  "def protocol.Handshake.message": {
+   "class": "Gap",
+   "digest": "03a1979b2b67bc2f",
+   "note": "the message read from the term the parser read whole, as object protocol.Handshake's entry says (#796): the key and the items checked once the term is whole, where decodeMsg checks (key, length) before reading on. Visible in the package so that the test oracle of the parser before it resumed reads its terms with it; unchanged",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/796",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "lines": [
+      152,
+      195
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "decodeMsg"
+    }
+   ]
+  },
+  "def protocol.Handshake.reason": {
+   "class": "Gap",
+   "digest": "7f27d4cc52b78689",
+   "note": "a refusal's reason read from its term, as object protocol.Handshake's entry says (#796); visible in the package for the same test oracle; unchanged",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/796",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "lines": [
+      264,
+      288
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "decodeRefuseReason"
+    }
+   ]
+  },
+  "enum protocol.Handshake.State": {
+   "class": "Mirror",
+   "digest": "d7de64309644447f",
+   "note": "StPropose, StConfirm, StDone",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Type.hs",
+     "lines": [
+      43,
+      46
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "Handshake"
+    }
+   ]
+  },
+  "object protocol.Handshake": {
+   "class": "Gap",
+   "digest": "e6074156f996ce84",
+   "note": "its private parser reads a message as one generic term and checks it afterwards, where decodeMsg reads the list length and key and checks (key, length) before reading on, so a malformed message can be refused at another item and with other text (#796). As the reference since #1029: a refusal's reason is read as decodeRefuseReason reads it, its length read and ignored; generic terms and strings have no depth, count or size cap, only the message's 5760 bytes on receipt (runDecoderWithLimit); the encoder writes a message of any size, as encodeMsg does and the driver sends it (sendMessage, Driver/Limits.hs:109-117); a term keeps an indefinite string's chunks and writes them, an empty indefinite text and its simple values as cborg 0.2.10.0's encodeTerm writes them; and a simple value after 0xf8 is read whatever its value, as decodeTerm reads it. Still different, also #796: a float keeps its width and NaN payload when written, where cborg writes every NaN as f97e00 (Write.hs:580); and tags 2 and 3 are kept with any payload, where decodeTerm reads them as integers and refuses a payload that is not bytes; the parser reads a message that arrives in parts on from the head it stopped at, with the terms it has read (incremental), as decodeMsg runs from the stream through mkCodecCborLazyBS (Codec.hs:117)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/796",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "lines": [
+      152,
+      195
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "decodeMsg"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "lines": [
+      264,
+      288
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "decodeRefuseReason"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "lines": [
+      119,
+      150
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "encodeMsg"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "lines": [
+      58,
+      68
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "byteLimitsHandshake"
+    }
+   ]
+  },
+  "val protocol.Handshake.DefaultPhaseTimeout": {
+   "class": "Mirror",
+   "digest": "a1bd5ee80c0e37d5",
+   "note": "StPropose and StConfirm: shortWait, 10 seconds (node-to-node; node-to-client runs noTimeLimitsHandshake, Codec.hs:91-99)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "lines": [
+      80,
+      88
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "timeLimitsHandshake"
+    },
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs",
+     "lines": [
+      111,
+      112
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "shortWait"
+    }
+   ]
+  },
+  "val protocol.Handshake.MaxMessageBytes": {
+   "class": "Mirror",
+   "digest": "0dfd0613c6b3e091",
+   "note": "StPropose and StConfirm both take maxTransmissionUnit, 4 * 1440 = 5760 bytes",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "lines": [
+      58,
+      68
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "byteLimitsHandshake"
+    },
+    {
+     "file": "ouroboros-network/framework/lib/Ouroboros/Network/Protocol/Handshake/Codec.hs",
+     "lines": [
+      54,
+      55
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "maxTransmissionUnit"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.Handshake.incremental"
+   ],
+   "reason": "how a decoder keeps its progress on a message not all of which has arrived, so that a longer prefix is read on from where it stopped and nothing read whole is read again: the reference keeps that progress in its decoder's continuation (cborg 0.2.10.0 deserialiseIncremental, src/Codec/CBOR/Read.hs:169-172 and 1254-1260; typed-protocols 1.2.2.0 convertCborDecoderLBS, cborg/Network/TypedProtocol/Codec/CBOR.hs:136-164), fed a chunk at a time by runDecoderWithLimit (ouroboros-network framework/lib/Ouroboros/Network/Driver/Limits.hs:281-331 at c45735a5 and 4646039f); here a decoder's cursor holds it as a value. What each codec accepts and refuses, and where, is the codec's as before; each codec's incremental is its decodePrefix as the multiplexer takes it (decodePrefix is it started afresh), the reading itself in the codec's own definitions as before"
+  },
+  {
+   "definitions": [
+    "def protocol.Handshake.Term#equals",
+    "def protocol.Handshake.Term#hashCode",
+    "def protocol.Handshake.Term#toString"
+   ],
+   "reason": "stack-safe structural equality, hashing and rendering of a generic term (codec.Tree), which nests as deep as a 5760-byte message allows; the reference's CBOR.Term derives Eq and Show"
+  },
+  {
+   "definitions": [
+    "def protocol.Handshake.DecodeError#message"
+   ],
+   "reason": "text of typed errors for logs, never sent on the wire; the reference's PeerSharingError derives Show"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/Handshake.scala"
+}

@@ -1,0 +1,14 @@
+{
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.conway.ConwayProcedures.govAction",
+    "def ledger.era.conway.ConwayProcedures.proposal",
+    "def ledger.era.conway.ConwayProcedures.votes",
+    "object ledger.era.conway.ConwayProcedures"
+   ],
+   "reason": "Conway's governance procedures read from what the flat decoder read (the flat Proposal, GovAction and votes the flat rules and their failures carry), until the body is read by its own decoder (#85); the flat proposal a proposal keeps; the companions, the names of the purposes' singleton types and their equality under strict equality; the GOV predicates' adapter to the node's flat failures, and the objects that stand for the reference's Conway/Era, Governance and Rules/Gov modules"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayProcedures.scala"
+}

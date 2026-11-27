@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "class network.MuxEgress.Lane": null,
+  "class network.MuxEgress.Outbox": null,
+  "def network.MuxEgress.Outbox#flush": null,
+  "def network.MuxEgress.Outbox#run": null,
+  "def network.MuxEgress.Outbox#send": null,
+  "def network.MuxEgress.create": null,
+  "object network.MuxEgress": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/MuxEgress.scala"
+}

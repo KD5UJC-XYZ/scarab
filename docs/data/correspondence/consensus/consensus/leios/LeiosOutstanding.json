@@ -1,0 +1,319 @@
+{
+ "entries": {
+  "class consensus.leios.LeiosOutstanding": {
+   "class": "Improvement",
+   "digest": "3dfe5871d4193e3d",
+   "evidence": [
+    "LeiosFetchArrivalSuite",
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "over the peers' identifiers; the reference's PeerId newtype is the identifier itself; requestedJobsPerPeer keyed by the endorser block and the pool (LeiosJobPoolOf) where the reference keys it by the endorser block alone; and nextJobPool, the id the next pool installed takes, which no prune resets; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      523,
+      593
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "LeiosOutstanding"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosOutstanding#acquireEbBody": {
+   "class": "Improvement",
+   "digest": "e84f1550753b1fa7",
+   "evidence": [
+    "LeiosFetchArrivalSuite",
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the pool installed takes the id nextJobPool holds, and the count moves on; a write that installs nothing takes none; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      812,
+      824
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "acquireEbBody"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosOutstanding#announced": {
+   "class": "Mirror",
+   "digest": "978e68ab80e606f7",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the update recordAnnouncedEb makes under the lock, and whether it wakes the fetch loop; the lock and the wake are the caller's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      2097,
+      2138
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "recordAnnouncedEb"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosOutstanding#focusCertifiedEb": {
+   "class": "Mirror",
+   "digest": "c0ba47cf20106485",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      952,
+      955
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "focusCertifiedEb"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosOutstanding#focusElection": {
+   "class": "Mirror",
+   "digest": "66f16766699ca148",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      996,
+      1005
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "focusElection"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosOutstanding#focusElectionIfUnfocused": {
+   "class": "Mirror",
+   "digest": "294c87acd9bdebee",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      939,
+      942
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "focusElectionIfUnfocused"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosOutstanding#isFocused": {
+   "class": "Mirror",
+   "digest": "8c76e4f1a1a4e13f",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      1008,
+      1009
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "isFocusedEb"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosOutstanding#markBodyImminent": {
+   "class": "Mirror",
+   "digest": "4a0f39ab899053a4",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the emptied pool keeps its id (LeiosJobPoolId)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      827,
+      837
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "markBodyImminent"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosOutstanding#prunedToImmTip": {
+   "class": "Mirror",
+   "digest": "bdcf528f05459c36",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      1070,
+      1101
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "pruneOutstandingToImmTip"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosOutstanding#recordMaxAnnouncementSlot": {
+   "class": "Mirror",
+   "digest": "5a73a1de922d83e5",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      849,
+      859
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "recordMaxAnnouncementSlot"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      862,
+      865
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "minOnset"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosOutstanding#trackCertifiedEb": {
+   "class": "Mirror",
+   "digest": "a6d5abc51f1861a9",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      969,
+      974
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "trackCertifiedEb"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosOutstanding.empty": {
+   "class": "Mirror",
+   "digest": "3454494d513fbe66",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "no pool installed yet: nextJobPool at its first id (LeiosJobPoolId)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      600,
+      613
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "emptyLeiosOutstanding"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosOutstanding.initialized": {
+   "class": "Mirror",
+   "digest": "75611015506d9a9e",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      922,
+      931
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "initializeLeiosOutstanding"
+    }
+   ]
+  },
+  "type consensus.leios.FocusedEbs": {
+   "class": "Mirror",
+   "digest": "215a40cfca106070",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the MultiSet as positive counts by hash",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      553,
+      562
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "focusedEbs"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def consensus.leios.FocusedEbs.contains",
+    "def consensus.leios.FocusedEbs.count",
+    "def consensus.leios.FocusedEbs.deleted",
+    "def consensus.leios.FocusedEbs.inserted",
+    "object consensus.leios.FocusedEbs",
+    "object consensus.leios.LeiosOutstanding",
+    "val consensus.leios.FocusedEbs.empty"
+   ],
+   "reason": "the Leios fetch state's Scala plumbing with no counterpart of its own: the companions, Word32's conversions and order on BytesSize, the MultiSet operations on FocusedEbs, the orders as Scala Orderings, the equalities, the job id's constructor, and the decision's result triple as a named record (#54)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/leios/LeiosOutstanding.scala"
+}

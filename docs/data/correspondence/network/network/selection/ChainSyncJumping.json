@@ -1,0 +1,92 @@
+{
+ "baseline": {
+  "class network.selection.ChainSyncJumping.JumpInfo": null,
+  "class network.selection.ChainSyncJumping.Next": null,
+  "class network.selection.ChainSyncJumping.Peer": null,
+  "class network.selection.ChainSyncJumping.Processed": null,
+  "class network.selection.ChainSyncJumping.State": null,
+  "def network.selection.ChainSyncJumping.JumpInfo#prefix": null,
+  "def network.selection.ChainSyncJumping.JumpInfo#tip": null,
+  "def network.selection.ChainSyncJumping.next": null,
+  "def network.selection.ChainSyncJumping.onAwaitReply": null,
+  "def network.selection.ChainSyncJumping.onRollForward": null,
+  "def network.selection.ChainSyncJumping.onRollback": null,
+  "def network.selection.ChainSyncJumping.processJump": null,
+  "def network.selection.ChainSyncJumping.register": null,
+  "def network.selection.ChainSyncJumping.remove": null,
+  "def network.selection.ChainSyncJumping.rotate": null,
+  "def network.selection.ChainSyncJumping.slot": null,
+  "def network.selection.ChainSyncJumping.update": null,
+  "enum network.selection.ChainSyncJumping.Error": null,
+  "enum network.selection.ChainSyncJumping.Instruction": null,
+  "enum network.selection.ChainSyncJumping.Jumper": null,
+  "enum network.selection.ChainSyncJumping.Role": null,
+  "object network.selection.ChainSyncJumping": null
+ },
+ "entries": {
+  "class network.selection.ChainSyncJumping.RotatedDynamo": {
+   "class": "Mirror",
+   "digest": "b9deea20cf736d48",
+   "note": "the reference's one constructor, as a class",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/Jumping.hs",
+     "lines": [
+      1078,
+      1080
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "TraceEventDbf"
+    }
+   ]
+  },
+  "enum network.selection.ChainSyncJumping.Event": {
+   "class": "Mirror",
+   "digest": "1a3a90f88ac5b8b4",
+   "note": "each case is a constructor of the reference's, with the same fields; the transitions return it with the state they write, and the runtime traces BlockedOnJump where it blocks, as mkJumping does",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/Jumping.hs",
+     "lines": [
+      1083,
+      1094
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "TraceEventCsj"
+    }
+   ]
+  },
+  "enum network.selection.ChainSyncJumping.Reason": {
+   "class": "Mirror",
+   "digest": "9344d01e2963e102",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client/Jumping.hs",
+     "lines": [
+      1096,
+      1098
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "TraceCsjReason"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class network.selection.ChainSyncJumping.Step",
+    "def network.selection.ChainSyncJumping.Event#map",
+    "def network.selection.ChainSyncJumping.RotatedDynamo#map"
+   ],
+   "reason": "a transition's new state with the trace event it causes, which the reference's STM transitions of Jumping.hs return together; and the renaming of the peers an event names, from the runtime's key of a session to its connection, which the reference's events carry directly"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/ChainSyncJumping.scala"
+}

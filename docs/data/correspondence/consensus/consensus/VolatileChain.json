@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "class consensus.Anchor": null,
+  "class consensus.BlockRef": null,
+  "class consensus.VolatileChain": null,
+  "def consensus.Anchor#blockNo": null,
+  "def consensus.Anchor#point": null,
+  "def consensus.BlockRef#point": null,
+  "def consensus.VolatileChain#candidates": null,
+  "def consensus.VolatileChain#extend": null,
+  "def consensus.VolatileChain#length": null,
+  "def consensus.VolatileChain#rollback": null,
+  "def consensus.VolatileChain#state": null,
+  "def consensus.VolatileChain#tip": null,
+  "def consensus.VolatileChain#tipRef": null,
+  "def consensus.VolatileChain.genesis": null,
+  "given consensus.BlockRef.given_Eq_BlockRef": null,
+  "given consensus.VolatileChain.given_Eq_VolatileChain_S": null,
+  "object consensus.BlockRef": null,
+  "object consensus.VolatileChain": null
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/VolatileChain.scala"
+}

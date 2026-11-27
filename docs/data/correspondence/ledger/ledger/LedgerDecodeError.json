@@ -1,0 +1,21 @@
+{
+ "baseline": {
+  "def ledger.LedgerDecodeError#message": null,
+  "def ledger.LedgerDecodeError#toString": null,
+  "def ledger.LedgerDecodeError.implemented": null,
+  "enum ledger.LedgerDecodeError": null,
+  "enum ledger.LedgerDecodeError.Retired": null,
+  "enum ledger.LedgerDecodeError.Shape": null,
+  "given ledger.LedgerDecodeError.given_Show_LedgerDecodeError": null,
+  "object ledger.LedgerDecodeError": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "enum ledger.LedgerDecodeError.OutOfBounds"
+   ],
+   "reason": "what a refusal of a tag 30 rational keeps of its value: the reference's refusal holds the reduced value only as text (`DecoderErrorCustom \"BoundedRatio\" (show r)`, cardano-ledger 29a7d656 `libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:398-402`), so there is no type to mirror; a value whose reduced form is beyond Word64 is refused without being reduced, and only its components' bit lengths are kept"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LedgerDecodeError.scala"
+}

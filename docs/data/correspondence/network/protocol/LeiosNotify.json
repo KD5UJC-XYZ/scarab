@@ -1,0 +1,66 @@
+{
+ "baseline": {
+  "def protocol.LeiosNotify.AnnouncementReader#read": null,
+  "def protocol.LeiosNotify.byteLimit": [
+   {
+    "file": "ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs",
+    "lines": [
+     131,
+     132
+    ],
+    "repository": "IntersectMBO/ouroboros-network",
+    "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+    "symbol": "smallByteLimit"
+   }
+  ],
+  "def protocol.LeiosNotify.decodePrefix": null,
+  "def protocol.LeiosNotify.encode": null,
+  "def protocol.LeiosNotify.next": null,
+  "enum protocol.LeiosNotify.Message": null,
+  "enum protocol.LeiosNotify.State": null,
+  "object protocol.LeiosNotify": [
+   {
+    "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+    "lines": [
+     259,
+     283
+    ],
+    "repository": "IntersectMBO/ouroboros-consensus",
+    "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+    "symbol": "codecLeiosNotify"
+   }
+  ],
+  "trait protocol.LeiosNotify.AnnouncementReader": null,
+  "val protocol.LeiosNotify.MiniProtocolId": null,
+  "val protocol.LeiosNotify.SmallByteLimit": null
+ },
+ "entries": {
+  "def protocol.LeiosNotify.incremental": {
+   "class": "Mirror",
+   "digest": "442499696f0c4dbd",
+   "note": "the client's decoder of StBusy and StQuit, read in steps as cborg's incremental decoder reads a message once",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "lines": [
+      259,
+      396
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "codecLeiosNotify"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "val protocol.LeiosNotify.idleIncremental"
+   ],
+   "reason": "the LeiosNotify server's Scala plumbing with no counterpart of its own: its companion, and the decoder the multiplexer receives the client's two-byte messages with, read from the start of each longer prefix (#54)"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/LeiosNotify.scala"
+}

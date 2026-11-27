@@ -1,0 +1,20 @@
+{
+ "baseline": {
+  "class consensus.state.ProtocolExtras": null,
+  "class consensus.state.ProtocolState": null,
+  "def consensus.state.ProtocolState#counters": null,
+  "def consensus.state.ProtocolState#epoch": null,
+  "def consensus.state.ProtocolState#epochNonce": null,
+  "def consensus.state.ProtocolState#in": null,
+  "def consensus.state.ProtocolState#view": null,
+  "def consensus.state.ProtocolState.initial": null,
+  "given consensus.state.ProtocolExtras.given_Eq_ProtocolExtras": null,
+  "given consensus.state.ProtocolExtras.given_Show_ProtocolExtras": null,
+  "given consensus.state.ProtocolState.given_Diff_ProtocolState": null,
+  "given consensus.state.ProtocolState.given_Eq_ProtocolState": null,
+  "given consensus.state.ProtocolState.given_Show_ProtocolState": null,
+  "object consensus.state.ProtocolExtras": null,
+  "object consensus.state.ProtocolState": null
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/ProtocolState.scala"
+}

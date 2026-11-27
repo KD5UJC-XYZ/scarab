@@ -1,0 +1,11 @@
+{
+ "baseline": {
+  "class network.InboundGovernorCounters": null,
+  "def network.InboundGovernorCounters.of": null,
+  "enum network.RemoteSt": null,
+  "given network.InboundGovernorCounters.given_Monoid_InboundGovernorCounters": null,
+  "object network.InboundGovernorCounters": null,
+  "val network.InboundGovernorCounters.empty": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/RemoteSt.scala"
+}

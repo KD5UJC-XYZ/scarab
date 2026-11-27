@@ -1,0 +1,65 @@
+{
+ "baseline": {
+  "class ledger.rules.Counted": null,
+  "class ledger.rules.StAnnTx": null,
+  "def ledger.rules.Counted.plutus": null,
+  "def ledger.rules.Counted.state": null,
+  "def ledger.rules.Counted.utxoOfEra": null,
+  "def ledger.rules.Refuse.recorded": null,
+  "def ledger.rules.Refuse.state": null,
+  "def ledger.rules.Refuse.vocab": null,
+  "def ledger.rules.StAnnTx#id": null,
+  "object ledger.rules.CertLens": null,
+  "object ledger.rules.Counted": null,
+  "object ledger.rules.Refuse": null,
+  "val ledger.rules.CertLens.accounts": null,
+  "val ledger.rules.CertLens.committee": null,
+  "val ledger.rules.CertLens.dreps": null,
+  "val ledger.rules.CertLens.pools": null,
+  "val ledger.rules.Counted.utxoOf": null,
+  "val ledger.rules.StAnnTx#referenced": null,
+  "val ledger.rules.StAnnTx#referencedByInput": null,
+  "val ledger.rules.StAnnTx#scripts": null,
+  "val ledger.rules.StAnnTx#spent": null,
+  "val ledger.rules.StAnnTx#spentByInput": null
+ },
+ "entries": {
+  "def ledger.rules.StAnnTx#needed": {
+   "class": "Mirror",
+   "digest": "f38a181e70255433",
+   "note": "computed when a rule asks, with that rule's era, where the reference keeps the value mkAlonzoStAnnTx computed with the era's getScriptsNeeded",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      186,
+      193
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "scriptsNeededAlonzoStAnnTx"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo.hs",
+     "lines": [
+      134,
+      137
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkAlonzoStAnnTx"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.rules.Refuse.layout"
+   ],
+   "reason": "the state layout of each reference build Scarab can follow, and the defect of a build whose layout is not implemented yet, which the node's setup refuses before any rule runs (#1002, stage 0); the reference is one build and has no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ConwayTx.scala"
+}

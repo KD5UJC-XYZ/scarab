@@ -1,0 +1,25 @@
+{
+ "baseline": {
+  "class uplc.Availability.MaxBounds": null,
+  "def uplc.Availability.Arrival#reachedBy": null,
+  "def uplc.Availability.allows": null,
+  "def uplc.Availability.builtins": null,
+  "def uplc.Availability.checkBuiltin": null,
+  "def uplc.Availability.checkCase": null,
+  "def uplc.Availability.checkConstantType": null,
+  "def uplc.Availability.checkConstr": null,
+  "def uplc.Availability.checkConstrFields": null,
+  "def uplc.Availability.checkLanguage": null,
+  "def uplc.Availability.checkProgramVersion": null,
+  "def uplc.Availability.introductions": null,
+  "def uplc.Availability.languageIntroducedIn": null,
+  "def uplc.Availability.maxBounds": null,
+  "def uplc.Availability.programVersions": null,
+  "def uplc.Availability.versionIntroductions": null,
+  "enum uplc.Availability.Arrival": null,
+  "enum uplc.Availability.Batch": null,
+  "enum uplc.Availability.Refusal": null,
+  "object uplc.Availability": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/Availability.scala"
+}

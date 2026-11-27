@@ -1,0 +1,25 @@
+{
+ "baseline": {
+  "class uplc.cost.CekMachineCosts": [
+   {
+    "file": "plutus-core/untyped-plutus-core/src/UntypedPlutusCore/Evaluation/Machine/Cek/CekMachineCosts.hs",
+    "lines": [
+     46,
+     63
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "CekMachineCostsBase"
+   }
+  ],
+  "class uplc.cost.StepBudget": null,
+  "def uplc.cost.CekMachineCosts#leaves": null,
+  "def uplc.cost.CekMachineCosts#traverse": null,
+  "def uplc.cost.CekMachineCosts.machineCosts": null,
+  "def uplc.cost.StepBudget#traverse": null,
+  "object uplc.cost.CekMachineCosts": null,
+  "val uplc.cost.CekMachineCosts.Prefix": null,
+  "val uplc.cost.CekMachineCosts.shape": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cost/CekMachineCosts.scala"
+}

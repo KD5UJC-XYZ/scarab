@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "def ledger.injection.InjectionShow.end": null,
+  "def ledger.injection.InjectionShow.item": null,
+  "object ledger.injection.InjectionShow": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/injection/InjectionShow.scala"
+}

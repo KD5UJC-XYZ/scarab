@@ -1,0 +1,287 @@
+{
+ "entries": {
+  "def ledger.era.dijkstra.DijkstraUTxO.batchNonDistinctRefScriptsSize": {
+   "class": "Mirror",
+   "digest": "e6fc40d40b696b29",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; the reference scripts of the outputs each level spends or reads on every Dijkstra transaction the repository holds (DijkstraUTxOSuite), as the flat measure gave until the flat decoder went (#85)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      300,
+      314
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "batchNonDistinctRefScriptsSize"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.dijkstraConsumed": {
+   "class": "Mirror",
+   "digest": "1af5ad2709f48048",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal to the value produced on every transaction recorded on the Leios testnet's chain, which its ledger accepted (none registers a pool, so the produced value is given no registered pool), and to the reference's recorded value consumed in each `ValueNotConservedUTxO` of its UTXOW cases, which have no sub-transactions: a component check under CNF-2, not the I1 verdict or the resulting state. The flat path computes the value consumed only inline for a transaction without Dijkstra's own fields, so it has no complete Dijkstra batch comparison",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      71,
+      77
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraConsumed"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.dijkstraConsumedWithoutSubTransactions": {
+   "class": "Mirror",
+   "digest": "47d4d99a04b93814",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "dijkstraConsumed of the body with its sub-transactions taken out, the top level's value alone, compared with dijkstraConsumed of the body written again without key 23",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      71,
+      77
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraConsumed"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.dijkstraProducedValue": {
+   "class": "Mirror",
+   "digest": "9f2aa07cebac5df4",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; the batch's certificates, the sub-transactions' first, the sequences concatenated as the reference's `StrictSeq`s are",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      106,
+      128
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraProducedValue"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.dijkstraProducedValueWithoutSubTransactions": {
+   "class": "Mirror",
+   "digest": "0392d45b52becbd3",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "dijkstraProducedValue of the body with its sub-transactions taken out, compared with it on the body written again without key 23",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      106,
+      128
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraProducedValue"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.getConsumedDijkstraValue": {
+   "class": "Mirror",
+   "digest": "4b2b38fd393a2dc6",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      79,
+      104
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "getConsumedDijkstraValue"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.getDijkstraScriptsNeeded": {
+   "class": "Mirror",
+   "digest": "be9d228c98e07984",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; on every body of every Dijkstra transaction the repository holds, at both levels, the purposes the flat rules needed (recorded by purpose when the flat decoder went, #85; until then equal to them in order, purpose, index, item and script hash); the UTxO set is the recorded one where the corpus has it and stand-in outputs elsewhere",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      188,
+      198
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "getDijkstraScriptsNeeded"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.getDijkstraScriptsProvided": {
+   "class": "Mirror",
+   "digest": "3946655273d678dd",
+   "evidence": [
+    "DijkstraUTxOSuite",
+    "DijkstraPlutusContextSuite",
+    "DijkstraScriptsProvidedSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; on every Dijkstra transaction the repository records that the reference reads, its Plutus scripts by hash and language, at the top level and at each sub-transaction, are exactly the witness sets' and the recorded outputs' reference scripts the recorded bytes hold (`DijkstraScriptsProvidedSuite`); on the testnet's transactions and the reference's UTXOW cases its hashes are exactly the batch's witnesses' and its inputs' reference scripts', and the script of every context the reference recorded is the one it provides, with its language and bytes (`DijkstraPlutusContextSuite`)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      165,
+      186
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "getDijkstraScriptsProvided"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.getDijkstraSupplementalDataHashes": {
+   "class": "Mirror",
+   "digest": "97fd04a2a19bb44c",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both; equal, at each level, to the datum hashes the flat decoder read in the body's outputs, collateral return and reference inputs' outputs, the sub-transactions' added at the top level, on every Dijkstra transaction the repository holds, on a crafted case where a sub-transaction's reference input names a datum hash, and on that transaction with its sub-transactions taken out of its body, as UTXOW reads it in the legacy mode",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      213,
+      230
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "getDijkstraSupplementalDataHashes"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.getDijkstraSupplementalDataHashesWithoutSubTransactions": {
+   "class": "Mirror",
+   "digest": "d441ac0960375f01",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "getDijkstraSupplementalDataHashes of the body with its sub-transactions taken out (UTXOW's legacy mode, Dijkstra/Rules/Utxow.hs:281-285), compared with it on the body written again without key 23",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      213,
+      230
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "getDijkstraSupplementalDataHashes"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraUTxO.localProducedValue": {
+   "class": "Mirror",
+   "digest": "32aad02a4f6dd61b",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "written for Dijkstra, whose levels are both, as `conwayProducedValue` is for Conway; the reference's is generic in an era whose levels are both",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      134,
+      146
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "localProducedValue"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraUTxO.instance": {
+   "class": "Mirror",
+   "digest": "08b882e6fe29be0c",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "every member of the reference's three instances. The keys needed are Conway's (`getConwayWitsVKeyNeeded`): on the testnet's transactions they are a subset of each level's witnesses, and on the reference's UTXOW cases the keys not witnessed are its recorded missing key; a component check under CNF-2, not the I1 verdict or the resulting state, as an undercomputed set passes the subset check. The minimum fee is Conway's, equal to the reference's recorded minimum of its one `FeeTooSmallUTxO`, a case without redeemers, sub-transactions or reference scripts. Over the batch, the scripts needed less the reference scripts are exactly the witnesses on the testnet's transactions, and the reference's recorded missing and extraneous scripts on its UTXOW cases, with a crafted witness of a needed reference script extraneous, as `babbageMissingScripts` has it. The spending datum is Babbage's, compared on Conway. The flat path has `DijkstraUtxo.minFee`, `TxChecks.neededWitnesses` and `TxChecks.supplementalDatumHashes`, for a transaction without Dijkstra's own fields: no complete Dijkstra batch comparison. The annotated transaction's members are of its Gap (#85's item on Dijkstra's script contexts). The batch's scripts with their contexts are the top level's, then each sub-transaction's, a sub-transaction's collection read only while every one before it was collected, as the reference's `sequence` forces its lazy list; the annotated transaction's members read from their deferred values (`Eval`)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      148,
+      163
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraUTxO DijkstraEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      200,
+      211
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "AlonzoEraUTxO DijkstraEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      291,
+      298
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraEraUTxO DijkstraEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.dijkstra.DijkstraUTxO"
+   ],
+   "reason": "objects that stand for the reference's modules of functions (`Alonzo/Scripts.hs`, `State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`, the `TxInfo.hs` and `Context.hs` of the script context, the `Indexable` instances of `Alonzo/TxBody.hs`, plutus-ledger-api's `V1` to `V4`, plutus-tx's `Ratio`), which Scala needs to hold top-level functions under a name"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraUTxO.scala"
+}

@@ -1,0 +1,24 @@
+{
+ "baseline": {
+  "class ledger.GenDelegPair": null,
+  "class ledger.LedgerView": [
+   {
+    "file": "libs/cardano-protocol-tpraos/src/Cardano/Protocol/TPraos/API.hs",
+    "lines": [
+     272,
+     282
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "TPraosLedgerView"
+   }
+  ],
+  "def ledger.LeaderCheck#label": null,
+  "def ledger.LeaderCheck.UncheckedReason#message": null,
+  "enum ledger.LeaderCheck": null,
+  "enum ledger.LeaderCheck.UncheckedReason": null,
+  "enum ledger.StakeView": null,
+  "object ledger.LeaderCheck": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LedgerView.scala"
+}

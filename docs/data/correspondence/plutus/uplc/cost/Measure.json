@@ -1,0 +1,61 @@
+{
+ "baseline": {
+  "def uplc.cost.Measure#apply": null,
+  "def uplc.cost.Measure#name": null,
+  "def uplc.cost.Measure#toString": null,
+  "def uplc.cost.Measure.bytes": null,
+  "def uplc.cost.Measure.constant": null,
+  "def uplc.cost.Measure.data": null,
+  "def uplc.cost.Measure.integer": null,
+  "def uplc.cost.Measure.list": null,
+  "def uplc.cost.Measure.text": null,
+  "object uplc.cost.Measure": null,
+  "trait uplc.cost.Measure": null,
+  "val uplc.cost.Measure.G1Words": null,
+  "val uplc.cost.Measure.G2Words": null,
+  "val uplc.cost.Measure.MlResultWords": null,
+  "val uplc.cost.Measure.literal": null,
+  "val uplc.cost.Measure.maxDepth": null,
+  "val uplc.cost.Measure.nodeCount": null,
+  "val uplc.cost.Measure.one": null,
+  "val uplc.cost.Measure.outerSize": null,
+  "val uplc.cost.Measure.textBytes": null,
+  "val uplc.cost.Measure.totalSize": null,
+  "val uplc.cost.Measure.universe": null,
+  "val uplc.cost.Measure.words": null
+ },
+ "entries": {
+  "val uplc.cost.Measure.outerDepth": {
+   "class": "Mirror",
+   "digest": "d33a9545e7e3720c",
+   "evidence": [
+    "CostModelSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/ExMemoryUsage.hs",
+     "lines": [
+      443,
+      452
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "ValueOuterDepth"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def uplc.cost.Measure#oneCost",
+    "def uplc.cost.Measure#size",
+    "def uplc.cost.Measure.oneCostConstant",
+    "def uplc.cost.Measure.total"
+   ],
+   "reason": "The cost of a builtin application whose measures are each one cost for the values given, computed as longs and spent with no stream made (#1411), where the reference spends a one-element `ExBudgetStream` (`ExBudgetStream.hs:15-29`, plutus 1.70.0.0): the shapes' `run` and the measures' streams stay the mirror, the spender is the machine's (`ExBudgetMode.hs:55-57,146-165`), and CekApplicationSuite compares the two"
+  }
+ ],
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cost/Measure.scala"
+}

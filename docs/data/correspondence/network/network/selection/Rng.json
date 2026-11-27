@@ -1,0 +1,14 @@
+{
+ "baseline": {
+  "class network.selection.Rng": null,
+  "def network.selection.Rng#nextLong": null,
+  "def network.selection.Rng#nextWord32": null,
+  "def network.selection.Rng#split": null,
+  "def network.selection.Rng#uniformDouble": null,
+  "def network.selection.Rng#uniformR": null,
+  "def network.selection.Rng#uniformWord32R": null,
+  "def network.selection.Rng.scaleFloating": null,
+  "object network.selection.Rng": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/Rng.scala"
+}

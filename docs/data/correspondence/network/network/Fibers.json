@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def network.Fibers.failFast": null,
+  "def network.Fibers.land": null,
+  "def network.Fibers.scoped": null,
+  "object network.Fibers": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/Fibers.scala"
+}

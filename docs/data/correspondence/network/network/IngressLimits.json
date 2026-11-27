@@ -1,0 +1,61 @@
+{
+ "baseline": {
+  "class network.IngressLimits.Parameters": null,
+  "def network.IngressLimits.nodeToNode": null,
+  "def network.IngressLimits.withMargin": null,
+  "object network.IngressLimits": null,
+  "val network.IngressLimits.BlockFetchBlockBytes": null,
+  "val network.IngressLimits.BlockFetchByronBytes": null,
+  "val network.IngressLimits.ChainSyncHeaderBytes": null,
+  "val network.IngressLimits.KeepAliveBytes": null,
+  "val network.IngressLimits.NodeToClientBytes": null,
+  "val network.IngressLimits.TxBytes": null,
+  "val network.IngressLimits.TxIdReplyBytes": null,
+  "val network.IngressLimits.nodeToClient": null
+ },
+ "entries": {
+  "val network.IngressLimits.LeiosFetchBytes": {
+   "class": "Mirror",
+   "digest": "96f8b83d41b8ddd3",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "maxLeiosFetchIngressQueue, the margin added where nodeToNode reads it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      2179,
+      2186
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosFetchProtocolLimits"
+    }
+   ]
+  },
+  "val network.IngressLimits.LeiosNotifyBytes": {
+   "class": "Mirror",
+   "digest": "440989109568cbc6",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "maxLeiosNotifyIngressQueue, the margin added where nodeToNode reads it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      2170,
+      2177
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosNotifyProtocolLimits"
+    }
+   ]
+  }
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/IngressLimits.scala"
+}

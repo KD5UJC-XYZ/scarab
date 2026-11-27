@@ -1,0 +1,411 @@
+{
+ "entries": {
+  "class ledger.state.AccountAddress": {
+   "class": "Mirror",
+   "digest": "5df284cc74641016",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "lines": [
+      183,
+      187
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AccountAddress"
+    }
+   ]
+  },
+  "class ledger.state.AccountId": {
+   "class": "Mirror",
+   "digest": "ed7b4341ff7075f1",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "lines": [
+      189,
+      191
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AccountId"
+    }
+   ]
+  },
+  "class ledger.state.PoolMetadata": {
+   "class": "Mirror",
+   "digest": "d521104ab2224200",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "the term kept as the bytes it was read from, as StakePoolState and the state codecs keep it, with its hash (pmHash) read once by `read`; decoding it into the reference's Url and ByteString is tracked in https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999387793",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      293,
+      297
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PoolMetadata"
+    }
+   ]
+  },
+  "class ledger.state.StakePoolParams": {
+   "class": "Mirror",
+   "digest": "6989abcae4fffb78",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraTxSuite",
+    "FuturePoolParamsCodecSuite"
+   ],
+   "note": "era-independent in the state package, as the reference keeps it in its core library; 9df9f98c's phantom era (used only by `Era era => DecCBOR`) is not kept. sppBlsKey, the Leios build's third field, is PoolParamsBlsKey, by the state's layout: #1063's per-layout typing applied to one field, so a value of the 11.1 layout holds no key. The relays (StrictSeq StakePoolRelay) are the bytes they were read from and the metadata a PoolMetadata over its bytes, as StakePoolState and the state codecs keep them; decoding them into the reference's types is tracked in https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6999387793",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      424,
+      435
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "StakePoolParams"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      476,
+      488
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "StakePoolParams"
+    }
+   ]
+  },
+  "def ledger.state.PoolMetadata#equals": {
+   "class": "Mirror",
+   "digest": "fe3900e4786e0a9e",
+   "evidence": [
+    "EraConwaySuite"
+   ],
+   "note": "the derived Eq, by what the kept bytes mean",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      293,
+      297
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PoolMetadata"
+    }
+   ]
+  },
+  "def ledger.state.PoolMetadata#hashCode": {
+   "class": "Mirror",
+   "digest": "ceffcc1bc2f89af4",
+   "evidence": [
+    "EraConwaySuite"
+   ],
+   "note": "consistent with equals, by what the kept bytes mean",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      293,
+      297
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PoolMetadata"
+    }
+   ]
+  },
+  "def ledger.state.PoolMetadata.read": {
+   "class": "Mirror",
+   "digest": "87fd51241fe6eba8",
+   "evidence": [
+    "FuturePoolParamsCodecSuite",
+    "DijkstraTxCertSuite",
+    "EraConwaySuite"
+   ],
+   "note": "DecCBOR PoolMetadata at the given decoder version, over the term's kept bytes: a record of two items (definite or indefinite), a Url of at most 64 bytes of UTF-8 below version 9 and 128 from it, its text definite at every version in the 11.1 build's layout (f649f975 decodeString) and definite or chunked from version 12 in the Leios build's (9df9f98c), and the hash, a byte string definite below 12 and definite or chunked from it in both builds. The state's future parameters and the era decoders (Conway at 9, Dijkstra at 12) read with it; the owner decided on 2026-11-19 (asked 19:18:13Z, decided 20:18:03Z, #85 item 38) that the state read matches the reference here.",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      522,
+      524
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR PoolMetadata"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      683,
+      685
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR PoolMetadata"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      678,
+      685
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR Url"
+    },
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "lines": [
+      1564,
+      1598
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "decodeString"
+    }
+   ]
+  },
+  "def ledger.state.StakePoolParams#equals": {
+   "class": "Mirror",
+   "digest": "23885b28d2373547",
+   "evidence": [
+    "EraConwaySuite"
+   ],
+   "note": "the derived Eq: the relays and the metadata by what their bytes mean (80 and 9800 are one empty list)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      424,
+      435
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "StakePoolParams"
+    }
+   ]
+  },
+  "def ledger.state.StakePoolParams#hashCode": {
+   "class": "Mirror",
+   "digest": "419b6df0ea6a0ccf",
+   "evidence": [
+    "EraConwaySuite"
+   ],
+   "note": "consistent with equals",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      424,
+      435
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "StakePoolParams"
+    }
+   ]
+  },
+  "def ledger.state.Withdrawals.apply": {
+   "class": "Mirror",
+   "digest": "67e06d50f0af4cd1",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "note": "the constructor, the map sorted by Ord AccountAddress",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "lines": [
+      980,
+      982
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Withdrawals"
+    }
+   ]
+  },
+  "def ledger.state.Withdrawals.unWithdrawals": {
+   "class": "Mirror",
+   "digest": "db8014f66b6e57a4",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "lines": [
+      980,
+      982
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "unWithdrawals"
+    }
+   ]
+  },
+  "given ledger.state.AccountAddress.order": {
+   "class": "Mirror",
+   "digest": "e1dda948857f8c97",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "note": "the derived Ord: the network, then the account's credential",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "lines": [
+      183,
+      187
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AccountAddress"
+    }
+   ]
+  },
+  "given ledger.state.AccountAddress.ordering": {
+   "class": "Mirror",
+   "digest": "beff1cc2eee09da1",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "note": "the derived Ord as the Scala Ordering of the maps of accounts, the order's own (SortOrder)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "lines": [
+      183,
+      187
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AccountAddress"
+    }
+   ]
+  },
+  "given ledger.state.Withdrawals.given_Monoid_Withdrawals": {
+   "class": "Mirror",
+   "digest": "1deed77b7f0b86ec",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "note": "Map.unionWith (<>) of the amounts, and the empty map",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "lines": [
+      984,
+      985
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Semigroup Withdrawals"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "lines": [
+      987,
+      988
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Monoid Withdrawals"
+    }
+   ]
+  },
+  "type ledger.state.Withdrawals": {
+   "class": "Mirror",
+   "digest": "ea94b57591f6c6f0",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "note": "the newtype over its map, the accounts in the order of Ord AccountAddress",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "lines": [
+      980,
+      982
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Withdrawals"
+    }
+   ]
+  },
+  "val ledger.state.Withdrawals.empty": {
+   "class": "Mirror",
+   "digest": "0ed6a472647b070a",
+   "evidence": [
+    "VocabularySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+     "lines": [
+      987,
+      988
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mempty"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.state.AccountAddress",
+    "object ledger.state.PoolMetadata",
+    "object ledger.state.StakePoolParams",
+    "object ledger.state.Withdrawals"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "def ledger.state.PoolMetadata#toString",
+    "def ledger.state.PoolMetadata.held",
+    "given ledger.state.PoolMetadata.given_CanEqual_PoolMetadata_PoolMetadata",
+    "given ledger.state.StakePoolParams.given_CanEqual_StakePoolParams_StakePoolParams",
+    "given ledger.state.StakePoolParams.given_Eq_StakePoolParams",
+    "given ledger.state.StakePoolParams.given_Show_StakePoolParams",
+    "given ledger.state.Withdrawals.given_CanEqual_Withdrawals_Withdrawals",
+    "given ledger.state.Withdrawals.given_Eq_Withdrawals",
+    "given ledger.state.Withdrawals.given_Show_Withdrawals"
+   ],
+   "reason": "the conversions between the node's flat pool parameters, reward accounts and withdrawals and the state's (the flat rules and decoders read the node's, and the state holds the reference's types), each refusal the vocabulary's; and the instances and rendering that hold the state's pool parameters', metadata's and withdrawals' equality, the reference's derived Eq; the metadata of a term a decoder already read, as POOL reads its hash again (held); the decoder version of a stored record's ProtVer; and POOL's refusal of parameters of another layout than the state they go into, a defect the reference, one build, never meets"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/StakePool.scala"
+}

@@ -1,0 +1,13 @@
+{
+ "baseline": {
+  "class uplc.ledger.LedgerContext": null,
+  "class uplc.ledger.VariantMachine": null,
+  "def uplc.ledger.LedgerContext#at": null,
+  "def uplc.ledger.LedgerContext.fromCosts": null,
+  "def uplc.ledger.LedgerContext.machine": null,
+  "def uplc.ledger.LedgerContext.make": null,
+  "def uplc.ledger.LedgerContext.of": null,
+  "object uplc.ledger.LedgerContext": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/ledger/LedgerContext.scala"
+}

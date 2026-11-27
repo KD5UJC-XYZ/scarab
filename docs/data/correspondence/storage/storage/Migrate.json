@@ -1,0 +1,20 @@
+{
+ "baseline": {
+  "class storage.Migrated": null,
+  "def storage.AtomicFile.guard": null,
+  "def storage.AtomicFile.guarding": null,
+  "def storage.AtomicFile.replace": null,
+  "def storage.AtomicFile.replaceAll": null,
+  "def storage.AtomicFile.replaceStreaming": null,
+  "def storage.Migrate.apply": null,
+  "def storage.Migration#detect": null,
+  "def storage.Migration#kind": null,
+  "def storage.Migration#nextVersion": null,
+  "def storage.Migration#step": null,
+  "def storage.Migration#validateStep": null,
+  "object storage.AtomicFile": null,
+  "object storage.Migrate": null,
+  "trait storage.Migration": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Migrate.scala"
+}

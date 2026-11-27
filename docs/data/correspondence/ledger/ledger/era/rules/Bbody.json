@@ -1,0 +1,427 @@
+{
+ "entries": {
+  "class ledger.era.rules.BbodyEnv": {
+   "class": "Mirror",
+   "digest": "a57df6b8fffd152e",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "ConwayBbodySuite"
+   ],
+   "note": "ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "lines": [
+      94,
+      97
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "BbodyEnv"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "lines": [
+      90,
+      93
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "BbodyEnv"
+    }
+   ]
+  },
+  "class ledger.era.rules.ShelleyBbodyState": {
+   "class": "Mirror",
+   "digest": "61fed20f8a326c1f",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "ConwayBbodySuite"
+   ],
+   "note": "ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "lines": [
+      86,
+      88
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ShelleyBbodyState"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "lines": [
+      82,
+      84
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ShelleyBbodyState"
+    }
+   ]
+  },
+  "def ledger.era.rules.AlonzoBbody.alonzoBbodyTransition": {
+   "class": "Mirror",
+   "digest": "2f075d3f28b27952",
+   "evidence": [
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "the era's LEDGERS a function the caller gives, nested here as trans nests EraRule \"LEDGERS\"; the signal the block with its header's classes as using clauses; the epoch outside EpochNo a raised defect; ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs",
+     "lines": [
+      169,
+      214
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "alonzoBbodyTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.AlonzoBbody.validateExUnits": {
+   "class": "Mirror",
+   "digest": "ba2644803105813e",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs",
+     "lines": [
+      157,
+      175
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "validateExUnits"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs",
+     "lines": [
+      147,
+      167
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateExUnits"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayBbody.conwayBbody": {
+   "class": "Mirror",
+   "digest": "2a788d0a59e92520",
+   "evidence": [
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "conwayBbodyTransition >> alonzoBbodyTransition on Conway's LEDGERS, its failures and events embedded; the parameters of LEDGERS's transactions (context, verdicts, decoder, the clock) and the proposals GOV judges, a capability beside the BBODY state, given by the caller; ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      237,
+      268
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "STS (BBODY era)"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      318,
+      327
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Embed ledgers (BBODY era)"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayBbody.conwayBbodyTransition": {
+   "class": "Mirror",
+   "digest": "76a69b58642bce17",
+   "evidence": [
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "the network the judgment's Globals', as the reference reads it (the Shelley genesis's networkId); the gate of the header's version by build (HeaderProtVerGate); the UTxO set the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      270,
+      316
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "conwayBbodyTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayBbody.totalRefScriptSizeInBlock": {
+   "class": "Mirror",
+   "digest": "27fa2857e9503c9c",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "the reference's Int a Long; the UTxO set the stored outputs of the block's inputs and reference inputs, the only ones it looks up; ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      371,
+      384
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "totalRefScriptSizeInBlock"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      357,
+      370
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "totalRefScriptSizeInBlock"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayBbody.validateBodyRefScriptsSizeTooBig": {
+   "class": "Mirror",
+   "digest": "ed514e9d619f49a8",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "the block's transactions in place of the body, which it reads them from; ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      344,
+      369
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "validateBodyRefScriptsSizeTooBig"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      329,
+      355
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateBodyRefScriptsSizeTooBig"
+    }
+   ]
+  },
+  "def ledger.era.rules.HeaderProtVerGate#checks": {
+   "class": "Mirror",
+   "digest": "e3ef01cf9011c479",
+   "evidence": [
+    "ConwayBbodySuite"
+   ],
+   "note": "the condition of 11.1, and of 11.2 and Leios (Mainnet only, Conway/Rules/Bbody.hs:326 at 29a7d656 and 9df9f98c); ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      308,
+      312
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "netId == Mainnet"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyBbody.incrBlocks": {
+   "class": "Mirror",
+   "digest": "32df67be24f393e1",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite",
+    "ConwayBbodySuite"
+   ],
+   "note": "the count of a pool a Word64, which a count of one epoch's blocks never wraps (BlocksMade); ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/BlockBody/Internal.hs",
+     "lines": [
+      296,
+      314
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "incrBlocks"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/BlockBody/Internal.hs",
+     "lines": [
+      295,
+      313
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "incrBlocks"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyBbody.validateBlockBodyHash": {
+   "class": "Mirror",
+   "digest": "740a8842c6ef55f7",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite",
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "lines": [
+      274,
+      295
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "validateBlockBodyHash"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "lines": [
+      264,
+      285
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateBlockBodyHash"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyBbody.validateBlockBodySize": {
+   "class": "Mirror",
+   "digest": "b68c9ce19a86fc6c",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite",
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "lines": [
+      251,
+      272
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "validateBlockBodySize"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "lines": [
+      240,
+      262
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateBlockBodySize"
+    }
+   ]
+  },
+  "enum ledger.era.rules.HeaderProtVerGate": {
+   "class": "Mirror",
+   "digest": "bde65669f60b8ff3",
+   "evidence": [
+    "ConwayBbodySuite"
+   ],
+   "note": "the condition of each build as a value derived from the build Globals names, as WithdrawalsRule is; the clause of 11.1 from version 12 meets no failure, as no header's major decodes past 13; ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      308,
+      312
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "netId == Mainnet"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      326,
+      328
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "netId == Mainnet"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      326,
+      328
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "netId == Mainnet"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.rules.HeaderProtVerGate.of",
+    "def ledger.era.rules.bbodyTest",
+    "object ledger.era.rules.HeaderProtVerGate"
+   ],
+   "reason": "the companions and readers of Conway's block in the era's types, as Dijkstra's: the header's fields read once in the classes' types (ConwayBlockHeader, a plain class so that no Mirror builds one whose fields are not its header's, its fields, rendering and reader), the evidence that a flat block is one the block decoder read (ConwayBlock.Decoded, which only ConwayBlock.decode makes), why a block's bytes are not a Conway block in the era's types, by whose the failure is (ConwayBlockError and its total classification ConwayBlockError.of), a body's rendering, the object of the Praos header class; the gate of the header's version from the build (HeaderProtVerGate.of), as WithdrawalsRule.of; and a BBODY test's failures injected into the rule's (bbodyTest), which the reference's ?! injectFailure does"
+  },
+  {
+   "definitions": [
+    "def ledger.era.rules.ShelleyBbodyState.ls",
+    "object ledger.era.rules.AlonzoBbody",
+    "object ledger.era.rules.ConwayBbody",
+    "object ledger.era.rules.ShelleyBbody",
+    "object ledger.era.rules.ShelleyBbodyState"
+   ],
+   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader, a plain class so that no derived Mirror builds one whose fields are not its header's, and its rendering), the evidence that a block is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types, by whose the failure is (DijkstraBlockError and its total classification DijkstraBlockError.of: the block decoder's refusal, the era types' refusal of what it read, or a value the decoder's own bounds rule out), a body's rendering, and the BBODY state's lens"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/Bbody.scala"
+}

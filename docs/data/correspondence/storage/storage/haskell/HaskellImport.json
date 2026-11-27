@@ -1,0 +1,20 @@
+{
+ "baseline": {
+  "class storage.haskell.HaskellImport.Config": null,
+  "class storage.haskell.HaskellImport.Progress": null,
+  "class storage.haskell.HaskellImport.Report": null,
+  "def storage.haskell.HaskellImport.run": null,
+  "def storage.haskell.HaskellImportError#message": null,
+  "enum storage.haskell.HaskellImportError": null,
+  "object storage.haskell.HaskellImport": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def storage.haskell.HaskellImport.storesDijkstra"
+   ],
+   "reason": "The import of a reference node's ImmutableDB is Scarab's own command, with no counterpart in the reference: which reference builds' Dijkstra blocks it stores (the Leios testnet's, whose chain is in Dijkstra from its first block), as bytes and with every other block's checks; no rule is applied by storing a block."
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/HaskellImport.scala"
+}

@@ -1,0 +1,506 @@
+{
+ "entries": {
+  "class ledger.era.rules.ConwayMempoolRun.ValidatedTx": {
+   "class": "Mirror",
+   "digest": "ef27b759601f4d57",
+   "evidence": [
+    "ConwayMempoolRunSuite",
+    "EraConwaySuite"
+   ],
+   "note": "the constructor not exported (:27) but to the run's admission, and no Mirror; the reference's unsafeMakeValidatedTx the only other maker",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      81,
+      88
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ValidatedTx"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      27,
+      27
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ValidatedTx"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempoolRun.Reapply.of": {
+   "class": "Mirror",
+   "digest": "64d91daf865ce5f8",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "note": "the build's consensus selected by an exhaustive match on the reference build (REF-3); no recording holds the reference's reapplication of a transaction, so its refusals are not compared with the reference's bytes (only applyTx's are): it is bound by the differential against the flat pool's reapply on the corpus and the pool suites' transactions and by the suite's reapplication tests",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs",
+     "lines": [
+      325,
+      348
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "reapplyShelleyTx"
+    },
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs",
+     "lines": [
+      349,
+      372
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "808e400545729b1246ba4393c69326ec4a04a730",
+     "symbol": "reapplyShelleyTx"
+    },
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs",
+     "lines": [
+      368,
+      391
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "reapplyShelleyTx"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempoolRun.ValidatedTx#tx": {
+   "class": "Mirror",
+   "digest": "4d71da6afc0c8ee3",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      108,
+      109
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "extractValidatedTx"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempoolRun.annotate": {
+   "class": "Mirror",
+   "digest": "f1c79b0abdc5f07d",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "note": "mkStAnnTx (mkAlonzoStAnnTx) with an empty cache, as the default application annotates a submitted transaction",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      283,
+      292
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "defaultApplyTxWithValidation"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempoolRun.applyTx": {
+   "class": "Mirror",
+   "digest": "166489830a66984d",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      406,
+      413
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "applyTxWithFullValidation"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempoolRun.applyTxWithValidation": {
+   "class": "Mirror",
+   "digest": "f2f94ee9d5cc35b3",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "note": "annotated against the stored outputs of the transaction's inputs, reference inputs and collateral (utxoOf), the part of utxoG the annotation reads; the annotation (the stored outputs' read and the script contexts) computed only where LEDGER first reads it (mempoolTransitionAnnotating) and at most once, as the reference's lazy fields are, so a duplicate is never annotated",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      283,
+      296
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "defaultApplyTxWithValidation"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      245,
+      262
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ruleApplyTxValidation"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempoolRun.mempool": {
+   "class": "Mirror",
+   "digest": "7239d7ba8bc3f086",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "note": "MEMPOOL on the fused interpreter, every failure accumulated, the events discarded (EPDiscard), the validation policy the UTXO context's; the proposals the node's record in the governance state, as Conway's LEDGER reads them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      230,
+      262
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ruleApplyTxValidation"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway.hs",
+     "lines": [
+      57,
+      59
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "internalApplyTxWithValidation"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempoolRun.mkMempoolEnv": {
+   "class": "Mirror",
+   "digest": "9e4d0c1fbc1b8a0f",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "note": "the parameters and the chain's account given by the caller, which reads them from the state",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      363,
+      377
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkMempoolEnv"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempoolRun.reapply": {
+   "class": "Mirror",
+   "digest": "9079aed9d1dc430a",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "note": "reapplyShelleyTx's call into the ledger, chosen by the build of the judgment's Globals; no recording holds the reference's reapplication of a transaction, so its refusals are not compared with the reference's bytes (only applyTx's are): it is bound by the differential against the flat pool's reapply on the corpus and the pool suites' transactions and by the suite's reapplication tests",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs",
+     "lines": [
+      325,
+      348
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "reapplyShelleyTx"
+    },
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs",
+     "lines": [
+      349,
+      372
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "808e400545729b1246ba4393c69326ec4a04a730",
+     "symbol": "reapplyShelleyTx"
+    },
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs",
+     "lines": [
+      368,
+      391
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "reapplyShelleyTx"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempoolRun.reapplyTranslated": {
+   "class": "Mirror",
+   "digest": "9c60cf017363f328",
+   "evidence": [
+    "EraMempoolSuite"
+   ],
+   "note": "11.1's held transaction across the crossing: translateValidated wraps the translated transaction (the node's translation is EraInjection.translate's, then Conway's decoders), deciding nothing, and reapplyTx applies it without the static checks; the ValidatedTx returned is what the pool holds from then on, whose transaction alone 11.1's reapplyTx reads",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/CanHardFork.hs",
+     "lines": [
+      803,
+      811
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "translateValidatedTxBabbageToConwayWrapper"
+    },
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/ShelleyHFC.hs",
+     "lines": [
+      408,
+      422
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "translateEra"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      157,
+      163
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "translateValidated"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      465,
+      473
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "reapplyTx"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempoolRun.reapplyTx": {
+   "class": "Mirror",
+   "digest": "d9a95b51797abc10",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "note": "the reference's function; no recording holds the reference's reapplication of a transaction, so its refusals are not compared with the reference's bytes (only applyTx's are): it is bound by the differential against the flat pool's reapply on the corpus and the pool suites' transactions and by the suite's reapplication tests",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      465,
+      473
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "reapplyTx"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempoolRun.reapplyValidatedTx": {
+   "class": "Mirror",
+   "digest": "0f503d6b9d02c2f9",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "note": "the current major version read from the node's flat record of the state's parameters (curPParamsGovStateL); no recording holds the reference's reapplication of a transaction, so its refusals are not compared with the reference's bytes (only applyTx's are): it is bound by the differential against the flat pool's reapply on the corpus and the pool suites' transactions and by the suite's reapplication tests",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      420,
+      439
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "reapplyValidatedTx"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      313,
+      323
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "defaultReapplyValidatedTx"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayMempoolRun.unsafeMakeValidatedTx": {
+   "class": "Mirror",
+   "digest": "1955f8cee4fade8a",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "note": "for tests only, as the reference's; a stored output the era cannot read is the state's defect",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      131,
+      151
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "unsafeMakeValidatedTx"
+    }
+   ]
+  },
+  "enum ledger.era.rules.ConwayMempoolRun.Reapply": {
+   "class": "Mirror",
+   "digest": "6add8622c8eec85c",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "note": "the reapplication each build's consensus calls, SL.reapplyTx at 82ecba32 and SL.reapplyValidatedTx at 808e4005 and 2416493b, as one value per build; no recording holds the reference's reapplication of a transaction, so its refusals are not compared with the reference's bytes (only applyTx's are): it is bound by the differential against the flat pool's reapply on the corpus and the pool suites' transactions and by the suite's reapplication tests",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs",
+     "lines": [
+      325,
+      348
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "reapplyShelleyTx"
+    },
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs",
+     "lines": [
+      349,
+      372
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "808e400545729b1246ba4393c69326ec4a04a730",
+     "symbol": "reapplyShelleyTx"
+    },
+    {
+     "file": "ouroboros-consensus-cardano/src/shelley/Ouroboros/Consensus/Shelley/Ledger/Mempool.hs",
+     "lines": [
+      368,
+      391
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "reapplyShelleyTx"
+    }
+   ]
+  },
+  "val ledger.era.rules.ConwayMempoolRun.ValidatedTx#protocolVersion": {
+   "class": "Mirror",
+   "digest": "8fb4b0d54924a61f",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      102,
+      103
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getValidatedTxProtocolVersion"
+    }
+   ]
+  },
+  "val ledger.era.rules.ConwayMempoolRun.ValidatedTx#slot": {
+   "class": "Mirror",
+   "digest": "e0561e963a8bd2bd",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      105,
+      106
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getValidatedTxSlotNo"
+    }
+   ]
+  },
+  "val ledger.era.rules.ConwayMempoolRun.ValidatedTx#stAnnTx": {
+   "class": "Mirror",
+   "digest": "61520575b8216277",
+   "evidence": [
+    "ConwayMempoolRunSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      99,
+      100
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getValidatedTxStAnnTx"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.era.rules.ConwayMempoolRun.Judging",
+    "def ledger.era.rules.ConwayMempoolRun.Annotation#apply",
+    "def ledger.era.rules.ConwayMempoolRun.Judging#build",
+    "def ledger.era.rules.ConwayMempoolRun.Judging#context",
+    "def ledger.era.rules.ConwayMempoolRun.utxoOf",
+    "object ledger.era.rules.ConwayMempoolRun",
+    "object ledger.era.rules.ConwayMempoolRun.Annotation",
+    "object ledger.era.rules.ConwayMempoolRun.Reapply",
+    "trait ledger.era.rules.ConwayMempoolRun.Annotation",
+    "type ledger.era.rules.ConwayMempoolRun.Outcome",
+    "val ledger.era.rules.ConwayMempoolRun.Annotation.mkStAnnTx"
+   ],
+   "reason": "the run of Conway's MEMPOOL as the node's pool will apply a transaction (#85, not wired yet), on the fused interpreter, with what it is judged with besides the environment and the state (Judging, its build, its UTXO context and its annotation, Annotation, which the node runs as Conway's mkStAnnTx and a test wraps to observe when the run annotates), and its outcome (its defects are ConwayBlockRun's, ConwayRuleDefect); the read of the stored outputs of a transaction's inputs into the era, which the reference's mempool takes from its ledger tables (getTransactionKeySets); and the module objects of MEMPOOL and of Conway's ApplyTxError, with the error's equality with itself only: Scala containers with no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/ConwayMempoolRun.scala"
+}

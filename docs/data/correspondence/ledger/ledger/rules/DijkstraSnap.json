@@ -1,0 +1,45 @@
+{
+ "entries": {
+  "object ledger.rules.DijkstraSnap": {
+   "class": "Mirror",
+   "digest": "960c9a58e08d8f69",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Snap.hs",
+     "lines": [
+      105,
+      146
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "snapTransition"
+    }
+   ]
+  },
+  "val ledger.rules.DijkstraSnap.sts": {
+   "class": "Mirror",
+   "digest": "98fd8cd2493093c7",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Snap.hs",
+     "lines": [
+      105,
+      146
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "snapTransition"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/DijkstraSnap.scala"
+}

@@ -1,0 +1,593 @@
+{
+ "entries": {
+  "def ledger.era.ToPlutusData#toPlutusData": {
+   "class": "Mirror",
+   "digest": "846e1a739e8e9683",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      49,
+      49
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toPlutusData"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.coin": {
+   "class": "Mirror",
+   "digest": "f142c6420b4ce584",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      110,
+      110
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Coin"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.coinPerByte": {
+   "class": "Mirror",
+   "digest": "8302eacf2c0fc671",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      117,
+      119
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CoinPerByte"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.compactCoin": {
+   "class": "Mirror",
+   "digest": "6b27bca71606e766",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      112,
+      115
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CompactForm Coin"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.costModels": {
+   "class": "Mirror",
+   "digest": "1643244d93db3bfa",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the flattened models through the reference's instances of `Map` and of lists (`:52-62`), written out: the languages ascending, each language's parameters in their order",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      94,
+      98
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CostModels"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.epochInterval": {
+   "class": "Mirror",
+   "digest": "e2fa2c18a862f270",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      138,
+      138
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EpochInterval"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.exUnits": {
+   "class": "Mirror",
+   "digest": "99862c4c593cd9c3",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      100,
+      103
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ExUnits"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.maxPledgeLeverage": {
+   "class": "Mirror",
+   "digest": "16cdf36254c61526",
+   "evidence": [
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the Leios build's alone",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      369,
+      373
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "MaxPledgeLeverage"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.milliseconds32": {
+   "class": "Mirror",
+   "digest": "5f0654c6e47ea3ba",
+   "evidence": [
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the Leios build's alone",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      148,
+      148
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Milliseconds32"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.nonNegativeInterval": {
+   "class": "Mirror",
+   "digest": "81aa1c53e029b75c",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      86,
+      88
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "NonNegativeInterval"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.nonZero": {
+   "class": "Mirror",
+   "digest": "18f2b7ce95a0494c",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      155,
+      157
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "NonZero"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.ordExUnits": {
+   "class": "Mirror",
+   "digest": "edfb915c5811c52a",
+   "evidence": [
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the Leios build's alone",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      152,
+      152
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "OrdExUnits"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.positiveInterval": {
+   "class": "Mirror",
+   "digest": "55d09dea8d4a3375",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      90,
+      92
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PositiveInterval"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.pparamsUpdate": {
+   "class": "Mirror",
+   "digest": "2080a047dd2b0100",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "`toPlutusData` over the era's descriptions; the Leios build's instance is the same (cardano-ledger 9df9f98c `Conway/PParams.hs:200-206`)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      199,
+      205
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ToPlutusData (PParamsUpdate era)"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.prices": {
+   "class": "Mirror",
+   "digest": "0257ddb82de3b4e8",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      105,
+      108
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Prices"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.protVer": {
+   "class": "Mirror",
+   "digest": "e831a3930434e518",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      72,
+      75
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ProtVer"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.rational": {
+   "class": "Mirror",
+   "digest": "1d5f1017787da901",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      77,
+      80
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Rational"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.slotInterval": {
+   "class": "Mirror",
+   "digest": "7967dd480bc9e9fb",
+   "evidence": [
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the Leios build's alone",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      150,
+      150
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "SlotInterval"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.strictMaybe": {
+   "class": "Mirror",
+   "digest": "5033081df707d48c",
+   "evidence": [
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the Leios build's alone",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      60,
+      65
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "StrictMaybe"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.unitInterval": {
+   "class": "Mirror",
+   "digest": "91849ea97e996efa",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      82,
+      84
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "UnitInterval"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.version": {
+   "class": "Mirror",
+   "digest": "365955ce88fcd24a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      67,
+      70
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Version"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.word16": {
+   "class": "Mirror",
+   "digest": "74c9a8e0d0974f0d",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      128,
+      131
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Word16"
+    }
+   ]
+  },
+  "given ledger.era.ToPlutusData.word32": {
+   "class": "Mirror",
+   "digest": "47669c68e66600e4",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      121,
+      126
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Word32"
+    }
+   ]
+  },
+  "trait ledger.era.ToPlutusData": {
+   "class": "Gap",
+   "digest": "78690b9f4dc799f8",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "`toPlutusData` alone: the reference's `fromPlutusData`, which only its tests call, is not here yet",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6969689140",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      48,
+      50
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ToPlutusData"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.ToPlutusData"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "def ledger.era.ToPlutusData.apply",
+    "def ledger.era.ToPlutusData.toPlutusData"
+   ],
+   "reason": "the summoners of the classes `ToPlutusData` and plutus-tx's `ToData`, and their syntax as a method, which Haskell needs none of: `toPlutusData x` and `toBuiltinData x` are the classes' own functions (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/ToPlutusData.scala"
+}

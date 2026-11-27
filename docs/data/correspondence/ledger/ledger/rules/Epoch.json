@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "def ledger.rules.Epoch.sts": null,
+  "def ledger.rules.Epoch.within": null,
+  "object ledger.rules.Epoch": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Epoch.scala"
+}

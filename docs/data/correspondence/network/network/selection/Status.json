@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "class network.selection.PeerRecord": null,
+  "def network.selection.Origin#big": null,
+  "def network.selection.Origin#root": null,
+  "def network.selection.Origin#unforgettable": null,
+  "def network.selection.PeerRecord.cold": null,
+  "def network.selection.Status#active": null,
+  "def network.selection.Status#established": null,
+  "def network.selection.Status#inProgress": null,
+  "enum network.selection.Origin": null,
+  "enum network.selection.Status": null,
+  "object network.selection.PeerRecord": null,
+  "type network.selection.Time": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/Status.scala"
+}

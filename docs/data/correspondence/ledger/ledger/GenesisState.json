@@ -1,0 +1,83 @@
+{
+ "baseline": {
+  "class ledger.GenesisState.Files": null,
+  "class ledger.GenesisState.InjectionSource": null,
+  "def ledger.Base58.decode": null,
+  "def ledger.GenesisState.FundAddress.canonicalBytes": null,
+  "def ledger.GenesisState.FundAddress.decoded": null,
+  "def ledger.GenesisState.InjectionSource.legacy": null,
+  "def ledger.GenesisState.address": null,
+  "def ledger.GenesisState.credential": null,
+  "def ledger.GenesisState.drep": null,
+  "def ledger.GenesisState.entries": null,
+  "def ledger.GenesisState.genDelegs": [
+   {
+    "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+    "lines": [
+     320,
+     320
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "sgGenDelegs"
+   }
+  ],
+  "def ledger.GenesisState.get": null,
+  "def ledger.GenesisState.globals": null,
+  "def ledger.GenesisState.hex28": null,
+  "def ledger.GenesisState.initialOutput": null,
+  "def ledger.GenesisState.injection": null,
+  "def ledger.GenesisState.optionalObject": null,
+  "def ledger.GenesisState.output": null,
+  "def ledger.GenesisState.outputBytes": null,
+  "def ledger.GenesisState.pool": null,
+  "enum ledger.GenesisState.InjectionData": [
+   {
+    "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+    "lines": [
+     796,
+     803
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "InjectionData"
+   }
+  ],
+  "object ledger.Base58": null,
+  "object ledger.GenesisState": null,
+  "object ledger.GenesisState.FundAddress": null,
+  "object ledger.GenesisState.InjectionSource": null,
+  "type ledger.GenesisState.FundAddress": null
+ },
+ "entries": {
+  "def ledger.GenesisState.networkId": {
+   "class": "Mirror",
+   "digest": "991f5d2c8c5309a7",
+   "note": "the genesis's networkId read by the derived FromJSON Network, its two constructors by name, refused as GenesisSchema refuses the field; GenesisStart's injections and the ledger's Globals (mkShelleyGlobals) read it here",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      878,
+      881
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Network"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "lines": [
+      494,
+      518
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "parseJSON"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/GenesisState.scala"
+}

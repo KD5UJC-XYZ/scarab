@@ -1,0 +1,11 @@
+{
+ "baseline": {
+  "class network.PeerSharingServer.Settings": null,
+  "def network.PeerSharingServer.empty": null,
+  "def network.PeerSharingServer.fitting": null,
+  "def network.PeerSharingServer.run": null,
+  "object network.PeerSharingServer": null,
+  "type network.PeerSharingServer.Source": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/PeerSharingServer.scala"
+}

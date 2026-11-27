@@ -1,0 +1,13 @@
+{
+ "baseline": {
+  "def ledger.state.FlatView.coinMap": null,
+  "def ledger.state.FlatView.conwayAccount": null,
+  "def ledger.state.FlatView.credBack": null,
+  "def ledger.state.FlatView.drepBack": null,
+  "def ledger.state.FlatView.pools": null,
+  "def ledger.state.FlatView.shelleyAccount": null,
+  "def ledger.state.FlatView.stakeMap": null,
+  "object ledger.state.FlatView": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/FlatView.scala"
+}

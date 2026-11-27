@@ -1,0 +1,24 @@
+{
+ "baseline": {
+  "class ledger.rules.PpupEnv": null,
+  "class ledger.rules.UtxoChecks": null,
+  "def ledger.rules.ShelleyDeposits.of": null,
+  "def ledger.rules.ShelleyInstantStakeOps.update": null,
+  "def ledger.rules.ShelleyPpup.sts": null,
+  "def ledger.rules.ShelleyUtxo.ppup": null,
+  "def ledger.rules.ShelleyUtxo.sts": null,
+  "def ledger.rules.ShelleyUtxo.update": null,
+  "def ledger.rules.ShelleyUtxo.validate": null,
+  "def ledger.rules.ShelleyUtxos.sts": null,
+  "def ledger.rules.ShelleyUtxow.sts": null,
+  "def ledger.rules.UtxoChecks.of": null,
+  "object ledger.rules.ShelleyDeposits": null,
+  "object ledger.rules.ShelleyInstantStakeOps": null,
+  "object ledger.rules.ShelleyPpup": null,
+  "object ledger.rules.ShelleyUtxo": null,
+  "object ledger.rules.ShelleyUtxos": null,
+  "object ledger.rules.ShelleyUtxow": null,
+  "object ledger.rules.UtxoChecks": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyUtxo.scala"
+}

@@ -1,0 +1,88 @@
+{
+ "baseline": {
+  "class protocol.NetworkError.InternalFailure": null,
+  "def protocol.NetworkError#message": null,
+  "def protocol.NetworkError.Closure#message": null,
+  "def protocol.NetworkError.HandshakeFailure#message": null,
+  "def protocol.NetworkError.describe": null,
+  "def protocol.NetworkError.fromThrowable": null,
+  "def protocol.NetworkError.ofReader": null,
+  "def protocol.NetworkError.violationMessage": null,
+  "def protocol.Protocols.name": null,
+  "enum protocol.NetworkError": null,
+  "enum protocol.NetworkError.Closure": null,
+  "enum protocol.NetworkError.ConnectionRole": null,
+  "enum protocol.NetworkError.HandshakeFailure": null,
+  "enum protocol.NetworkError.RuntimeViolation": null,
+  "enum protocol.NetworkError.SduOperation": null,
+  "object protocol.NetworkError": null,
+  "object protocol.Protocols": null,
+  "type protocol.NetworkError.Violation": null,
+  "val protocol.Protocols.BlockFetch": null,
+  "val protocol.Protocols.ChainSync": null,
+  "val protocol.Protocols.Handshake": null,
+  "val protocol.Protocols.KeepAlive": null,
+  "val protocol.Protocols.LeiosFetch": null,
+  "val protocol.Protocols.LeiosNotify": null,
+  "val protocol.Protocols.LocalChainSync": null,
+  "val protocol.Protocols.LocalStateQuery": null,
+  "val protocol.Protocols.LocalTxMonitor": null,
+  "val protocol.Protocols.LocalTxSubmission": null,
+  "val protocol.Protocols.PeerSharing": null,
+  "val protocol.Protocols.TxSubmission2": null
+ },
+ "entries": {
+  "enum protocol.NetworkError.RangeRefusal": {
+   "class": "Mirror",
+   "digest": "cfc6c4925b5e93d2",
+   "evidence": [
+    "ServerSuite",
+    "ChainServerSuite",
+    "PeerDefectPolicySuite"
+   ],
+   "note": "one case for each exception the reference raises for a range, named as it is: NoGenesisBlock and BlockGCed (BlockFetchServerException), InvalidIteratorRange (ChainDbError), InvalidIteratorRangeError (the ImmutableDB's ApiMisuse); as a closed type, each ends the connection",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/BlockFetch/Server.hs",
+     "lines": [
+      42,
+      67
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "BlockFetchServerException"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/API.hs",
+     "lines": [
+      981,
+      999
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "InvalidIteratorRange"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ImmutableDB/API.hs",
+     "lines": [
+      370,
+      379
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "InvalidIteratorRangeError"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.NetworkError.RangeRefusal#message"
+   ],
+   "reason": "the text of a BlockFetch range refusal, for presentation only; the reference shows its exceptions with derived Show instances"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/NetworkError.scala"
+}

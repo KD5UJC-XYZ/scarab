@@ -1,0 +1,13 @@
+{
+ "baseline": {
+  "def network.MuxLifecycle.StartMode#initialStatus": null,
+  "def network.MuxLifecycle.completion": null,
+  "enum network.MuxLifecycle.CompletionError": null,
+  "enum network.MuxLifecycle.ProtocolStatus": null,
+  "enum network.MuxLifecycle.ShutdownStatus": null,
+  "enum network.MuxLifecycle.StartMode": null,
+  "enum network.MuxLifecycle.Status": null,
+  "object network.MuxLifecycle": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/MuxLifecycle.scala"
+}

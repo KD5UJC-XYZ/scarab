@@ -1,0 +1,19 @@
+{
+ "baseline": {
+  "class network.selection.FetchGsv.Gsv": null,
+  "class network.selection.FetchGsv.PeerGsv": null,
+  "class network.selection.FetchGsv.Window": null,
+  "def network.selection.FetchGsv.Gsv#arrival": null,
+  "def network.selection.FetchGsv.PeerGsv#duration": null,
+  "def network.selection.FetchGsv.PeerGsv#geographic": null,
+  "def network.selection.FetchGsv.PeerGsv#probability": null,
+  "def network.selection.FetchGsv.PeerGsv#update": null,
+  "def network.selection.FetchGsv.PeerGsv#window": null,
+  "def network.selection.FetchGsv.floorDivide": null,
+  "def network.selection.FetchGsv.fromSample": null,
+  "object network.selection.FetchGsv": null,
+  "val network.selection.FetchGsv.PicosPerSecond": null,
+  "val network.selection.FetchGsv.default": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/FetchGsv.scala"
+}

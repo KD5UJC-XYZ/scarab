@@ -1,0 +1,155 @@
+{
+ "entries": {
+  "class ledger.era.Mismatch": {
+   "class": "Mirror",
+   "digest": "d7d71711d59b6df8",
+   "note": "the relation a type parameter bounded by Relation, as the reference's is of kind Relation; the era types' failures hold it, and their flat projections write it as the node's flat Mismatch, which has no relation",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      833,
+      837
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Mismatch"
+    }
+   ]
+  },
+  "trait ledger.era.Relation": {
+   "class": "Mirror",
+   "digest": "39c3e5170d3fb043",
+   "note": "a type data: each constructor a sealed trait extending it, so a relation is a type and never a value",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      817,
+      829
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Relation"
+    }
+   ]
+  },
+  "trait ledger.era.Relation.RelEQ": {
+   "class": "Mirror",
+   "digest": "045d4737e4ac5f7f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      819,
+      819
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "RelEQ"
+    }
+   ]
+  },
+  "trait ledger.era.Relation.RelGT": {
+   "class": "Mirror",
+   "digest": "7c4a8d56d3f67b8b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      823,
+      823
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "RelGT"
+    }
+   ]
+  },
+  "trait ledger.era.Relation.RelGTEQ": {
+   "class": "Mirror",
+   "digest": "7d7c92919917544b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      827,
+      827
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "RelGTEQ"
+    }
+   ]
+  },
+  "trait ledger.era.Relation.RelLT": {
+   "class": "Mirror",
+   "digest": "2725c4d4eb85eba9",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      821,
+      821
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "RelLT"
+    }
+   ]
+  },
+  "trait ledger.era.Relation.RelLTEQ": {
+   "class": "Mirror",
+   "digest": "bf41d0fcc9a4bb5e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      825,
+      825
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "RelLTEQ"
+    }
+   ]
+  },
+  "trait ledger.era.Relation.RelSubset": {
+   "class": "Mirror",
+   "digest": "77dbfba2ab787c33",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      829,
+      829
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "RelSubset"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.Mismatch.stored",
+    "def ledger.era.Mismatch.storedBy",
+    "given ledger.era.Mismatch.given_CanEqual_Mismatch_R_A_Mismatch_R_A",
+    "object ledger.era.Mismatch",
+    "object ledger.era.Relation"
+   ],
+   "reason": "the companions of the era types' Mismatch and of Relation: its equality with itself, the reference's derived Eq, which reads the two values alone, and its flat form (stored, storedBy), the node's flat Mismatch the era failures' projections to the flat failures write until those have their encoders (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/Mismatch.scala"
+}

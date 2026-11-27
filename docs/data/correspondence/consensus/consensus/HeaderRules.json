@@ -1,0 +1,160 @@
+{
+ "baseline": {
+  "class consensus.HeaderChain": null,
+  "class consensus.HeaderChain.Entry": null,
+  "class consensus.HeaderChain.Known": null,
+  "class consensus.HeaderChain.TipView": null,
+  "def consensus.HeaderChain#canExtend": null,
+  "def consensus.HeaderChain#contains": null,
+  "def consensus.HeaderChain#extend": null,
+  "def consensus.HeaderChain#map": null,
+  "def consensus.HeaderChain#nonEmptyPoints": null,
+  "def consensus.HeaderChain#points": null,
+  "def consensus.HeaderChain#pruned": null,
+  "def consensus.HeaderChain#rollback": null,
+  "def consensus.HeaderChain#stateAfter": null,
+  "def consensus.HeaderChain#tipHash": null,
+  "def consensus.HeaderChain#tipPoint": null,
+  "def consensus.HeaderChain#tipState": null,
+  "def consensus.HeaderChain.Error#message": null,
+  "def consensus.HeaderChain.at": null,
+  "def consensus.HeaderRules#at": null,
+  "def consensus.HeaderRules#validate": null,
+  "def consensus.HeaderRules.ForecastReason#message": null,
+  "def consensus.HeaderRules.Prepared#map": null,
+  "def consensus.HeaderRules.Prepared#result": null,
+  "def consensus.HeaderRules.Timing#forecastTime": null,
+  "def consensus.HeaderRules.Timing#prepareValidation": null,
+  "def consensus.HeaderRules.Timing#tiebreaker": null,
+  "def consensus.HeaderRules.outcome": null,
+  "enum consensus.HeaderChain.Error": null,
+  "enum consensus.HeaderRules.ForecastReason": null,
+  "enum consensus.HeaderRules.Outcome": null,
+  "enum consensus.HeaderRules.Prepared": null,
+  "enum consensus.HeaderRules.TimeForecast": null,
+  "object consensus.HeaderChain": null,
+  "object consensus.HeaderRules": null,
+  "trait consensus.HeaderRules": null,
+  "trait consensus.HeaderRules.Timing": null
+ },
+ "entries": {
+  "def consensus.HeaderChain#intersectionPoint": {
+   "class": "Gap",
+   "digest": "c6c9e4e5d509f0ba",
+   "note": "the newest of the candidate's points on our chain, searched from our newest block: both are chains, so it is the point the reference's binary search finds",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      726,
+      733
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "intersectionPoint"
+    }
+   ]
+  },
+  "def consensus.HeaderChain#pointsNewestFirst": {
+   "class": "Gap",
+   "digest": "df612f5ae3e7bcac",
+   "note": "the candidate's points newest first, the first point last",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      405,
+      416
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "selectPointsSpec"
+    }
+   ]
+  },
+  "def consensus.HeaderChain#successorPoint": {
+   "class": "Gap",
+   "digest": "ebdcc92d2735a7ab",
+   "note": "the point after a point of the candidate, as the point of successorBlock",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      418,
+      426
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "successorBlock"
+    }
+   ]
+  },
+  "def consensus.HeaderChain#trimmedTo": {
+   "class": "Mirror",
+   "digest": "74dabc99afe0d6ff",
+   "evidence": [
+    "HeaderChainTrimSuite",
+    "GenesisHeaderGateSuite"
+   ],
+   "note": "the trim of intersectsWithCurrentChain: the candidate from the anchor of our chain on (AF.splitAfterPoint theirFrag (AF.anchorPoint ourFrag')), with the header state history trimmed alike. The reference trims when our chain changed and the candidate still intersects it; Scarab's gate trims after each recorded header, to the anchor of the selection published with the history (the one the header was validated against), keeps a chain that does not pass through the anchor for its reintersection to decide, and also drops the local prefix Scarab keeps for ChainSync jumping before that anchor",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/MiniProtocol/ChainSync/Client.hs",
+     "lines": [
+      942,
+      992
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "intersectsWithCurrentChain"
+    }
+   ]
+  },
+  "def consensus.HeaderChain#withinFragmentBounds": {
+   "class": "Gap",
+   "digest": "2b6da0b98cf8f4c5",
+   "note": "the point is one of the candidate's: its local prefix, base or headers",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      452,
+      457
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "withinFragmentBounds"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def consensus.HeaderChain#copy",
+    "def consensus.HeaderChain#densityFragment",
+    "def consensus.HeaderChain#equals",
+    "def consensus.HeaderChain#hashCode",
+    "def consensus.HeaderChain#pointsAfterFirst",
+    "def consensus.HeaderChain#toString",
+    "def consensus.HeaderChain.apply",
+    "val consensus.HeaderChain#base",
+    "val consensus.HeaderChain#baseState",
+    "val consensus.HeaderChain#baseView",
+    "val consensus.HeaderChain#entries",
+    "val consensus.HeaderChain#prefix"
+   ],
+   "reason": "the Scala plumbing of the indexed AnchoredFragment and HeaderChain with no counterpart of their own: the position lookups and cuts the candidate's states are aligned by, structural equality, hashing and rendering over the points and fields alone, the companions and instances, the fields HeaderChain had as a case class with the constructor that indexes them and a copy that indexes only changed points, and the candidate's points as the density rule's fragment without collecting them again (#810)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/HeaderRules.scala"
+}

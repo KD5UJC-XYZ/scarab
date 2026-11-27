@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "class uplc.flat.Checks": null,
+  "def uplc.flat.Checks.ledger": null,
+  "def uplc.flat.FlatDecoder.program": null,
+  "def uplc.flat.FlatDecoder.term": null,
+  "object uplc.flat.Checks": null,
+  "object uplc.flat.FlatDecoder": null,
+  "val uplc.flat.Checks.unrestricted": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/flat/FlatDecoder.scala"
+}

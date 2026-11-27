@@ -1,0 +1,265 @@
+{
+ "entries": {
+  "def ledger.era.OMap.adjust": {
+   "class": "Mirror",
+   "digest": "8a1c085fbbc38dc9",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "note": "its key is passed, so the change keeps the key, as every caller's does",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "lines": [
+      317,
+      335
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "adjust"
+    }
+   ]
+  },
+  "def ledger.era.OMap.empty": {
+   "class": "Mirror",
+   "digest": "c7833a2123ed0807",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "lines": [
+      106,
+      107
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "empty"
+    }
+   ]
+  },
+  "def ledger.era.OMap.extractKeys": {
+   "class": "Mirror",
+   "digest": "a4fe6384def82942",
+   "evidence": [
+    "EraEpochGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "lines": [
+      277,
+      285
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "extractKeys"
+    }
+   ]
+  },
+  "def ledger.era.OMap.get": {
+   "class": "Mirror",
+   "digest": "ae086dceea72ce9c",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "a linear search of the pairs, where the reference looks the key up in its map",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "lines": [
+      138,
+      139
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "lookup"
+    }
+   ]
+  },
+  "def ledger.era.OMap.keys": {
+   "class": "Mirror",
+   "digest": "5c401b9638de02a1",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "lines": [
+      259,
+      260
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "toStrictSeqOKeys"
+    }
+   ]
+  },
+  "def ledger.era.OMap.mapUnsafe": {
+   "class": "Mirror",
+   "digest": "a9de47bb170542f5",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "lines": [
+      337,
+      338
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mapUnsafe"
+    }
+   ]
+  },
+  "def ledger.era.OMap.member": {
+   "class": "Mirror",
+   "digest": "ce89bdc4ce962637",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "lines": [
+      267,
+      268
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "member"
+    }
+   ]
+  },
+  "def ledger.era.OMap.size": {
+   "class": "Mirror",
+   "digest": "1aa873faad57529e",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "lines": [
+      127,
+      128
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "size"
+    }
+   ]
+  },
+  "def ledger.era.OMap.toMap": {
+   "class": "Mirror",
+   "digest": "9289a59ef4aa48f4",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "lines": [
+      251,
+      252
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toMap"
+    }
+   ]
+  },
+  "def ledger.era.OMap.toVector": {
+   "class": "Mirror",
+   "digest": "cea7dba756c3a24e",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "lines": [
+      255,
+      256
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "toStrictSeq"
+    }
+   ]
+  },
+  "def ledger.era.OMap.||>": {
+   "class": "Mirror",
+   "digest": "a3c9b2422f9a0e4b",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "note": "snoc', its key passed with the value as HasOKey would give it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "lines": [
+      192,
+      205
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "(||>)"
+    }
+   ]
+  },
+  "type ledger.era.OMap": {
+   "class": "Mirror",
+   "digest": "398933c8852e2b86",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "a sequence of key and value pairs, where the reference keeps a sequence of keys and a map",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-data/src/Data/OMap/Strict.hs",
+     "lines": [
+      92,
+      95
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "OMap"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.OMap.decoded",
+    "def ledger.era.OMap.entries",
+    "given ledger.era.OMap.given_CanEqual_OMap_K_V_OMap_K_V",
+    "object ledger.era.OMap"
+   ],
+   "reason": "the ordered map's companion: the decoder's constructor from the values it read, which refused a repeated key (`decodeOMap`), the pairs in order, and CanEqual"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/OMap.scala"
+}

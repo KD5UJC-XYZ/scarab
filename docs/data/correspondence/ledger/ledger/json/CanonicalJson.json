@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "class ledger.json.CanonicalJson.ParseError": null,
+  "def ledger.json.CanonicalJson#field": null,
+  "def ledger.json.CanonicalJson#kind": null,
+  "def ledger.json.CanonicalJson.bytesOf": null,
+  "def ledger.json.CanonicalJson.parse": null,
+  "def ledger.json.CanonicalJson.render": null,
+  "def ledger.json.CanonicalJson.string": null,
+  "enum ledger.json.CanonicalJson": null,
+  "enum ledger.json.CanonicalJson.Kind": null,
+  "object ledger.json.CanonicalJson": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/CanonicalJson.scala"
+}

@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "class ledger.json.NativeJson.Parsed": null,
+  "def ledger.json.NativeJson.DecodeError#message": null,
+  "def ledger.json.NativeJson.Error#message": null,
+  "def ledger.json.NativeJson.byte": null,
+  "def ledger.json.NativeJson.decodeStrict": null,
+  "def ledger.json.NativeJson.onlySpace": null,
+  "def ledger.json.NativeJson.parse": null,
+  "enum ledger.json.NativeJson.DecodeError": null,
+  "enum ledger.json.NativeJson.Error": null,
+  "enum ledger.json.NativeJson.Expected": null,
+  "object ledger.json.NativeJson": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/NativeJson.scala"
+}

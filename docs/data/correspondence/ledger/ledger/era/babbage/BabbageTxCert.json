@@ -1,0 +1,53 @@
+{
+ "entries": {
+  "type ledger.era.babbage.BabbageTxCert": {
+   "class": "Mirror",
+   "digest": "860ffecd910cc4f8",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxCert.hs",
+     "lines": [
+      12,
+      12
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxCert BabbageEra"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxCert.instance": {
+   "class": "Mirror",
+   "digest": "e9698112631f80c5",
+   "evidence": [
+    "BabbageTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxCert.hs",
+     "lines": [
+      11,
+      65
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxCert BabbageEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.babbage.BabbageTxCert.fromFlat",
+    "def ledger.era.babbage.BabbageTxCert.rep",
+    "given ledger.era.babbage.BabbageTxCert.given_CanEqual_BabbageTxCert_BabbageTxCert",
+    "object ledger.era.babbage.BabbageTxCert"
+   ],
+   "reason": "Babbage's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives, and the index of a purpose; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Babbage's (fromFlat), and the certificate's representation read only in Babbage's files. Scala containers and helpers with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbageTxCert.scala"
+}

@@ -1,0 +1,25 @@
+{
+ "baseline": {
+  "def ledger.FileKind#current": null,
+  "def ledger.FileKind#identifier": null,
+  "def ledger.FileKind#nextChangedVersion": null,
+  "def ledger.FileKind#readable": null,
+  "def ledger.FileKind#readableFrom": null,
+  "def ledger.FileKind#versionOf": null,
+  "def ledger.FormatLoss#message": null,
+  "def ledger.FormatVersion#<=": null,
+  "def ledger.FormatVersion#next": null,
+  "enum ledger.FileKind": null,
+  "enum ledger.FormatLoss": null,
+  "enum ledger.FormatVersion": null,
+  "enum ledger.UtxoKeyLayout": null,
+  "given ledger.FormatVersion.given_Ordering_FormatVersion": null,
+  "object ledger.FormatVersion": null,
+  "object ledger.UtxoKeyLayout": null,
+  "val ledger.FileKind#families": null,
+  "val ledger.FileKind#history": null,
+  "val ledger.FileKind#label": null,
+  "val ledger.UtxoKeyLayout.current": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PersistedFormat.scala"
+}

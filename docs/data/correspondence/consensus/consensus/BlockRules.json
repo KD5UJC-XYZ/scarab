@@ -1,0 +1,32 @@
+{
+ "baseline": {
+  "def consensus.BlockNoVerdict#message": null,
+  "def consensus.BlockNoVerdict#recovery": null,
+  "def consensus.BlockRules#apply": null,
+  "def consensus.BlockRules.from": null,
+  "def consensus.FollowerEvents#emit": null,
+  "enum consensus.BlockNoVerdict": null,
+  "enum consensus.BlockNoVerdict.Recovery": null,
+  "enum consensus.FollowerEvent": null,
+  "enum consensus.NoVerdictRetry": null,
+  "object consensus.BlockNoVerdict": null,
+  "object consensus.BlockRules": null,
+  "trait consensus.BlockRules": null,
+  "trait consensus.FollowerEvents": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def consensus.BlockNoVerdict.ofConway"
+   ],
+   "reason": "The Conway switch (#85): the no verdict a Conway block's defect is (BlockNoVerdict.ofConway, issue 567's routing, which the reference has no counterpart of), and the one value Conway's era rules read their system start, epoch information and slot to time translation from (MirrorClock.conway, the era history of MirrorClock.of for a Conway block, not extended)."
+  },
+  {
+   "definitions": [
+    "def consensus.BlockNoVerdict.ofDijkstra"
+   ],
+   "reason": "the routing of a Dijkstra block's defects to the follower's no verdict, where valid peer input can meet a limit of this build, or to a stop (BlockNoVerdict.ofDijkstra, #54): the node's own, as BlockNoVerdict is (issue 567); the reference has no path without a verdict"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/BlockRules.scala"
+}

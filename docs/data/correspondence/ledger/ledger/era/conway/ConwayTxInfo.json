@@ -1,0 +1,1024 @@
+{
+ "entries": {
+  "class ledger.era.conway.ConwayTxInfoResult": {
+   "class": "Mirror",
+   "digest": "2eea7819460ebea0",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "each field computed when first read, as the reference keeps them lazy",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      152,
+      156
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayTxInfoResult"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayEraPlutusTxInfo#toPlutusChangedParameters": {
+   "class": "Mirror",
+   "digest": "3ce91fd505704a56",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      784,
+      784
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toPlutusChangedParameters"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.checkReferenceInputsNotDisjointFromInputs": {
+   "class": "Mirror",
+   "digest": "9ef82b88fca399a1",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      816,
+      827
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "checkReferenceInputsNotDisjointFromInputs"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.guardConwayFeaturesForPlutusV1V2": {
+   "class": "Mirror",
+   "digest": "259c837071aa1ac2",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "of the transaction's body",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      352,
+      381
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "guardConwayFeaturesForPlutusV1V2"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.scriptPurposeToScriptInfo": {
+   "class": "Mirror",
+   "digest": "94eb81da1b143124",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      768,
+      776
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "scriptPurposeToScriptInfo"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.toPlutusV3Args": {
+   "class": "Mirror",
+   "digest": "c68e74d4d4d96706",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the spending datum after the purpose, through `AlonzoTxInfo.spendingDatum`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      742,
+      767
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "toPlutusV3Args"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      742,
+      767
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "toPlutusV3Args"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transColdCommitteeCred": {
+   "class": "Mirror",
+   "digest": "eef9db1811583cca",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      602,
+      603
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transColdCommitteeCred"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transDRep": {
+   "class": "Mirror",
+   "digest": "52b687afd794fc98",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      614,
+      618
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transDRep"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transDRepCred": {
+   "class": "Mirror",
+   "digest": "5d3daadc1beb6d49",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      599,
+      600
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transDRepCred"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transDelegatee": {
+   "class": "Mirror",
+   "digest": "f575547a452a500e",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      608,
+      612
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transDelegatee"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transGovAction": {
+   "class": "Mirror",
+   "digest": "ac510b69aa77d462",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      674,
+      709
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transGovAction"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      674,
+      709
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "transGovAction"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transGovActionId": {
+   "class": "Mirror",
+   "digest": "ae252f33a61e0b9a",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      653,
+      658
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transGovActionId"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transHotCommitteeCred": {
+   "class": "Mirror",
+   "digest": "ebfa19a098851732",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      605,
+      606
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transHotCommitteeCred"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transMap": {
+   "class": "Mirror",
+   "digest": "6cf5329a15886165",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the entries in the keys' order, as `Map.toList` gives them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      697,
+      699
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transMap"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transMintValue": {
+   "class": "Mirror",
+   "digest": "cf04d124cccd7453",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      545,
+      546
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transMintValue"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transPlutusPurposeV3": {
+   "class": "Mirror",
+   "digest": "08ca5e3790832491",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "each purpose read through the script class's readers; a later era's refused (`PlutusPurposeNotSupported`)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      640,
+      659
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transPlutusPurposeV3"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      640,
+      659
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "transPlutusPurposeV3"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transProposal": {
+   "class": "Mirror",
+   "digest": "dab4b6c7a84e7f8e",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      726,
+      736
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transProposal"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      726,
+      736
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "transProposal"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transProtVer": {
+   "class": "Mirror",
+   "digest": "4bc15573fa938e82",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      741,
+      743
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transProtVer"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transSlotToPOSIXTime": {
+   "class": "Mirror",
+   "digest": "551f623b9a7ed926",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the clock's typed failure where the reference's is Text",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      813,
+      823
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transSlotToPOSIXTime"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      813,
+      823
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "transSlotToPOSIXTime"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transTxBodyId": {
+   "class": "Mirror",
+   "digest": "47a60966a1c9eb0c",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      539,
+      540
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transTxBodyId"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transTxBodyWithdrawals": {
+   "class": "Mirror",
+   "digest": "017286cb868034c6",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      549,
+      551
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transTxBodyWithdrawals"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transTxCert": {
+   "class": "Mirror",
+   "digest": "51d62c31100b19b1",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "Conway's certificates; every one has a V3 form, so the reference's impossible case has no counterpart",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      559,
+      597
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transTxCert"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transTxCertV1V2": {
+   "class": "Mirror",
+   "digest": "c040cb06ad102b3e",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "generic in the era over Conway's and Shelley's certificate classes, as the reference's is",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      406,
+      418
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transTxCertV1V2"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      406,
+      418
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "transTxCertV1V2"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transTxId": {
+   "class": "Mirror",
+   "digest": "0cb5f55d06cdcf90",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      536,
+      537
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transTxId"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transTxIn": {
+   "class": "Mirror",
+   "digest": "c893572110a6edef",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      542,
+      543
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transTxIn"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transTxInInfoV1": {
+   "class": "Mirror",
+   "digest": "f5e1a5346b87bb7b",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      344,
+      357
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transTxInInfoV1"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      344,
+      357
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "transTxInInfoV1"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transTxInInfoV3": {
+   "class": "Mirror",
+   "digest": "4af8d8b321d466d0",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      360,
+      373
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transTxInInfoV3"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      360,
+      373
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "transTxInInfoV3"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transTxOutV1": {
+   "class": "Mirror",
+   "digest": "836966eea907511c",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite",
+    "EraConwaySuite"
+   ],
+   "note": "whether there is an inline datum asked through `dataTxOutF`, which reads it as data, as the reference's strict `SJust` forces `binaryDataToData`: an inline datum taken unread (`BabbageTxOutRep.fromStored`) that does not read as data is the node's own `Undecodable` where the reference raises `error`",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      306,
+      320
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transTxOutV1"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transValidityInterval": {
+   "class": "Mirror",
+   "digest": "5def2e83acf6adce",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the clock's typed failure where the reference's is Text",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      791,
+      811
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transValidityInterval"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      791,
+      811
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "transValidityInterval"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transVote": {
+   "class": "Mirror",
+   "digest": "7d97acc558988dbb",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "of a procedure's vote, `transVote . vProcVote`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      706,
+      710
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transVote"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transVoter": {
+   "class": "Mirror",
+   "digest": "090ff0de97e11822",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      647,
+      651
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "transVoter"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxInfo.transVotingProcedures": {
+   "class": "Mirror",
+   "digest": "15841484c483bf87",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      715,
+      718
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transVotingProcedures"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      715,
+      718
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "transVotingProcedures"
+    }
+   ]
+  },
+  "enum ledger.era.conway.ConwayContextError": {
+   "class": "Mirror",
+   "digest": "f1e24f45f6b56913",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      180,
+      189
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayContextError"
+    }
+   ]
+  },
+  "trait ledger.era.conway.ConwayEraPlutusTxInfo": {
+   "class": "Mirror",
+   "digest": "d0835117c9e227f4",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      780,
+      784
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayEraPlutusTxInfo"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayTxInfo.context": {
+   "class": "Mirror",
+   "digest": "c7f89a6d1fd38982",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      157,
+      187
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraPlutusContext ConwayEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      157,
+      187
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "EraPlutusContext ConwayEra"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayTxInfo.plutusV1": {
+   "class": "Mirror",
+   "digest": "b0364ba1d6996e90",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "a body's outputs are zipped with the transaction indices, as the reference zips them with [minBound ..] :: [TxIx] (TxIx.enumerate), so none past 65,535 is translated",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      420,
+      455
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 ConwayEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      420,
+      455
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 ConwayEra"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayTxInfo.plutusV2": {
+   "class": "Mirror",
+   "digest": "25367329fc1ff9be",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "a body's outputs are zipped with the transaction indices, as the reference zips them with [minBound ..] :: [TxIx] (TxIx.enumerate), so none past 65,535 is translated",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      457,
+      495
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 ConwayEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      457,
+      495
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 ConwayEra"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayTxInfo.plutusV3": {
+   "class": "Mirror",
+   "digest": "e3d8aa86be0c973a",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "a body's outputs are zipped with the transaction indices, as the reference zips them with [minBound ..] :: [TxIx] (TxIx.enumerate), so none past 65,535 is translated",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      497,
+      547
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraPlutusTxInfo 'PlutusV3 ConwayEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      497,
+      547
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "EraPlutusTxInfo 'PlutusV3 ConwayEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      787,
+      789
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ConwayEraPlutusTxInfo 'PlutusV3 ConwayEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      787,
+      789
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "ConwayEraPlutusTxInfo 'PlutusV3 ConwayEra"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayTxInfoResult#tirPlutusV1": {
+   "class": "Mirror",
+   "digest": "157075a0dad5ff48",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the field the reference's lookup matches",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      175,
+      175
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "lookupTxInfoResult SPlutusV1"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayTxInfoResult#tirPlutusV2": {
+   "class": "Mirror",
+   "digest": "7ee212c63c8378c6",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the field the reference's lookup matches",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      176,
+      176
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "lookupTxInfoResult SPlutusV2"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayTxInfoResult#tirPlutusV3": {
+   "class": "Mirror",
+   "digest": "7cceb29532360aa7",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the field the reference's lookup matches",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxInfo.hs",
+     "lines": [
+      177,
+      177
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "lookupTxInfoResult SPlutusV3"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.conway.ConwayTxInfo"
+   ],
+   "reason": "objects that stand for the reference's modules of functions (`Alonzo/Scripts.hs`, `State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`, the `TxInfo.hs` and `Context.hs` of the script context, the `Indexable` instances of `Alonzo/TxBody.hs`, plutus-ledger-api's `V1` to `V4`, plutus-tx's `Ratio`), which Scala needs to hold top-level functions under a name"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayTxInfo.scala"
+}

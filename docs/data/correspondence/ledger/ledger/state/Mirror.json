@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "class ledger.state.MirrorEnv": null,
+  "class ledger.state.Mirrored": null,
+  "enum ledger.state.Derived": null,
+  "enum ledger.state.Derived.Which": null,
+  "enum ledger.state.Gap": null,
+  "enum ledger.state.MirrorError": null,
+  "enum ledger.state.Shape": null,
+  "enum ledger.state.SnapshotBasis": null,
+  "given ledger.state.Mirrored.given_Diff_Mirrored_A": null,
+  "given ledger.state.Mirrored.given_Functor_Mirrored": null,
+  "object ledger.state.Derived": null,
+  "object ledger.state.Mirrored": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Mirror.scala"
+}

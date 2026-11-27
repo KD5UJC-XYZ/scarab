@@ -1,0 +1,690 @@
+{
+ "entries": {
+  "def ledger.era.rules.ConwayBbodyPredFailure.alonzoToConwayBbodyPredFailure": {
+   "class": "Mirror",
+   "digest": "99e8581dbcc1ecb7",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      243,
+      248
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "alonzoToConwayBbodyPredFailure"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      230,
+      235
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "alonzoToConwayBbodyPredFailure"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayBbodyPredFailure.shelleyToConwayBbodyPredFailure": {
+   "class": "Mirror",
+   "digest": "826d930ed40fc37b",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      231,
+      241
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "shelleyToConwayBbodyPredFailure"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      218,
+      228
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "shelleyToConwayBbodyPredFailure"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedLedgersInBbody#wrapEvent": {
+   "class": "Mirror",
+   "digest": "4ebabf7c1edd082b",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      423,
+      423
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "wrapEvent"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedLedgersInBbody#wrapFailed": {
+   "class": "Mirror",
+   "digest": "3020644bfbe894ef",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      422,
+      422
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "wrapFailed"
+    }
+   ]
+  },
+  "def ledger.era.rules.InjectBbodyFailure#injectFailure": {
+   "class": "Mirror",
+   "digest": "9311515abd75a414",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      150,
+      150
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"BBODY\""
+    }
+   ]
+  },
+  "def ledger.era.rules.conwayToDijkstraBbodyPredFailure": {
+   "class": "Mirror",
+   "digest": "3eb99b3d663b5ab6",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "total on the constructors it maps (ConwayBbodyFailureInDijkstra); HeaderProtVerTooHigh has no injection and does not compile",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      405,
+      413
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "conwayToDijkstraBbodyPredFailure"
+    }
+   ]
+  },
+  "enum ledger.era.rules.AlonzoBbodyEvent": {
+   "class": "Mirror",
+   "digest": "f92752db7202c930",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs",
+     "lines": [
+      72,
+      73
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "AlonzoBbodyEvent"
+    }
+   ]
+  },
+  "enum ledger.era.rules.AlonzoBbodyPredFailure": {
+   "class": "Mirror",
+   "digest": "c346a908f9f096f5",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the units the node's, as UTXO's failures hold OrdExUnits",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs",
+     "lines": [
+      65,
+      68
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "AlonzoBbodyPredFailure"
+    }
+   ]
+  },
+  "enum ledger.era.rules.ConwayBbodyPredFailure": {
+   "class": "Mirror",
+   "digest": "b2f6aae8e7850824",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "in the order of its tags; the sizes Longs, the units the node's (ExUnits at f649f975, OrdExUnits, the same units with an order, at 9df9f98c); HeaderProtVerTooHigh, which Dijkstra's injection calls impossible, has no injection into Dijkstra's; ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      106,
+      114
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ConwayBbodyPredFailure"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      97,
+      105
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayBbodyPredFailure"
+    }
+   ]
+  },
+  "enum ledger.era.rules.DijkstraBbodyPredFailure": {
+   "class": "Mirror",
+   "digest": "25d4b311c2e78a06",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "its constructors in the order of their tags (0 to 6, :119-128); the sizes Longs, the header's major version its Word32 (Unsigned[W32]), the units the node's; no encoder of its own in the node yet: its refusals are compared with the reference's bytes through the oracle suite's test-side encoder of Dijkstra's era failures (DijkstraEraFailureCbor) (#796)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      88,
+      97
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraBbodyPredFailure"
+    }
+   ]
+  },
+  "enum ledger.era.rules.ShelleyBbodyEvent": {
+   "class": "Mirror",
+   "digest": "4e745a0504ae2310",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "lines": [
+      166,
+      168
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ShelleyBbodyEvent"
+    }
+   ]
+  },
+  "enum ledger.era.rules.ShelleyBbodyPredFailure": {
+   "class": "Mirror",
+   "digest": "2c04080749ff60ce",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the size the reference's Int, a Long",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Bbody.hs",
+     "lines": [
+      99,
+      107
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ShelleyBbodyPredFailure"
+    }
+   ]
+  },
+  "given ledger.era.rules.EmbedLedgersInBbody.conway": {
+   "class": "Mirror",
+   "digest": "f255f28ff8bb6c1b",
+   "evidence": [
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      318,
+      327
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Embed ledgers (BBODY era)"
+    }
+   ]
+  },
+  "given ledger.era.rules.EmbedLedgersInBbody.dijkstra": {
+   "class": "Mirror",
+   "digest": "8ccd5e69955007b9",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      415,
+      423
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Embed ledgers (BBODY era)"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectBbodyFailure.conway": {
+   "class": "Mirror",
+   "digest": "58749ea19a7951a9",
+   "evidence": [
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      153,
+      153
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayBbodyPredFailure ConwayEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectBbodyFailure.conwayAlonzo": {
+   "class": "Mirror",
+   "digest": "a2991a07b5743f39",
+   "evidence": [
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      155,
+      156
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Alonzo.AlonzoBbodyPredFailure ConwayEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectBbodyFailure.conwayShelley": {
+   "class": "Mirror",
+   "digest": "d1ceb84f883efe00",
+   "evidence": [
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      158,
+      159
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Shelley.ShelleyBbodyPredFailure ConwayEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectBbodyFailure.dijkstra": {
+   "class": "Mirror",
+   "digest": "c58a9d83976d04bd",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      150,
+      150
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"BBODY\" DijkstraBbodyPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectBbodyFailure.dijkstraAlonzo": {
+   "class": "Mirror",
+   "digest": "722b49a3bac90f82",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the composition written as its map, which reaches no HeaderProtVerTooHigh",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      155,
+      156
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"BBODY\" Alonzo.AlonzoBbodyPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectBbodyFailure.dijkstraConway": {
+   "class": "Mirror",
+   "digest": "dc78f70b80c5a730",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "over the constructors conwayToDijkstraBbodyPredFailure maps",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      152,
+      153
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"BBODY\" Conway.ConwayBbodyPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectBbodyFailure.dijkstraShelley": {
+   "class": "Mirror",
+   "digest": "77a751746de0cfef",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the composition written as its map onto the three constructors that keep their names",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      158,
+      159
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"BBODY\" Shelley.ShelleyBbodyPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectBbodyFailure.given_conwayLedgers_F_using": {
+   "class": "Mirror",
+   "digest": "ba8a15698476ea1f",
+   "evidence": [
+    "ConwayBbodySuite",
+    "ConwayBbodyImpSuite"
+   ],
+   "note": "the reference's nineteen instances from LEDGERS down (Conway/Rules/Bbody.hs:161-216) as one instance over LEDGERS's injection; ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      161,
+      216
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectBbodyFailure.given_dijkstraLedgers_F_using": {
+   "class": "Mirror",
+   "digest": "6edb74e6fccf7908",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the twenty instances of LEDGERS's failure and the failures below it as one over LEDGERS's injection (InjectLedgersFailure), whose instances are the same twenty",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      161,
+      296
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"BBODY\" Shelley.ShelleyLedgersPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "trait ledger.era.rules.EmbedLedgersInBbody": {
+   "class": "Mirror",
+   "digest": "e45bb976b3704aca",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      415,
+      423
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Embed ledgers (BBODY era)"
+    }
+   ]
+  },
+  "trait ledger.era.rules.InjectBbodyFailure": {
+   "class": "Mirror",
+   "digest": "2ac67c094268eaae",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "InjectRuleFailure at the rule BBODY as a class per rule, contravariant in the failure so that an instance over a whole type or a union of constructors serves a predicate declaring one of them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      150,
+      296
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"BBODY\""
+    }
+   ]
+  },
+  "type ledger.era.rules.BbodyEvent": {
+   "class": "Mirror",
+   "digest": "947730927cea294b",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "ConwayBbodySuite"
+   ],
+   "note": "the type family EraRuleEvent at the rule BBODY as a match type, Alonzo's at both; ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      164,
+      164
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleEvent \"BBODY\" ConwayEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      148,
+      148
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleEvent \"BBODY\" DijkstraEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      151,
+      151
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleEvent"
+    }
+   ]
+  },
+  "type ledger.era.rules.BbodyPredFailure": {
+   "class": "Mirror",
+   "digest": "f4e8eb99d89fead0",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "ConwayBbodySuite"
+   ],
+   "note": "the type family EraRuleFailure at the rule BBODY as a match type, with Conway's and Dijkstra's cases; ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      162,
+      162
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleFailure \"BBODY\" ConwayEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      146,
+      146
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleFailure \"BBODY\" DijkstraEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Bbody.hs",
+     "lines": [
+      149,
+      149
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure"
+    }
+   ]
+  },
+  "type ledger.era.rules.ConwayBbodyFailureInDijkstra": {
+   "class": "Mirror",
+   "digest": "7fdb46ee940de0b8",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the constructors the reference's partial injection maps, HeaderProtVerTooHigh, which it calls impossible, left out (D7a's decision, 2026-11-20, #85)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      405,
+      413
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "conwayToDijkstraBbodyPredFailure"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.rules.AlonzoBbodyEvent.given_CanEqual_AlonzoBbodyEvent_E_AlonzoBbodyEvent_E",
+    "given ledger.era.rules.AlonzoBbodyPredFailure.given_CanEqual_AlonzoBbodyPredFailure_E_AlonzoBbodyPredFailure_E",
+    "given ledger.era.rules.ConwayBbodyPredFailure.given_CanEqual_ConwayBbodyPredFailure_E_ConwayBbodyPredFailure_E",
+    "given ledger.era.rules.DijkstraBbodyPredFailure.given_CanEqual_DijkstraBbodyPredFailure_E_DijkstraBbodyPredFailure_E",
+    "given ledger.era.rules.ShelleyBbodyEvent.given_CanEqual_ShelleyBbodyEvent_E_ShelleyBbodyEvent_E",
+    "given ledger.era.rules.ShelleyBbodyPredFailure.given_CanEqual_ShelleyBbodyPredFailure_E_ShelleyBbodyPredFailure_E",
+    "object ledger.era.rules.AlonzoBbodyEvent",
+    "object ledger.era.rules.AlonzoBbodyPredFailure",
+    "object ledger.era.rules.ConwayBbodyPredFailure",
+    "object ledger.era.rules.DijkstraBbodyPredFailure",
+    "object ledger.era.rules.EmbedLedgersInBbody",
+    "object ledger.era.rules.InjectBbodyFailure",
+    "object ledger.era.rules.ShelleyBbodyEvent",
+    "object ledger.era.rules.ShelleyBbodyPredFailure"
+   ],
+   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader, a plain class so that no derived Mirror builds one whose fields are not its header's, and its rendering), the evidence that a block is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types, by whose the failure is (DijkstraBlockError and its total classification DijkstraBlockError.of: the block decoder's refusal, the era types' refusal of what it read, or a value the decoder's own bounds rule out), a body's rendering, and the BBODY state's lens"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/BbodyFailures.scala"
+}

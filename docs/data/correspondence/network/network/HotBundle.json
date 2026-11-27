@@ -1,0 +1,134 @@
+{
+ "entries": {
+  "def network.HotBundle#protocols": {
+   "class": "Mirror",
+   "digest": "ee683a40aa113d67",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "leiosNotifyMiniProtocolNum and leiosFetchMiniProtocolNum",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      1963,
+      2020
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "initiator"
+    }
+   ]
+  },
+  "def network.LeiosFetchInitiator#run": {
+   "class": "Mirror",
+   "digest": "78a65585928a7abc",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      1911,
+      1935
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "aLeiosFetchClient"
+    }
+   ]
+  },
+  "def network.LeiosNotifyInitiator#run": {
+   "class": "Mirror",
+   "digest": "78a65585928a7abc",
+   "note": "over its channel until told to stop",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      1866,
+      1889
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "aLeiosNotifyClient"
+    }
+   ]
+  },
+  "enum network.HotBundle": {
+   "class": "Mirror",
+   "digest": "7d2efb5fc5c4b7d8",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "withHot's two mini-protocols as the Leios build's bundle; a release build's adds none",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      1963,
+      2020
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "initiator"
+    },
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      2027,
+      2100
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "initiatorAndResponder"
+    }
+   ]
+  },
+  "trait network.LeiosFetchInitiator": {
+   "class": "Mirror",
+   "digest": "a4ba8f7002a7d0d0",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "the client a hot activation runs, given the stop signals its ExpandedInitiatorContext's control message gives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      1911,
+      1935
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "aLeiosFetchClient"
+    }
+   ]
+  },
+  "trait network.LeiosNotifyInitiator": {
+   "class": "Mirror",
+   "digest": "8c33d0bcc9839248",
+   "note": "the client of one hot activation, stopped with the hot protocols",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      1866,
+      1889
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "aLeiosNotifyClient"
+    }
+   ]
+  }
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/HotBundle.scala"
+}

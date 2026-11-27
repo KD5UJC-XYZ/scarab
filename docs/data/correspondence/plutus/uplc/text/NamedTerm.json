@@ -1,0 +1,36 @@
+{
+ "baseline": {
+  "class uplc.text.FreeVariable": null,
+  "class uplc.text.Name": [
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Name/Unique.hs",
+    "lines": [
+     65,
+     74
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "Name"
+   }
+  ],
+  "class uplc.text.NamedProgram": null,
+  "def uplc.text.NamedProgram#deBruijn": null,
+  "def uplc.text.NamedTerm.app": null,
+  "def uplc.text.NamedTerm.builtin": null,
+  "def uplc.text.NamedTerm.caseOf": null,
+  "def uplc.text.NamedTerm.constant": null,
+  "def uplc.text.NamedTerm.constr": null,
+  "def uplc.text.NamedTerm.deBruijn": null,
+  "def uplc.text.NamedTerm.delay": null,
+  "def uplc.text.NamedTerm.force": null,
+  "def uplc.text.NamedTerm.lam": null,
+  "def uplc.text.NamedTerm.variable": null,
+  "enum uplc.text.NamedTermF": null,
+  "given uplc.text.NamedTermF.given_Traverse_NamedTermF": null,
+  "object uplc.text.NamedTerm": null,
+  "object uplc.text.NamedTermF": null,
+  "type uplc.text.NamedTerm": null,
+  "val uplc.text.NamedTerm.error": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/text/NamedTerm.scala"
+}

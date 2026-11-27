@@ -358,7 +358,7 @@
     "node/src/main/scala/xyz/kd5ujc/scarab/node/LeiosVotes.scala",
     "node/src/main/scala/xyz/kd5ujc/scarab/node/LeiosFetchKernel.scala",
     "node/src/main/scala/xyz/kd5ujc/scarab/node/Main.scala",
-    "docs/data/correspondence/consensus.json",
+    "docs/data/correspondence/consensus/consensus/leios/LeiosVoteState.json",
     "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
    ]
   },

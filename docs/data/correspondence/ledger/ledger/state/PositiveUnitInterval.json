@@ -1,0 +1,25 @@
+{
+ "baseline": {
+  "def ledger.state.PositiveUnitInterval.boundRational": null,
+  "def ledger.state.PositiveUnitInterval.denominator": null,
+  "def ledger.state.PositiveUnitInterval.fromJson": null,
+  "def ledger.state.PositiveUnitInterval.fromRational": null,
+  "def ledger.state.PositiveUnitInterval.fromScientific": null,
+  "def ledger.state.PositiveUnitInterval.numerator": null,
+  "def ledger.state.PositiveUnitInterval.rational": null,
+  "object ledger.state.PositiveUnitInterval": null,
+  "type ledger.state.PositiveUnitInterval": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+    "lines": [
+     512,
+     527
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "PositiveUnitInterval"
+   }
+  ]
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/PositiveUnitInterval.scala"
+}

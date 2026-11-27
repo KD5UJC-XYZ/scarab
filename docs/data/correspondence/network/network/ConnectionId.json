@@ -1,0 +1,13 @@
+{
+ "baseline": {
+  "class network.ConnectionId": null,
+  "def network.ConnectionId.Endpoint.fromSocketAddress": null,
+  "def network.ConnectionId.fromSocketAddresses": null,
+  "enum network.ConnectionId.Endpoint": null,
+  "given network.ConnectionId.Endpoint.given_Ordering_Endpoint": null,
+  "given network.ConnectionId.given_Ordering_ConnectionId": null,
+  "object network.ConnectionId": null,
+  "object network.ConnectionId.Endpoint": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/ConnectionId.scala"
+}

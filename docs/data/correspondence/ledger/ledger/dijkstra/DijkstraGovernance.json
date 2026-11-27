@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "class ledger.dijkstra.DijkstraGovActionId": null,
+  "class ledger.dijkstra.DijkstraProposal": null,
+  "class ledger.dijkstra.DijkstraVotingProcedure": null,
+  "def ledger.dijkstra.DijkstraGovActionId.decode": null,
+  "def ledger.dijkstra.DijkstraProposal.decode": null,
+  "def ledger.dijkstra.DijkstraProposal.set": null,
+  "def ledger.dijkstra.DijkstraVoting.procedures": null,
+  "def ledger.dijkstra.DijkstraVoting.voter": null,
+  "enum ledger.dijkstra.DijkstraGovAction": null,
+  "enum ledger.dijkstra.DijkstraVoter": null,
+  "object ledger.dijkstra.DijkstraGovActionId": null,
+  "object ledger.dijkstra.DijkstraProposal": null,
+  "object ledger.dijkstra.DijkstraVoting": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraGovernance.scala"
+}

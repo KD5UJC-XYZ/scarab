@@ -1,0 +1,39 @@
+{
+ "baseline": {
+  "def ledger.Data.read": null,
+  "def ledger.Data.readBytes": null,
+  "object ledger.Data": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+    "lines": [
+     111,
+     115
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "Data"
+   },
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Data.hs",
+    "lines": [
+     209,
+     230
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "decodeData"
+   },
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+    "lines": [
+     227,
+     233
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "makeBinaryData"
+   }
+  ]
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Data.scala"
+}

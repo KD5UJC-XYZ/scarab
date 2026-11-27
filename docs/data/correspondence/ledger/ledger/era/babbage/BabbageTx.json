@@ -1,0 +1,207 @@
+{
+ "entries": {
+  "class ledger.era.babbage.BabbageTx": {
+   "class": "Mirror",
+   "digest": "903483e2cc7560df",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Tx.hs",
+     "lines": [
+      40,
+      40
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Tx l BabbageEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      205,
+      212
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoTx"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageTx#sizeTxForFeeCalculation": {
+   "class": "Mirror",
+   "digest": "423da259d68d4b92",
+   "evidence": [
+    "BabbageTxDifferentialSuite",
+    "BabbageTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      203,
+      210
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "sizeTxForFeeCalculation"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageTx.decode": {
+   "class": "Mirror",
+   "digest": "c7769480657e0362",
+   "evidence": [
+    "BabbageTxDifferentialSuite",
+    "BabbageTxSuite"
+   ],
+   "note": "a block's transaction, its parts read by Babbage's decoders in that order, the first refusal the transaction's",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Tx.hs",
+     "lines": [
+      78,
+      79
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (Tx l BabbageEra))"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs",
+     "lines": [
+      212,
+      256
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoBlockBody era))"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageTx.fromEnvelope": {
+   "class": "Mirror",
+   "digest": "dc0100c3623c8261",
+   "evidence": [
+    "BabbageTxDifferentialSuite",
+    "BabbageTxSuite"
+   ],
+   "note": "a whole transaction read as the reference's record is: its body, witness set, the flag when the third item is a boolean, the auxiliary data or null, and then the record's size; each part read by Babbage's decoders; held to the flat decoder's verdicts on every Babbage transaction the repository holds (the recorded blocks, the reference's refusal, v1-context and Plutus admission corpora) and on byte mutants of them, and on 576 Babbage rows of the reference's decoder corpora (three of them witness sets at protocol version 8, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (BabbageTxDifferentialSuite), and to its written order on crafted cases (BabbageTxSuite)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      526,
+      554
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoTx l era))"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTx#auxData": {
+   "class": "Mirror",
+   "digest": "a3b1a73b29fa4b2d",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      210,
+      210
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atAuxData"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTx#body": {
+   "class": "Mirror",
+   "digest": "1a07be2537347fc8",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      207,
+      207
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atBody"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTx#isValid": {
+   "class": "Mirror",
+   "digest": "ca2e51926a229461",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      209,
+      209
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atIsPhase2Valid"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTx#wits": {
+   "class": "Mirror",
+   "digest": "9a917ef86ad37ac3",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      208,
+      208
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atWits"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTx.instance": {
+   "class": "Mirror",
+   "digest": "df95ae5ff6d11144",
+   "evidence": [
+    "BabbageTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Tx.hs",
+     "lines": [
+      39,
+      76
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTx BabbageEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.babbage.BabbageTx#equals",
+    "def ledger.era.babbage.BabbageTx#hashCode",
+    "def ledger.era.babbage.BabbageTx#toString",
+    "given ledger.era.babbage.BabbageTx.given_CanEqual_BabbageTx_BabbageTx",
+    "object ledger.era.babbage.BabbageTx"
+   ],
+   "reason": "Babbage's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives, and the index of a purpose; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Babbage's (fromFlat), and the certificate's representation read only in Babbage's files. Scala containers and helpers with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbageTx.scala"
+}

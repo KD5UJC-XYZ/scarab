@@ -1,0 +1,19 @@
+{
+ "baseline": {
+  "class storage.Binary.Failure.OutOfRange": null,
+  "class storage.Binary.Failure.UnknownVersion": null,
+  "def storage.Binary.Failure.OutOfRange#message": null,
+  "def storage.Binary.Failure.OutOfRange#pushContext": null,
+  "def storage.Binary.Failure.UnknownVersion#message": null,
+  "def storage.Binary.Failure.UnknownVersion#pushContext": null,
+  "def storage.Binary.bytes": null,
+  "def storage.Binary.decodeEach": null,
+  "def storage.Binary.nonNegative": null,
+  "def storage.Binary.version": null,
+  "enum storage.Binary.Field": null,
+  "object storage.Binary": null,
+  "object storage.Binary.Failure": null,
+  "trait storage.Binary.Failure": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/Binary.scala"
+}

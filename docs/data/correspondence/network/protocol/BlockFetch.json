@@ -1,0 +1,59 @@
+{
+ "baseline": {
+  "def protocol.BlockFetch.Received.add": null,
+  "def protocol.BlockFetch.decode": null,
+  "def protocol.BlockFetch.decodePrefix": null,
+  "def protocol.BlockFetch.direction": null,
+  "def protocol.BlockFetch.encode": null,
+  "def protocol.BlockFetch.transition": null,
+  "object protocol.BlockFetch": null,
+  "object protocol.BlockFetch.Received": null
+ },
+ "entries": {
+  "val protocol.BlockFetch.MiniProtocolId": {
+   "class": "Mirror",
+   "digest": "a70e0b35cfad326a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "cardano-diffusion/lib/Cardano/Network/NodeToNode.hs",
+     "lines": [
+      478,
+      479
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167",
+     "symbol": "blockFetchMiniProtocolNum"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.BlockFetch.Message.RequestRange.apply",
+    "def protocol.BlockFetch.Message.RequestRange.unapply",
+    "object protocol.BlockFetch.Message",
+    "object protocol.BlockFetch.Message.RequestRange",
+    "object protocol.BlockFetch.Role",
+    "object protocol.BlockFetch.State",
+    "type protocol.BlockFetch.Limits",
+    "type protocol.BlockFetch.Message",
+    "type protocol.BlockFetch.PayloadCodec",
+    "type protocol.BlockFetch.Received",
+    "type protocol.BlockFetch.RequestLimits",
+    "type protocol.BlockFetch.Role",
+    "type protocol.BlockFetch.State",
+    "type protocol.BlockFetch.TimeLimits",
+    "val protocol.BlockFetch.Limits",
+    "val protocol.BlockFetch.Received.Empty",
+    "val protocol.BlockFetch.RequestLimits",
+    "val protocol.BlockFetch.Role.values",
+    "val protocol.BlockFetch.State.values",
+    "val protocol.BlockFetch.TimeLimits"
+   ],
+   "reason": "names under the Cardano facade for BlockFetchEngine's types, companions and values, with the point type fixed to ChainSync.Point; they decide nothing, and what they name is BlockFetchEngine's"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/BlockFetch.scala"
+}

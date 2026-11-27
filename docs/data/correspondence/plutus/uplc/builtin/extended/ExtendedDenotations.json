@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def uplc.builtin.extended.ExtendedDenotations.apply": null,
+  "def uplc.builtin.extended.ExtendedDenotations.functions": null,
+  "def uplc.builtin.extended.ExtendedDenotations.of": null,
+  "object uplc.builtin.extended.ExtendedDenotations": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/builtin/extended/ExtendedDenotations.scala"
+}

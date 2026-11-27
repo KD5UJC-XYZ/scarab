@@ -1,0 +1,982 @@
+{
+ "entries": {
+  "class ledger.era.dijkstra.DijkstraTxBody": {
+   "class": "Mirror",
+   "digest": "407aff05365b78ff",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the GADT's two constructors are two final classes of one sealed class, each made only by the decoder; the fields both share are held once (`DijkstraBodyFields`), with the bytes the body arrived as; each required top-level guard's data is decoded",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      172,
+      220
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraTxBodyRaw"
+    }
+   ]
+  },
+  "class ledger.era.dijkstra.DijkstraTxBody.SubTxBody": {
+   "class": "Mirror",
+   "digest": "0fd1792189960171",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "its fields are its parent's, those both levels share",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      199,
+      219
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraSubTxBodyRaw"
+    }
+   ]
+  },
+  "class ledger.era.dijkstra.DijkstraTxBody.TopTxBody": {
+   "class": "Mirror",
+   "digest": "96a4afad4cc69808",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the fields both levels share are its parent's",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      173,
+      198
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraTxBodyRaw"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#accountBalanceIntervals": {
+   "class": "Mirror",
+   "digest": "0854983145997f36",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the reference's `AccountBalanceIntervals era` newtype is its map",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      196,
+      196
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrAccountBalanceIntervals"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      218,
+      218
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrAccountBalanceIntervals"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#auxDataHash": {
+   "class": "Mirror",
+   "digest": "d87bd6067c736fc7",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      187,
+      187
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrAuxDataHash"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      210,
+      210
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrAuxDataHash"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#certs": {
+   "class": "Mirror",
+   "digest": "4f360d9edd1910c9",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      180,
+      180
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrCerts"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      204,
+      204
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrCerts"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#currentTreasuryValue": {
+   "class": "Mirror",
+   "digest": "4dde9f9f3386136f",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      191,
+      191
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrCurrentTreasuryValue"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      214,
+      214
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrCurrentTreasuryValue"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#directDeposits": {
+   "class": "Mirror",
+   "digest": "2fc7845eb392464b",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the reference's `DirectDeposits` newtype is its map",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      195,
+      195
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrDirectDeposits"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      217,
+      217
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrDirectDeposits"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#guards": {
+   "class": "Mirror",
+   "digest": "c8492f835c40941b",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      184,
+      184
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrGuards"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      207,
+      207
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrGuards"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#mint": {
+   "class": "Mirror",
+   "digest": "ea3e06e5db0f8977",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      185,
+      185
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrMint"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      208,
+      208
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrMint"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#networkId": {
+   "class": "Mirror",
+   "digest": "e2de2f07b0dde127",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      188,
+      188
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrNetworkId"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      211,
+      211
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrNetworkId"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#outputs": {
+   "class": "Mirror",
+   "digest": "93e7254d342e4bf2",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      177,
+      177
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrOutputs"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      203,
+      203
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrOutputs"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#proposalProcedures": {
+   "class": "Mirror",
+   "digest": "6e5b2fc328f30d12",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      190,
+      190
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrProposalProcedures"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      213,
+      213
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrProposalProcedures"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#raw": {
+   "class": "Mirror",
+   "digest": "991221ad2245a422",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the bytes the body arrived as, which the reference's `MemoBytes` keeps",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1195,
+      1195
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "TxBody l DijkstraEra"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#referenceInputs": {
+   "class": "Mirror",
+   "digest": "dc0a858e1829f58e",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      176,
+      176
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrReferenceInputs"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      202,
+      202
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrReferenceInputs"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#requiredTopLevelGuards": {
+   "class": "Mirror",
+   "digest": "719bfb23b88730e6",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "each guard's data decoded (`Data`, its bytes kept), as the reference's `Data era`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      194,
+      194
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrRequiredTopLevelGuards"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      216,
+      216
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrRequiredTopLevelGuards"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#scriptIntegrityHash": {
+   "class": "Mirror",
+   "digest": "097693efae462ff0",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      186,
+      186
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrScriptIntegrityHash"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      209,
+      209
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrScriptIntegrityHash"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#spendInputs": {
+   "class": "Mirror",
+   "digest": "032b0fdb56be96f1",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      174,
+      174
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrSpendInputs"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      201,
+      201
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrSpendInputs"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#treasuryDonation": {
+   "class": "Mirror",
+   "digest": "bfd7308b89176270",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      192,
+      192
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrTreasuryDonation"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      215,
+      215
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrTreasuryDonation"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#validity": {
+   "class": "Mirror",
+   "digest": "8b2964268e950cc3",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      183,
+      183
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrVldt"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      206,
+      206
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrVldt"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#votingProcedures": {
+   "class": "Mirror",
+   "digest": "c852862c064cdd53",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      189,
+      189
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrVotingProcedures"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      212,
+      212
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrVotingProcedures"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody#withdrawals": {
+   "class": "Mirror",
+   "digest": "1573662005963077",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the reference's Withdrawals",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      181,
+      181
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrWithdrawals"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      205,
+      205
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dstbrWithdrawals"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody.dijkstraRedeemerPointerInverse": {
+   "class": "Mirror",
+   "digest": "6f970b3db7c50779",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1297,
+      1316
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraRedeemerPointerInverse"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1264,
+      1272
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "GuardsScriptHashView"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody.readSub": {
+   "class": "Mirror",
+   "digest": "8fbcc9f15a46a22b",
+   "evidence": [
+    "DijkstraOnePassSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "a sub-transaction's body read from its item in one pass, as readTop reads a top-level one with the sub-transaction level's keys, which leave out the fee, the collateral, the sub-transactions and the starting balance intervals; its verdicts through DijkstraTx's decoders those the two passes it replaced gave, recorded (DijkstraOnePassExpected): on the recorded transactions, mutants and written cases (a fault at each key, competing refusals, every form of data)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      339,
+      479
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR (Annotator (DijkstraTxBodyRaw l era))"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody.readTop": {
+   "class": "Mirror",
+   "digest": "c99c7eb1e6a031af",
+   "evidence": [
+    "DijkstraOnePassSuite",
+    "DijkstraTxSuite"
+   ],
+   "note": "a top-level body read from its item straight into the era's types in one pass: the Leios build's keys, fields, refusals and their order (Sparse.read, then each key in turn), each output by Dijkstra's reader, each certificate from its own item and each required guard's datum decoded once (Data.read); its sub-transactions by the reader DijkstraTx gives, in the order read and by id. Through DijkstraTx's decoders, its verdicts on every recorded transaction, on fixed mutants of them, and on written cases (competing refusals across the parts and within one, the first reported; every form of Plutus data in datums and redeemers; a fault at each key of a body, a sub-transaction's body, a witness set and auxiliary data) are those of the two passes it replaced (the flat block decoder and its projection), recorded before they were deleted (DijkstraOnePassExpected); every refusal is the decoder's (EraTxError.Decode)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      339,
+      479
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR (Annotator (DijkstraTxBodyRaw l era))"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraTxBody.toSTxLevel": {
+   "class": "Mirror",
+   "digest": "e5f2836e486c3f79",
+   "evidence": [
+    "DijkstraStateSuite"
+   ],
+   "note": "the level a body is of, read from its constructor, as the reference's `toSTxLevel` reads it from the raw body's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1079,
+      1084
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "HasEraTxLevel TxBody DijkstraEra"
+    }
+   ]
+  },
+  "enum ledger.era.dijkstra.AccountBalanceInterval": {
+   "class": "Mirror",
+   "digest": "2b909c83ae0e4211",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "lines": [
+      670,
+      675
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "AccountBalanceInterval"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraTxBody#id": {
+   "class": "Mirror",
+   "digest": "3e289313806cc3b2",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the hash of the bytes the body arrived as, the transaction's id",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1061,
+      1062
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "hashAnnotated"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraTxBody.TopTxBody#collateralInputs": {
+   "class": "Mirror",
+   "digest": "17f9164cdfdc1276",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      175,
+      175
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrCollateralInputs"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraTxBody.TopTxBody#collateralReturn": {
+   "class": "Mirror",
+   "digest": "92017319d265b2e7",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      178,
+      178
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrCollateralReturn"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraTxBody.TopTxBody#fee": {
+   "class": "Mirror",
+   "digest": "3673d59d76eef239",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      182,
+      182
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrFee"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraTxBody.TopTxBody#startingAccountBalanceIntervals": {
+   "class": "Mirror",
+   "digest": "8abf5ef4db42e7db",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      197,
+      197
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrStartingAccountBalanceIntervals"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraTxBody.TopTxBody#subTransactions": {
+   "class": "Mirror",
+   "digest": "04c8345b1a7b74cc",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "an `OMap` of the transactions by id in the order read ([[OMap]], a sequence of pairs)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      193,
+      193
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrSubTransactions"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraTxBody.TopTxBody#totalCollateral": {
+   "class": "Mirror",
+   "digest": "528dca4c383b2f4c",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      179,
+      179
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dtbrTotalCollateral"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraTxBody.instance": {
+   "class": "Mirror",
+   "digest": "de67d2a143e872d5",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the class instances of both levels, the level the evidence's (`BothLevels`); there is no required signers' field (`notSupportedInThisEraL`, `:1416`), and the getter is the guards' keys (`:1419-1423`); `allInputsTxBodyF`, a member of `EraTx` at 9df9f98c, is a member of `EraTxBody` here, as at f649f975, and is `dijkstraAllInputsTxBodyF`",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1183,
+      1228
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraTxBody DijkstraEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1401,
+      1433
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "AlonzoEraTxBody DijkstraEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1460,
+      1500
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "BabbageEraTxBody DijkstraEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1560,
+      1579
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ConwayEraTxBody DijkstraEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1629,
+      1655
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraEraTxBody DijkstraEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1551,
+      1558
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraAllInputsTxBodyF"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.era.dijkstra.DijkstraBodyFields",
+    "def ledger.era.dijkstra.AccountBalanceInterval.of",
+    "def ledger.era.dijkstra.DijkstraTxBody.SubTxBody#equals",
+    "def ledger.era.dijkstra.DijkstraTxBody.SubTxBody#hashCode",
+    "def ledger.era.dijkstra.DijkstraTxBody.SubTxBody#toString",
+    "def ledger.era.dijkstra.DijkstraTxBody.TopTxBody#equals",
+    "def ledger.era.dijkstra.DijkstraTxBody.TopTxBody#hashCode",
+    "def ledger.era.dijkstra.DijkstraTxBody.TopTxBody#toString",
+    "def ledger.era.dijkstra.DijkstraTxBody.topBody",
+    "given ledger.era.dijkstra.AccountBalanceInterval.given_CanEqual_AccountBalanceInterval_AccountBalanceInterval",
+    "given ledger.era.dijkstra.DijkstraTxBody.given_CanEqual_DijkstraTxBody_L_DijkstraTxBody_L",
+    "object ledger.era.dijkstra.AccountBalanceInterval",
+    "object ledger.era.dijkstra.DijkstraTxBody",
+    "val ledger.era.dijkstra.DijkstraTxBody#fields"
+   ],
+   "reason": "Dijkstra's transactions on the era types (#85): the companions holding their decoders, instances and CanEqual, Scala's equality, hash and rendering of each, which the reference derives, the fields both levels of a body share, held once, with the narrowing of a top-level body to its constructor, which the reference's GADT match does, and an account balance interval from the body reader's; the Plutus scripts made in Dijkstra's types from the language and bytes read; and the bounds' companions; the proof that a value was read from bytes by the decoders (`DijkstraTx.FromBytes`), which only `DijkstraTx` makes and keeps, and the witness set's and auxiliary data's readers from bytes through it"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraTxBody.scala"
+}

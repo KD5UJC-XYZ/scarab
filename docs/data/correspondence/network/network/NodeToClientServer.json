@@ -1,0 +1,14 @@
+{
+ "baseline": {
+  "def network.NodeToClientServer.MuxFactory#open": null,
+  "def network.NodeToClientServer.MuxFactory.nodeToClient": null,
+  "def network.NodeToClientServer.accept": null,
+  "def network.NodeToClientServer.acceptBackend": null,
+  "def network.NodeToClientServer.acceptOn": null,
+  "def network.NodeToClientServer.protocols": null,
+  "object network.NodeToClientServer": null,
+  "object network.NodeToClientServer.MuxFactory": null,
+  "trait network.NodeToClientServer.MuxFactory": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/NodeToClientServer.scala"
+}

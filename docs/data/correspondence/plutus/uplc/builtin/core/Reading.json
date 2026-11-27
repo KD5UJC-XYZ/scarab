@@ -1,0 +1,40 @@
+{
+ "baseline": {
+  "class uplc.builtin.core.Reading": null,
+  "def uplc.builtin.core.Reader#expected": null,
+  "def uplc.builtin.core.Reader#read": null,
+  "def uplc.builtin.core.Reading#apply": null,
+  "def uplc.builtin.core.Reading#constant": null,
+  "def uplc.builtin.core.Reading#opaque": null,
+  "def uplc.builtin.core.Reading#someConstant": null,
+  "def uplc.builtin.core.Reading#value": null,
+  "def uplc.builtin.core.Reading.failed": null,
+  "def uplc.builtin.core.Reading.list": null,
+  "def uplc.builtin.core.Reading.outcome": null,
+  "def uplc.builtin.core.Reading.pair": null,
+  "def uplc.builtin.core.Reading.structural": null,
+  "given uplc.builtin.core.Reader.dataList": null,
+  "given uplc.builtin.core.Reader.dataPairList": null,
+  "given uplc.builtin.core.Reader.given_Reader_BigInt": null,
+  "given uplc.builtin.core.Reader.given_Reader_Boolean": null,
+  "given uplc.builtin.core.Reader.given_Reader_Bytes": null,
+  "given uplc.builtin.core.Reader.given_Reader_PlutusData": null,
+  "given uplc.builtin.core.Reader.given_Reader_Text": null,
+  "given uplc.builtin.core.Reader.given_Reader_Unit": null,
+  "object uplc.builtin.core.Reader": null,
+  "object uplc.builtin.core.Reading": null,
+  "trait uplc.builtin.core.Reader": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def uplc.builtin.core.Reading#result",
+    "def uplc.builtin.core.Reading.held",
+    "def uplc.builtin.core.Reading.mismatch",
+    "object uplc.builtin.core.Reading.Unbounded"
+   ],
+   "reason": "The held forms of a builtin's unlifting, costing and denotation, by which the CEK machine takes a saturated application on the arguments as it holds them (the last one first) when all three have one, so that it makes no vector, Option or closure for them (#1411); a builtin a component of which has none is taken by the vector forms, as before. The reference's order (unlift every argument, spend the cost, then compute the result; `evalBuiltinApp`, `Cek/Internal.hs:1052-1075`, plutus 1.70.0.0) is that of the vector forms, and CekApplicationSuite compares the machine with the one before #1411"
+  }
+ ],
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/builtin/core/Reading.scala"
+}

@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "class ledger.GenesisCostModels.Alonzo": null,
+  "class ledger.GenesisCostModels.Models": null,
+  "def ledger.CostModelLanguage#initialNames": null,
+  "def ledger.CostModelLanguage#parameterNames": null,
+  "def ledger.CostModelProblem#message": null,
+  "def ledger.GenesisCostModels.Alonzo#models": null,
+  "def ledger.GenesisCostModels.Models#flatten": null,
+  "def ledger.GenesisCostModels.Models#updated": null,
+  "def ledger.GenesisCostModels.alonzo": null,
+  "def ledger.GenesisCostModels.conwayPlutusV3": null,
+  "def ledger.GenesisCostModels.parse": null,
+  "def ledger.GenesisCostModels.plutusV4": null,
+  "enum ledger.CostModelLanguage": null,
+  "enum ledger.CostModelProblem": null,
+  "object ledger.GenesisCostModels": null,
+  "object ledger.GenesisCostModels.Models": null,
+  "val ledger.GenesisCostModels.Models.empty": null,
+  "val ledger.GenesisCostModels.genesisNamesV1": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/GenesisCostModels.scala"
+}

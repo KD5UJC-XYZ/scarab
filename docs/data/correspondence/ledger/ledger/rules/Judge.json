@@ -1,0 +1,80 @@
+{
+ "baseline": {
+  "def ledger.rules.Judge#contramap": null,
+  "def ledger.rules.Judge#fail": null,
+  "def ledger.rules.Judge#failing": null,
+  "def ledger.rules.Judge#nest": null,
+  "def ledger.rules.Judge.apply": null,
+  "def ledger.rules.Judge.raising": null,
+  "object ledger.rules.Judge": null,
+  "trait ledger.rules.Judge": null
+ },
+ "entries": {
+  "def ledger.rules.Judge#policy": {
+   "class": "Mirror",
+   "digest": "a51381c5848c4449",
+   "evidence": [
+    "DijkstraClosureSuite",
+    "DijkstraLedgerSuite"
+   ],
+   "note": "the judgment's validation policy, which the reference's options carry for the whole application (asoValidation); a sub-rule's judgment hands on its parent's (contramap)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
+     "lines": [
+      531,
+      540
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "asoValidation"
+    }
+   ]
+  },
+  "def ledger.rules.Judge.validateNone": {
+   "class": "Mirror",
+   "digest": "e9e9a90d82c9a5a7",
+   "evidence": [
+    "DijkstraClosureSuite",
+    "DijkstraLedgerSuite"
+   ],
+   "note": "the judgment applySTSInternal runs under ValidateNone: no predicate recorded, the failing flag down, every sub-rule run as the rule's own",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
+     "lines": [
+      715,
+      742
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ValidateNone"
+    }
+   ]
+  },
+  "enum ledger.rules.ValidationPolicy": {
+   "class": "Mirror",
+   "digest": "a09736613ede616e",
+   "evidence": [
+    "DijkstraClosureSuite"
+   ],
+   "note": "ValidateAll and ValidateNone; the reference's ValidateSuchThat, which selects labelled steps, is the node's TxEnv.Validation",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
+     "lines": [
+      526,
+      529
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ValidationPolicy"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Judge.scala"
+}

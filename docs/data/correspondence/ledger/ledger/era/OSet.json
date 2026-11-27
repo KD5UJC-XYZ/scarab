@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "def ledger.era.OSet.decoded": null,
+  "def ledger.era.OSet.empty": null,
+  "def ledger.era.OSet.size": null,
+  "def ledger.era.OSet.toVector": null,
+  "given ledger.era.OSet.given_CanEqual_OSet_A_OSet_A": null,
+  "object ledger.era.OSet": null,
+  "type ledger.era.OSet": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/OSet.scala"
+}

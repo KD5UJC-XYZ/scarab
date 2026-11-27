@@ -1,0 +1,87 @@
+{
+ "entries": {
+  "val ledger.era.rules.DijkstraNewEpoch.sts": {
+   "class": "Mirror",
+   "digest": "1fdbb3804a5ecc40",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "the state is the node's new-epoch state with its governance state, the era's record, beside it (NewEpochGovState), put back after the rule (StoredGov.onRecord); pulseDRepPulsingState is the identity on the complete pulser the node holds; the reward update is the node's, given the era's parameters written into the epoch state (StoredGov.synced); the layout's own fields are set as the node's NEWEPOCH sets them; no event is kept",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/NewEpoch.hs",
+     "lines": [
+      153,
+      184
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "newEpochTransition"
+    }
+   ]
+  },
+  "val ledger.era.rules.DijkstraTick.sts": {
+   "class": "Mirror",
+   "digest": "e626ec4ce2e33bc4",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "the state is the node's new-epoch state with its governance state, the era's record, beside it (NewEpochGovState), put back after the rule (StoredGov.onRecord); RUPD is the node's rule, given the era's current and previous parameters written into the epoch state (StoredGov.synced); the mark snapshot's forcing has no counterpart in a strict state; no event is kept",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Tick.hs",
+     "lines": [
+      246,
+      279
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "bheadTransition"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Tick.hs",
+     "lines": [
+      163,
+      185
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "validatingTickTransition"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Tick.hs",
+     "lines": [
+      147,
+      159
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "solidifyNextEpochPParams"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.era.rules.NewEpochGovState",
+    "def ledger.era.rules.NewEpochGovState.epoch",
+    "def ledger.era.rules.NewEpochGovState.gov",
+    "def ledger.era.rules.NewEpochGovState.nes",
+    "def ledger.era.rules.NewEpochGovState.record",
+    "def ledger.era.rules.NewEpochGovState.ru",
+    "object ledger.era.rules.DijkstraNewEpoch",
+    "object ledger.era.rules.DijkstraTick",
+    "object ledger.era.rules.NewEpochGovState",
+    "val ledger.era.rules.DijkstraNewEpoch.onRecord",
+    "val ledger.era.rules.DijkstraTick.onRecord"
+   ],
+   "reason": "Dijkstra's tick on the node's path (#85, #826): the governance state of a Dijkstra state, the era's record the ledger state holds, taken out before the era's rules and put back after them (StoredGov.onRecord, recordOf), written into the epoch state the node's reward update and RUPD read (synced), the error of the one reading of Conway's flat record into Dijkstra's (StoredGovError, at the translation), the new-epoch state with the era's governance state beside it and its lenses, the module objects of TICK and NEWEPOCH, whose rules are each mapped by themselves, and the node's layout fields of the new-epoch state that NEWEPOCH sets"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/Tick.scala"
+}

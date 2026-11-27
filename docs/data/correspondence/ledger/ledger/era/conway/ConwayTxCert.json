@@ -1,0 +1,19 @@
+{
+ "baseline": {
+  "def ledger.era.conway.ConwayTxCert.decode": null,
+  "def ledger.era.conway.ConwayTxCert.fromFlat": null,
+  "enum ledger.era.conway.ConwayTxCert": null,
+  "given ledger.era.conway.ConwayTxCert.given_CanEqual_ConwayTxCert_ConwayTxCert": null,
+  "object ledger.era.conway.ConwayTxCert": null,
+  "val ledger.era.conway.ConwayTxCert.instance": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.conway.ConwayTxCert.toStored"
+   ],
+   "reason": "the flat purposes and certificates the case files of --plutus-cases name (ConwayPlutusPurpose.toStored, ConwayTxCert.toStored, read by ConwayPhase2.storedPurposes and storedErrors); a non-empty set of hashes and its order, the bytes', as the reference's derived `Ord` of a hash; and the objects that stand for the reference's Rules/Utxow modules"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayTxCert.scala"
+}

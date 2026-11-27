@@ -1,0 +1,58 @@
+{
+ "baseline": {
+  "class network.KeepAliveClient.Settings": null,
+  "def network.KeepAliveClient#done": null,
+  "def network.KeepAliveClient#ping": null,
+  "def network.KeepAliveClient.apply": null,
+  "def network.KeepAliveClient.background": null,
+  "def network.KeepAliveClient.controlled": null,
+  "def network.KeepAliveClient.pinger": null,
+  "object network.KeepAliveClient": null,
+  "trait network.KeepAliveClient": null
+ },
+ "entries": {
+  "enum network.KeepAliveClient.Cookies": {
+   "class": "Deviation",
+   "digest": "c8b719993d68de53",
+   "evidence": [
+    "KeepAliveCookieSuite"
+   ],
+   "note": "Fresh, the default, seeds each client's generator from the platform's secure generator when the client is made, an approved deviation: the reference gives the client of every connection the node's one keepAliveRng. Shared starts every client from one generator, as the reference does, for tests and tools. The generator is Scarab's Rng (SplitMix64 with a fixed gamma), not splitmix's SMGen; no peer can observe which uniform generator drew the cookies, since only the node's own client compares them, the seed is random and each cookie is a uniform Word16 (the low 16 bits of the next 64, as random's Word16 draw truncates)",
+   "record": "docs/decisions.md#networking-and-local-clients",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/lib/Ouroboros/Network/KeepAlive.hs",
+     "lines": [
+      55,
+      56
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "inRng"
+    },
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node.hs",
+     "lines": [
+      661,
+      664
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "808e400545729b1246ba4393c69326ec4a04a730",
+     "symbol": "keepAliveRng"
+    },
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      409,
+      409
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "808e400545729b1246ba4393c69326ec4a04a730",
+     "symbol": "keepAliveRng"
+    }
+   ]
+  }
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/KeepAliveClient.scala"
+}

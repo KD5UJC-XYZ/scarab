@@ -1,0 +1,1122 @@
+{
+ "entries": {
+  "class ledger.era.rules.DijkstraSubGovEvent": {
+   "class": "Mirror",
+   "digest": "f4b5e9b7fcf53648",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubGov.hs",
+     "lines": [
+      58,
+      59
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraSubGovEvent"
+    }
+   ]
+  },
+  "class ledger.era.rules.DijkstraSubGovPredFailure": {
+   "class": "Mirror",
+   "digest": "7cfdab10e1a23c5a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubGov.hs",
+     "lines": [
+      43,
+      44
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraSubGovPredFailure"
+    }
+   ]
+  },
+  "class ledger.era.rules.SubLedgerEnv": {
+   "class": "Mirror",
+   "digest": "1dc87a3e34ce6ddd",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      99,
+      107
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "SubLedgerEnv"
+    }
+   ]
+  },
+  "def ledger.era.rules.DijkstraSUBGOV.subGovTransition": {
+   "class": "Mirror",
+   "digest": "ee1d2cdcec4693a9",
+   "evidence": [
+    "DijkstraGovSuite",
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "Conway's GOV transition at Dijkstra with its failures in SUBGOV's newtype, which is every SUBGOV injection after GOV's, and its events in SUBGOV's (D4, decided 2026-11-21, #85)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubGov.hs",
+     "lines": [
+      86,
+      86
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "transitionRules"
+    }
+   ]
+  },
+  "def ledger.era.rules.DijkstraSubLedger.committeeProposals": {
+   "class": "Gap",
+   "digest": "451ff3ded5b34472",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the committee's actions in the node's flat record SubEntitiesEnv holds, each read by DijkstraConway.proposal, which reads every action of the committee's purpose",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923349468",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      272,
+      272
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "proposalsWithPurpose grCommitteeL proposals"
+    }
+   ]
+  },
+  "def ledger.era.rules.DijkstraSubLedger.conwayToDijkstraSubLedgerPredFailure": {
+   "class": "Mirror",
+   "digest": "c89630dbbcf749a0",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the reference's function calls `error \"Impossible\"` on 4 constructors SUBLEDGER never reaches, and maps ConwayUtxowFailure through SUBUTXOW's partial injection, which no predicate of SUBLEDGER reports; here it is total on the other 4 (#85)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      373,
+      394
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "conwayToDijkstraSubLedgerPredFailure"
+    }
+   ]
+  },
+  "def ledger.era.rules.DijkstraSubLedger.dijkstraSubLedgerTransition": {
+   "class": "Gap",
+   "digest": "e954b3ab7488bae6",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the proposals the era's, in their own capability beside the ledger state; the committee and the constitution the governance state's; the epoch the environment's or the slot's by Globals' geometry, as in Conway's LEDGER; an id, script hash or epoch outside the vocabulary raised; a predicate's condition evaluated only when the judgment checks predicates (`Sts.validating`), as under ValidateNone the reference evaluates none (`Extended.hs:715-720`)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923488137",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      229,
+      311
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraSubLedgersTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.DijkstraSubLedgers.dijkstraSubLedgersTransition": {
+   "class": "Mirror",
+   "digest": "83188df220c4bd13",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the foldM over the sub-transactions with the state in its capability, each SUBLEDGER nested as the reference's trans, in constant stack",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedgers.hs",
+     "lines": [
+      129,
+      143
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraSubLedgersTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedInSubLedger#wrapSubEntitiesEvent": {
+   "class": "Mirror",
+   "digest": "0af03e10eb7090e0",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      341,
+      341
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "wrapEvent"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedInSubLedger#wrapSubEntitiesFailed": {
+   "class": "Mirror",
+   "digest": "5f567c54bb27a5c8",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      340,
+      340
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "wrapFailed"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedInSubLedger#wrapSubGovEvent": {
+   "class": "Mirror",
+   "digest": "f0c8eea7dac72289",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      321,
+      321
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "wrapEvent"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedInSubLedger#wrapSubGovFailed": {
+   "class": "Mirror",
+   "digest": "61d9dc03ec6d79c3",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      320,
+      320
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "wrapFailed"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedInSubLedger#wrapSubUtxowEvent": {
+   "class": "Mirror",
+   "digest": "944ba75768b3b12c",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      331,
+      331
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "wrapEvent"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedInSubLedger#wrapSubUtxowFailed": {
+   "class": "Mirror",
+   "digest": "e87bc140c05a9731",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      330,
+      330
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "wrapFailed"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedSubLedgerInSubLedgers#wrapEvent": {
+   "class": "Mirror",
+   "digest": "bb2f3ffae906c6cd",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedgers.hs",
+     "lines": [
+      153,
+      153
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "wrapEvent"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedSubLedgerInSubLedgers#wrapFailed": {
+   "class": "Mirror",
+   "digest": "4c2a045c9d6b97b5",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedgers.hs",
+     "lines": [
+      152,
+      152
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "wrapFailed"
+    }
+   ]
+  },
+  "def ledger.era.rules.InjectSubGovFailure#injectFailure": {
+   "class": "Mirror",
+   "digest": "4b5ff55d79f44dec",
+   "evidence": [
+    "DijkstraGovSuite",
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      124,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "injectFailure"
+    }
+   ]
+  },
+  "def ledger.era.rules.InjectSubLedgerFailure#injectFailure": {
+   "class": "Mirror",
+   "digest": "8de1d7942f30987d",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      124,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "injectFailure"
+    }
+   ]
+  },
+  "def ledger.era.rules.InjectSubLedgerFailure.injectFailure": {
+   "class": "Mirror",
+   "digest": "ed6df4ec41cc5a8b",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the injectFailure of the instances whose `given ... with` the formatter splits",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      154,
+      154
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "injectFailure"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      157,
+      157
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "injectFailure"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      160,
+      160
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "injectFailure"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      163,
+      163
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "injectFailure"
+    }
+   ]
+  },
+  "def ledger.era.rules.InjectSubLedgersFailure#injectFailure": {
+   "class": "Mirror",
+   "digest": "1834db63449e9744",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      124,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "injectFailure"
+    }
+   ]
+  },
+  "enum ledger.era.rules.DijkstraSubLedgerEvent": {
+   "class": "Mirror",
+   "digest": "d12d3020139993f7",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      165,
+      169
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraSubLedgerEvent"
+    }
+   ]
+  },
+  "enum ledger.era.rules.DijkstraSubLedgerPredFailure": {
+   "class": "Mirror",
+   "digest": "5935cefe5ef52e42",
+   "note": "its constructors in the reference's order; their tags are 1, 2, 3 and 5 (:351-356)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      109,
+      114
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraSubLedgerPredFailure"
+    }
+   ]
+  },
+  "enum ledger.era.rules.DijkstraSubLedgersEvent": {
+   "class": "Mirror",
+   "digest": "6c8cebdd0091852f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedgers.hs",
+     "lines": [
+      98,
+      99
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraSubLedgersEvent"
+    }
+   ]
+  },
+  "enum ledger.era.rules.DijkstraSubLedgersPredFailure": {
+   "class": "Mirror",
+   "digest": "4117fcf31999c673",
+   "note": "its encoding SUBLEDGER's (:71-77)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedgers.hs",
+     "lines": [
+      56,
+      57
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraSubLedgersPredFailure"
+    }
+   ]
+  },
+  "given ledger.era.rules.EmbedInSubLedger.dijkstra": {
+   "class": "Mirror",
+   "digest": "30dc4cd5637e4390",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      313,
+      321
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Embed (SUBGOV era) (SUBLEDGER era)"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      323,
+      331
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Embed (SUBUTXOW era) (SUBLEDGER era)"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      333,
+      341
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Embed (SUBENTITIES era) (SUBLEDGER era)"
+    }
+   ]
+  },
+  "given ledger.era.rules.EmbedSubLedgerInSubLedgers.dijkstra": {
+   "class": "Mirror",
+   "digest": "4aff060bb6913f14",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedgers.hs",
+     "lines": [
+      145,
+      153
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Embed (SUBLEDGER era) (SUBLEDGERS era)"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectSubGovFailure.dijkstra": {
+   "class": "Mirror",
+   "digest": "1aaf3080c251aa85",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubGov.hs",
+     "lines": [
+      53,
+      53
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"SUBGOV\" DijkstraSubGovPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectSubGovFailure.dijkstraConway": {
+   "class": "Mirror",
+   "digest": "8b1d5dbbf0175606",
+   "evidence": [
+    "DijkstraGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubGov.hs",
+     "lines": [
+      50,
+      51
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"SUBGOV\" Conway.ConwayGovPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectSubGovFailure.dijkstraGov": {
+   "class": "Mirror",
+   "digest": "a887ed581bf1f516",
+   "evidence": [
+    "DijkstraGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubGov.hs",
+     "lines": [
+      55,
+      56
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"SUBGOV\" DijkstraGovPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectSubLedgerFailure.dijkstra": {
+   "class": "Mirror",
+   "digest": "07397736c9d12311",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      148,
+      148
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"SUBLEDGER\" DijkstraSubLedgerPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectSubLedgerFailure.dijkstraConway": {
+   "class": "Mirror",
+   "digest": "872e4d13f7555b51",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the reference's injection calls `error \"Impossible\"` on 4 of Conway's LEDGER constructors (conwayToDijkstraSubLedgerPredFailure, SubLedger.hs:373-394); here it is total on the 4 it maps whose payloads SUBLEDGER's injections take whole (DijkstraSubLedger.ConwayFailure), ConwayUtxowFailure left out as UTXOW's UtxoFailure is in SUBUTXOW's, so the others do not compile (#85)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      162,
+      163
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"SUBLEDGER\" Conway.ConwayLedgerPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectSubLedgerFailure.dijkstraSubCerts": {
+   "class": "Mirror",
+   "digest": "ee6249923263025f",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      159,
+      160
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"SUBLEDGER\" DijkstraSubCertsPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectSubLedgerFailure.dijkstraSubEntities": {
+   "class": "Mirror",
+   "digest": "2cf47810295e3509",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      156,
+      157
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"SUBLEDGER\" SubEntitiesPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectSubLedgerFailure.dijkstraSubGov": {
+   "class": "Mirror",
+   "digest": "a956c4132eca51b1",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      150,
+      151
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"SUBLEDGER\" DijkstraSubGovPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectSubLedgerFailure.dijkstraSubUtxow": {
+   "class": "Mirror",
+   "digest": "748381e740d348f8",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      153,
+      154
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"SUBLEDGER\" DijkstraSubUtxowPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectSubLedgersFailure.dijkstra": {
+   "class": "Mirror",
+   "digest": "9deb0a36bb13b1d2",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedgers.hs",
+     "lines": [
+      91,
+      91
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"SUBLEDGERS\" DijkstraSubLedgersPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectSubLedgersFailure.dijkstraSubLedger": {
+   "class": "Mirror",
+   "digest": "89e0a9db0b28bb5d",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedgers.hs",
+     "lines": [
+      93,
+      94
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"SUBLEDGERS\" DijkstraSubLedgerPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "trait ledger.era.rules.EmbedInSubLedger": {
+   "class": "Mirror",
+   "digest": "83c098890a98405d",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the three Embed instances as one class of the era, their wrapFailed and wrapEvent as members, as EmbedInLedger",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      313,
+      321
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Embed (SUBGOV era) (SUBLEDGER era)"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      323,
+      331
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Embed (SUBUTXOW era) (SUBLEDGER era)"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      333,
+      341
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Embed (SUBENTITIES era) (SUBLEDGER era)"
+    }
+   ]
+  },
+  "trait ledger.era.rules.EmbedSubLedgerInSubLedgers": {
+   "class": "Mirror",
+   "digest": "c572a523a7f6f9e7",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the Embed instance as a class of the era, its wrapFailed and wrapEvent as members",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedgers.hs",
+     "lines": [
+      145,
+      153
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Embed (SUBLEDGER era) (SUBLEDGERS era)"
+    }
+   ]
+  },
+  "trait ledger.era.rules.InjectSubGovFailure": {
+   "class": "Mirror",
+   "digest": "9b2a6d35b35e9a13",
+   "evidence": [
+    "DijkstraGovSuite",
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the class InjectRuleFailure at the rule SUBGOV, one instance per era and failure type",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      119,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure"
+    }
+   ]
+  },
+  "trait ledger.era.rules.InjectSubLedgerFailure": {
+   "class": "Mirror",
+   "digest": "535358d35356f96d",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the class InjectRuleFailure at the rule SUBLEDGER, contravariant in the failure type so that the instance over the constructors of Conway's LEDGER failure SUBLEDGER's injections take whole serves a predicate declaring one of them (#85)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      119,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure"
+    }
+   ]
+  },
+  "trait ledger.era.rules.InjectSubLedgersFailure": {
+   "class": "Mirror",
+   "digest": "f7d8926692cd9161",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the class InjectRuleFailure at the rule SUBLEDGERS, one instance per era and failure type",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      119,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure"
+    }
+   ]
+  },
+  "type ledger.era.rules.SubGovEvent": {
+   "class": "Mirror",
+   "digest": "ae8813fd04c7a302",
+   "evidence": [
+    "DijkstraGovSuite",
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the type family EraRuleEvent at the rule SUBGOV as a match type with its one era",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      78,
+      78
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleEvent"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubGov.hs",
+     "lines": [
+      48,
+      48
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleEvent \"SUBGOV\" DijkstraEra"
+    }
+   ]
+  },
+  "type ledger.era.rules.SubGovPredFailure": {
+   "class": "Mirror",
+   "digest": "3ab4a54db7448a3d",
+   "evidence": [
+    "DijkstraGovSuite",
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the type family EraRuleFailure at the rule SUBGOV as a match type with its one era",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      76,
+      76
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleFailure"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubGov.hs",
+     "lines": [
+      46,
+      46
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleFailure \"SUBGOV\" DijkstraEra"
+    }
+   ]
+  },
+  "type ledger.era.rules.SubLedgerEvent": {
+   "class": "Mirror",
+   "digest": "943d8a2d7266cb22",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the type family EraRuleEvent at the rule SUBLEDGER as a match type with its one era",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      78,
+      78
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleEvent"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      146,
+      146
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleEvent \"SUBLEDGER\" DijkstraEra"
+    }
+   ]
+  },
+  "type ledger.era.rules.SubLedgerPredFailure": {
+   "class": "Mirror",
+   "digest": "e07df41265e77d12",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the type family EraRuleFailure at the rule SUBLEDGER as a match type with its one era",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      76,
+      76
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleFailure"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedger.hs",
+     "lines": [
+      144,
+      144
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleFailure \"SUBLEDGER\" DijkstraEra"
+    }
+   ]
+  },
+  "type ledger.era.rules.SubLedgersEvent": {
+   "class": "Mirror",
+   "digest": "01cef79acd7ac8eb",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the type family EraRuleEvent at the rule SUBLEDGERS as a match type with its one era",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      78,
+      78
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleEvent"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedgers.hs",
+     "lines": [
+      89,
+      89
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleEvent \"SUBLEDGERS\" DijkstraEra"
+    }
+   ]
+  },
+  "type ledger.era.rules.SubLedgersPredFailure": {
+   "class": "Mirror",
+   "digest": "0daa06c92c22550b",
+   "evidence": [
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "the type family EraRuleFailure at the rule SUBLEDGERS as a match type with its one era",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      76,
+      76
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleFailure"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/SubLedgers.hs",
+     "lines": [
+      87,
+      87
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleFailure \"SUBLEDGERS\" DijkstraEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.rules.DijkstraSubGovEvent.given_CanEqual_DijkstraSubGovEvent_E_DijkstraSubGovEvent_E",
+    "given ledger.era.rules.DijkstraSubGovPredFailure.given_CanEqual_DijkstraSubGovPredFailure_E_DijkstraSubGovPredFailure_E",
+    "given ledger.era.rules.DijkstraSubLedgerEvent.given_CanEqual_DijkstraSubLedgerEvent_E_DijkstraSubLedgerEvent_E",
+    "given ledger.era.rules.DijkstraSubLedgerPredFailure.given_CanEqual_DijkstraSubLedgerPredFailure_E_DijkstraSubLedgerPredFailure_E",
+    "given ledger.era.rules.DijkstraSubLedgersEvent.given_CanEqual_DijkstraSubLedgersEvent_E_DijkstraSubLedgersEvent_E",
+    "given ledger.era.rules.DijkstraSubLedgersPredFailure.given_CanEqual",
+    "object ledger.era.rules.DijkstraSUBGOV",
+    "object ledger.era.rules.DijkstraSubGovEvent",
+    "object ledger.era.rules.DijkstraSubGovPredFailure",
+    "object ledger.era.rules.DijkstraSubLedger",
+    "object ledger.era.rules.DijkstraSubLedgerEvent",
+    "object ledger.era.rules.DijkstraSubLedgerPredFailure",
+    "object ledger.era.rules.DijkstraSubLedgers",
+    "object ledger.era.rules.DijkstraSubLedgersEvent",
+    "object ledger.era.rules.DijkstraSubLedgersPredFailure",
+    "object ledger.era.rules.EmbedInSubLedger",
+    "object ledger.era.rules.EmbedSubLedgerInSubLedgers",
+    "object ledger.era.rules.InjectSubGovFailure",
+    "object ledger.era.rules.InjectSubLedgerFailure",
+    "object ledger.era.rules.InjectSubLedgersFailure"
+   ],
+   "reason": "the companions of SUBGOV's, SUBLEDGER's and SUBLEDGERS' failures, events, injections and embeddings, and the module objects of their transitions, with each type's equality with itself only: Scala containers with no counterpart (#85)"
+  },
+  {
+   "definitions": [
+    "type ledger.era.rules.DijkstraSubLedger.ConwayFailure"
+   ],
+   "reason": "the constructors of an earlier era's failure type that a rule's predicates report, each predicate declaring its own: the domain of an injection the reference leaves partial (`error \"Impossible\"`), on which it is total, so that a constructor the rule cannot reach has no injection (Dijkstra's UTXO, Dijkstra/Rules/Utxo.hs:572-573, and SUBUTXO and SUBUTXOW, Dijkstra/Rules/SubUtxo.hs:304-329 and SubUtxow.hs:337-364, SUBENTITIES, SubEntities.hs:317-338, and SUBLEDGER, SubLedger.hs:373-394, cardano-ledger 9df9f98c; #85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/DijkstraSubLedger.scala"
+}

@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "def uplc.text.BlsLiteral.g1": null,
+  "def uplc.text.BlsLiteral.g2": null,
+  "object uplc.text.BlsLiteral": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/text/BlsLiteral.scala"
+}

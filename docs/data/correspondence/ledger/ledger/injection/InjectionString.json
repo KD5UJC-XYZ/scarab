@@ -1,0 +1,7 @@
+{
+ "baseline": {
+  "def ledger.injection.InjectionString.read": null,
+  "object ledger.injection.InjectionString": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/injection/InjectionString.scala"
+}

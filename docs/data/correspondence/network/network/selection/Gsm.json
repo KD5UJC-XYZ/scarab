@@ -1,0 +1,24 @@
+{
+ "baseline": {
+  "class network.selection.Gsm.Config": null,
+  "class network.selection.Gsm.PeerReading": null,
+  "class network.selection.Gsm.Reading": null,
+  "class network.selection.Gsm.Result": null,
+  "class network.selection.Gsm.State": null,
+  "def network.selection.FetchMode.of": null,
+  "def network.selection.Gsm.Result#mark": null,
+  "def network.selection.Gsm.caughtUp": null,
+  "def network.selection.Gsm.initial": null,
+  "def network.selection.Gsm.judgement": null,
+  "def network.selection.Gsm.step": null,
+  "enum network.selection.FetchMode": null,
+  "enum network.selection.Gsm.Candidate": null,
+  "enum network.selection.Gsm.DurationFromNow": null,
+  "enum network.selection.Gsm.Event": null,
+  "enum network.selection.Gsm.Phase": null,
+  "object network.selection.FetchMode": null,
+  "object network.selection.Gsm": null,
+  "val network.selection.FetchMode.MaxSlotsBehind": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/Gsm.scala"
+}

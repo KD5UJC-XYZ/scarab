@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "class ledger.era.WitVKey": null,
+  "given ledger.era.WitVKey.given_CanEqual_WitVKey_WitVKey": null,
+  "given ledger.era.WitVKey.ordering": null,
+  "object ledger.era.WitVKey": null,
+  "val ledger.era.WitVKey#keyHash": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/WitVKey.scala"
+}

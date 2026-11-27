@@ -1,0 +1,55 @@
+{
+ "baseline": {
+  "def ledger.era.babbage.BabbagePlutusScript#binary": null,
+  "def ledger.era.babbage.BabbagePlutusScript#kind": null,
+  "def ledger.era.babbage.BabbagePlutusScript.of": null,
+  "def ledger.era.babbage.BabbageScript.decode": null,
+  "def ledger.era.babbage.BabbageScript.read": null,
+  "def ledger.era.babbage.BabbageScript.rep": null,
+  "def ledger.era.babbage.BabbageTimelock.decode": null,
+  "def ledger.era.babbage.BabbageTimelock.read": null,
+  "def ledger.era.babbage.BabbageTimelock.rep": null,
+  "def ledger.era.babbage.BabbageTxOut.fromStored": null,
+  "def ledger.era.babbage.BabbageTxOut.rep": null,
+  "def ledger.era.babbage.BabbageTxOut.toStored": null,
+  "enum ledger.era.babbage.BabbagePlutusScript": null,
+  "given ledger.era.babbage.BabbagePlutusScript.given_CanEqual_BabbagePlutusScript_BabbagePlutusScript": null,
+  "given ledger.era.babbage.BabbageScript.given_CanEqual_BabbageScript_BabbageScript": null,
+  "given ledger.era.babbage.BabbageTimelock.given_CanEqual_BabbageTimelock_BabbageTimelock": null,
+  "given ledger.era.babbage.BabbageTxOut.given_CanEqual_BabbageTxOut_BabbageTxOut": null,
+  "object ledger.era.babbage.BabbagePlutusScript": null,
+  "object ledger.era.babbage.BabbageScript": null,
+  "object ledger.era.babbage.BabbageTimelock": null,
+  "object ledger.era.babbage.BabbageTxOut": null,
+  "type ledger.era.babbage.BabbageScript": null,
+  "type ledger.era.babbage.BabbageTimelock": null,
+  "type ledger.era.babbage.BabbageTxOut": null,
+  "val ledger.era.babbage.BabbageScript.instance": null,
+  "val ledger.era.babbage.BabbageTxOut.instance": null
+ },
+ "entries": {
+  "def ledger.era.babbage.BabbageTxOut.read": {
+   "class": "Mirror",
+   "digest": "f6af369638b91244",
+   "evidence": [
+    "BabbageTxDifferentialSuite",
+    "BabbageTxSuite"
+   ],
+   "note": "a list of two or three read in order, the map form's keys as written, as `decodeSparse` reads them, each value by the flat output reader's reader of its field; the output held to the form the store keeps of it. held to the flat decoder's verdicts on every Babbage transaction the repository holds (the recorded blocks, the reference's refusal, v1-context and Plutus admission corpora) and on byte mutants of them, and on 576 Babbage rows of the reference's decoder corpora (three of them witness sets at protocol version 8, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (BabbageTxDifferentialSuite), and to its written order on crafted cases (BabbageTxSuite)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+     "lines": [
+      549,
+      662
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "decodeBabbageTxOut"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbageTypes.scala"
+}

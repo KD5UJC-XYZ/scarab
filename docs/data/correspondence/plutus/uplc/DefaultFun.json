@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "def uplc.DefaultFun#arity": null,
+  "def uplc.DefaultFun#forces": null,
+  "def uplc.DefaultFun.fromFlatTag": null,
+  "def uplc.DefaultFun.fromName": null,
+  "enum uplc.DefaultFun": [
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Default/Builtins.hs",
+    "lines": [
+     90,
+     237
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "DefaultFun"
+   }
+  ],
+  "object uplc.DefaultFun": null,
+  "val uplc.DefaultFun#name": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/DefaultFun.scala"
+}

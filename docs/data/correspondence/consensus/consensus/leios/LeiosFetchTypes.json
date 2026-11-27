@@ -1,0 +1,483 @@
+{
+ "entries": {
+  "class consensus.leios.AnnouncementFields": {
+   "class": "Mirror",
+   "digest": "3a2fb8e7683401e8",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      1756,
+      1766
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "AnnouncementFields"
+    }
+   ]
+  },
+  "class consensus.leios.EbState": {
+   "class": "Mirror",
+   "digest": "e6130a0b183f63ce",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the onset a duration since the system start where the reference's RelativeTime has picoseconds; only the arrival's age reads it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      616,
+      628
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "EbState"
+    }
+   ]
+  },
+  "class consensus.leios.ElId": {
+   "class": "Mirror",
+   "digest": "b229952cf9c0f600",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements/ElBimap.hs",
+     "lines": [
+      24,
+      30
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ElId"
+    }
+   ]
+  },
+  "class consensus.leios.LeiosFetchStaticEnv": {
+   "class": "Mirror",
+   "digest": "0fa3415ece43cd5c",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      1149,
+      1176
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "LeiosFetchStaticEnv"
+    }
+   ]
+  },
+  "class consensus.leios.PeerOffer": {
+   "class": "Mirror",
+   "digest": "3f678415a586cd63",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      402,
+      427
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "PeerOffer"
+    }
+   ]
+  },
+  "def consensus.leios.AnnouncementFields#point": {
+   "class": "Mirror",
+   "digest": "792998b0069ad29c",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      1768,
+      1770
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "announcementLeiosPoint"
+    }
+   ]
+  },
+  "def consensus.leios.EbState#hasBody": {
+   "class": "Mirror",
+   "digest": "092674372b4e77e6",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      671,
+      675
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ebStateHasBody"
+    }
+   ]
+  },
+  "def consensus.leios.EbState#wantsBody": {
+   "class": "Mirror",
+   "digest": "745e79d09f582f18",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      1013,
+      1017
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "wantsBody"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchStaticEnv#maxRequestedBytesSizePerBigLedgerPeer": {
+   "class": "Mirror",
+   "digest": "59873550b7e1d2f7",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      1209,
+      1210
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "maxRequestedBytesSizePerBigLedgerPeer"
+    }
+   ]
+  },
+  "def consensus.leios.PeerOffer#combine": {
+   "class": "Mirror",
+   "digest": "a3164c43bffbdd84",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the receiver is the newer offer, the left operand of the reference's insertWith",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      435,
+      440
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "Semigroup PeerOffer"
+    }
+   ]
+  },
+  "def consensus.leios.WhetherTxsClosureOffered#combine": {
+   "class": "Mirror",
+   "digest": "97ff68dd31c6774d",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      384,
+      386
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "Semigroup WhetherTxsClosureOffered"
+    }
+   ]
+  },
+  "enum consensus.leios.EbFetchState": {
+   "class": "Improvement",
+   "digest": "43d42331e58d6079",
+   "evidence": [
+    "LeiosFetchArrivalSuite",
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "BodyAcquired holds, beside the pool, the id of that pool (LeiosJobPoolId), which the transactions requests picked from it name; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      631,
+      659
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "EbFetchState"
+    }
+   ]
+  },
+  "enum consensus.leios.IsBigLedgerPeer": {
+   "class": "Mirror",
+   "digest": "6c606c32b5162a06",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/PeerSelection/LedgerPeers/Type.hs",
+     "lines": [
+      432,
+      434
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "2f1c154f248659b89523d5679ca532f442e7ed2a",
+     "symbol": "IsBigLedgerPeer"
+    }
+   ]
+  },
+  "enum consensus.leios.LeiosFetchRequest": {
+   "class": "Improvement",
+   "digest": "5e85ec98159b1ffa",
+   "evidence": [
+    "LeiosFetchArrivalSuite",
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the two constructors with the fields of LeiosBlockRequest and LeiosBlockTxsRequest; BlockTxs also names the pool its jobs were picked from (LeiosJobPoolId), never sent; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      328,
+      353
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "LeiosFetchRequest"
+    }
+   ]
+  },
+  "enum consensus.leios.WhetherTxsClosureOffered": {
+   "class": "Mirror",
+   "digest": "dc6cc33438294548",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      380,
+      381
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "WhetherTxsClosureOffered"
+    }
+   ]
+  },
+  "given consensus.leios.ElId.given_Order_ElId": {
+   "class": "Mirror",
+   "digest": "529ab4c936bcc6f5",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic/Announcements/ElBimap.hs",
+     "lines": [
+      42,
+      45
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "Ord ElId"
+    }
+   ]
+  },
+  "given consensus.leios.LeiosOrders.ebHashOrder": {
+   "class": "Mirror",
+   "digest": "306c30734e9d07a5",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "PackedBytes 32's Ord, the unsigned lexicographic order of the bytes",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "lines": [
+      88,
+      89
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "EbHash"
+    }
+   ]
+  },
+  "given consensus.leios.LeiosOrders.ebPointOrder": {
+   "class": "Mirror",
+   "digest": "96559bcb7b99c63a",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the derived Ord: the slot, then the hash",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "lines": [
+      172,
+      174
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "LeiosPoint"
+    }
+   ]
+  },
+  "type consensus.leios.BytesSize": {
+   "class": "Mirror",
+   "digest": "6638fc66932bf053",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "a Word32 held in a Long, its sum and difference modulo 2^32",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Leios/Types.hs",
+     "lines": [
+      194,
+      194
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "BytesSize"
+    }
+   ]
+  },
+  "val consensus.leios.LeiosFetchStaticEnv.MaxLeiosTxsRequestBytesSize": {
+   "class": "Mirror",
+   "digest": "eaef2807769f2230",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "lines": [
+      228,
+      229
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "maxLeiosTxsRequestBytesSize"
+    }
+   ]
+  },
+  "val consensus.leios.LeiosFetchStaticEnv.demo": {
+   "class": "Mirror",
+   "digest": "52a9cb45e2101285",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      1178,
+      1195
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "demoLeiosFetchStaticEnv"
+    }
+   ]
+  },
+  "val consensus.leios.PeerOffer.empty": {
+   "class": "Mirror",
+   "digest": "d5ddc9b802c64594",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      442,
+      443
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "Monoid PeerOffer"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def consensus.leios.BytesSize.+",
+    "def consensus.leios.BytesSize.-",
+    "def consensus.leios.BytesSize.<=",
+    "def consensus.leios.BytesSize.>",
+    "def consensus.leios.BytesSize.toLong",
+    "def consensus.leios.BytesSize.wrap",
+    "given consensus.leios.BytesSize.given_CanEqual_BytesSize_BytesSize",
+    "given consensus.leios.BytesSize.given_Ordering_BytesSize",
+    "given consensus.leios.ElId.given_Ordering_ElId",
+    "given consensus.leios.LeiosOrders.ebHashOrdering",
+    "given consensus.leios.LeiosOrders.ebPointOrdering",
+    "given consensus.leios.LeiosOrders.rbHashOrdering",
+    "given consensus.leios.LeiosOrders.slotOrdering",
+    "given consensus.leios.LeiosOrders.txHashOrdering",
+    "object consensus.leios.BytesSize",
+    "object consensus.leios.ElId",
+    "object consensus.leios.LeiosFetchStaticEnv",
+    "object consensus.leios.LeiosOrders",
+    "object consensus.leios.PeerOffer",
+    "val consensus.leios.BytesSize.zero"
+   ],
+   "reason": "the Leios fetch state's Scala plumbing with no counterpart of its own: the companions, Word32's conversions and order on BytesSize, the MultiSet operations on FocusedEbs, the orders as Scala Orderings, the equalities, the job id's constructor, and the decision's result triple as a named record (#54)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/leios/LeiosFetchTypes.scala"
+}

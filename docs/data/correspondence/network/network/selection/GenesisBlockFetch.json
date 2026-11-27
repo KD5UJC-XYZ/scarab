@@ -1,0 +1,11 @@
+{
+ "baseline": {
+  "class network.selection.GenesisBlockFetch.Result": null,
+  "class network.selection.GenesisBlockFetch.State": null,
+  "def network.selection.GenesisBlockFetch.decide": null,
+  "enum network.selection.GenesisBlockFetch.Starvation": null,
+  "object network.selection.GenesisBlockFetch": null,
+  "val network.selection.GenesisBlockFetch.DefaultGracePicos": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/GenesisBlockFetch.scala"
+}

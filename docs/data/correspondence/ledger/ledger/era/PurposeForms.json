@@ -1,0 +1,95 @@
+{
+ "baseline": {
+  "class ledger.era.AsItem": null,
+  "class ledger.era.AsIx": null,
+  "class ledger.era.AsIxItem": null
+ },
+ "entries": {
+  "class ledger.era.AsPurpose": {
+   "class": "Mirror",
+   "digest": "1210b494fd63865e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      291,
+      291
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AsPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AsIxItem.toAsItem": {
+   "class": "Mirror",
+   "digest": "5f6ac9ccf0e87960",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      326,
+      327
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toAsItem"
+    }
+   ]
+  },
+  "def ledger.era.AsIxItem.toAsIx": {
+   "class": "Mirror",
+   "digest": "6617fb41619179ee",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      329,
+      330
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toAsIx"
+    }
+   ]
+  },
+  "def ledger.era.AsIxItem.toAsPurpose": {
+   "class": "Mirror",
+   "digest": "16bdc638147b96f2",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      323,
+      324
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toAsPurpose"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.AsIxItem"
+   ],
+   "reason": "objects that stand for the reference's modules of functions (`Alonzo/Scripts.hs`, `State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`, the `TxInfo.hs` and `Context.hs` of the script context, the `Indexable` instances of `Alonzo/TxBody.hs`, plutus-ledger-api's `V1` to `V4`, plutus-tx's `Ratio`), which Scala needs to hold top-level functions under a name"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/PurposeForms.scala"
+}

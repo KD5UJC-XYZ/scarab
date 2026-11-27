@@ -1,0 +1,216 @@
+{
+ "entries": {
+  "class ledger.era.conway.ConwayPParams": {
+   "class": "Mirror",
+   "digest": "6db6592650fcd479",
+   "note": "THKD carries the groups as the singleton types of DRepGroup's and StakePoolGroup's cases",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      643,
+      711
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayPParams"
+    }
+   ]
+  },
+  "class ledger.era.conway.UpgradeConwayPParams": {
+   "class": "Mirror",
+   "digest": "7a2b584a94a5115e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      746,
+      758
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "UpgradeConwayPParams"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayPParams.applyUpdates": {
+   "class": "Mirror",
+   "digest": "a921446dae1869d2",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1183,
+      1231
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "conwayApplyPPUpdates"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayPParams.downgrade": {
+   "class": "Mirror",
+   "digest": "a99bac579e676632",
+   "evidence": [
+    "BabbagePParamsSuite"
+   ],
+   "note": "the class member `downgradePParamsHKD ()` waits for every era with a record to have its downgrade (#85)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1149,
+      1178
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "downgradeConwayPParams"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayPParams.modifiedGroups": {
+   "class": "Mirror",
+   "digest": "ed85bf04f3170337",
+   "note": "the union of ppGroup over the record's THKD fields, written out field by field where the reference's default traverses the record's Generic representation",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      173,
+      173
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "modifiedPPGroups"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      625,
+      632
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppGroup"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayPParams.upgrade": {
+   "class": "Mirror",
+   "digest": "6cd38bd27ac64b27",
+   "evidence": [
+    "BabbagePParamsSuite"
+   ],
+   "note": "BabbagePParamsSuite shows the fields' places, the PlutusV3 model merged over Babbage's models by this tree's `CostModels.updated` (a model made by this tree's `CostModel.mkCostModel`), the deposit outside Word64 refused, and at StrictMaybe the merge of both models, none where the update sets no models, and the empty upgrade; it is not a differential against the reference. A deposit outside Word64, on which the reference's `compactCoinOrError` throws, is the upgrade's refusal. The class member `upgradePParamsHKD` waits for every era with a record to have its upgrade (#85)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1097,
+      1147
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "upgradeConwayPParams"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1258,
+      1259
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "asCompactCoinHKD"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayPParams.empty": {
+   "class": "Mirror",
+   "digest": "07dfd07264a2ee1d",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      987,
+      1022
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyConwayPParams"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayPParams.emptyUpdate": {
+   "class": "Mirror",
+   "digest": "5c936ed988e81b27",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1024,
+      1059
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyConwayPParamsUpdate"
+    }
+   ]
+  },
+  "val ledger.era.conway.UpgradeConwayPParams.emptyUpdate": {
+   "class": "Mirror",
+   "digest": "3eeb9b3b952ed407",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      896,
+      909
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyConwayUpgradePParamsUpdate"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "type ledger.era.conway.ConwayPParams.Eco",
+    "type ledger.era.conway.ConwayPParams.Gov",
+    "type ledger.era.conway.ConwayPParams.Net",
+    "type ledger.era.conway.ConwayPParams.NoPool",
+    "type ledger.era.conway.ConwayPParams.Sec",
+    "type ledger.era.conway.ConwayPParams.Tech"
+   ],
+   "reason": "Scala machinery with no counterpart: the probe and invariant wrapper that let a match type tell `Identity` from `StrictMaybe`, the names of the parameter groups' singleton types, constants checked when compiled, accessors of opaque types, and the checked constructors' typed refusals"
+  },
+  {
+   "definitions": [
+    "object ledger.era.conway.ConwayPParams",
+    "object ledger.era.conway.UpgradeConwayPParams"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "def ledger.era.conway.ConwayPParams.fromStored",
+    "def ledger.era.conway.ConwayPParams.fromUpdate",
+    "def ledger.era.conway.ConwayPParams.toStored"
+   ],
+   "reason": "the conversions between the parameters the node keeps (the flat `ProtocolParams`, the decoded `ConwayParamUpdate` and the flat voting thresholds) and the era's record; the reference keeps the record itself and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayPParams.scala"
+}

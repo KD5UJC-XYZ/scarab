@@ -1,0 +1,55 @@
+{
+ "baseline": {
+  "class ledger.byron.ByronBody": null,
+  "class ledger.byron.ByronLedger.Config": null,
+  "class ledger.byron.ByronLedgerState": null,
+  "def ledger.byron.ByronBody.decode": null,
+  "def ledger.byron.ByronError#message": null,
+  "def ledger.byron.ByronLedger.Config#addressMagic": null,
+  "def ledger.byron.ByronLedger.Config#epochSlots": null,
+  "def ledger.byron.ByronLedger.Config#k": null,
+  "def ledger.byron.ByronLedger.Config#magic": null,
+  "def ledger.byron.ByronLedger.Config#magicId": null,
+  "def ledger.byron.ByronLedger.applyBoundary": null,
+  "def ledger.byron.ByronLedger.applyMain": null,
+  "def ledger.byron.ByronLedger.checkProofs": null,
+  "def ledger.byron.ByronLedger.genesisUtxo": null,
+  "def ledger.byron.ByronLedger.initial": null,
+  "def ledger.byron.ByronLedger.outputs": null,
+  "def ledger.byron.ByronLedger.refusedAs": null,
+  "def ledger.byron.ByronLedger.tick": null,
+  "def ledger.byron.ByronLedger.transition": null,
+  "enum ledger.byron.ByronError": null,
+  "enum ledger.byron.ByronError.AttributeOwner": null,
+  "enum ledger.byron.ByronError.LovelaceContext": null,
+  "enum ledger.byron.ByronError.Proof": null,
+  "object ledger.byron.ByronBody": null,
+  "object ledger.byron.ByronError": null,
+  "object ledger.byron.ByronLedger": null,
+  "val ledger.byron.ByronLedger.IndexedOutputs": null,
+  "val ledger.byron.ByronLedger.MaxLovelace": null,
+  "val ledger.byron.ByronLedger.ShelleyMajor": null
+ },
+ "entries": {
+  "def ledger.byron.ByronLedger.applyTx": {
+   "class": "Gap",
+   "digest": "465b654b1a437b16",
+   "note": "the outputs a transaction creates are keyed by the hash of its bytes as received; the reference's txId is serializeCborHash of the transaction encoded again. The rule's other checks are not mapped here: the counterpart named is where the difference is",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/966",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/byron/ledger/impl/src/Cardano/Chain/UTxO/UTxO.hs",
+     "lines": [
+      176,
+      188
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "txOutputUTxO"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronLedger.scala"
+}

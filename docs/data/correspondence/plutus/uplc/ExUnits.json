@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "class uplc.ExUnits": null,
+  "def uplc.ExUnits#+": null,
+  "def uplc.ExUnits#fits": null,
+  "object uplc.ExUnits": null,
+  "val uplc.ExUnits.zero": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/ExUnits.scala"
+}

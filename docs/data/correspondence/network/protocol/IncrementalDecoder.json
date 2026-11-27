@@ -1,0 +1,19 @@
+{
+ "baseline": {
+  "def protocol.IncrementalDecoder#decodePrefix": null,
+  "def protocol.IncrementalDecoder#initial": null,
+  "def protocol.IncrementalDecoder#resume": null,
+  "trait protocol.IncrementalDecoder": null,
+  "type protocol.IncrementalDecoder#Cursor": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.IncrementalDecoder#map",
+    "def protocol.IncrementalDecoder#mapResult"
+   ],
+   "reason": "how a decoder keeps its progress on a message not all of which has arrived, so that a longer prefix is read on from where it stopped and nothing read whole is read again: the reference keeps that progress in its decoder's continuation (cborg 0.2.10.0 deserialiseIncremental, src/Codec/CBOR/Read.hs:169-172 and 1254-1260; typed-protocols 1.2.2.0 convertCborDecoderLBS, cborg/Network/TypedProtocol/Codec/CBOR.hs:136-164), fed a chunk at a time by runDecoderWithLimit (ouroboros-network framework/lib/Ouroboros/Network/Driver/Limits.hs:281-331 at c45735a5 and 4646039f); here a decoder's cursor holds it as a value. What each codec accepts and refuses, and where, is the codec's as before; each codec's incremental is its decodePrefix as the multiplexer takes it (decodePrefix is it started afresh), the reading itself in the codec's own definitions as before"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/IncrementalDecoder.scala"
+}

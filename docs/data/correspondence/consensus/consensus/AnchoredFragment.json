@@ -1,0 +1,399 @@
+{
+ "entries": {
+  "class consensus.AnchoredFragment": {
+   "class": "Gap",
+   "digest": "479230476ae31df9",
+   "note": "the anchor and the blocks oldest first; the reference keeps the blocks in a finger tree measured by slot, Scarab in a Vector with a persistent map from each hash on the fragment to its position, so appending, rolling back, dropping the oldest and looking up a point cost amortised O(1)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      206,
+      230
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "AnchoredFragment"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#addBlock": {
+   "class": "Gap",
+   "digest": "b4207cdfcd664948",
+   "note": "appends the block and indexes its hash",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      357,
+      359
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "addBlock"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#afterPoint": {
+   "class": "Gap",
+   "digest": "6f8b0e2079cb0d82",
+   "note": "snd <$> splitAfterPoint af point, without building the first part: the trim of a candidate to our chain's anchor costs what it drops",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      498,
+      508
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "splitAfterPoint"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#anchorNewest": {
+   "class": "Gap",
+   "digest": "c8a23bd29f1ab255",
+   "note": "the n newest blocks anchored at the one before them; a negative n keeps none (the reference takes a Word64)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredSeq.hs",
+     "lines": [
+      501,
+      520
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "anchorNewest"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#headPoint": {
+   "class": "Mirror",
+   "digest": "5cb93c97b16df7fa",
+   "note": "the newest block's point, the anchor's when empty",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      327,
+      328
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "headPoint"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#intersectionPoint": {
+   "class": "Gap",
+   "digest": "bd6c17d1edcbf6ef",
+   "note": "the first of the other fragment's points from its newest that lies on this one; the reference finds the same point of two chains by binary search",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      726,
+      733
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "intersectionPoint"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#isEmpty": {
+   "class": "Mirror",
+   "digest": "f6609df6bd74847d",
+   "note": "no block after the anchor",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredSeq.hs",
+     "lines": [
+      376,
+      377
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "null"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#length": {
+   "class": "Mirror",
+   "digest": "d8be1da917b70cf3",
+   "note": "the number of blocks, the anchor not counted",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredSeq.hs",
+     "lines": [
+      372,
+      373
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "length"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#pointOnFragment": {
+   "class": "Gap",
+   "digest": "f75768c7a2966b6f",
+   "note": "a block, not the anchor; found as withinFragmentBounds finds it",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      430,
+      432
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "pointOnFragment"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#pointsNewestFirst": {
+   "class": "Gap",
+   "digest": "471e0ec51aba32b8",
+   "note": "the points of the blocks newest first, then the anchor's, as a search for the newest point on another chain walks them",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      405,
+      416
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "selectPointsSpec"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#rollback": {
+   "class": "Gap",
+   "digest": "0fc269129a1df281",
+   "note": "the fragment whose head is the point, its later blocks unindexed",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      369,
+      372
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "rollback"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#splitAfterPoint": {
+   "class": "Gap",
+   "digest": "44d6107ab51c0e58",
+   "note": "both parts, each unindexing what the other keeps",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      498,
+      508
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "splitAfterPoint"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#successorBlock": {
+   "class": "Gap",
+   "digest": "0806c27144750af3",
+   "note": "the block after the anchor or a block, by its position",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      418,
+      426
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "successorBlock"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#toOldestFirst": {
+   "class": "Mirror",
+   "digest": "bfa8cf1ca97bf1a2",
+   "note": "the blocks, oldest first",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredSeq.hs",
+     "lines": [
+      265,
+      266
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "toOldestFirst"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment#withinFragmentBounds": {
+   "class": "Gap",
+   "digest": "d27c1cf45106ed27",
+   "note": "the anchor or a block; found through the hash map and its slot compared, where the reference searches by slot and compares the point",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      452,
+      457
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "withinFragmentBounds"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment.HasPoint#point": {
+   "class": "Gap",
+   "digest": "d64f6336c344c9ee",
+   "note": "a block's point",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/Block.hs",
+     "lines": [
+      249,
+      252
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "blockPoint"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment.empty": {
+   "class": "Mirror",
+   "digest": "097f18232ea310f3",
+   "note": "the fragment with no block after its anchor",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredSeq.hs",
+     "lines": [
+      168,
+      171
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "Empty"
+    }
+   ]
+  },
+  "def consensus.AnchoredFragment.fromOldestFirst": {
+   "class": "Gap",
+   "digest": "6d44706415c5b653",
+   "note": "the fragment of the blocks after the anchor, every hash indexed",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredSeq.hs",
+     "lines": [
+      277,
+      278
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "fromOldestFirst"
+    }
+   ]
+  },
+  "trait consensus.AnchoredFragment.HasPoint": {
+   "class": "Gap",
+   "digest": "1ed4b8e48f46eca6",
+   "note": "the one field of HasHeader a fragment reads: the point of a block",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/Block.hs",
+     "lines": [
+      137,
+      138
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "HasHeader"
+    }
+   ]
+  },
+  "val consensus.AnchoredFragment#anchorPoint": {
+   "class": "Mirror",
+   "digest": "888a11b65da59039",
+   "note": "the anchor's point",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "lines": [
+      238,
+      239
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "anchorPoint"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def consensus.AnchoredFragment#anchoredAt",
+    "def consensus.AnchoredFragment#equals",
+    "def consensus.AnchoredFragment#hashCode",
+    "def consensus.AnchoredFragment#headAt",
+    "def consensus.AnchoredFragment#indexSize",
+    "def consensus.AnchoredFragment#offsetOf",
+    "def consensus.AnchoredFragment#offsetOfHash",
+    "def consensus.AnchoredFragment#pointAt",
+    "def consensus.AnchoredFragment#toString",
+    "given consensus.AnchoredFragment.HasPoint.given_HasPoint_Header",
+    "given consensus.AnchoredFragment.HasPoint.given_HasPoint_Point_Block",
+    "object consensus.AnchoredFragment",
+    "object consensus.AnchoredFragment.HasPoint"
+   ],
+   "reason": "the Scala plumbing of the indexed AnchoredFragment and HeaderChain with no counterpart of their own: the position lookups and cuts the candidate's states are aligned by, structural equality, hashing and rendering over the points and fields alone, the companions and instances, the fields HeaderChain had as a case class with the constructor that indexes them and a copy that indexes only changed points, and the candidate's points as the density rule's fragment without collecting them again (#810)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/AnchoredFragment.scala"
+}

@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "def uplc.Word64.bits": null,
+  "def uplc.Word64.fromBigInt": null,
+  "def uplc.Word64.fromBits": null,
+  "def uplc.Word64.fromInt": null,
+  "def uplc.Word64.show": null,
+  "def uplc.Word64.toBigInt": null,
+  "def uplc.Word64.toIntOption": null,
+  "given uplc.Word64.given_Ordering_Word64": null,
+  "object uplc.Word64": null,
+  "type uplc.Word64": null,
+  "val uplc.Word64.MaxValue": null,
+  "val uplc.Word64.Zero": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/Word64.scala"
+}

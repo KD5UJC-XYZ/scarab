@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "def network.ChainSyncTimeouts.Policy#withPeerTrust": null,
+  "def network.ChainSyncTimeouts.next": null,
+  "def network.ChainSyncTimeouts.sampledDeadline": null,
+  "def network.ChainSyncTimeouts.sampledPicoseconds": null,
+  "def network.ChainSyncTimeouts.sampledSeconds": null,
+  "enum network.ChainSyncTimeouts.PeerTrust": null,
+  "enum network.ChainSyncTimeouts.Policy": null,
+  "object network.ChainSyncTimeouts": null,
+  "val network.ChainSyncTimeouts.MaxSeconds": null,
+  "val network.ChainSyncTimeouts.MinSeconds": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/ChainSyncTimeouts.scala"
+}

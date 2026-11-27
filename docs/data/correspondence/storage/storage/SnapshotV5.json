@@ -1,0 +1,21 @@
+{
+ "baseline": {
+  "def storage.SnapshotV5.body": null,
+  "def storage.SnapshotV5.bodyWellFormed": null,
+  "def storage.SnapshotV5.decodeBody": null,
+  "def storage.SnapshotV5.framed": null,
+  "def storage.SnapshotV5.parts": null,
+  "def storage.SnapshotV5.previousBody": null,
+  "def storage.SnapshotV5.previousSidecarBytes": null,
+  "def storage.SnapshotV5.sections": null,
+  "def storage.SnapshotV5.sidecarBytes": null,
+  "def storage.SnapshotV5.sidecarOf": null,
+  "def storage.SnapshotV5.v8SidecarBytes": null,
+  "def storage.SnapshotV5.v9SidecarBytes": null,
+  "def storage.SnapshotV5.writeBody": null,
+  "enum storage.SnapshotV5.Schema": null,
+  "object storage.SnapshotV5": null,
+  "val storage.SnapshotV5.Magic": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV5.scala"
+}

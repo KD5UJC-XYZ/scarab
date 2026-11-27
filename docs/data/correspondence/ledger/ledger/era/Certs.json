@@ -1,0 +1,73 @@
+{
+ "baseline": {
+  "def ledger.era.ConwayDelegCert#credential": null,
+  "def ledger.era.ConwayGovCert#witness": null,
+  "def ledger.era.PoolCert#witness": null,
+  "enum ledger.era.ConwayDelegCert": null,
+  "enum ledger.era.ConwayGovCert": null,
+  "enum ledger.era.Delegatee": null,
+  "enum ledger.era.PoolCert": null
+ },
+ "entries": {
+  "def ledger.era.Delegatee.getDRepDelegatee": {
+   "class": "Mirror",
+   "digest": "49d24b7a51fdea4e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+     "lines": [
+      453,
+      456
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getDRepDelegatee"
+    }
+   ]
+  },
+  "def ledger.era.Delegatee.getStakePoolDelegatee": {
+   "class": "Mirror",
+   "digest": "da166c99f522a6f0",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+     "lines": [
+      447,
+      451
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getStakePoolDelegatee"
+    }
+   ]
+  },
+  "def ledger.era.Delegatee.mkDelegatee": {
+   "class": "Mirror",
+   "digest": "1f11efaa8cf3b338",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+     "lines": [
+      439,
+      445
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkDelegatee"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.Delegatee"
+   ],
+   "reason": "objects that hold an era's instances of the accounts and certificate-state classes, the reference's functions over those classes (each mapped by itself), or CanEqual; Scala containers with no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/Certs.scala"
+}

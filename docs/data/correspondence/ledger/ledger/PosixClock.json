@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "class ledger.PosixClock.Extended": null,
+  "class ledger.PosixClock.Forecast": null,
+  "class ledger.PosixClock.Total": null,
+  "def ledger.PosixClock#posix": null,
+  "def ledger.PosixClock.Extended#posix": null,
+  "def ledger.PosixClock.Forecast#posix": null,
+  "def ledger.PosixClock.Total#posix": null,
+  "def ledger.PosixClock.forecast": null,
+  "def ledger.PosixClock.total": null,
+  "object ledger.PosixClock": null,
+  "trait ledger.PosixClock": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PosixClock.scala"
+}

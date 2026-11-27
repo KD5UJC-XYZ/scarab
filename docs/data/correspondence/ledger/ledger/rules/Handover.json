@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "class ledger.rules.FromByron": null,
+  "def ledger.rules.Handover.toShelley": null,
+  "object ledger.rules.Handover": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.rules.Handover.layoutOf"
+   ],
+   "reason": "the state layout of each reference build Scarab can follow, and the defect of a build whose layout is not implemented yet, which the node's setup refuses before any rule runs (#1002, stage 0); the reference is one build and has no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Handover.scala"
+}

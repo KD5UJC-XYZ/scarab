@@ -1,0 +1,70 @@
+{
+ "entries": {
+  "val ledger.era.conway.ConwayState.accounts": {
+   "class": "Mirror",
+   "digest": "e90b362672059b34",
+   "note": "Conway's two accounts instances in one value, given in the root class's companion",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/Account.hs",
+     "lines": [
+      176,
+      193
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraAccounts ConwayEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/Account.hs",
+     "lines": [
+      297,
+      299
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayEraAccounts ConwayEra"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayState.certState": {
+   "class": "Gap",
+   "digest": "9f34ba24178e879e",
+   "note": "Conway's two certificate-state instances in one value, given in the root class's companion; its members are compared with the deposits the state holds (ConwayCertsChecksSuite) and with the flat path's (ConwayUtxoChecksSuite), not yet with the reference's own results",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/CertState.hs",
+     "lines": [
+      123,
+      136
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraCertState ConwayEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/State/CertState.hs",
+     "lines": [
+      138,
+      140
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayEraCertState ConwayEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.conway.ConwayState"
+   ],
+   "reason": "objects that hold an era's instances of the accounts and certificate-state classes, the reference's functions over those classes (each mapped by itself), or CanEqual; Scala containers with no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayState.scala"
+}

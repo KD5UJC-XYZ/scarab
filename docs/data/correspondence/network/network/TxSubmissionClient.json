@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "class network.TxSubmissionClient.Held": null,
+  "def network.TxSubmissionClient.Running#finish": null,
+  "def network.TxSubmissionClient.Running#terminate": null,
+  "def network.TxSubmissionClient.Source#after": null,
+  "def network.TxSubmissionClient.Source#awaitAfter": null,
+  "def network.TxSubmissionClient.Source#body": null,
+  "def network.TxSubmissionClient.Source#reader": null,
+  "def network.TxSubmissionClient.background": null,
+  "def network.TxSubmissionClient.backgroundFinishing": null,
+  "def network.TxSubmissionClient.run": null,
+  "object network.TxSubmissionClient": null,
+  "trait network.TxSubmissionClient.Running": null,
+  "trait network.TxSubmissionClient.Source": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/TxSubmissionClient.scala"
+}
