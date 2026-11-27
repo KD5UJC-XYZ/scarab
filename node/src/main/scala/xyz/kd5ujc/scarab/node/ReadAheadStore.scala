@@ -123,6 +123,19 @@ final class ReadAheadStore[F[_]: Async] private (
       if rest.isEmpty then F.pure(served) else store.read(rest).map(served ++ _)
     }
 
+  /** [[readFor]] without taking: the entries of `keys` read ahead for a state whose trim point is
+    * `utxo.flushed` are given and left in the buffer for the block path, and the rest read from the
+    * store. For a reader other than the block path that must not take what it keeps (the scripts
+    * evaluated ahead, [[ScriptsAhead]]).
+    */
+  def peekFor(utxo: Utxo, keys: SortedSet[TxIn])(using
+      Raise[F, StorageError]
+  ): F[Map[TxIn, TxOut]] =
+    buffer.get.map(_.peek(keys, utxo.flushed)).flatMap { served =>
+      val rest = keys.filterNot(served.contains)
+      if rest.isEmpty then F.pure(served) else store.read(rest).map(served ++ _)
+    }
+
   def read(keys: Iterable[TxIn])(using Raise[F, StorageError]): F[Map[TxIn, TxOut]] =
     store.read(keys)
   def stamp(using Raise[F, StorageError]): F[Long] = store.stamp
@@ -217,6 +230,12 @@ object ReadAheadStore:
             (b.removed(in).copy(served = b.served + 1), out.updated(in, h.out))
           case Some(_) => (b.removed(in).copy(stale = b.stale + 1), out)
       }
+
+    /** The entries of `keys` held and read at or after `flushed`, as [[take]] gives them, left in
+      * the buffer and uncounted.
+      */
+    def peek(keys: Iterable[TxIn], flushed: Long): Map[TxIn, TxOut] =
+      keys.iterator.flatMap(in => held.get(in).filter(_.at >= flushed).map(h => in -> h.out)).toMap
 
     /** Empty, in the next generation. */
     def cleared: Buffer =

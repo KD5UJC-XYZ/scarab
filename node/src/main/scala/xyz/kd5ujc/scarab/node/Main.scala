@@ -353,35 +353,47 @@ object Main extends IOApp:
       holds: xyz.kd5ujc.scarab.codec.Bytes => IO[Boolean],
       verifier: Option[VerifyAhead.Verifier[IO]],
       readAhead: ReadAheadStore[IO],
+      speculator: Resource[IO, ScriptsAhead[IO]],
       collectors: Collectors.Registry[IO],
       fatal: Fatal => IO[Unit],
       origin: Option[xyz.kd5ujc.scarab.codec.Bytes]
   )(using Raise[IO, NodeError], Log[IO], Metrics[IO]): Resource[IO, Unit] =
-    verifier.fold(Resource.eval(VerifyAhead.idle[IO]))(VerifyAhead.resource[IO]).flatMap {
-      verifyAhead =>
-        // a Shelley-based block's store reads, read ahead of the worker from the selected chain's
-        // tip as a reader finds it (#1484)
-        def readsAhead(
-            @scala.annotation.unused header: Header,
-            raw: xyz.kd5ujc.scarab.codec.Bytes
-        ) =
-          readAhead.ahead(
-            follower.committedChain.get.map(chain => ReadAheadStore.inputs(raw, chain.state))
+    (
+      verifier.fold(Resource.eval(VerifyAhead.idle[IO]))(VerifyAhead.resource[IO]),
+      speculator
+    ).tupled.flatMap { (verifyAhead, scriptsAhead) =>
+      // a Shelley-based block's store reads, read ahead of the worker from the selected chain's
+      // tip as a reader finds it (#1484)
+      def readsAhead(
+          @scala.annotation.unused header: Header,
+          raw: xyz.kd5ujc.scarab.codec.Bytes
+      ) =
+        readAhead.ahead(
+          follower.committedChain.get.map(chain => ReadAheadStore.inputs(raw, chain.state))
+        )
+      given BlockSelection.Before[IO] =
+        BlockSelection.Before.delivered[IO](
+          received,
+          preverify,
+          holds,
+          verifyAhead,
+          readsAhead,
+          Some(scriptsAhead)
+        )
+      // a reader of the read-ahead, the verifier of the checks made ahead, or the speculator of
+      // the scripts evaluated ahead, that ends stops the node, raised here (FIB-2)
+      readAhead.stopped.flatMap(fatal).background *>
+        verifyAhead.stopped.flatMap(fatal).background *>
+        scriptsAhead.stopped.flatMap(fatal).background *>
+        Resource.eval(collectors.add(Collectors.verifyAhead(verifyAhead))) *>
+        Resource.eval(collectors.add(Collectors.scriptsAhead(scriptsAhead))) *> Resource
+          .eval(
+            work.fold(
+              SelectionWork
+                .create[IO](pool.fetchCoordinator.refreshGenesis, events = Some(Log.genesis[IO]))
+            )(IO.pure)
           )
-        given BlockSelection.Before[IO] =
-          BlockSelection.Before.delivered[IO](received, preverify, holds, verifyAhead, readsAhead)
-        // a reader of the read-ahead, or the verifier of the checks made ahead, that ends stops the
-        // node, raised here (FIB-2)
-        readAhead.stopped.flatMap(fatal).background *>
-          verifyAhead.stopped.flatMap(fatal).background *>
-          Resource.eval(collectors.add(Collectors.verifyAhead(verifyAhead))) *> Resource
-            .eval(
-              work.fold(
-                SelectionWork
-                  .create[IO](pool.fetchCoordinator.refreshGenesis, events = Some(Log.genesis[IO]))
-              )(IO.pure)
-            )
-            .flatMap(shared => follower.blockSelection(pool, shared, fatal, origin))
+          .flatMap(shared => follower.blockSelection(pool, shared, fatal, origin))
     }
 
   /** What the checks of a queued block made ahead of the worker are ([[VerifyAhead]], #1499): the
@@ -400,17 +412,79 @@ object Main extends IOApp:
   ): Option[VerifyAhead.Verifier[IO]] =
     VerifyAhead.parallelism(cache.parallelism).map { threads =>
       VerifyAhead.Verifier[IO](
-        header =>
-          (
-            follower.committedChain.get.map(Follower.youngerThanImmutable(_, header)),
-            pool.processedForest.map(!_.contains(header.hash))
-          ).mapN(_ && _),
+        wanted(follower, pool),
         (header, raw) =>
           praosConfig.get.flatMap(cache.warm[IO](Vector(raw), _, threads)) *>
             IO(cache.holds(header.hash)),
         hash => IO(cache.takePrepared(hash)).void
       )
     }
+
+  /** Whether the worker would still prepare a queued block: younger than the immutable tip and not
+    * processed yet, as far as the committed chain and the pool say now (its own two checks).
+    */
+  private def wanted(follower: Follower[IO, MirrorState], pool: BlockPool[IO])(
+      header: Header
+  ): IO[Boolean] =
+    (
+      follower.committedChain.get.map(Follower.youngerThanImmutable(_, header)),
+      pool.processedForest.map(!_.contains(header.hash))
+    ).mapN(_ && _)
+
+  /** The speculator of the scripts of queued blocks ([[ScriptsAhead]], #1499): the worker's own two
+    * checks of whether it would prepare a block ([[wanted]]); the selected chain at the worker's
+    * tip as the committed chain gives it, its blocks' scripts by `rules`, the outputs of its UTxO
+    * set read from its diff and else from the store, taking nothing the worker's read-ahead keeps
+    * (`ReadAheadStore.peekFor`); and the machines run by the rules' own evaluator `underlying` on
+    * [[ScriptsAhead.parallelism]] threads of their own, the results kept in `results`, which the
+    * rules' evaluator answers from. Idle on a machine with fewer than four processors.
+    */
+  private[node] def speculator(
+      follower: Follower[IO, MirrorState],
+      pool: BlockPool[IO],
+      rules: MirrorRules[IO],
+      readAhead: ReadAheadStore[IO],
+      underlying: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[cats.Id],
+      results: ScriptsAhead.Results
+  ): Resource[IO, ScriptsAhead[IO]] =
+    ScriptsAhead
+      .parallelism(Runtime.getRuntime.availableProcessors())
+      .fold(Resource.eval(ScriptsAhead.idle[IO](results))) { threads =>
+        Resource.eval(ScriptsAhead.evaluating[IO](underlying, threads)).flatMap { evaluate =>
+          val tip = follower.committedChain.get.map { chain =>
+            val state = chain.state
+            new ScriptsAhead.Tip[IO]:
+              def hash: Option[xyz.kd5ujc.scarab.codec.Bytes] = chain.tipRef.map(_.hash)
+              def scripts(header: Header, raw: xyz.kd5ujc.scarab.codec.Bytes) =
+                rules.scriptsAhead(state, header, raw)
+              def outputs(keys: Set[xyz.kd5ujc.scarab.ledger.TxIn]) =
+                xyz.kd5ujc.scarab.consensus.state.MirrorStep
+                  .utxoOf(state)
+                  .fold(
+                    IO.pure(
+                      Map.empty[xyz.kd5ujc.scarab.ledger.TxIn, xyz.kd5ujc.scarab.ledger.TxOut]
+                    )
+                  ) { utxo =>
+                    val known = keys.iterator.flatMap(k => utxo.get(k).map(k -> _)).toMap
+                    val missing = utxo.missing(keys)
+                    if missing.isEmpty then IO.pure(known)
+                    else
+                      xyz.kd5ujc.scarab.network.Fibers
+                        .scoped[IO, xyz.kd5ujc.scarab.ledger.StorageError, Map[
+                          xyz.kd5ujc.scarab.ledger.TxIn,
+                          xyz.kd5ujc.scarab.ledger.TxOut
+                        ]](xyz.kd5ujc.scarab.ledger.StorageError.Io("scripts ahead", _))(
+                          readAhead.peekFor(utxo, missing)
+                        )
+                        .map(read => known ++ read.getOrElse(Map.empty))
+                  }
+          }
+          ScriptsAhead.resource[IO](
+            ScriptsAhead.Speculator[IO](wanted(follower, pool), tip, evaluate, threads),
+            results
+          )
+        }
+      }
 
   private def createGenesisRuntime(
       setup: NodeSetup,
@@ -1553,7 +1627,8 @@ object Main extends IOApp:
   private final case class Rules(
       praosConfig: Ref[IO, consensus.PraosConfig],
       warm: Peer.Prepare[IO],
-      rules: MirrorRules[IO]
+      rules: MirrorRules[IO],
+      scripts: ScriptsAhead.Results
   )
 
   /** The selected chain once the stores are open, with what serves and extends it, and the
@@ -1781,6 +1856,9 @@ object Main extends IOApp:
               logged(NodeEvent.VerificationCache(cache.summary)).whenA(n % 20000 == 0)
             }
       parallelPlutus <- ParallelPlutus.create[IO](options.plutusWorkers)
+      // the results of the scripts evaluated ahead of the worker, which the rules' evaluator answers
+      // from (#1499); the mempool and the forger keep the backend's own
+      scripts <- IO(ScriptsAhead.Results.create(ScriptsAhead.Bounds))
       committees <- Ref.of[IO, Option[
         (
             (xyz.kd5ujc.scarab.ledger.state.LeiosCommittee, xyz.kd5ujc.scarab.codec.Rational),
@@ -1796,7 +1874,7 @@ object Main extends IOApp:
         setup.byronRules,
         setup.handOver,
         setup.byronHistory,
-        run.plutus,
+        run.plutus.copy(evaluator = scripts.evaluator(run.plutus.evaluator)),
         phase2Observer = cases.map(c => MirrorRules.Phase2Observer(c.observe, c.observeConway)),
         utxoStore = Some(store),
         afterBlock = Some(afterBlock),
@@ -1804,7 +1882,8 @@ object Main extends IOApp:
         parallelPlutus = Some(parallelPlutus),
         leios = run.leios.map(MirrorRules.Leios(_, committees)),
         dijkstraObserver = cases.map(c => c.observeDijkstra)
-      )
+      ),
+      scripts
     )
 
   /** The chain database, or without `--db` the state the node starts from. */
@@ -2953,6 +3032,14 @@ object Main extends IOApp:
             hash => IO(run.cache.holds(hash)),
             verifier(follower, blockPool, run.cache, rules.praosConfig),
             store,
+            speculator(
+              follower,
+              blockPool,
+              rules.rules,
+              store,
+              run.plutus.evaluator,
+              rules.scripts
+            ),
             collectors,
             fatalSink,
             setup.origin

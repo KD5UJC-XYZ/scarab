@@ -305,10 +305,10 @@ private[node] object BlockSelection:
     * to the received log and its verification cache warmed (`prepare`); a block this node forged is
     * written to the received log only (`store`), since its rules ran or run when selection reaches
     * it ([[Follower.submitForged]]). When a delivered block enters the add-block queue, its store
-    * reads and its signature checks are asked for ahead of the worker (`ahead`,
-    * [[ReadAheadStore.ahead]], [[VerifyAhead.ahead]]), which must not wait: it runs under the
-    * queue's publication. A delivered block the worker takes from the queue and does not prepare
-    * (older than the immutable tip, or already processed) is `passed` by.
+    * reads, its signature checks and its scripts are asked for ahead of the worker (`ahead`,
+    * [[ReadAheadStore.ahead]], [[VerifyAhead.ahead]], [[ScriptsAhead.ahead]]), which must not wait:
+    * it runs under the queue's publication. A delivered block the worker takes from the queue and
+    * does not prepare (older than the immutable tip, or already processed) is `passed` by.
     */
   trait Before[F[_]]:
     def prepare(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
@@ -322,19 +322,23 @@ private[node] object BlockSelection:
       * holds every verdict of them already (`holds`), as it does for a block whose checks were all
       * made ahead of the worker ([[VerifyAhead]], #1499); when a Shelley-based block enters the
       * queue its store reads (`reads`, #1484) and its signature checks are asked for ahead of the
-      * worker; one passed by is the verifier's no longer.
+      * worker, and its Plutus scripts evaluated ahead of it (`scriptsAhead`, [[ScriptsAhead]]); one
+      * passed by is the verifier's and the speculator's no longer, and the results of a block the
+      * worker reached are dropped when it reaches the next.
       */
     def delivered[F[_]: cats.Monad](
         received: Option[ReceivedBlocks[F]],
         preverify: Peer.Prepare[F],
         holds: Bytes => F[Boolean],
         verifyAhead: VerifyAhead[F],
-        reads: (Header, Bytes) => F[Unit]
+        reads: (Header, Bytes) => F[Unit],
+        scriptsAhead: Option[ScriptsAhead[F]] = None
     ): Before[F] = new Before[F]:
       def prepare(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit] =
         store(header, raw) *> (header match
           case _: Header.Shelley =>
-            verifyAhead.reached(header.hash) *>
+            scriptsAhead.traverse_(_.reached(header.hash)) *>
+              verifyAhead.reached(header.hash) *>
               holds(header.hash).ifM(verifyAhead.skipped, preverify(Vector(raw)))
           case _ => preverify(Vector(raw)))
       def store(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit] =
@@ -342,9 +346,12 @@ private[node] object BlockSelection:
           _.put(BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary), raw)
         )
       def ahead(header: Header, raw: Bytes): F[Unit] = header match
-        case _: Header.Shelley => reads(header, raw) *> verifyAhead.ahead(header, raw)
-        case _                 => cats.Monad[F].unit
-      def passed(header: Header): F[Unit] = verifyAhead.passed(header.hash)
+        case _: Header.Shelley =>
+          reads(header, raw) *> verifyAhead.ahead(header, raw) *>
+            scriptsAhead.traverse_(_.ahead(header, raw))
+        case _ => cats.Monad[F].unit
+      def passed(header: Header): F[Unit] =
+        verifyAhead.passed(header.hash) *> scriptsAhead.traverse_(_.passed(header.hash))
 
     def noop[F[_]: cats.Applicative]: Before[F] = new Before[F]:
       def prepare(@scala.annotation.unused header: Header, @scala.annotation.unused raw: Bytes)(
