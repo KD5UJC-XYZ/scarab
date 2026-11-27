@@ -124,11 +124,13 @@ digits of the SHA-256 of the bytes it names.
     expiries) from it and from each corpus case with proposals or votes, with the dormant epochs counted and
     without (252), and a funded account unregistered at 10 and 11 (2) (34 refusals and 259 admissions).
 
-  Recorded at Scarab commit `78ad579a9`, the head of the pull request that deleted the flat GOV (#1487). The flat
-  CERTS's deletion's parent, `cc3fa6ca3`, adds this recording and the suite that reads it; the suite of
-  `78ad579a9` was run again there with the flat CERTS beside the era one: every comparison agreed, and the
-  recording it wrote was this one, byte for byte. The comparisons that had other oracles are not here: the refusals only the certificate rules give, held to the
-  reference's bytes; the base case's withdrawals under each build, held to the reference's gate
+  Recorded at Scarab commit `78ad579a9`, the head of the pull request that deleted the flat GOV (#1487) before it
+  was squash-merged, which leaves that commit on no branch. The flat CERTS's deletion was then rebased onto the
+  merge, and its parent, `0a562efe7`, adds this recording and the suite that reads it and otherwise differs from
+  `78ad579a9` only outside the ledger: the read-ahead of queued blocks' store reads (#1484) and the fuzz job's
+  differential targets (#1418). The suite of `78ad579a9` was run again at `0a562efe7` with the flat CERTS beside the
+  era one: every comparison agreed, and the recording it wrote was this one, byte for byte. The comparisons that
+  had other oracles are not here: the refusals only the certificate rules give, held to the reference's bytes; the base case's withdrawals under each build, held to the reference's gate
   (`hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule`); and POOL's events. The flat CERTS checked and
   drained the withdrawals and moved the DReps' expiries in its base case below version 11 under every build, where
   the reference's 11.2 and Leios builds do so in LEDGER (#85's item 7055304484, closed with it). One case here is
