@@ -4,7 +4,11 @@ package xyz.kd5ujc.scarab.ledger.era.babbage
 import scala.collection.immutable.SortedSet
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{
+  BootstrapWitness,
+  NativeScript,
+  Script,
   CborRead,
   DecodeField,
   DetachedRecords,
@@ -26,6 +30,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Witnesses as FlatWitnesses
 }
 import xyz.kd5ujc.scarab.ledger.era.{
+  Data,
   IsPhase2Valid,
   KeptUpdate,
   GenesisDelegCert,
@@ -42,7 +47,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{Babbage, Coin}
-import xyz.kd5ujc.scarab.plutus.PlutusLanguage
+import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusData, PlutusLanguage}
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** Builders for Babbage transactions whose bytes are true: a body and its witnesses are written in
@@ -282,46 +287,118 @@ object BabbageTestKit extends munit.Assertions:
       )
     ).flatten
 
-  /** Where the witness set projected onto the flat witnesses differs from them. */
-  def witsDifferences(era: BabbageTxWits, flat: FlatWitnesses): Vector[String] =
-    Vector(
-      check("raw", Some(era.raw), flat.raw),
-      check("key witnesses", era.vkeys, SortedSet.from(flat.vkeys.map(WitVKey(_, _)))),
-      check("bootstrap witnesses", era.bootstrap, flat.bootstrap),
-      check("scripts", era.scripts.keySet, flat.scriptsByHash.keySet),
-      check("script arrival", era.scriptArrival, flat.scripts.map(_.hash).distinct),
-      check(
-        "script bytes",
-        era.scripts.toVector.map((h, s) => h -> Some(BabbageScript.instance.originalBytes(s))),
-        era.scripts.keys.toVector.map(h => h -> flatScriptBytes(flat, h))
-      ),
-      check("datums' bytes", era.datums.raw, flat.datumsRaw),
-      check("datums", era.datums.datums.keySet, flat.datumHashes),
-      check("redeemers' bytes", era.redeemers.raw, flat.redeemersRaw),
-      check(
-        "redeemers",
-        era.redeemers.entries.toVector.map((p, v) => (p.tag, p.ix.value, v._1.originalBytes, v._2)),
-        flat.redeemers.map(r => (r.tag, r.index, r.data, r.exUnits)).sortBy(r => (r._1, r._2))
-      )
-    ).flatten
-
-  // the bytes of a flat witness script: a native one's encoding, a Plutus one's binary
-  private def flatScriptBytes(flat: FlatWitnesses, hash: Bytes): Option[Bytes] =
-    flat.scriptsByHash.get(hash).flatMap(s => s.encoding.orElse(s.plutus))
-
-  /** The auxiliary data's fields as the flat readers read them from its bytes, independently of
-    * Babbage's decoder: the metadata by label (a label written twice its last metadatum, below
-    * version 9), each read by the flat metadatum reader; the native scripts' bytes; and the Plutus
-    * scripts with their languages in the order they arrived ([[AuxiliaryScripts.read]]).
+  /** A witness set's fields as values both decoders' readings give: each script by hash with its
+    * bytes and, for a native script, its decoded tree; each datum by hash with its bytes and its
+    * decoded data; each redeemer with its purpose, data and units.
     */
-  private final case class FlatAux(
-      metadata: Map[BigInt, Metadatum],
-      native: Vector[Bytes],
-      plutus: Vector[(PlutusLanguage, Bytes)]
+  final case class WitsView(
+      raw: Option[Bytes],
+      vkeys: SortedSet[WitVKey],
+      bootstrap: Vector[BootstrapWitness],
+      scripts: Vector[(Bytes, Option[Bytes], Option[NativeScript])],
+      arrival: Vector[Bytes],
+      datumsRaw: Option[Bytes],
+      datums: Map[Bytes, (Bytes, PlutusData)],
+      redeemersRaw: Option[Bytes],
+      redeemers: Vector[(Int, BigInt, Bytes, ExUnits)]
   )
 
-  private def flatAux(raw: Bytes): Either[LedgerDecodeError, FlatAux] =
-    given ByteStrings = ByteStrings.of(DecoderVersion.of(Era.Babbage))
+  def witsView(era: BabbageTxWits): WitsView =
+    val s = BabbageScript.instance
+    WitsView(
+      Some(era.raw),
+      era.vkeys,
+      era.bootstrap,
+      era.scripts.toVector.map((h, x) =>
+        (h, Some(s.originalBytes(x)), s.getNativeScript(x).map(_.rep.script))
+      ),
+      era.scriptArrival,
+      era.datums.raw,
+      era.datums.datums.map((h, d) => h -> (d.originalBytes, d.getPlutusData)),
+      era.redeemers.raw,
+      era.redeemers.entries.toVector.map((p, v) => (p.tag, p.ix.value, v._1.originalBytes, v._2))
+    )
+
+  /** The flat witnesses as the same values, each datum decoded from its bytes. */
+  def flatWitsView(flat: FlatWitnesses): WitsView =
+    WitsView(
+      flat.raw,
+      SortedSet.from(flat.vkeys.map(WitVKey(_, _))),
+      flat.bootstrap,
+      flat.scriptsByHash.toVector
+        .sortBy(_._1)
+        .map((h, x) => (h, x.encoding.orElse(x.plutus), x.native)),
+      flat.scripts.map(_.hash).distinct,
+      flat.datumsRaw,
+      flat.datums
+        .map(b =>
+          Blake2b.hash256
+            .hash(b) -> (b, Data.decode(b).fold(e => fail(e.toString), _.getPlutusData))
+        )
+        .toMap,
+      flat.redeemersRaw,
+      flat.redeemers.map(r => (r.tag, r.index, r.data, r.exUnits)).sortBy(r => (r._1, r._2))
+    )
+
+  /** Where two witness sets' values differ, field by field. */
+  def witsViewDifferences(era: WitsView, flat: WitsView): Vector[String] =
+    Vector(
+      check("raw", era.raw, flat.raw),
+      check("key witnesses", era.vkeys, flat.vkeys),
+      check("bootstrap witnesses", era.bootstrap, flat.bootstrap),
+      check(
+        "scripts' bytes",
+        era.scripts.map((h, b, _) => h -> b),
+        flat.scripts.map((h, b, _) => h -> b)
+      ),
+      check(
+        "native script trees",
+        era.scripts.map((h, _, t) => h -> t),
+        flat.scripts.map((h, _, t) => h -> t)
+      ),
+      check("script arrival", era.arrival, flat.arrival),
+      check("datums' bytes", era.datumsRaw, flat.datumsRaw),
+      check("datums", era.datums, flat.datums),
+      check("redeemers' bytes", era.redeemersRaw, flat.redeemersRaw),
+      check("redeemers", era.redeemers, flat.redeemers)
+    ).flatten
+
+  /** Where the witness set projected onto the flat witnesses differs from them. */
+  def witsDifferences(era: BabbageTxWits, flat: FlatWitnesses): Vector[String] =
+    witsViewDifferences(witsView(era), flatWitsView(flat))
+
+  /** Auxiliary data's fields as values both readings give: the metadata by label, the native
+    * scripts with their bytes and decoded trees, each language's Plutus scripts in their order,
+    * repeats kept, and the Plutus scripts in the order they arrived.
+    */
+  final case class AuxView(
+      raw: Bytes,
+      metadata: Map[BigInt, Metadatum],
+      native: Vector[(Bytes, NativeScript)],
+      plutus: Map[PlutusLanguage, Vector[Bytes]],
+      arrival: Vector[(PlutusLanguage, Bytes)]
+  )
+
+  def auxView(era: BabbageTxAuxData): AuxView =
+    AuxView(
+      era.raw,
+      era.metadata.map((k, v) => k.value -> v),
+      era.nativeScripts.map(t => t.rep.raw -> t.rep.script),
+      era.plutusScripts.toMap.map((l, ss) => l -> ss.toVector),
+      era.plutusArrival
+    )
+
+  /** The auxiliary data's fields as the flat readers read them from its bytes at `version`,
+    * independently of Babbage's decoder: the metadata by label (a label written twice its last
+    * metadatum, below version 9), each by the flat metadatum reader; the native scripts by the flat
+    * native-script reader; and the Plutus scripts with their languages in the order they arrived
+    * ([[AuxiliaryScripts.read]]), each language's in its order.
+    */
+  def flatAuxView(
+      raw: Bytes,
+      version: DecoderVersion = DecoderVersion.of(Era.Babbage)
+  ): Either[LedgerDecodeError, AuxView] =
+    given ByteStrings = ByteStrings.of(version)
     def metadata(n: Node) =
       CborRead
         .map(n, DecodeField.Metadata)
@@ -332,18 +409,23 @@ object BabbageTestKit extends munit.Assertions:
         )
         .map(_.toMap)
     def native(n: Node) =
-      CborRead.array(n, DecodeField.AuxiliaryNativeScripts).map(_.map(_.original))
+      CborRead
+        .array(n, DecodeField.AuxiliaryNativeScripts)
+        .flatMap(
+          _.traverse(x =>
+            Script.native(x, NativeScript.Form.Timelock).map(sc => x.original -> sc.native.get)
+          )
+        )
     for
-      plutus <- AuxiliaryScripts.read(raw, Era.Babbage, 7)
+      plutus <- AuxiliaryScripts.read(raw, Era.Babbage, version.value)
       parts <- DetachedRecords.read(
         raw,
         Cbor.Limits.Unbounded,
-        DetachedRecords.Shapes.auxiliaryDataAt(Era.Babbage, 7)
+        DetachedRecords.Shapes.auxiliaryDataAt(Era.Babbage, version.value)
       )(LedgerDecodeError.Syntax(_)) { root =>
         root.value match
-          case Value.Map(_) => metadata(root).map((_, Vector.empty[Bytes]))
-          case Value.Arr(xs) =>
-            (metadata(xs(0)), native(xs(1))).tupled
+          case Value.Map(_)  => metadata(root).map((_, Vector.empty[(Bytes, NativeScript)]))
+          case Value.Arr(xs) => (metadata(xs(0)), native(xs(1))).tupled
           case Value.Tag(_, inner) =>
             CborRead.map(inner, DecodeField.AuxiliaryData).flatMap { kvs =>
               val byKey = kvs.collect {
@@ -361,24 +443,31 @@ object BabbageTestKit extends munit.Assertions:
                 .Expected(DecodeField.AuxiliaryData, LedgerDecodeError.Shape.ArrayOrMap, other)
             )
       }
-    yield FlatAux(parts._1, parts._2, plutus.map(p => p.language -> p.code))
+      arrival = plutus.map(p => p.language -> p.code)
+    yield AuxView(
+      raw,
+      parts._1,
+      parts._2,
+      arrival.groupMap(_._1)(_._2),
+      arrival
+    )
+
+  /** Where two auxiliary data's values differ, field by field. */
+  def auxViewDifferences(era: AuxView, flat: AuxView): Vector[String] =
+    Vector(
+      check("raw", era.raw, flat.raw),
+      check("metadata", era.metadata, flat.metadata),
+      check("native scripts' bytes", era.native.map(_._1), flat.native.map(_._1)),
+      check("native script trees", era.native.map(_._2), flat.native.map(_._2)),
+      check("Plutus scripts", era.plutus, flat.plutus),
+      check("Plutus arrival", era.arrival, flat.arrival)
+    ).flatten
 
   /** Where the auxiliary data differs from its fields as the flat readers read them from `raw`. */
   def auxDifferences(era: BabbageTxAuxData, raw: Bytes): Vector[String] =
-    flatAux(raw) match
-      case Left(e) => Vector(s"the flat readers refuse the auxiliary data: $e")
-      case Right(flat) =>
-        Vector(
-          check("raw", era.raw, raw),
-          check("metadata", era.metadata.map((k, v) => k.value -> v), flat.metadata),
-          check("native scripts", era.nativeScripts.map(_.rep.raw), flat.native),
-          check("Plutus arrival", era.plutusArrival, flat.plutus),
-          check(
-            "Plutus scripts",
-            era.plutusScripts.toVector.flatMap((l, ss) => ss.toVector.map(l -> _)).toSet,
-            flat.plutus.toSet
-          )
-        ).flatten
+    flatAuxView(raw) match
+      case Left(e)     => Vector(s"the flat readers refuse the auxiliary data: $e")
+      case Right(flat) => auxViewDifferences(auxView(era), flat)
 
   /** Where the whole transaction differs from the flat one: its body, witness set, phase-two flag,
     * fee size and auxiliary data.

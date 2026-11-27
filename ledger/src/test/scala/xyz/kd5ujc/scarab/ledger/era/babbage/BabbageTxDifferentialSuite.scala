@@ -195,8 +195,9 @@ class BabbageTxDifferentialSuite extends FunSuite:
   }
 
   /** The reference's verdicts on Babbage auxiliary data (`fixtures/reference/auxiliary-scripts`,
-    * the `oracle` 's `decoded`), at protocol versions 7 and 8: Babbage's decoder and the flat
-    * reader at the row's version agree with them.
+    * the `oracle` 's `decoded`), 70 at each of Babbage's protocol versions, 7 and 8: Babbage's
+    * decoder and the flat reader, each at the row's version, agree with them, and an accepted one
+    * is the flat readers' reading of its bytes at that version.
     */
   test("every Babbage row of the auxiliary-data corpus is read as the reference reads it") {
     given ByteStrings = ByteStrings.of(DecoderVersion.of(Era.Babbage))
@@ -210,16 +211,30 @@ class BabbageTxDifferentialSuite extends FunSuite:
       val raw = hex(str(j, "auxiliary"))
       val decoded =
         j.hcursor.downField("oracle").get[Boolean]("decoded").fold(e => fail(e.message), identity)
-      val version = j.hcursor.get[Int]("protocolMajor").fold(e => fail(e.message), identity)
-      val era = BabbageTxAuxData.decode(raw)
+      val major = j.hcursor.get[Int]("protocolMajor").fold(e => fail(e.message), identity)
+      val version =
+        DecoderVersion.at(Era.Babbage, major).fold(e => fail(s"version $major: $e"), identity)
+      val era = BabbageTxAuxData.decodeAt(raw, version)
       val what = str(j, "name")
       assertEquals(era.isRight, decoded, s"$what: $era")
-      assertEquals(AuxiliaryScripts.read(raw, Era.Babbage, version).isRight, decoded, what)
-      era.foreach(sameAux(_, raw, what))
-      decoded
+      assertEquals(AuxiliaryScripts.read(raw, Era.Babbage, major).isRight, decoded, what)
+      era.foreach(a =>
+        assertEquals(
+          BabbageTestKit
+            .flatAuxView(raw, version)
+            .map(BabbageTestKit.auxViewDifferences(BabbageTestKit.auxView(a), _)),
+          Right(Vector.empty),
+          what
+        )
+      )
+      version -> decoded
     }
-    // the rows, and those the reference decodes
-    assertEquals((verdicts.size, verdicts.count(identity)), (140, 46))
+    // the rows at each of Babbage's versions, and those the reference decodes
+    assertEquals(
+      verdicts.groupMapReduce(_._1)(_ => 1)(_ + _),
+      Map(DecoderVersion.of(Era.Babbage) -> 70, DecoderVersion.high(Era.Babbage) -> 70)
+    )
+    assertEquals(verdicts.count(_._2), 46)
   }
 
   // ---- the decoder corpora
@@ -399,26 +414,25 @@ class BabbageTxDifferentialSuite extends FunSuite:
     // refused value as the update's or the units', where the flat decoder names the parameter; the
     // reference names neither ("expected word"), and the refusal's case is the same
     val sites = differ.filter((name, _) =>
-      !updateKeys.contains(name) && name != countedUnits && !envelopeNulls.contains(name)
+      !updateKeys.contains(name) && name != countedUnits && !envelopes.contains(name)
     )
     assert(sites.keys.forall(_.startsWith("babbage update value: ")), sites.keys.toString)
     // each the flat decoder's refusal, its site the update's
     sites.foreach { (name, d) =>
       assertEquals(d._2, Some(atUpdate(d._1)), name)
     }
-    assertEquals(differ.keySet -- sites.keySet, updateKeys + countedUnits ++ envelopeNulls)
-    // four items whose third is not a flag: the reference reads the third as the auxiliary data
-    // and then refuses the record's size ("Size mismatch when decoding Record AlonzoTx. Expected
-    // 4, but found 3", "Excess terms in array" for the indefinite one), where the flat decoder
-    // asks for a flag in its place
-    envelopeNulls.foreach(name =>
-      assertEquals(
-        differ(name)._2,
-        Some(LedgerDecodeError.ArrayLength(DecodeField.Transaction, 3, 4)),
-        name
-      )
-    )
+    // every refused envelope with its own refusal ([[envelopes]]), seven of them not the flat
+    // decoder's
+    results.foreach { case (r, (_, era)) =>
+      if r.corpus == "tx-envelope" && !r.accepted then
+        assertEquals(era.head.flatMap(cause), Some(envelopes(r.name)), r.name)
+    }
+    val envelopeDiffer = differ.keySet.intersect(envelopes.keySet)
+    assertEquals(envelopeDiffer.size, 7)
+    assertEquals(differ.keySet -- sites.keySet, updateKeys + countedUnits ++ envelopeDiffer)
     assertEquals(sites.size, 51)
+    // the refusals that differ from the flat decoder's, whole
+    assertEquals(differ.size, 61)
     val differCause = differ.map((name, d) => name -> d._2)
     // the update's own decoder refuses a parameter written twice with the reference's key
     // ("Duplicate key: 0 while decoding type PParamsUpdate BabbageEra", 16 for the wide one), where
@@ -506,11 +520,45 @@ class BabbageTxDifferentialSuite extends FunSuite:
         LedgerDecodeError.IndefiniteLength(DecodeField.ExUnits)
       case other => other
 
-  private val envelopeNulls: Set[String] = Set(
-    "babbage transaction four items with null third",
-    "babbage transaction four items with auxiliary data third",
-    "babbage transaction indefinite four items with null third"
-  )
+  /** The refusal of each refused Babbage envelope of `tx-envelope`, read as the reference's
+    * `AlonzoTx` record is (`Alonzo/Tx.hs:538-553`, and `decodeListLikeT`,
+    * `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs:691-709`,
+    * cardano-ledger f649f975), against the cause the reference recorded for it:
+    *   - "end of input" where an item is read past a definite list's end: the auxiliary data after
+    *     the flag, the third item of two, the body of none;
+    *   - "Failed to decode AlonzoTxAuxData" where the auxiliary data's reader meets an indefinite
+    *     list's break, which the refusal names as the token it is (`Simple(31)`);
+    *   - "Size mismatch when decoding Record AlonzoTx" where a definite list is longer than the
+    *     record ("Expected 4, but found 3": the third item read as the auxiliary data; "Expected 5,
+    *     but found 4");
+    *   - "Excess terms in array" where the break is looked for after an indefinite list's third
+    *     item;
+    *   - the last three refused as the flat decoder refuses them, by the parse of the whole item
+    *     before the record is read, where the reference reads the record from the stream: a head of
+    *     four over three items ("Size mismatch ... Expected 4, but found 3") ends the input inside
+    *     the list, and a head of three over four items ("Expected 3, but found 4") and a detached
+    *     record ("expected map len or indef") leave bytes after it.
+    */
+  private val envelopes: Map[String, LedgerDecodeError] =
+    import LedgerDecodeError.*
+    val end = Syntax(xyz.kd5ujc.scarab.codec.Cbor.Error.UnexpectedEnd)
+    val trailing = Syntax(xyz.kd5ujc.scarab.codec.Cbor.Error.TrailingBytes)
+    val noFlag = ArrayLength(DecodeField.Transaction, 3, 4)
+    val break = Expected(DecodeField.AuxiliaryData, Shape.ArrayOrMap, Value.Simple(31))
+    Map(
+      "babbage transaction a flag and no auxiliary data" -> end,
+      "babbage transaction indefinite with a flag and no auxiliary data" -> break,
+      "babbage transaction four items with null third" -> noFlag,
+      "babbage transaction four items with auxiliary data third" -> noFlag,
+      "babbage transaction indefinite four items with null third" ->
+        IndefiniteLength(DecodeField.Transaction),
+      "babbage transaction two items" -> end,
+      "babbage transaction five items" -> ArrayLength(DecodeField.Transaction, 4, 5),
+      "babbage transaction empty" -> end,
+      "babbage transaction head of four over three items" -> end,
+      "babbage transaction head of three over four items" -> trailing,
+      "babbage transaction detached" -> trailing
+    )
 
   private val updateKeys: Set[String] = Set(
     "babbage update: repeated key, same value",
@@ -598,6 +646,67 @@ class BabbageTxDifferentialSuite extends FunSuite:
       "auxiliary data metadata"
     )
   }
+
+  /** Three faults of a reading that the comparison by bytes, by hash and by set alone passes, each
+    * put into the era's values of a recorded transaction: the comparison of the values
+    * ([[BabbageTestKit.witsViewDifferences]], [[BabbageTestKit.auxViewDifferences]]) names each.
+    */
+  test("the comparison sees a wrong script tree, a wrong datum and a lost repeated Plutus script") {
+    import BabbageTestKit.{auxView, auxViewDifferences, flatAuxView, flatWitsView, witsView}
+    import xyz.kd5ujc.scarab.ledger.NativeScript
+    import xyz.kd5ujc.scarab.plutus.PlutusData
+    def named(differences: Vector[String], field: String): Unit =
+      assertEquals(differences.map(_.takeWhile(_ != ':')), Vector(field), differences.toString)
+    val read = (recordedFiles.flatMap(babbageTxs) ++ contextTxs).map(t =>
+      (
+        BabbageTx.decode(t, StateLayout.Node11_1).fold(e => fail(e.toString), identity),
+        FlatTx.fromBlock(t, Era.Babbage).fold(e => fail(e.toString), identity)
+      )
+    )
+    // a native script whose tree is not its bytes' tree
+    val (native, nativeFlat) = read
+      .find((era, _) => witsView(era.wits).scripts.exists(_._3.isDefined))
+      .getOrElse(fail("no recorded native witness script"))
+    val view = witsView(native.wits)
+    named(
+      BabbageTestKit.witsViewDifferences(
+        view.copy(scripts =
+          view.scripts.map((h, b, t) => (h, b, t.map(_ => NativeScript.Sig(Bytes.empty))))
+        ),
+        flatWitsView(nativeFlat.witnesses)
+      ),
+      "native script trees"
+    )
+    // a datum whose value is not its bytes' value, under the same hash
+    val (datum, datumFlat) = read
+      .find((era, _) => era.wits.datums.datums.nonEmpty)
+      .getOrElse(fail("no recorded datum"))
+    val withDatums = witsView(datum.wits)
+    named(
+      BabbageTestKit.witsViewDifferences(
+        withDatums.copy(datums =
+          withDatums.datums.map((h, d) => h -> (d._1, PlutusData.I(BigInt(-1))))
+        ),
+        flatWitsView(datumFlat.witnesses)
+      ),
+      "datums"
+    )
+    // a repeated Plutus script of auxiliary data kept once, its arrival as read
+    import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit.Cb.*
+    val repeated = tag(259, map(uint(2) -> arr(bytes(hash(1)), bytes(hash(1)))))
+    val aux = BabbageTxAuxData.decode(repeated).fold(e => fail(e.toString), identity)
+    val flat = flatAuxView(repeated).fold(e => fail(e.toString), identity)
+    assertEquals(auxViewDifferences(auxView(aux), flat), Vector.empty)
+    named(
+      auxViewDifferences(
+        auxView(aux).copy(plutus = auxView(aux).plutus.map((l, ss) => l -> ss.distinct)),
+        flat
+      ),
+      "Plutus scripts"
+    )
+  }
+
+  private def hash(n: Int): Bytes = Bytes(Vector.fill(4)(n.toByte))
 
   // ---- mutants
 
