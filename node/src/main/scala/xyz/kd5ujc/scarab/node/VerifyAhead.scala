@@ -127,22 +127,24 @@ final class VerifyAhead[F[_]: Async] private (
     Fibers.scoped[F, Fatal, Nothing](Fatal.Defect(_))(
       F.foreverM(queue.take.flatMap { request =>
         val hash = request.header.hash
+        // the slot is taken and the verification's end is ensured under one mask, so that a
+        // worker that finds the block running always sees its end (`done`)
         Deferred[F, Unit].flatMap { done =>
-          slots
-            .modify(held =>
-              held.get(hash) match
-                case Some(Slot.Queued()) => (held.updated(hash, Slot.Running(done)), true)
-                case _                   => (held, false)
-            )
-            .flatMap(
-              F.whenA(_)(
-                F.uncancelable(poll =>
+          F.uncancelable(poll =>
+            slots
+              .modify(held =>
+                held.get(hash) match
+                  case Some(Slot.Queued()) => (held.updated(hash, Slot.Running(done)), true)
+                  case _                   => (held, false)
+              )
+              .flatMap(
+                F.whenA(_)(
                   poll(verified(request))
                     .onCancel(finished(hash, done, false))
                     .flatMap(finished(hash, done, _))
                 )
               )
-            )
+          )
         }
       })
     )
