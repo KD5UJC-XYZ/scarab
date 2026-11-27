@@ -70,6 +70,8 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
   *     by the top level), a sub-transaction's reference script and one two share counted towards
   *     the batch (`LedgerSpec.hs:122`, `:138`), the size before the treasury (`:195`), and
   *     MEMPOOL's look at the top level's inputs alone (`MempoolSpec.hs:44`, `:91`);
+  *   - the batch's reference-script total (LEDGER's) and a block's (BBODY's) past `Int.MaxValue`
+  *     and past `Word32` 's range, against the limits at and below them, on the predicates alone;
   *   - LEDGERS as LEDGER one level down and LEDGER after LEDGER over a block's transactions, each
   *     annotated against the state the one before left (a chain block, and a built one whose second
   *     transaction spends the script output the first pays); MEMPOOL as LEDGER one level down, and
@@ -1190,6 +1192,127 @@ class DijkstraLedgerSuite extends FunSuite:
       Vector(
         DijkstraLedgerPredFailure.DijkstraTxRefScriptsSizeTooBig[Dijkstra](
           Mismatch(2 * refSize, refSize)
+        )
+      )
+    )
+  }
+
+  private def maxRefScriptSizePerBlock(n: Long): PParams[Dijkstra] =
+    PParams
+      .lensHKD[Dijkstra]
+      .andThen(DijkstraEraPParams.dijkstra.hkdMaxRefScriptSizePerBlockL[Identity])
+      .replace(flat.Unsigned.from[flat.Unsigned.Width.W32](BigInt(n)).getOrElse(fail(s"$n")))(pp)
+
+  test("the batch's and the block's reference-script totals past Int.MaxValue are not narrowed") {
+    // `batchNonDistinctRefScriptsSize` (`Dijkstra/UTxO.hs:301-314`) and `validateAllRefScriptSize`
+    // (`Dijkstra/Rules/Ledger.hs:346-362`, run by LEDGER at `:424`), `totalRefScriptSizeInBlock`
+    // and `validateBodyRefScriptsSizeTooBig` (`Conway/Rules/Bbody.hs:344-384`, run by Dijkstra's
+    // BBODY at `Dijkstra/Rules/Bbody.hs:394`), cardano-ledger 9df9f98c: each total is the
+    // reference's `Int`, 64 bits, and each limit a `Word32` widened to it (`fromIntegral @Word32
+    // @Int`), so a total is refused exactly when it is above the limit. 1024 reference inputs, each
+    // naming the same decoded output, whose reference script is a binary of 1 MiB, read by the top
+    // level and by two sub-transactions: the batch holds 3 GiB, past `Int.MaxValue` and within
+    // `Word32`. The predicates are run alone: LEDGER and BBODY whole would also price the scripts
+    // (`tierRefScriptFee`), a failure of their own.
+    val mib = 1L << 20
+    // `B.refScriptOut`'s output, encoded without the encoder's default bound of 1 MiB
+    def unbounded(n: xyz.kd5ujc.scarab.codec.Node) = xyz.kd5ujc.scarab.codec.Cbor
+      .encode(n.value, xyz.kd5ujc.scarab.codec.Cbor.Limits.Unbounded)
+      .fold(e => fail(s"$e"), identity)
+    val binary = xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array.fill[Byte](mib.toInt)(1))
+    val shared = DijkstraTxOut
+      .decode(
+        node(
+          unbounded(
+            B.cmap(
+              B.uint(0) -> B.bytes(B.keyAddress(payer)),
+              B.uint(1) -> B.uint(10000000),
+              B.uint(3) -> B.tagged(24, B.bytes(unbounded(B.arr(B.uint(3), B.bytes(binary)))))
+            )
+          )
+        )
+      )
+      .fold(e => fail(s"$e"), identity)
+    val refTxId = xyz.kd5ujc.scarab.codec.Bytes.fromArray(Array.fill[Byte](32)(0x60))
+    val refs = Vector.tabulate(1024)(i => B.In(refTxId, i))
+    val referencing = 18 -> B.set(refs.map(_.node)*)
+    val ins = Vector.tabulate(7)(i => B.fresh(0x61 + i))
+    def referencingBatch(top: B.In, subIns: Vector[B.In]) = batch(
+      Vector(top),
+      10000000 * (1 + subIns.size) - fee,
+      subIns.map(in => spending(in, Vector(referencing))),
+      fields = Vector(referencing)
+    )
+    // the top level and two sub-transactions
+    val tx = referencingBatch(ins(0), ins.slice(1, 3))
+    val utxo = UTxO[Dijkstra](
+      B.utxo(ins.map(_ -> paid(10000000))*).unUTxO ++
+        refs.map(r => txIn(DijkstraTxIn(r.txId, r.ix)) -> shared)
+    )
+    val perLevel = 1024 * mib
+    assertEquals(2 * perLevel, Int.MaxValue.toLong + 1)
+    val total = DijkstraUTxO.batchNonDistinctRefScriptsSize(utxo, tx)
+    assertEquals(total, 3 * perLevel)
+    assert(total > Int.MaxValue.toLong && total < (1L << 32) - 1, s"$total")
+    def batchRefused(limit: Long) =
+      DijkstraLedger
+        .validateAllRefScriptSize(maxRefScriptSize(limit), utxo, tx)
+        .fold(_.toChain.toVector, _ => Vector.empty)
+    // a total narrowed to 32 bits is negative, and admitted under any limit
+    assertEquals(
+      batchRefused(total - 1),
+      Vector(
+        DijkstraLedgerPredFailure.DijkstraTxRefScriptsSizeTooBig[Dijkstra](
+          Mismatch(total, total - 1)
+        )
+      )
+    )
+    assertEquals(
+      batchRefused(Int.MaxValue.toLong),
+      Vector(
+        DijkstraLedgerPredFailure.DijkstraTxRefScriptsSizeTooBig[Dijkstra](
+          Mismatch(total, Int.MaxValue.toLong)
+        )
+      )
+    )
+    // a limit narrowed to a 32-bit Int is negative, and refuses any total
+    assertEquals(batchRefused(total), Vector.empty)
+    // the block: two transactions whose top levels read the 1024 outputs, 2 GiB, one byte past
+    // `Int.MaxValue`; BBODY counts a top level's reference scripts alone, not its sub-transactions'
+    val other = referencingBatch(ins(3), Vector.empty)
+    val block = Vector(tx, other)
+    val blockTotal = ConwayBbody.totalRefScriptSizeInBlock[Dijkstra](
+      EraPParams.dijkstra.ppProtocolVersionL.get(pp),
+      block,
+      utxo
+    )
+    assertEquals(blockTotal, Int.MaxValue.toLong + 1)
+    def blockRefused(limit: Long) =
+      ConwayBbody
+        .validateBodyRefScriptsSizeTooBig[Dijkstra](maxRefScriptSizePerBlock(limit), block, utxo)
+        .fold(_.toChain.toVector, _ => Vector.empty)
+    assertEquals(
+      blockRefused(Int.MaxValue.toLong),
+      Vector(
+        new ConwayBbodyPredFailure.BodyRefScriptsSizeTooBig[Dijkstra](
+          Mismatch(blockTotal, Int.MaxValue.toLong)
+        )
+      )
+    )
+    assertEquals(blockRefused(blockTotal), Vector.empty)
+    // a batch total past `Word32`'s range, the top level and three sub-transactions, 4 GiB, is
+    // refused under the greatest limit: narrowed to 32 bits it would read as 0
+    val four = referencingBatch(ins(3), ins.slice(4, 7))
+    val past = DijkstraUTxO.batchNonDistinctRefScriptsSize(utxo, four)
+    assertEquals(past, 1L << 32)
+    val word32Max = (1L << 32) - 1
+    assertEquals(
+      DijkstraLedger
+        .validateAllRefScriptSize(maxRefScriptSize(word32Max), utxo, four)
+        .fold(_.toChain.toVector, _ => Vector.empty),
+      Vector(
+        DijkstraLedgerPredFailure.DijkstraTxRefScriptsSizeTooBig[Dijkstra](
+          Mismatch(past, word32Max)
         )
       )
     )
