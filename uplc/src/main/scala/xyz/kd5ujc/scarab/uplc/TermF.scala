@@ -108,4 +108,20 @@ object Term:
   * (`UntypedPlutusCore/Core/Type.hs:119-125`; the annotation is `()` on the chain and not kept,
   * plutus 1.70.0.0).
   */
-final case class Program(version: ProgramVersion, term: Term)
+final case class Program(version: ProgramVersion, term: Term):
+  /** The scope check of the term ([[ledger.Scope.check]]), made once for the program however often
+    * it is evaluated (#1499). It is the check of the term applied to any constants
+    * ([[ledger.Scope.applied]]).
+    *
+    * A thread that reads it while another makes it waits for that one, and a thread interrupt ends
+    * the wait with an exception, where the check made in place would have let the evaluation go on
+    * to the machine's own reading of the interrupt ([[cek.Stop]]). So a program handed to other
+    * threads is handed to them with its check made ([[withScope]]), as the node's program cache
+    * does.
+    */
+  lazy val scope: Either[ledger.FreeVariableError, Unit] = ledger.Scope.check(term)
+
+  /** This program, its scope check made ([[scope]]). */
+  def withScope: Program =
+    val _ = scope
+    this

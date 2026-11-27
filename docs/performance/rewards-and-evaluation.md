@@ -667,3 +667,50 @@ programs on CPU alone, at 2.0 to 2.9 times their budget; on the 8370C, 139 progr
 times, and its tool ran for 127 s against 87 s in run 45690908941. So the score depends on the runner's CPU more than on the run: uplc-turbo
 is measured and published on one reference CPU, the 6975P-C (`TURBO_REFERENCE_CPU` in
 `scripts/conformance/scenarios.py`).
+
+## 70. The own evaluator's time per script, the scope check kept with the program (#1499)
+
+Item 4 of [#1499](https://github.com/KD5UJC-XYZ/scarab/issues/1499) asks where the evaluator spends its time on
+mainnet's scripts. On the probe's CPU profile (JFR, Babbage around block 8.9M) the scope check that
+`mkTermToEvaluate` makes of the applied term (`Scope.check`) held 7.2% of the samples under the evaluator, and on a
+uplc-turbo corpus of mainnet scripts 13.9%: it walked the whole script at every evaluation, a boxed level and a
+tuple for each node, though the node keeps the decoded program. The check of a script applied to constants is the
+check of the script alone, so the program keeps it (`Program.scope`), and the node's program cache keeps each
+program with its check made; `ScopeAppliedSuite` and `EvaluatorPathsSuite` show the two equal. With it a script
+takes 0.85 of the time on the recorded requests and 0.91 on the turbo corpus (table 1). The other changes the
+profile pointed to were measured and not kept: none won on both corpora (table 2).
+
+`EvaluatorSpeedMain` (`tools`) times what the interpreter runs on a cache hit,
+`LedgerEval.evaluateScriptRestricting` on a decoded program and a made context, over two corpora: the 253 script
+requests of the recorded Preview and preprod transactions (`RecordedRequests`; 158 of them from one transaction),
+and the 3,997 programs of a uplc-turbo corpus (mainnet scripts applied to their arguments, archive SHA-256
+`821af55e…`, not retained here), at the scenario's limits. `EvaluatorCompareMain` loads two builds into one JVM and
+alternates their rounds, 200 timed pairs after 60 warm-up pairs on the recorded requests and 16 after 4 on the
+turbo corpus. One JVM can favour the build it loads second, by up to 8% on the turbo corpus, so a comparison of
+both orders runs each order in a JVM of its own, and the change is the square root of the ratio of the two medians
+of the pairs' ratios; a row of table 2 marked "one" ran one order only and keeps that effect. A JVM's compiled code
+still varies from run to run by about 5%. In every run the digests of the results (each request's verdict, error,
+failure cause, budget and logs, in order) were equal between the builds. A round's time in table 1 is the median of
+the runs' medians. A shared 24-core x86-64 host (load average 2 to 9 from other work), the JDK container with
+`--cpus 2`, `java -Xms8g -Xmx8g`.
+
+<!-- register:table perf-76.t1 -->
+| Kept: the scope check made once per program, against `66e6e98e9` | Runs, both orders each | After / before, each run | Median | A round, before | A round, after | Per script, before | Per script, after |
+|---|---:|---|---:|---:|---:|---:|---:|
+| 253 recorded Preview and preprod requests | 4 | 0.837, 0.848, 0.852, 0.852 | 0.850 | 30.21 ms | 25.20 ms | 119 µs (8,375 a second) | 100 µs (10,040 a second) |
+| 3,997 uplc-turbo mainnet programs | 5 | 0.912, 0.960, 0.897, 0.902, 0.949 | 0.912 | 1,390 ms | 1,251 ms | 348 µs (2,875 a second) | 313 µs (3,195 a second) |
+<!-- /register -->
+
+<!-- register:table perf-76.t2 -->
+| Measured and not kept, against the build before it | Orders | Recorded requests | uplc-turbo programs |
+|---|---|---:|---:|
+| a builtin's tables indexed by a field holding its `ordinal` (each case of `DefaultFun` is a class of its own), and the arguments of an application counted once | both | 0.953, 0.976 | 1.066, 1.011, 1.018 |
+| the step counted inside each case of the term's match (no `kindOf`), and `immediate`'s cases in order of frequency | one | 1.055 | 0.937 |
+| the step counted inside each case alone | one | 1.050 | 1.040 |
+| `immediate`'s cases in order of frequency alone | one | 0.996 | 0.992 |
+| the held forms and the unapplied builtins in an `IArray` | one | 1.085 | 0.991 |
+| the same build twice (the order's effect alone) | one | 0.986 |  |
+<!-- /register -->
+
+What the benchmark does not time, the program cache's lookup, was 2.3% of the probe's samples under the evaluator
+(`BoundedCache`, a hash of the script's bytes at each evaluation), and decoding 0.5%; both are tracked under #1499.

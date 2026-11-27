@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.uplc.ledger
 
 import scala.annotation.tailrec
-import xyz.kd5ujc.scarab.uplc.{Term, TermF, Word64}
+import xyz.kd5ujc.scarab.uplc.{Program, Term, TermF, Word64}
 
 /** Why the scope check refuses a term: the reference's `FreeVariableError`
   * (`PlutusCore/DeBruijn/Internal.hs:252-256`, plutus 1.70.0.0 `507cab8c`). Its other case,
@@ -50,3 +50,11 @@ object Scope:
             case TermF.Constant(_) | TermF.Builtin(_) | TermF.Error => go(rest)
             case TermF.Constr(_, _) | TermF.Case(_, _)              => go(rest)
     go((term, 0L) :: Nil)
+
+  /** [[check]] of `program` 's term applied to constants, as `mkTermToEvaluate` applies a script to
+    * its arguments (`Eval.hs:120-121,129-130`, plutus 1.70.0.0): the check of the term alone, which
+    * the program keeps ([[Program.scope]]). The applied term is the script's term under `apply` s
+    * whose arguments are constants; [[check]] visits a function before its argument, so the whole
+    * of the script's term, at level 0, before any argument, and a constant always passes.
+    */
+  def applied(program: Program): Either[FreeVariableError, Unit] = program.scope

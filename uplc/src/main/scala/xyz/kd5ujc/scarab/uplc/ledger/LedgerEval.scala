@@ -55,7 +55,8 @@ object LedgerEval:
     * order: the term applied to the arguments as `data` constants, first argument innermost
     * (`mkIterAppNoAnn`, `Eval.hs:120-121`); then the program's version, which must be one the
     * language has at the protocol (`Eval.hs:123-127`, [[SerialisedScript.forEvaluation]]); then the
-    * scope of the applied term (`Eval.hs:129-130`, [[Scope.check]]).
+    * scope of the applied term (`Eval.hs:129-130`, [[Scope.check]]), which the program keeps
+    * ([[Scope.applied]]).
     */
   def mkTermToEvaluate(
       language: PlutusLanguage,
@@ -69,7 +70,7 @@ object LedgerEval:
       _ <- SerialisedScript
         .forEvaluation(language, protocol, script)
         .leftMap(EvaluationError.Codec(_))
-      _ <- Scope.check(applied).leftMap(EvaluationError.DeBruijn(_))
+      _ <- Scope.applied(script).leftMap(EvaluationError.DeBruijn(_))
     yield applied
 
   /** `evaluateTerm` (`Eval.hs:228-242`, plutus 1.71.0.0): the machine of the protocol and the
