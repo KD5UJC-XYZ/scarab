@@ -3,11 +3,13 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import monocle.{Getter, Lens}
 import scala.collection.immutable.SortedSet
-import xyz.kd5ujc.scarab.ledger.Unsigned
+import xyz.kd5ujc.scarab.ledger.{DecodeField, LedgerDecodeError, Unsigned}
+import xyz.kd5ujc.scarab.ledger.era.babbage.BabbageEraPParamsInstance
 import xyz.kd5ujc.scarab.ledger.era.conway.{DRepVotingThresholds, PoolVotingThresholds}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.{DijkstraEraPParams, DijkstraEraPParamsInstance}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32}
 import xyz.kd5ujc.scarab.ledger.state.{
+  Babbage,
   CompactCoin,
   Conway,
   Dijkstra,
@@ -25,9 +27,12 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * The reference's members confined to a range of eras (`hkdDL`, `hkdExtraEntropyL`,
   * `hkdProtocolVersionL`, `ppuProtocolVersionL` and `hkdMinUTxOValueCompactL`, `:459-484`) are not
   * here: each range is a class of its own with instances at the eras of the range (decided
-  * 2026-11-15, #85), and none of those eras has its record yet. `ppDG` and `ppProtocolVersionL` are
-  * members of every era. Not yet here: `emptyUpgradePParamsUpdate`, `upgradePParamsHKD` and
-  * `downgradePParamsHKD`, which come with Babbage's record (#85).
+  * 2026-11-15, #85): the protocol version of the eras up to Babbage is [[EraPParamsToBabbage]], and
+  * the members of the eras up to Alonzo and Mary come with those eras' records. `ppDG` and
+  * `ppProtocolVersionL` are members of every era. Not yet here: `emptyUpgradePParamsUpdate`,
+  * `upgradePParamsHKD` and `downgradePParamsHKD`, members over the previous era's record, which
+  * Babbage's instance cannot give before Alonzo's record exists (#85); Conway's upgrade from
+  * Babbage and downgrade to it are its functions ([[conway.ConwayPParams.upgrade]]).
   *
   * The class carries the union of the reference builds' members: `ppMaxPledgeLeverageG` and
   * `ppMinPoolMarginG` are members at the Leios build's pin (cardano-ledger 9df9f98c
@@ -96,6 +101,19 @@ trait AlonzoEraPParams[E <: EraTag] extends EraPParams[E]:
 trait BabbageEraPParams[E <: EraTag] extends AlonzoEraPParams[E]:
   def hkdCoinsPerUTxOByteL[F[_]: HKDFunctor]: Lens[PParamsHKD[F, E], F[CoinPerByte]]
 
+/** The protocol version as a field of the record, in the eras up to Babbage (`hkdProtocolVersionL`
+  * and `ppuProtocolVersionL`, `AtMostEra "Babbage"`, `Core/PParams.hs:471-480`, cardano-ledger
+  * f649f975): a member the reference confines to a range of eras is a class of its own with
+  * instances at exactly those eras (#85, 2026-11-15), so Conway, whose record keeps the version out
+  * of an update's reach (`HKDNoUpdate`), has none. The version of every era
+  * ([[EraPParams.ppProtocolVersionL]]) is this field here, as the class's default is (`:474-476`).
+  */
+trait EraPParamsToBabbage[E <: EraTag] extends EraPParams[E]:
+  def hkdProtocolVersionL[F[_]: HKDFunctor]: Lens[PParamsHKD[F, E], F[ProtVer]]
+
+  final def ppProtocolVersionL: Lens[PParams[E], ProtVer] =
+    PParams.lensHKD[E].andThen(hkdProtocolVersionL[Identity])
+
 /** `class BabbageEraPParams era => ConwayEraPParams era` (`eras/conway/impl/src/Cardano/Ledger/
   * Conway/PParams.hs:172-197`, cardano-ledger f649f975).
   */
@@ -122,6 +140,7 @@ trait ConwayEraPParams[E <: EraTag] extends BabbageEraPParams[E]:
   def ppRefScriptCostStrideG: Getter[PParams[E], NonZero[Unsigned[W32]]]
 
 object EraPParams:
+  given babbage: EraPParams[Babbage] = BabbageEraPParamsInstance
   given conway: ConwayEraPParams[Conway] = ConwayEraPParamsInstance
   given dijkstra: DijkstraEraPParams[Dijkstra] = DijkstraEraPParamsInstance
 
@@ -227,6 +246,7 @@ object EraPParams:
     )
 
 object AlonzoEraPParams:
+  given babbage: AlonzoEraPParams[Babbage] = BabbageEraPParamsInstance
   given conway: AlonzoEraPParams[Conway] = ConwayEraPParamsInstance
   given dijkstra: AlonzoEraPParams[Dijkstra] = DijkstraEraPParamsInstance
 
@@ -304,6 +324,7 @@ object AlonzoEraPParams:
     )
 
 object BabbageEraPParams:
+  given babbage: BabbageEraPParams[Babbage] = BabbageEraPParamsInstance
   given conway: BabbageEraPParams[Conway] = ConwayEraPParamsInstance
   given dijkstra: BabbageEraPParams[Dijkstra] = DijkstraEraPParamsInstance
 
@@ -320,6 +341,51 @@ object BabbageEraPParams:
       17,
       p.hkdCoinsPerUTxOByteL[Identity],
       p.hkdCoinsPerUTxOByteL[StrictMaybe]
+    )
+
+object EraPParamsToBabbage:
+  given babbage: EraPParamsToBabbage[Babbage] = BabbageEraPParamsInstance
+
+  /** `ppuProtocolVersionL` (`Core/PParams.hs:479-480`, cardano-ledger f649f975). */
+  def ppuProtocolVersionL[E <: EraTag](using
+      p: EraPParamsToBabbage[E]
+  ): Lens[PParamsUpdate[E], StrictMaybe[ProtVer]] =
+    PParamsUpdate.lensHKD[E].andThen(p.hkdProtocolVersionL[StrictMaybe])
+
+  /** `decodeProtVer` (`BaseTypes.hs:253-262`, cardano-ledger f649f975): the version as `decCBOR`
+    * reads it, then a major above `succVersion (ProtVerHigh era)` refused.
+    */
+  private def decodeProtVer[E <: EraTag](using era: Era[E]): DecCBOR[ProtVer] =
+    new DecCBOR[ProtVer]:
+      def decCBOR(n: xyz.kd5ujc.scarab.codec.Node)(using
+          at: DecodeAt
+      ): Either[LedgerDecodeError, ProtVer] =
+        val high = BigInt(era.eraProtVerHigh.value) + 1
+        for
+          max <- Version
+            .mkVersion(high)
+            .toRight(LedgerDecodeError.NumberOutOfRange(DecodeField.Major, high, 0, Version.Max))
+          pv <- DecCBOR.protVer.decCBOR(n)
+          _ <- Either.cond(
+            pv.pvMajor.value <= max.value,
+            (),
+            LedgerDecodeError
+              .NumberOutOfRange(DecodeField.Major, BigInt(pv.pvMajor.value), 0, BigInt(max.value))
+          )
+        yield pv
+
+  /** `ppProtocolVersion` (`Shelley/PParams.hs:472-479`, cardano-ledger f649f975): the version,
+    * which an update sets under 14, read there by `decodeProtVer` (`ppEraDecoder`), which this
+    * tree's descriptions pack in the update ([[PParamUpdate.ppuEraCodec]]); the parameters read it
+    * by its `decCBOR`, as the reference's do (`Core/PParams.hs:205-213`).
+    */
+  def ppProtocolVersion[E <: EraTag](using p: EraPParamsToBabbage[E], era: Era[E]): PParam[E] =
+    PParam.field(
+      "protocolVersion",
+      14,
+      p.hkdProtocolVersionL[Identity],
+      p.hkdProtocolVersionL[StrictMaybe],
+      Some(EraCodec[E, ProtVer](EncCBOR.protVer.encCBOR, decodeProtVer[E]))
     )
 
 object ConwayEraPParams:
@@ -568,12 +634,9 @@ private object ConwayEraPParamsInstance extends ConwayEraPParams[Conway]:
     * (`Conway/PParams.hs:915-923`, cardano-ledger f649f975).
     */
   def hkdMaxTxExUnitsL[F[_]: HKDFunctor]: Lens[R[F], F[ExUnits]] =
-    GenLens[R[F]](_.maxTxExUnits).andThen(THKD.value).andThen(ordExUnits[F])
+    GenLens[R[F]](_.maxTxExUnits).andThen(THKD.value).andThen(OrdExUnits.hkdUnits[F])
   def hkdMaxBlockExUnitsL[F[_]: HKDFunctor]: Lens[R[F], F[ExUnits]] =
-    GenLens[R[F]](_.maxBlockExUnits).andThen(THKD.value).andThen(ordExUnits[F])
-
-  private def ordExUnits[F[_]](using f: HKDFunctor[F]): Lens[F[OrdExUnits], F[ExUnits]] =
-    Lens[F[OrdExUnits], F[ExUnits]](f.hkdMap(_.unOrdExUnits))(u => _ => f.hkdMap(OrdExUnits(_))(u))
+    GenLens[R[F]](_.maxBlockExUnits).andThen(THKD.value).andThen(OrdExUnits.hkdUnits[F])
   def hkdMaxValSizeL[F[_]: HKDFunctor]: Lens[R[F], F[Unsigned[W32]]] =
     GenLens[R[F]](_.maxValSize).andThen(THKD.value)
   def hkdCollateralPercentageL[F[_]: HKDFunctor]: Lens[R[F], F[Unsigned[W16]]] =

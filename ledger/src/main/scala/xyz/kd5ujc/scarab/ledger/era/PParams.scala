@@ -7,13 +7,14 @@ import xyz.kd5ujc.scarab.codec.Node
 import xyz.kd5ujc.scarab.ledger.{CborRead, DecodeField, DecodeSite, LedgerDecodeError, Unsigned}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W64
 import xyz.kd5ujc.scarab.ledger.dijkstra.V12
-import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway, Dijkstra, EraTag}
 
 /** The protocol-parameter record of era `E` over `F` (`type PParamsHKD (f :: Type -> Type) era`,
   * cardano-ledger f649f975 `libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs:376`): one
   * case per era that has its record.
   */
 type PParamsHKD[F[_], E <: EraTag] = E match
+  case Babbage  => babbage.BabbagePParams[F]
   case Conway   => conway.ConwayPParams[F]
   case Dijkstra => dijkstra.DijkstraPParams[F]
 

@@ -15,9 +15,10 @@ import xyz.kd5ujc.scarab.ledger.{
   ProtocolParams,
   Tx as FlatTx
 }
+import xyz.kd5ujc.scarab.ledger.era.babbage.BabbagePParams
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraPParams
-import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway, Dijkstra, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission
 import xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.*
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
@@ -156,7 +157,8 @@ class EraPParamsStoredSuite extends FunSuite:
       layout: StateLayout,
       era: ShelleyBasedEra[E],
       size: Int,
-      at: DecoderVersion
+      at: DecoderVersion,
+      govRecords: Node => Vector[Node] = governance
   )(fromStored: ProtocolParams => PParams[E])(using EraPParams[E]): Int =
     val codec = Params.codecIn(layout, era)
     val root = stateOf(path)
@@ -164,7 +166,7 @@ class EraPParamsStoredSuite extends FunSuite:
     val nes = Vector(1, 0, telescope, 1, 1, 1).foldLeft(root)((n, i) => items(n)(i))
     assertEquals(
       found.map(_._1.original.hex).sorted,
-      governance(nes).map(_.original.hex).sorted,
+      govRecords(nes).map(_.original.hex).sorted,
       s"$path: the records are the governance state's"
     )
     found.foreach { (n, stored) =>
@@ -175,6 +177,31 @@ class EraPParamsStoredSuite extends FunSuite:
       assertEquals(codec.write(stored), Right(n.original), path)
     }
     found.size
+
+  /** The parameters within a Babbage `NewEpochState`: of its `ShelleyGovState` (`[proposals,
+    * futureProposals, curPParams, prevPParams, futurePParams]`, cardano-ledger f649f975
+    * `eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs:63-71`), the current and previous
+    * parameters and those the future parameters predict, if any.
+    */
+  private def shelleyGovernance(nes: Node): Vector[Node] =
+    val gov = Vector(3, 1, 1, 3).foldLeft(nes)((n, i) => items(n)(i))
+    Vector(items(gov)(2), items(gov)(3)) ++ lists(items(gov)(4), 22)
+
+  private def babbageParams(p: ProtocolParams): PParams[Babbage] =
+    PParams[Babbage](right("Babbage's parameters")(BabbagePParams.fromStored(p)))
+
+  test("the recorded Babbage state's parameter records are the era's, positionally"):
+    val count = records(
+      "fixtures/haskell-state/babbage-4000/state",
+      5,
+      StateLayout.Node11_1,
+      ShelleyBasedEra.SBabbage,
+      22,
+      version(8),
+      shelleyGovernance
+    )(babbageParams)
+    // the current (version 7), the previous (6) and the future, voted for (8)
+    assertEquals(count, 3)
 
   private def dijkstraParams(p: ProtocolParams): PParams[Dijkstra] =
     PParams[Dijkstra](right("Dijkstra's parameters")(DijkstraPParams.fromStored(p)))

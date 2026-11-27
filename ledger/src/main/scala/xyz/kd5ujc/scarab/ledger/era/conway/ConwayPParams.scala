@@ -2,7 +2,6 @@
 package xyz.kd5ujc.scarab.ledger.era.conway
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.{
   ConwayParam,
   ConwayParamUpdate,
@@ -14,7 +13,8 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.{W16, W32, W64}
 import xyz.kd5ujc.scarab.ledger.era.*
-import xyz.kd5ujc.scarab.ledger.state.{CompactCoin, EpochInterval}
+import xyz.kd5ujc.scarab.ledger.era.babbage.BabbagePParams
+import xyz.kd5ujc.scarab.ledger.state.{Coin, CompactCoin, EpochInterval, VocabError}
 
 import ConwayPParams.{Eco, Gov, Net, NoPool, Sec, Tech}
 
@@ -57,6 +57,32 @@ final case class ConwayPParams[F[_]](
     drepActivity: THKD[Groups[Gov, NoPool], F, EpochInterval],
     minFeeRefScriptCostPerByte: THKD[Groups[Eco, Sec], F, NonNegativeInterval]
 )
+
+/** What an upgrade from Babbage adds to the parameters (`data UpgradeConwayPParams f`,
+  * cardano-ledger f649f975 `eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs:746-758`), the
+  * Conway genesis' at `Identity`: the governance fields and the PlutusV3 cost model. The deposits
+  * are `Coin`, as the genesis holds them, and become compact in the upgrade. Equal as the reference
+  * derives `Eq` (`:760, 770`).
+  */
+final case class UpgradeConwayPParams[F[_]](
+    poolVotingThresholds: F[PoolVotingThresholds],
+    drepVotingThresholds: F[DRepVotingThresholds],
+    committeeMinSize: F[Unsigned[W16]],
+    committeeMaxTermLength: F[EpochInterval],
+    govActionLifetime: F[EpochInterval],
+    govActionDeposit: F[Coin],
+    drepDeposit: F[Coin],
+    drepActivity: F[EpochInterval],
+    minFeeRefScriptCostPerByte: F[NonNegativeInterval],
+    plutusV3CostModel: F[CostModel[Language.PlutusV3]]
+)
+
+object UpgradeConwayPParams:
+  /** `emptyConwayUpgradePParamsUpdate` (`Conway/PParams.hs:896-909`, cardano-ledger f649f975), the
+    * class's `emptyUpgradePParamsUpdate` at Conway (`:836`): no field set.
+    */
+  val emptyUpdate: UpgradeConwayPParams[StrictMaybe] =
+    UpgradeConwayPParams[StrictMaybe](None, None, None, None, None, None, None, None, None, None)
 
 object ConwayPParams:
   type Net = DRepGroup.Network.type
@@ -229,40 +255,96 @@ object ConwayPParams:
       ppGroup(ppu.minFeeRefScriptCostPerByte)
     ).foldLeft(scala.collection.immutable.SortedSet.empty[PPGroups])(_ ++ _)
 
+  // ---- the upgrade from Babbage and the downgrade to it
+
+  /** `upgradeConwayPParams` (`Conway/PParams.hs:1097-1147`, cardano-ledger f649f975), the class's
+    * `upgradePParamsHKD` at Conway (`:837`): Babbage's fields kept, the protocol version kept out
+    * of an update's reach (`toNoUpdate`), the PlutusV3 model of the upgrade added to Babbage's
+    * models (`updateCostModels`), and the governance fields the upgrade's. The deposits are made
+    * compact by `asCompactCoinHKD` (`:1258-1259`), whose `compactCoinOrError` throws on a coin
+    * outside `Word64`: here that is the refusal, the governance action's deposit first, as the
+    * record has them.
+    */
+  def upgrade[F[_]](u: UpgradeConwayPParams[F], b: BabbagePParams[F])(using
+      f: HKDApplicative[F]
+  ): Either[VocabError, ConwayPParams[F]] =
+    def compact(c: F[Coin]): Either[VocabError, F[CompactCoin]] =
+      f.hkdSequence(f.hkdMap(CompactCoin.fromCoin)(c))
+    for
+      govActionDeposit <- compact(u.govActionDeposit)
+      drepDeposit <- compact(u.drepDeposit)
+    yield ConwayPParams[F](
+      THKD(b.txFeePerByte),
+      THKD(b.txFeeFixed),
+      THKD(b.maxBBSize),
+      THKD(b.maxTxSize),
+      THKD(b.maxBHSize),
+      THKD(b.keyDeposit),
+      THKD(b.poolDeposit),
+      THKD(b.eMax),
+      THKD(b.nOpt),
+      THKD(b.a0),
+      THKD(b.rho),
+      THKD(b.tau),
+      f.toNoUpdate(b.protocolVersion),
+      THKD(b.minPoolCost),
+      THKD(b.coinsPerUTxOByte),
+      THKD(
+        f.hkdLiftA2[CostModels, CostModels, CostModels](_.updated(_))(
+          b.costModels,
+          f.hkdMap(CostModels.singleton[Language.PlutusV3])(u.plutusV3CostModel)
+        )
+      ),
+      THKD(b.prices),
+      THKD(b.maxTxExUnits),
+      THKD(b.maxBlockExUnits),
+      THKD(b.maxValSize),
+      THKD(b.collateralPercentage),
+      THKD(b.maxCollateralInputs),
+      THKD(u.poolVotingThresholds),
+      THKD(u.drepVotingThresholds),
+      THKD(u.committeeMinSize),
+      THKD(u.committeeMaxTermLength),
+      THKD(u.govActionLifetime),
+      THKD(govActionDeposit),
+      THKD(drepDeposit),
+      THKD(u.drepActivity),
+      THKD(u.minFeeRefScriptCostPerByte)
+    )
+
+  /** `downgradeConwayPParams` (`Conway/PParams.hs:1149-1178`, cardano-ledger f649f975), the class's
+    * `downgradePParamsHKD ()` at Conway (`:838`): Babbage's fields, the protocol version back in
+    * reach of an update (`fromNoUpdate`), and the governance fields dropped.
+    */
+  def downgrade[F[_]](c: ConwayPParams[F])(using f: HKDFunctor[F]): BabbagePParams[F] =
+    BabbagePParams[F](
+      c.txFeePerByte.unTHKD,
+      c.txFeeFixed.unTHKD,
+      c.maxBBSize.unTHKD,
+      c.maxTxSize.unTHKD,
+      c.maxBHSize.unTHKD,
+      c.keyDeposit.unTHKD,
+      c.poolDeposit.unTHKD,
+      c.eMax.unTHKD,
+      c.nOpt.unTHKD,
+      c.a0.unTHKD,
+      c.rho.unTHKD,
+      c.tau.unTHKD,
+      f.fromNoUpdate(c.protocolVersion),
+      c.minPoolCost.unTHKD,
+      c.coinsPerUTxOByte.unTHKD,
+      c.costModels.unTHKD,
+      c.prices.unTHKD,
+      c.maxTxExUnits.unTHKD,
+      c.maxBlockExUnits.unTHKD,
+      c.maxValSize.unTHKD,
+      c.collateralPercentage.unTHKD,
+      c.maxCollateralInputs.unTHKD
+    )
+
   // ---- the parameters the node keeps
 
-  private type Read[A] = Either[PParamsError, A]
-
-  private def unsigned[W <: Unsigned.Width: Unsigned.Bound](
-      field: DecodeField,
-      n: BigInt
-  ): Read[Unsigned[W]] =
-    Unsigned.from[W](n).toRight(PParamsError.OutOfRange(field, n))
-
-  private def compact(field: DecodeField, n: BigInt): Read[CompactCoin] =
-    unsigned[W64](field, n).map(w => CompactCoin.fromUnsigned(w.value.toLong))
-
-  private def epochs(field: DecodeField, n: BigInt): Read[EpochInterval] =
-    unsigned[W32](field, n).map(EpochInterval.fromWord32)
-
-  private def unit(field: DecodeField, r: Rational): Read[UnitInterval] =
-    UnitInterval.boundRational(r).toRight(PParamsError.RatioOutOfBounds(field, r))
-
-  private def nonNegative(field: DecodeField, r: Rational): Read[NonNegativeInterval] =
-    NonNegativeInterval.boundRational(r).toRight(PParamsError.RatioOutOfBounds(field, r))
-
-  private def units(field: DecodeField, u: xyz.kd5ujc.scarab.plutus.ExUnits): Read[OrdExUnits] =
-    ExUnits.from(u).map(OrdExUnits(_)).toRight(PParamsError.NegativeExUnits(field, u))
-
-  private def protVer(p: ProtocolParams): Read[ProtVer] =
-    (
-      Version
-        .mkVersion(p.protocolMajor)
-        .toRight(
-          PParamsError.OutOfRange(DecodeField.ProtocolMajor, p.protocolMajor)
-        ),
-      unsigned[W32](DecodeField.ProtocolVersion, p.protocolMinor)
-    ).mapN(ProtVer(_, _))
+  import StoredPParams.{compact, epochs, nonNegative, protVer, unit, units, unsigned}
 
   /** Conway's fields of the parameters the node keeps, each at the reference's type. The node's
     * record holds every era's fields; the others are not read. A field outside its type's range is
