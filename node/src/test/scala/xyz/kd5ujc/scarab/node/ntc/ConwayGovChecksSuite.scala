@@ -6,7 +6,7 @@ import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import cats.data.NonEmptyList
-import xyz.kd5ujc.scarab.ledger.{Credential, ProtocolParams, Tx}
+import xyz.kd5ujc.scarab.ledger.{Credential, GovActionId, ProtocolParams, Tx}
 import xyz.kd5ujc.scarab.ledger.era.{
   EraGovRun,
   EraPParams,
@@ -252,6 +252,140 @@ class ConwayGovChecksSuite extends FunSuite:
   private def wholeCell(s: Seen): String = eraRun(s) match
     case Left(fs)          => refusedCell(fs)
     case Right((after, _)) => admittedCell(s, after)
+
+  // ---- what an admission's digest does not hold
+
+  /** Where the proposals an admission leaves differ from what the transaction and the state before
+    * it give, in what the governance state's encoding does not write: the procedures, and the
+    * original encoding of each value a parameter change keeps (`ConwayParamUpdate.Entry`). GOV adds
+    * the transaction's proposals and changes no procedure (`Conway/Rules/Gov.hs:483-560`,
+    * cardano-ledger f649f975), so the expected values are the state's before and the body's.
+    */
+  private enum Kept:
+    /** The proposals held, not those held before with the transaction's added. */
+    case Ids(after: Set[GovActionId], expected: Set[GovActionId])
+
+    /** A proposal held before whose procedure is not the one held before. */
+    case Changed(id: GovActionId)
+
+    /** A proposal the transaction adds whose procedure is not the body's, as its decoder read it.
+      */
+    case NotTheBodys(id: GovActionId)
+
+    /** A parameter change the transaction adds whose kept encodings are not the body's bytes. */
+    case Originals(id: GovActionId, kept: Vector[(Int, Bytes)], body: Vector[(Int, Bytes)])
+
+  private def items(n: Node): Vector[Node] = n.value match
+    case Value.Tag(_, inner) => items(inner)
+    case Value.Arr(xs)       => xs
+    case other               => fail(s"not a set or a list: $other")
+
+  /** The bytes of each value of each proposal's parameter update, by key, as the body holds them: a
+    * proposal `[deposit, return account, action, anchor]`, a parameter change `[0, parent, update,
+    * policy]` (`Procedures.hs`, cardano-ledger f649f975); none for another action.
+    */
+  private def bodyUpdates(s: Seen): Vector[Option[Vector[(Int, Bytes)]]] =
+    val root = right("envelope")(Cbor.decode(s.bytes))
+    val body = root.value match
+      case Value.Arr(parts) => parts.head
+      case other            => fail(s"an envelope that is not an array: $other")
+    val proposals = body.value match
+      case Value.Map(fields) => fields.collectFirst { case (k, v) if isKey(20)(k) => items(v) }
+      case other             => fail(s"a body that is not a map: $other")
+    proposals.toVector.flatten.map { p =>
+      items(items(p)(2)) match
+        case Vector(tag, _, update, _) if tag.value == Value.UInt(0) =>
+          update.value match
+            case Value.Map(pairs) =>
+              Some(
+                pairs
+                  .map { case (k, v) =>
+                    k.value match
+                      case Value.UInt(key) => key.toInt -> v.original
+                      case other           => fail(s"an update key that is not a word: $other")
+                  }
+                  .sortBy(_._1)
+              )
+            case other => fail(s"an update that is not a map: $other")
+        case _ => None
+    }
+
+  /** Where `after`, the proposals an admission of `s` leaves, differs from what the transaction and
+    * the proposals before it give ([[Kept]]).
+    */
+  private def kept(s: Seen, after: xyz.kd5ujc.scarab.ledger.Proposals): Vector[Kept] =
+    val before = s.gov.proposals.byId
+    val tx = s.flat.body
+    val added = tx.proposals.zipWithIndex.map((p, i) => GovActionId(tx.id, BigInt(i)) -> p)
+    val ids = after.actions.map(_.id).toSet
+    val expected = before.keySet ++ added.map(_._1)
+    val idsKept = Option.unless(ids == expected)(Kept.Ids(ids, expected)).toVector
+    val beforeKept = after.actions.collect {
+      case g if before.get(g.id).exists(_.proposal != g.proposal) => Kept.Changed(g.id)
+    }
+    val updates = bodyUpdates(s)
+    val addedKept = added.zip(updates).flatMap { case ((id, p), update) =>
+      after.byId.get(id).toVector.flatMap { g =>
+        val procedure = Option.unless(g.proposal == p)(Kept.NotTheBodys(id))
+        val originals = (g.action, update) match
+          case (xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(_, u, _), Some(fromBody))
+              if u.encodings != fromBody =>
+            Some(Kept.Originals(id, u.encodings, fromBody))
+          case (xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(_, _, _), None) =>
+            Some(Kept.NotTheBodys(id))
+          case _ => None
+        procedure.toVector ++ originals
+      }
+    }
+    idsKept ++ beforeKept ++ addedKept
+
+  test("an admission keeps every procedure, and each parameter change's original encodings"):
+    // the governance state's encoding writes a parameter's value, not the encoding the body gave
+    // it, so the admissions' digests do not hold those; the body and the state before do
+    val admitted = versions.flatMap(s =>
+      eraRun(s).toOption.map { (after, _) =>
+        assertEquals(kept(s, after), Vector.empty, s.label)
+        (s, after)
+      }
+    )
+    assert(admitted.nonEmpty, "no case GOV admits")
+    assert(
+      admitted.exists((s, _) => bodyUpdates(s).exists(_.exists(_.nonEmpty))),
+      "no admitted parameter change"
+    )
+
+  test("a mutant whose kept zero is 1800, not the body's 00, fails; its digest does not tell it"):
+    // the coins-per-byte proposal of zero, admitted at version 9 (`Conway/PParams.hs:935-963`,
+    // cardano-ledger f649f975): the update `{17: 0}` keeps the body's `00`
+    val label = "conway-gov-proposals/gov-parameter-change-coins-per-utxo-byte-zero"
+    val s = withVersion(seen.find(_.label == label).getOrElse(fail(s"no case $label")), 9)
+    val after = eraRun(s).fold(fs => fail(s"$label refused: $fs"), _._1)
+    assertEquals(kept(s, after), Vector.empty)
+    val mutated = after.copy(actions = after.actions.map { g =>
+      g.action match
+        case xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(prev, u, policy)
+            if u.encodings.exists(_._2 == right("00")(Bytes.fromHex("00"))) =>
+          val again = right("the mutant update")(
+            xyz.kd5ujc.scarab.ledger.ConwayParamUpdate.fromEncoded(u.encodings.map { (k, b) =>
+              BigInt(k) -> (if b.hex == "00" then right("1800")(Bytes.fromHex("1800")) else b)
+            })
+          )
+          g.copy(proposal =
+            g.proposal.copy(action =
+              xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(prev, again, policy)
+            )
+          )
+        case _ => g
+    })
+    assertNotEquals(mutated, after, "the mutant is not another record")
+    assertEquals(admittedCell(s, mutated), admittedCell(s, after), "the digest tells it")
+    assert(
+      kept(s, mutated).exists {
+        case Kept.Originals(_, _, _) => true
+        case _                       => false
+      },
+      s"the mutant is not refused: ${kept(s, mutated)}"
+    )
 
   /** The ported predicates' cell: each failure's own refusal cell, sorted, as the flat rule's
     * failures were compared, each as often; `-` for none.
