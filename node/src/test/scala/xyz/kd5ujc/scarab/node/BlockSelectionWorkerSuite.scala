@@ -343,6 +343,76 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
     yield ()
   }
 
+  // A fork is applied block by block on an in-memory chain and committed only whole (`switchTo`);
+  // the candidates are then truncated at the invalid block and decided again against the current
+  // chain (ouroboros-consensus 82ecba32 `ChainSel.hs:1145-1186`), so the valid prefix of a fork is
+  // adopted only if it is preferred on its own (dingo#6048).
+  test(
+    "a peer's longer fork with an invalid middle block: the chain and its state stay as they are"
+  ) {
+    for
+      forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
+      ours <- checked(forks._1, 3)
+      fork <- checked(forks._2, 4)
+      bad = fork(2).header
+      _ <- node(Set(bad.hash)) { n =>
+        n.pool.session(Some(e => n.reports.update(_ :+ e))).use { sender =>
+          for
+            _ <- add(sender, ours) *> n.pool.admissions.reprocess
+            before <- n.state.get
+            // the fork is preferred only with its fourth block, so its switch reaches the third
+            _ <- add(sender, fork) *> n.pool.admissions.reprocess
+            after <- n.state.get
+            fatals <- n.fatals.get
+            known <- n.pool.invalidBlocks.snapshot
+            reports <- n.reports.get
+            _ <- IO {
+              assertEquals(before.tip, ours.last.header.point)
+              assertEquals(after, before)
+              assertEquals(fatals, Vector.empty)
+              assertEquals(known.entries, Map(bad.hash -> error(bad)))
+              assertEquals(reports, Vector(error(bad)))
+            }
+          yield ()
+        }
+      }
+    yield ()
+  }
+
+  // One block at a time, a fork's valid prefix is adopted before its invalid block arrives; a
+  // selection over every block held at once, as at startup, reaches the invalid block inside the
+  // switch, and adopts the prefix because it is still preferred to our one block.
+  test("a selection over a longer fork with an invalid middle block adopts its valid prefix") {
+    for
+      forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
+      ours <- checked(forks._1, 1)
+      fork <- checked(forks._2, 4)
+      bad = fork(2).header
+      validations <- Ref.of[IO, Vector[Bytes]](Vector.empty)
+      _ <- node(
+        Set(bad.hash),
+        recovered = ours ++ fork,
+        beforeRule = h => validations.update(_ :+ h.hash)
+      ) { n =>
+        for
+          selected <- n.state.get
+          applied <- validations.get
+          fatals <- n.fatals.get
+          known <- n.pool.invalidBlocks.snapshot
+          reports <- n.reports.get
+        yield
+          assertEquals(selected.tip, fork(1).header.point)
+          assertEquals(selected.blocks.map(_._2), Vector(BigInt(0), BigInt(1)))
+          // the switch ran the rules up to the invalid block and not past it
+          assertEquals(applied.take(3), fork.take(3).map(_.header.hash))
+          assert(!applied.contains(fork(3).header.hash), "a block past the invalid one was applied")
+          assertEquals(fatals, Vector.empty)
+          assertEquals(known.entries, Map(bad.hash -> error(bad)))
+          assertEquals(reports, Vector.empty, "a recovered block blames no peer")
+      }
+    yield ()
+  }
+
   test("FIFO processing excludes later queued bodies and retains the same-hot issuer trap") {
     for
       forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
