@@ -257,6 +257,26 @@ final class MirrorRules[F[_]: Monad](
         }
       case _ => run(state, None, MirrorDijkstra.Read.none)
 
+  /** The scripts of the queued block `raw` as the speculator evaluates them ahead on `state`, the
+    * selected chain at the worker's tip ([[ScriptsAhead]], [[ScriptsAheadEras]]): none for a Byron
+    * block or a Dijkstra block of the Leios build, whose era run this does not speculate.
+    */
+  private[node] def scriptsAhead(
+      state: MirrorState,
+      header: Header,
+      raw: Bytes
+  ): Option[ScriptsAhead.Scripts] =
+    header match
+      case h: Header.Shelley if !MirrorRules.runsDijkstra(globals, h) =>
+        ScriptsAheadEras.scripts(
+          globals.systemStart,
+          Placement(config.geometry, byronParams, config.forks),
+          state,
+          h,
+          raw
+        )
+      case _ => None
+
   /** What a Dijkstra block's rules read beyond the state, read before they run
     * ([[MirrorDijkstra.Read]]), and the inputs whose stored outputs they read
     * ([[MirrorDijkstra.readSet]]): the block in the era's types; for a certifying block, its Leios

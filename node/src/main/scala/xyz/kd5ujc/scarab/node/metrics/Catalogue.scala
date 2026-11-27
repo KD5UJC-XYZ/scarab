@@ -619,6 +619,26 @@ object Catalogue:
     MetricName("scarab_utxo_read_ahead_stale_total"),
     "UTxO entries read ahead and dropped, as read before the trim point of the state that asked."
   )
+  val plutusAheadHit = CounterDef(
+    MetricName("scarab_plutus_ahead_hit_total"),
+    "Plutus scripts the block rules evaluated whose result was evaluated ahead of the selection worker."
+  )
+  val plutusAheadMiss = CounterDef(
+    MetricName("scarab_plutus_ahead_miss_total"),
+    "Plutus scripts the block rules evaluated with no result kept ahead for their script and budget."
+  )
+  val plutusAheadStale = CounterDef(
+    MetricName("scarab_plutus_ahead_stale_total"),
+    "Plutus scripts the block rules evaluated whose script and budget were evaluated ahead under another request."
+  )
+  val plutusAheadEvaluated = CounterDef(
+    MetricName("scarab_plutus_ahead_evaluated_total"),
+    "Plutus scripts of queued blocks evaluated ahead of the selection worker and kept."
+  )
+  val plutusAheadSkipped = CounterDef(
+    MetricName("scarab_plutus_ahead_skipped_total"),
+    "Transactions with redeemers of queued blocks whose scripts were not evaluated ahead of the selection worker."
+  )
   val preverifyAheadHit = CounterDef(
     MetricName("scarab_preverify_ahead_hit_total"),
     "Blocks the selection worker prepared whose signature checks were made ahead of it, while queued."
@@ -1343,6 +1363,11 @@ object Catalogue:
     utxoWarmRefused,
     utxoReadAheadServed,
     utxoReadAheadStale,
+    plutusAheadHit,
+    plutusAheadMiss,
+    plutusAheadStale,
+    plutusAheadEvaluated,
+    plutusAheadSkipped,
     preverifyAheadHit,
     preverifyAheadJoined,
     preverifyAheadMiss,
