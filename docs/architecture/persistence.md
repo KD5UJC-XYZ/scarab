@@ -168,14 +168,22 @@ blocks:
   (`volatileOpened` reports the bytes and the files removed); a record is never returned unless its
   checksum matches. Appends are not forced one by one: a crash loses at most the unforced tail, and
   those blocks are fetched again.
-- Collection never loses a block the immutable store lacks. Blocks reach the immutable store when
-  they age past `k`; every 4,096 of those (`volatileCollectBlocks`) the immutable store is forced
-  (`sync`) and the log files
+- Collection never loses a block the immutable store lacks. Blocks reach the immutable store after
+  they age past `k`, copied by the copy runner, a fiber of its own (#1499): the block-selection
+  worker logs each block and hands the aged ones over once the chain is published, and the runner
+  copies every block handed over so far, then schedules the received log's collection, brings the
+  backing store forward and takes a snapshot when one is due, as the reference's
+  `copyToImmutableDBRunner` does. Until a block is copied the served chain keeps it. Every 4,096
+  copied blocks (`volatileCollectBlocks`) the runner forces the immutable store (`sync`) and the log
+  files
   whose blocks are all at or below the new immutable tip are deleted (oldest first, the newest file
   stays). A rollback marker whose target was collected leaves an empty chain, which is where the
   volatile chain starts after the immutable tip anyway.
 - On start, after the snapshot is restored and the immutable blocks replayed, `ChainStorage.resume`
-  takes the logged chain after the immutable tip (at most `k` blocks) and applies each block through
+  takes the logged chain after the immutable tip (at most `k` blocks; a kill that found the copy
+  runner behind leaves more, which startup selection takes again from the received log, all of them
+  in Praos mode and at most `k` past the immutable tip with the limit on eagerness, as the
+  reference's `initialChainSelection`) and applies each block through
   the node's rules on top of the recovered state (`Verification.warm` first), rebuilding the exact
   `VolatileChain`. A block that does not connect or that the rules refuse ends the chain there, and so
   does a ranking block certifying an endorser block whose closure the store has not completed (the
