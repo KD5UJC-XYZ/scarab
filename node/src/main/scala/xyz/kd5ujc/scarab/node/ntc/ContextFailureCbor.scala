@@ -44,7 +44,7 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{NodeOrders, Versions}
   * UTXOS) and the Byron-output and redeemer-pointer faults.
   */
 private[ntc] object ContextFailureCbor:
-  import FailureCbor.{credential, item, list, set, txIn}
+  import FailureCbor.{credential, list, rewardAccount, set, txIn}
   import NodeOrders.given
 
   /** The era whose ledger writes the payload. */
@@ -90,9 +90,20 @@ private[ntc] object ContextFailureCbor:
     * the era encoder ([[ConwayFailureCbor]]) writes.
     */
   private[ntc] def purpose(p: Purpose): Option[Bytes] = p match
-    case Purpose.Certifying(_, cert)                    => shelleyCertificate(cert).map(pair(2, _))
+    case Purpose.Spending(_, input, _) =>
+      Some(CborOut.build { w =>
+        w.array(2).uint(0); txIn(w, input); ()
+      })
+    case Purpose.Minting(_, policy) =>
+      Some(CborOut.build { w =>
+        w.array(2).uint(1).bytes(policy); ()
+      })
+    case Purpose.Certifying(_, cert) => shelleyCertificate(cert).map(pair(2, _))
+    case Purpose.Rewarding(_, account) =>
+      Some(CborOut.build { w =>
+        w.array(2).uint(3); rewardAccount(w, account); ()
+      })
     case Purpose.Voting(_, _) | Purpose.Proposing(_, _) => None
-    case other                                          => Some(CborOut.build(item(_, other)))
 
   /** The `BabbageContextError` cases Babbage has, at their tags. */
   private def babbageCase(error: TranslationError)(using ProtVer): Option[Bytes] = error match
