@@ -10,22 +10,13 @@ import java.nio.file.{Files, Path}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
-  CollectError as FlatCollectError,
-  LedgerFailure,
   PlutusCase,
   PosixClock,
-  PlutusStats,
-  PredicateFailure,
   TestLedger,
   Tx as FlatTx,
-  TxChecks,
   TxEnv,
   TxIn,
   TxOut as FlatTxOut,
-  Utxo as FlatUtxo,
-  UtxoFailure,
-  UtxosFailure,
-  UtxowFailure,
   testByteStrings
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayTxOut}
@@ -42,18 +33,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   UtxosEvent,
   UtxosPredFailure
 }
-import xyz.kd5ujc.scarab.ledger.rules.{
-  Convert,
-  Deposits,
-  Judge,
-  Judgment,
-  RuleT,
-  StAnnTx as FlatStAnnTx,
-  Utxo as FlatUtxoRule,
-  UtxoEnv as FlatUtxoEnv,
-  Utxos as FlatUtxos,
-  ValidationPolicy
-}
+import xyz.kd5ujc.scarab.ledger.rules.{Convert, Judge, Judgment, RuleT, ValidationPolicy}
 import xyz.kd5ujc.scarab.ledger.state.{
   Build,
   CompactCoin,
@@ -67,7 +47,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   LedgerState,
   ShelleyBasedEra,
   Staking,
-  UTxOState
+  UTxOState,
+  UtxoTables
 }
 import xyz.kd5ujc.scarab.plutus.{
   BackendFailure,
@@ -86,21 +67,23 @@ import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 /** Conway's UTXOS on the era types (`era/rules/Utxos.scala`, cardano-ledger f649f975
   * `Conway/Rules/Utxos.hs`, with Babbage's `expectScriptsToPass` and `babbageEvalScriptsTxInvalid`)
   * and the change of the UTxO state that follows it (Babbage's `updateUTxOState` after Conway's
-  * `updateTreasuryDonation`), against the flat rule the node runs (`rules.Utxos`,
-  * `rules.Utxo.update`) and against the reference's recorded verdicts.
+  * `updateTreasuryDonation`), held to the reference's recorded verdicts and to the flat rules'
+  * recorded judgments.
   *
   * The cases are every Conway transaction the reference node was given with what it spends,
   * references and puts up as collateral: the Plutus V1 context submissions at protocol 9 and 10,
   * the context-error submissions and the Plutus boundary submissions, each accepted or refused by
   * the reference node 11.1.3, whose refusals here are a context error or a validation-tag mismatch
-  * (`V1ContextSuite`). For each, under each flag, each validation policy and with a failure
-  * recorded before UTXOS or not, the era rule gives the flat rule's verdict: the same context
-  * errors in the same order (their contents are `EraPlutusContextSuite` 's), the same tag mismatch
-  * with each script's failure and request, or the same scripts evaluated. Where the reference
-  * accepted, the state after it is the flat rule's, and its events say what the flat counters
-  * count. On the reference's multi-script results, the scripts that passed and failed are the
+  * (`V1ContextSuite`). Before the flat UTXOS and UTXO were deleted, the era rule was compared here
+  * with them on each, under each flag, each validation policy and with a failure recorded before
+  * UTXOS or not, and gave the flat rule's verdict: the same context errors in the same order (their
+  * contents are `EraPlutusContextSuite` 's), the same tag mismatch with each script's failure and
+  * request, or the same scripts evaluated; and where the scripts passed as the flag says, the same
+  * state after. The era rule's judgments were recorded after the two were found to agree
+  * (`fixtures/conway-flat-refusals/utxos-judgments.jsonl`, `UtxoRecordings`), and it is held to
+  * them. On the reference's multi-script results, the scripts that passed and failed are the
   * reference's, in its order; and on the recorded blocks' transactions, with crafted donations and
-  * deregistrations, the state after is the flat rule's.
+  * deregistrations, the state after is the flat rule's recorded one.
   */
 class EraUtxosSuite extends munit.FunSuite:
   private given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
@@ -323,34 +306,6 @@ class EraUtxosSuite extends munit.FunSuite:
       .judge(program, RuleT.Policy.Accumulate)(TestLedger.globals, Chain.empty)
       .map(_.map(_._1))
 
-  // ---- the flat rule -----------------------------------------------------------------------------
-
-  private type G[A] = RuleT[PredicateFailure, LedgerFailure, PlutusStats, A]
-
-  private val flatEarlier: PredicateFailure =
-    PredicateFailure.utxo(UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(true, None)))
-
-  private def flatRun(
-      c: Case,
-      validation: TxEnv.Validation,
-      evaluator: ScriptEvaluator[Id],
-      failedBefore: Boolean
-  ): Either[LedgerFailure, Either[NonEmptyChain[PredicateFailure], PlutusStats]] =
-    val judge = summon[Judge[G, PredicateFailure]]
-    val program =
-      (if failedBefore then judge.fail(flatEarlier) else Monad[G].unit) *>
-        FlatUtxos.scripts[G, Conway](
-          FlatUtxoEnv(
-            env.copy(clock = Some(c.clock), evaluator = evaluator, validation = validation),
-            c.flatPp,
-            ()
-          ),
-          FlatStAnnTx(c.flat, FlatUtxo.fromMap(c.utxo))
-        )
-    Judgment
-      .judge(program, RuleT.Policy.Accumulate)(TestLedger.globals, PlutusStats.zero)
-      .map(_.map(_._1))
-
   // ---- both in one form --------------------------------------------------------------------------
 
   /** A collection's failure by its kind, and the language a missing cost model is of: their
@@ -384,48 +339,11 @@ class EraUtxosSuite extends munit.FunSuite:
       */
     case Passed(succeeded: Long, failed: Long, scripts: Long)
 
-  private def flatCollect(e: FlatCollectError): Collect = e match
-    case FlatCollectError.NoRedeemer(_)     => Collect.NoRedeemer
-    case FlatCollectError.NoWitness(_)      => Collect.NoWitness
-    case FlatCollectError.NoCostModel(l)    => Collect.NoCostModel(l)
-    case FlatCollectError.BadTranslation(_) => Collect.BadTranslation
-
   private def eraCollect(e: CollectError[Conway]): Collect = e match
     case CollectError.NoRedeemer(_)     => Collect.NoRedeemer
     case CollectError.NoWitness(_)      => Collect.NoWitness
     case CollectError.NoCostModel(l)    => Collect.NoCostModel(l)
     case CollectError.BadTranslation(_) => Collect.BadTranslation
-
-  private def flatVerdict(
-      name: String,
-      result: Either[LedgerFailure, Either[NonEmptyChain[PredicateFailure], PlutusStats]],
-      failedBefore: Boolean
-  ): Verdict =
-    def utxos(f: PredicateFailure): Verdict = f match
-      case PredicateFailure.Utxow(UtxowFailure.Utxo(UtxoFailure.Utxos(failure))) =>
-        failure match
-          case UtxosFailure.CollectErrors(es) =>
-            Verdict.CollectErrors(es.toVector.toList.map(flatCollect))
-          case UtxosFailure.ValidationTagMismatch(flag, None) => Verdict.PassedUnexpectedly(flag)
-          case UtxosFailure.ValidationTagMismatch(_, Some(fs)) =>
-            Verdict.FailedUnexpectedly(
-              fs.toList.map(f => cause(f.cause) -> f.request.getOrElse(fail(s"$name: no request")))
-            )
-      case other => fail(s"$name: not a failure of UTXOS: $other")
-    result match
-      case Left(LedgerFailure.Unavailable(_, _, reason)) => Verdict.NoVerdict(reason)
-      case Left(other)                                   => fail(s"$name: flat defect $other")
-      case Right(Left(failures)) =>
-        val all = failures.toChain.toList
-        val own = all.filterNot(_ == flatEarlier)
-        if failedBefore then assertEquals(all.size - own.size, 1, name)
-        own match
-          case Nil      => Verdict.Passed(0, 0, 0)
-          case f :: Nil => utxos(f)
-          case several  => fail(s"$name: several flat failures $several")
-      case Right(Right(stats)) =>
-        assert(!failedBefore, s"$name: the earlier failure was lost")
-        Verdict.Passed(stats.succeeded, stats.failed, stats.scripts)
 
   private def eraVerdict(
       c: Case,
@@ -474,19 +392,78 @@ class EraUtxosSuite extends munit.FunSuite:
           (passed ++ failed).sum.toLong
         )
 
-  /** Both rules on `c` under `validation`, `evaluator` and with a failure recorded before or not:
-    * the same verdict, which is returned.
+  /** A verdict as it is recorded: `N` for none; `C:` and the kind of each collection failure, in
+    * order (`r` no redeemer, `w` no witness, `t` a context's failure, `m` and a language's number
+    * no cost model); `U:1` or `U:0` for scripts that passed unexpectedly under the flag; `F:` and
+    * the digest of each failing script's request (`UtxoRecordings.request`), in order, whose cause
+    * is the evaluator's on it ([[causesHeld]]); and `P:` with the counters of the scripts
+    * evaluated.
     */
-  private def same(
+  private def verdictCell(v: Verdict): String = v match
+    case Verdict.NoVerdict(_) => "N"
+    case Verdict.CollectErrors(es) =>
+      "C:" + es
+        .map {
+          case Collect.NoRedeemer     => "r"
+          case Collect.NoWitness      => "w"
+          case Collect.BadTranslation => "t"
+          case Collect.NoCostModel(l) => s"m${l.id}"
+        }
+        .mkString(",")
+    case Verdict.PassedUnexpectedly(flag) => if flag then "U:1" else "U:0"
+    case Verdict.FailedUnexpectedly(fs) =>
+      "F:" + fs.map((_, r) => UtxoRecordings.digest(UtxoRecordings.request(r))).mkString(",")
+    case Verdict.Passed(succeeded, failed, scripts) => s"P:$succeeded/$failed/$scripts"
+
+  /** Whether each failing script's cause is the one the evaluator gives its request: the cause is a
+    * function of the request, which [[verdictCell]] records, so the two hold the failure whole.
+    */
+  private def causesHeld(v: Verdict): Boolean = v match
+    case Verdict.FailedUnexpectedly(fs) =>
+      fs.forall((c, r) =>
+        scarab.evaluate(r) match
+          case EvalResult.Failure(reason, _, _) => cause(reason) == c
+          case EvalResult.Success(_, _)         => false
+      )
+    case _ => true
+
+  /** The recorded judgment `id`, failing the test where none was recorded. */
+  private def recordedCells(id: String): Vector[String] =
+    UtxoRecordings.utxos.getOrElse(id, fail(s"no recording of $id"))
+
+  /** The era rule on `c` under `validation`, `evaluator` and with a failure recorded before or not:
+    * its verdict, each failing script's cause the evaluator's on its request.
+    */
+  private def judged(
       c: Case,
       validation: TxEnv.Validation,
       evaluator: ScriptEvaluator[Id],
       failedBefore: Boolean
   ): Verdict =
     val ours = eraVerdict(c, eraRun(c, validation, evaluator, failedBefore), failedBefore)
-    val theirs = flatVerdict(c.name, flatRun(c, validation, evaluator, failedBefore), failedBefore)
-    assertEquals(ours, theirs, s"${c.name} under $validation, failed before: $failedBefore")
+    assert(causesHeld(ours), s"${c.name}: a script's cause is not the evaluator's on its request")
     ours
+
+  /** The era rule's verdicts on a case, as the flat rule's were recorded (`utxos/<case>`, a cell
+    * each in this order): under `All`; applied again (`NonStatic`), with an evaluator that must not
+    * be asked; after an earlier failure, with that evaluator; and with an evaluator that has no
+    * verdict.
+    */
+  private final case class Verdicts(
+      all: Verdict,
+      nonStatic: Verdict,
+      failedBefore: Verdict,
+      unavailable: Verdict
+  ):
+    def cells: Vector[String] = Vector(all, nonStatic, failedBefore, unavailable).map(verdictCell)
+
+  private def verdictsOf(c: Case): Verdicts =
+    Verdicts(
+      judged(c, TxEnv.Validation.All, scarab, false),
+      judged(c, TxEnv.Validation.NonStatic, never(c.name), false),
+      judged(c, TxEnv.Validation.All, never(c.name), true),
+      judged(c, TxEnv.Validation.All, unavailable, false)
+    )
 
   // ---- the verdicts ------------------------------------------------------------------------------
 
@@ -499,8 +476,23 @@ class EraUtxosSuite extends munit.FunSuite:
     )
   }
 
-  test("as submitted, the era rule gives the reference's verdict and the flat rule's") {
-    val verdicts = recorded.map(c => c -> same(c, TxEnv.Validation.All, scarab, false))
+  /** Every case of the submissions under both flags, and of the multi-script results. */
+  private def everyCase: Vector[Case] = recorded ++ flipped ++ results.map(_.c)
+
+  /** The era rule's verdicts on every case. */
+  private lazy val verdicts: Vector[(Case, Verdicts)] = everyCase.map(c => c -> verdictsOf(c))
+
+  test("the era rule gives the flat rule's recorded verdicts on every case, under each judgment") {
+    verdicts.foreach((c, vs) => assertEquals(vs.cells, recordedCells(s"utxos/${c.name}"), c.name))
+  }
+
+  private def verdictOf(c: Case): Verdict =
+    verdicts.find(_._1.name == c.name).getOrElse(fail(s"no judgment of ${c.name}"))._2.all
+
+  test(
+    "as submitted, the era rule gives the reference's verdict and the flat rule's recorded one"
+  ) {
+    val verdicts = recorded.map(c => c -> verdictOf(c))
     verdicts.foreach { (c, verdict) =>
       verdict match
         case Verdict.Passed(_, _, _) => assert(c.accepted, s"${c.name}: the reference refused")
@@ -516,9 +508,6 @@ class EraUtxosSuite extends munit.FunSuite:
     )
     assert(verdicts.exists { case (_, Verdict.Passed(1, 0, n)) => n > 0; case _ => false })
   }
-
-  /** Every case of the submissions under both flags, and of the multi-script results. */
-  private def everyCase: Vector[Case] = recorded ++ flipped ++ results.map(_.c)
 
   test("the reference's script results: each script passed or failed, in its order, both flags") {
     assertEquals(results.size, 50)
@@ -553,7 +542,7 @@ class EraUtxosSuite extends munit.FunSuite:
                   )
             case other => fail(s"${c.name}: $other")
         case Left(defect) => fail(s"${c.name}: $defect")
-      same(c, TxEnv.Validation.All, scarab, false)
+      verdictOf(c)
     }
     assert(results.exists(r => r.passing.nonEmpty && r.failing.nonEmpty))
   }
@@ -657,16 +646,16 @@ class EraUtxosSuite extends munit.FunSuite:
     }
   }
 
-  test("with the flag flipped, the era rule gives the flat rule's verdict") {
-    val verdicts = flipped.map(c => same(c, TxEnv.Validation.All, scarab, false))
+  test("with the flag flipped, the era rule gives the flat rule's recorded verdict") {
+    val verdicts = flipped.map(verdictOf)
     assert(verdicts.exists { case Verdict.Passed(_, _, n) => n > 0; case _ => false })
     assert(verdicts.exists { case Verdict.PassedUnexpectedly(_) => true; case _ => false })
     assert(verdicts.exists { case Verdict.FailedUnexpectedly(_) => true; case _ => false })
   }
 
   test("a transaction applied again (NonStatic) collects its scripts and evaluates none") {
-    everyCase.foreach { c =>
-      same(c, TxEnv.Validation.NonStatic, never(c.name), false) match
+    verdicts.foreach { (c, vs) =>
+      vs.nonStatic match
         case Verdict.Passed(_, _, scripts) => assertEquals(scripts, 0L, c.name)
         case Verdict.CollectErrors(_)      => ()
         case other                         => fail(s"${c.name}: $other")
@@ -676,15 +665,15 @@ class EraUtxosSuite extends munit.FunSuite:
   test(
     "after an earlier failure, the scripts are collected and none is evaluated (whenFailureFree)"
   ) {
-    everyCase.foreach { c =>
-      same(c, TxEnv.Validation.All, never(c.name), true) match
+    verdicts.foreach { (c, vs) =>
+      vs.failedBefore match
         case Verdict.Passed(0, 0, 0) | Verdict.CollectErrors(_) => ()
         case other                                              => fail(s"${c.name}: $other")
     }
   }
 
   test("an evaluator with no verdict leaves the transaction with none, whatever its flag") {
-    val reached = everyCase.map(c => same(c, TxEnv.Validation.All, unavailable, false))
+    val reached = verdicts.map(_._2.unavailable)
     assert(
       reached.exists(_ == Verdict.NoVerdict(EvalFailure.Unsupported(BackendFailure.StackExhausted)))
     )
@@ -722,25 +711,37 @@ class EraUtxosSuite extends munit.FunSuite:
       case Right(Right((events, next))) => (next, events)
       case other                        => fail(s"${c.name}: $other")
 
-  private def flatUpdate(c: Case, cert: ConwayCertState, s: UTxOState[Conway]): UTxOState[Conway] =
-    val ann = FlatStAnnTx(c.flat, FlatUtxo.fromMap(c.utxo))
-    val (deposits, refunds) = Deposits.of(c.flatPp, cert, c.flat.body)
-    right(c.name)(
-      FlatUtxoRule.update(s, ann, TxChecks.collateral[Conway](ann.utxo, ann.tx), deposits, refunds)
+  /** The era rule's state after `c` from `s`, held to the flat rule's recorded one (`id`, with
+    * `more`, the rest of its cells): the governance state as it was, the rest by its form
+    * (`UtxoRecordings.stateCell`).
+    */
+  private def stateHeld(
+      id: String,
+      s: UTxOState[Conway],
+      after: UTxOState[Conway],
+      more: Vector[String] = Vector.empty
+  ): Unit =
+    assert(
+      summon[cats.Eq[UTxOState[Conway]]].eqv(after.copy(gov = s.gov), after),
+      s"$id: the governance state changed"
     )
+    assertEquals(UtxoRecordings.stateCell(after) +: more, recordedCells(id), id)
 
-  /** The cases whose scripts pass as their flag says, as the flat rule decides: the state changes.
-    * A transaction flagged invalid with no redeemer is not one (its scripts pass), so the flat
-    * rule's empty collateral there (`TxChecks.collateral`) is never reached.
+  /** The cases whose scripts pass as their flag says, as the era rule decides (as the flat rule
+    * did, recorded): the state changes. A transaction flagged invalid with no redeemer is not one
+    * (its scripts pass).
     */
   private def passing(cases: Vector[Case]): Vector[Case] =
     cases.filter(c =>
-      flatVerdict(c.name, flatRun(c, TxEnv.Validation.All, scarab, false), false) match
+      verdictOf(c) match
         case Verdict.Passed(_, _, _) => true
         case _                       => false
     )
 
-  test("where the scripts pass as the flag says, the state after is the flat rule's") {
+  /** The id of a state judgment, a case's under `prefix`. */
+  private def stateId(prefix: String, c: Case): String = s"state/$prefix/${c.name}"
+
+  test("where the scripts pass as the flag says, the state after is the flat rule's recorded one") {
     val changed = passing(everyCase)
     assert(changed.exists(_.flat.isValid) && changed.exists(!_.flat.isValid))
     // a transaction flagged invalid some of whose scripts passed
@@ -750,27 +751,27 @@ class EraUtxosSuite extends munit.FunSuite:
       val cert = ConwayLedgerState.cert.get(ls)
       val s = LedgerState.utxo[Conway].get(ls)
       val (ours, events) = eraUpdate(c, cert, s)
-      val theirs = flatUpdate(c, cert, s)
-      assert(summon[cats.Eq[UTxOState[Conway]]].eqv(ours, theirs), s"${c.name}: $ours\n$theirs")
-      assertEquals(ours.utxo.utxo.toMap, theirs.utxo.utxo.toMap, c.name)
       val body = t.body[TxLevel.Top](c.typed)(using t.bodyOf.top)
+      // the deposits less the refunds, which the flat rule's were, recorded beside the state
+      val deposited = events.toList.collect { case AlonzoUtxoEvent.TotalDeposits(_, coin) =>
+        coin.value.toString
+      }
+      stateHeld(stateId("passing", c), s, ours, Vector(deposited.headOption.getOrElse("-")))
       if c.flat.isValid then
-        val (deposits, refunds) = Deposits.of(c.flatPp, cert, c.flat.body)
         val spent = c.eraUtxo.unUTxO.filter((in, _) => c.flat.body.inputs.contains(in))
-        assertEquals(
-          events.toList,
-          List(
-            AlonzoUtxoEvent.TotalDeposits[Conway](
-              c.flat.body.id,
-              xyz.kd5ujc.scarab.ledger.state.Coin(deposits - refunds)
-            ),
-            AlonzoUtxoEvent.TxUTxODiff[Conway](
-              UTxO(spent),
-              UTxOs.txouts[Conway, TxLevel.Top](body)(using t.bodyOf, t.bodyOf.top)
+        events.toList match
+          case List(
+                AlonzoUtxoEvent.TotalDeposits(id, _),
+                AlonzoUtxoEvent.TxUTxODiff(diffSpent, created)
+              ) =>
+            assertEquals(id, c.flat.body.id, c.name)
+            assertEquals(diffSpent, UTxO[Conway](spent), c.name)
+            assertEquals(
+              created,
+              UTxOs.txouts[Conway, TxLevel.Top](body)(using t.bodyOf, t.bodyOf.top),
+              c.name
             )
-          ),
-          c.name
-        )
+          case other => fail(s"${c.name}: $other")
       else assertEquals(events.toList, Nil, c.name)
     }
   }
@@ -843,12 +844,15 @@ class EraUtxosSuite extends munit.FunSuite:
       )
       .groupMapReduce(_._1)(_._2)(_ + _)
 
+  /** The admitted invalid-flag transaction with collateral that a collateral return is made of. */
+  private lazy val returningBase: Case = recorded
+    .find(c => c.accepted && !c.flat.isValid && c.flat.body.collateral.nonEmpty)
+    .getOrElse(fail("no admitted invalid-flag transaction with collateral"))
+
   test(
     "a phase-2-invalid transaction holding its collateral and returning part of it: what it spends, creates and pays"
   ) {
-    val base = recorded
-      .find(c => c.accepted && !c.flat.isValid && c.flat.body.collateral.nonEmpty)
-      .getOrElse(fail("no admitted invalid-flag transaction with collateral"))
+    val base = returningBase
     val collateral = base.flat.body.collateral.distinct.map(in =>
       in -> base.utxo.getOrElse(in, fail(s"${base.name}: collateral $in not held"))
     )
@@ -884,7 +888,7 @@ class EraUtxosSuite extends munit.FunSuite:
     val cert = ConwayLedgerState.cert.get(ls)
     val before = LedgerState.utxo[Conway].get(ls)
     val (after, events) = eraUpdate(c, cert, before)
-    assert(summon[cats.Eq[UTxOState[Conway]]].eqv(after, flatUpdate(c, cert, before)), c.name)
+    stateHeld(stateId("returning", c), before, after)
     assertEquals(events.toList, Nil, c.name)
     val at = BabbageUtxo.mkCollateralTxIn[Conway, TxLevel.Top](body)(using t.bodyOf, t.bodyOf.top)
     assertEquals(at, TxIn(c.flat.body.id, c.flat.body.outputs.size))
@@ -989,7 +993,7 @@ class EraUtxosSuite extends munit.FunSuite:
     )(cert)
 
   test(
-    "on the recorded blocks' transactions, the state after is the flat rule's, under both flags"
+    "on the recorded blocks' transactions, the state after is the flat rule's recorded one, under both flags"
   ) {
     // a transaction flagged invalid with no redeemer never reaches the change: its scripts pass,
     // and UTXOS refuses it (the flat rule's collateral is empty there, `TxChecks.collateral`)
@@ -1007,8 +1011,7 @@ class EraUtxosSuite extends munit.FunSuite:
       val cert = held(c, ConwayLedgerState.cert.get(ls))
       val s = LedgerState.utxo[Conway].get(ls)
       val (ours, _) = eraUpdate(c, cert, s)
-      val theirs = flatUpdate(c, cert, s)
-      assert(summon[cats.Eq[UTxOState[Conway]]].eqv(ours, theirs), s"${c.name}: $ours\n$theirs")
+      stateHeld(stateId("blocks", c), s, ours)
       if !c.flat.isValid then
         c.flat.body.collateralReturn.foreach(r =>
           assertEquals(
@@ -1018,4 +1021,40 @@ class EraUtxosSuite extends munit.FunSuite:
           )
         )
     }
+  }
+
+  test("a state's cell holds the UTxO set's diff and stamps, and not the governance state") {
+    // the governance state, which UTXO leaves as it is, is not in the cell, and is checked to be as
+    // it was instead (`stateHeld`); the UTxO set's stamps, which its map does not show, are
+    val c = passing(everyCase).headOption.getOrElse(fail("no case whose scripts pass"))
+    val ls = ledger(c)
+    val s = LedgerState.utxo[Conway].get(ls)
+    val (after, _) = eraUpdate(c, ConwayLedgerState.cert.get(ls), s)
+    val otherPp = c.flatPp.copy(minFeeA = c.flatPp.minFeeA + 1)
+    val otherGov =
+      LedgerState.utxo[Conway].get(ConwayNewEpochState.ls.get(Build.nes[Conway](5, otherPp))).gov
+    val govMutant = after.copy[Conway](gov = otherGov)
+    assertEquals(UtxoRecordings.stateCell(govMutant), UtxoRecordings.stateCell(after))
+    assert(!summon[cats.Eq[UTxOState[Conway]]].eqv(govMutant.copy(gov = s.gov), govMutant))
+    val u = after.utxo.utxo
+    val stampMutant = after.copy[Conway](utxo = UtxoTables(u.copy(stamp = u.stamp + 1)))
+    assertEquals(stampMutant.utxo.utxo.toMap, after.utxo.utxo.toMap)
+    assertNotEquals(UtxoRecordings.stateCell(stampMutant), UtxoRecordings.stateCell(after))
+  }
+
+  test(
+    "the recording of the flat UTXOS's and UTXO's judgments holds this suite's alone, each once"
+  ) {
+    // the state judgments are those the tests above made, of the cases they name
+    val stateIds =
+      passing(everyCase).map(stateId("passing", _)) ++
+        Vector(s"state/returning/${returningBase.name}, returning") ++
+        (blockCases.filter(c => c.flat.isValid || c.flat.witnesses.redeemers.nonEmpty) ++ donated)
+          .map(stateId("blocks", _))
+    val ids = verdicts.map((c, _) => s"utxos/${c.name}") ++ stateIds
+    assertEquals(ids.distinct.size, ids.size, "a judgment twice")
+    assertEquals(
+      ids.toSet,
+      UtxoRecordings.utxos.keySet.filter(id => id.startsWith("utxos/") || id.startsWith("state/"))
+    )
   }

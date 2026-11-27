@@ -1,0 +1,1035 @@
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-inline-datum (flag flipped)","r":"R:6be44488b35b140e"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-inline-datum","r":"R:6be44488b35b140e"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript (flag flipped)","r":"R:d647453bc066105f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript","r":"R:d647453bc066105f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag (flag flipped)","r":"R:bc093cf930b038cb"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag","r":"R:bc093cf930b038cb"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-byron (flag flipped)","r":"R:d87871fbea059134"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-byron","r":"R:d87871fbea059134"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-inline-datum (flag flipped)","r":"R:88c6ae1cedfc34a8"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-inline-datum","r":"R:88c6ae1cedfc34a8"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript (flag flipped)","r":"R:e90addee6f22eaa5"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript","r":"R:e90addee6f22eaa5"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag (flag flipped)","r":"R:e90addee6f22eaa5"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag","r":"R:e90addee6f22eaa5"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain (flag flipped)","r":"R:9452061aaf110c08"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain","r":"R:9452061aaf110c08"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-fail-valid-tag (flag flipped)","r":"R:5dee1838604b11e1"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-fail-valid-tag","r":"R:5dee1838604b11e1"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-invalid-tag (flag flipped)","r":"R:5dee1838604b11e1"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-invalid-tag","r":"R:5dee1838604b11e1"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-pass-invalid-tag (flag flipped)","r":"R:9452061aaf110c08"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-pass-invalid-tag","r":"R:9452061aaf110c08"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-byron (flag flipped)","r":"R:e7c37eff09d4731b"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-byron","r":"R:e7c37eff09d4731b"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-byron-invalid-tag (flag flipped)","r":"R:aa29ad57b3a97232"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-byron-invalid-tag","r":"R:aa29ad57b3a97232"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-inline-datum (flag flipped)","r":"R:9ab09a0d9aeeb741"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-inline-datum","r":"R:9ab09a0d9aeeb741"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-inline-datum-invalid-tag (flag flipped)","r":"R:40a891306cc861cb"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-inline-datum-invalid-tag","r":"R:40a891306cc861cb"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-plain (flag flipped)","r":"R:d647453bc066105f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-plain","r":"R:d647453bc066105f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript (flag flipped)","r":"R:d647453bc066105f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript","r":"R:d647453bc066105f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag (flag flipped)","r":"R:bc093cf930b038cb"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag","r":"R:bc093cf930b038cb"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-fail-then-v1-refinput-inline-invalid-tag (flag flipped)","r":"R:1ffb7ad5e1444a6e"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-fail-then-v1-refinput-inline-invalid-tag","r":"R:1ffb7ad5e1444a6e"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-output-refscript (flag flipped)","r":"R:3c03136ba7d9ddc1"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-output-refscript","r":"R:3c03136ba7d9ddc1"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-byron (flag flipped)","r":"R:d44c582be3357de3"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-byron","r":"R:d44c582be3357de3"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-inline-datum (flag flipped)","r":"R:d68be61542631ca0"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-inline-datum","r":"R:d68be61542631ca0"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-byron (flag flipped)","r":"R:7994e7a50e15c2cc"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-byron","r":"R:7994e7a50e15c2cc"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-inline-datum (flag flipped)","r":"R:40a8199422dbac64"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-inline-datum","r":"R:40a8199422dbac64"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-false (flag flipped)","r":"R:13e4d032fdc6e6df"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-false","r":"R:13e4d032fdc6e6df"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-true (flag flipped)","r":"R:13e4d032fdc6e6df"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-true","r":"R:13e4d032fdc6e6df"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-false (flag flipped)","r":"R:f175bc93741d4f2a"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-false","r":"R:f175bc93741d4f2a"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-true (flag flipped)","r":"R:f175bc93741d4f2a"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-true","r":"R:f175bc93741d4f2a"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-inline-datum (flag flipped)","r":"R:85756b1e696e6cfb"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-inline-datum","r":"R:85756b1e696e6cfb"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript (flag flipped)","r":"R:d647453bc066105f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript","r":"R:d647453bc066105f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag (flag flipped)","r":"R:bc093cf930b038cb"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag","r":"R:bc093cf930b038cb"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-byron (flag flipped)","r":"R:d87871fbea059134"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-byron","r":"R:d87871fbea059134"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-inline-datum (flag flipped)","r":"R:88c6ae1cedfc34a8"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-inline-datum","r":"R:88c6ae1cedfc34a8"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript (flag flipped)","r":"R:e90addee6f22eaa5"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript","r":"R:e90addee6f22eaa5"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag (flag flipped)","r":"R:e90addee6f22eaa5"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag","r":"R:e90addee6f22eaa5"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain (flag flipped)","r":"R:9452061aaf110c08"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain","r":"R:9452061aaf110c08"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-fail-valid-tag (flag flipped)","r":"R:5dee1838604b11e1"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-fail-valid-tag","r":"R:5dee1838604b11e1"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-invalid-tag (flag flipped)","r":"R:5dee1838604b11e1"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-invalid-tag","r":"R:5dee1838604b11e1"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-pass-invalid-tag (flag flipped)","r":"R:9452061aaf110c08"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-pass-invalid-tag","r":"R:9452061aaf110c08"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-byron (flag flipped)","r":"R:6ebd833f84213c50"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-byron","r":"R:6ebd833f84213c50"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-byron-invalid-tag (flag flipped)","r":"R:ff6fb9398c6390f6"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-byron-invalid-tag","r":"R:ff6fb9398c6390f6"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-inline-datum (flag flipped)","r":"R:8bc74ff3902d2321"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-inline-datum","r":"R:8bc74ff3902d2321"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-inline-datum-invalid-tag (flag flipped)","r":"R:3ee5c3455e5b2291"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-inline-datum-invalid-tag","r":"R:3ee5c3455e5b2291"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-plain (flag flipped)","r":"R:d647453bc066105f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-plain","r":"R:d647453bc066105f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript (flag flipped)","r":"R:d647453bc066105f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript","r":"R:d647453bc066105f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag (flag flipped)","r":"R:bc093cf930b038cb"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag","r":"R:bc093cf930b038cb"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-fail-then-v1-refinput-inline-invalid-tag (flag flipped)","r":"R:679326a242bea317"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-fail-then-v1-refinput-inline-invalid-tag","r":"R:679326a242bea317"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-output-refscript (flag flipped)","r":"R:3c03136ba7d9ddc1"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-output-refscript","r":"R:3c03136ba7d9ddc1"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-byron (flag flipped)","r":"R:199a04ea09ab6102"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-byron","r":"R:199a04ea09ab6102"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-inline-datum (flag flipped)","r":"R:d68be61542631ca0"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-inline-datum","r":"R:d68be61542631ca0"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-byron (flag flipped)","r":"R:4ed74b24812bc5e8"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-byron","r":"R:4ed74b24812bc5e8"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-inline-datum (flag flipped)","r":"R:40a8199422dbac64"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-inline-datum","r":"R:40a8199422dbac64"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-inline-datum (flag flipped)","r":"R:3b20bce74aea7161"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-inline-datum","r":"R:3b20bce74aea7161"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript (flag flipped)","r":"R:91a2b2eeafc62925"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript","r":"R:91a2b2eeafc62925"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript-invalid-tag (flag flipped)","r":"R:62ab309bdb1ae237"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript-invalid-tag","r":"R:62ab309bdb1ae237"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-byron (flag flipped)","r":"R:ce41954e6d9be360"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-byron","r":"R:ce41954e6d9be360"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-inline-datum (flag flipped)","r":"R:53113ec0ab011520"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-inline-datum","r":"R:53113ec0ab011520"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript (flag flipped)","r":"R:efcafc9f30f4161f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript","r":"R:efcafc9f30f4161f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript-invalid-tag (flag flipped)","r":"R:efcafc9f30f4161f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript-invalid-tag","r":"R:efcafc9f30f4161f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain (flag flipped)","r":"R:0a0326c7cd4a79a0"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain","r":"R:0a0326c7cd4a79a0"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-fail-valid-tag (flag flipped)","r":"R:564a43f882dcf968"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-fail-valid-tag","r":"R:564a43f882dcf968"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-invalid-tag (flag flipped)","r":"R:564a43f882dcf968"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-invalid-tag","r":"R:564a43f882dcf968"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-pass-invalid-tag (flag flipped)","r":"R:0a0326c7cd4a79a0"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-pass-invalid-tag","r":"R:0a0326c7cd4a79a0"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-byron (flag flipped)","r":"R:3bf3f52b5fba0547"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-byron","r":"R:3bf3f52b5fba0547"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-byron-invalid-tag (flag flipped)","r":"R:6ecf0810842ae3ff"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-byron-invalid-tag","r":"R:6ecf0810842ae3ff"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-inline-datum (flag flipped)","r":"R:f798b217d4c82bc3"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-inline-datum","r":"R:f798b217d4c82bc3"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-inline-datum-invalid-tag (flag flipped)","r":"R:931cf9e4b55c404f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-inline-datum-invalid-tag","r":"R:931cf9e4b55c404f"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-plain (flag flipped)","r":"R:91a2b2eeafc62925"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-plain","r":"R:91a2b2eeafc62925"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript (flag flipped)","r":"R:91a2b2eeafc62925"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript","r":"R:91a2b2eeafc62925"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript-invalid-tag (flag flipped)","r":"R:62ab309bdb1ae237"}
+{"id":"era-utxo/max-tx-size/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript-invalid-tag","r":"R:62ab309bdb1ae237"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-inline-datum (flag flipped)","r":"R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-inline-datum","r":"R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:910704562c4d93b0/0/0/0 R:8a8ff96f8061fcdc A:910704562c4d93b0/0/0/0 R:8a8ff96f8061fcdc A:910704562c4d93b0/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript","r":"A:e5f82e5b0d774bc4/1/0/1 A:e5f82e5b0d774bc4/0/0/0 A:e5f82e5b0d774bc4/1/0/1 A:e5f82e5b0d774bc4/0/0/0 A:e5f82e5b0d774bc4/1/0/1 A:e5f82e5b0d774bc4/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag (flag flipped)","r":"R:238bbd1fae3f665e A:37ddf97c9a18ddfd/0/0/0 R:238bbd1fae3f665e A:37ddf97c9a18ddfd/0/0/0 R:238bbd1fae3f665e A:37ddf97c9a18ddfd/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag","r":"A:aad566270698fd51/0/1/1 A:aad566270698fd51/0/0/0 A:aad566270698fd51/0/1/1 A:aad566270698fd51/0/0/0 A:aad566270698fd51/0/1/1 A:aad566270698fd51/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-byron (flag flipped)","r":"R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-byron","r":"R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-inline-datum (flag flipped)","r":"R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-inline-datum","r":"R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:ed34d4ada3a1e951/0/0/0 R:8a8ff96f8061fcdc A:ed34d4ada3a1e951/0/0/0 R:8a8ff96f8061fcdc A:ed34d4ada3a1e951/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript","r":"A:f1e66f31a6b06070/1/0/1 A:f1e66f31a6b06070/0/0/0 A:f1e66f31a6b06070/1/0/1 A:f1e66f31a6b06070/0/0/0 A:f1e66f31a6b06070/1/0/1 A:f1e66f31a6b06070/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag (flag flipped)","r":"R:cba17d76f5b8421d A:da70796a8c96e3f6/0/0/0 R:cba17d76f5b8421d A:da70796a8c96e3f6/0/0/0 R:cba17d76f5b8421d A:da70796a8c96e3f6/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag","r":"A:86045e7090f1d248/0/1/1 A:86045e7090f1d248/0/0/0 A:86045e7090f1d248/0/1/1 A:86045e7090f1d248/0/0/0 A:86045e7090f1d248/0/1/1 A:86045e7090f1d248/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain (flag flipped)","r":"R:8a8ff96f8061fcdc A:38c6369c0d559d7f/0/0/0 R:8a8ff96f8061fcdc A:38c6369c0d559d7f/0/0/0 R:8a8ff96f8061fcdc A:38c6369c0d559d7f/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain","r":"A:22dab45c6b46765c/1/0/1 A:22dab45c6b46765c/0/0/0 A:22dab45c6b46765c/1/0/1 A:22dab45c6b46765c/0/0/0 A:22dab45c6b46765c/1/0/1 A:22dab45c6b46765c/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-fail-valid-tag (flag flipped)","r":"A:47dfa57401fd2b43/0/1/1 A:47dfa57401fd2b43/0/0/0 A:47dfa57401fd2b43/0/1/1 A:47dfa57401fd2b43/0/0/0 A:47dfa57401fd2b43/0/1/1 A:47dfa57401fd2b43/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-fail-valid-tag","r":"R:64b5315120c2cf25 A:002f2d70d92a9589/0/0/0 R:64b5315120c2cf25 A:002f2d70d92a9589/0/0/0 R:64b5315120c2cf25 A:002f2d70d92a9589/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-invalid-tag (flag flipped)","r":"R:dd5423fe71d8d8fd A:7d3a862cc99df14a/0/0/0 R:dd5423fe71d8d8fd A:7d3a862cc99df14a/0/0/0 R:dd5423fe71d8d8fd A:7d3a862cc99df14a/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-invalid-tag","r":"A:3328d6f70edc4f83/0/1/1 A:3328d6f70edc4f83/0/0/0 A:3328d6f70edc4f83/0/1/1 A:3328d6f70edc4f83/0/0/0 A:3328d6f70edc4f83/0/1/1 A:3328d6f70edc4f83/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-pass-invalid-tag (flag flipped)","r":"A:5d34c6c793da48c6/1/0/1 A:5d34c6c793da48c6/0/0/0 A:5d34c6c793da48c6/1/0/1 A:5d34c6c793da48c6/0/0/0 A:5d34c6c793da48c6/1/0/1 A:5d34c6c793da48c6/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-pass-invalid-tag","r":"R:8a8ff96f8061fcdc A:0bcefa0718df656b/0/0/0 R:8a8ff96f8061fcdc A:0bcefa0718df656b/0/0/0 R:8a8ff96f8061fcdc A:0bcefa0718df656b/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-byron (flag flipped)","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-byron","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-byron-invalid-tag (flag flipped)","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-byron-invalid-tag","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-inline-datum (flag flipped)","r":"R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-inline-datum","r":"R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-inline-datum-invalid-tag (flag flipped)","r":"R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-inline-datum-invalid-tag","r":"R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-plain (flag flipped)","r":"R:8a8ff96f8061fcdc A:6e39bd86836f7609/0/0/0 R:8a8ff96f8061fcdc A:6e39bd86836f7609/0/0/0 R:8a8ff96f8061fcdc A:6e39bd86836f7609/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-plain","r":"A:e0bed8be0e7e0727/1/0/1 A:e0bed8be0e7e0727/0/0/0 A:e0bed8be0e7e0727/1/0/1 A:e0bed8be0e7e0727/0/0/0 A:e0bed8be0e7e0727/1/0/1 A:e0bed8be0e7e0727/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:495bb362d4e82bc9/0/0/0 R:8a8ff96f8061fcdc A:495bb362d4e82bc9/0/0/0 R:8a8ff96f8061fcdc A:495bb362d4e82bc9/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript","r":"A:b3f239e072e5e416/1/0/1 A:b3f239e072e5e416/0/0/0 A:b3f239e072e5e416/1/0/1 A:b3f239e072e5e416/0/0/0 A:b3f239e072e5e416/1/0/1 A:b3f239e072e5e416/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag (flag flipped)","r":"R:0fc8764405ad326f A:392e033d6f568718/0/0/0 R:0fc8764405ad326f A:392e033d6f568718/0/0/0 R:0fc8764405ad326f A:392e033d6f568718/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag","r":"A:87ac9b200a1dd870/0/1/1 A:87ac9b200a1dd870/0/0/0 A:87ac9b200a1dd870/0/1/1 A:87ac9b200a1dd870/0/0/0 A:87ac9b200a1dd870/0/1/1 A:87ac9b200a1dd870/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-fail-then-v1-refinput-inline-invalid-tag (flag flipped)","r":"R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-fail-then-v1-refinput-inline-invalid-tag","r":"R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-output-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:64473d0ca9fd538d/0/0/0 R:8a8ff96f8061fcdc A:64473d0ca9fd538d/0/0/0 R:8a8ff96f8061fcdc A:64473d0ca9fd538d/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-output-refscript","r":"A:456307853be5a6aa/1/0/1 A:456307853be5a6aa/0/0/0 A:456307853be5a6aa/1/0/1 A:456307853be5a6aa/0/0/0 A:456307853be5a6aa/1/0/1 A:456307853be5a6aa/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-byron (flag flipped)","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-byron","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-inline-datum (flag flipped)","r":"R:8a8ff96f8061fcdc A:fbec154eeb90df32/0/0/0 R:8a8ff96f8061fcdc A:fbec154eeb90df32/0/0/0 R:8a8ff96f8061fcdc A:fbec154eeb90df32/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-inline-datum","r":"A:31e34d3e4a2ef746/1/0/1 A:31e34d3e4a2ef746/0/0/0 A:31e34d3e4a2ef746/1/0/1 A:31e34d3e4a2ef746/0/0/0 A:31e34d3e4a2ef746/1/0/1 A:31e34d3e4a2ef746/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-byron (flag flipped)","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-byron","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-inline-datum (flag flipped)","r":"R:8a8ff96f8061fcdc A:cebc73b8b69942d8/0/0/0 R:8a8ff96f8061fcdc A:cebc73b8b69942d8/0/0/0 R:8a8ff96f8061fcdc A:cebc73b8b69942d8/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-inline-datum","r":"A:9806ce5eb8c19b5e/1/0/1 A:9806ce5eb8c19b5e/0/0/0 A:9806ce5eb8c19b5e/1/0/1 A:9806ce5eb8c19b5e/0/0/0 A:9806ce5eb8c19b5e/1/0/1 A:9806ce5eb8c19b5e/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-false (flag flipped)","r":"R:022e70873c68bd4c A:ab76b2b2a0d33606/0/0/0 R:022e70873c68bd4c A:ab76b2b2a0d33606/0/0/0 R:022e70873c68bd4c A:ab76b2b2a0d33606/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-false","r":"A:17626afaa31b9c38/0/1/1 A:17626afaa31b9c38/0/0/0 A:17626afaa31b9c38/0/1/1 A:17626afaa31b9c38/0/0/0 A:17626afaa31b9c38/0/1/1 A:17626afaa31b9c38/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-true (flag flipped)","r":"A:3ed73e45fc73dbd2/0/1/1 A:3ed73e45fc73dbd2/0/0/0 A:3ed73e45fc73dbd2/0/1/1 A:3ed73e45fc73dbd2/0/0/0 A:3ed73e45fc73dbd2/0/1/1 A:3ed73e45fc73dbd2/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-true","r":"R:e790dabf634f4a6b A:3207c069260e26eb/0/0/0 R:e790dabf634f4a6b A:3207c069260e26eb/0/0/0 R:e790dabf634f4a6b A:3207c069260e26eb/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-false (flag flipped)","r":"A:d43d397a26ee9424/1/0/1 A:d43d397a26ee9424/0/0/0 A:d43d397a26ee9424/1/0/1 A:d43d397a26ee9424/0/0/0 A:d43d397a26ee9424/1/0/1 A:d43d397a26ee9424/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-false","r":"R:8a8ff96f8061fcdc A:89a6feef9de2e06d/0/0/0 R:8a8ff96f8061fcdc A:89a6feef9de2e06d/0/0/0 R:8a8ff96f8061fcdc A:89a6feef9de2e06d/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-true (flag flipped)","r":"R:8a8ff96f8061fcdc A:ab4f167edc3a0d19/0/0/0 R:8a8ff96f8061fcdc A:ab4f167edc3a0d19/0/0/0 R:8a8ff96f8061fcdc A:ab4f167edc3a0d19/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-true","r":"A:8e41194f1d2555ec/1/0/1 A:8e41194f1d2555ec/0/0/0 A:8e41194f1d2555ec/1/0/1 A:8e41194f1d2555ec/0/0/0 A:8e41194f1d2555ec/1/0/1 A:8e41194f1d2555ec/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-inline-datum (flag flipped)","r":"R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-inline-datum","r":"R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:497928912c48854f/0/0/0 R:8a8ff96f8061fcdc A:497928912c48854f/0/0/0 R:8a8ff96f8061fcdc A:497928912c48854f/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript","r":"A:d02ae3a0c6462513/1/0/1 A:d02ae3a0c6462513/0/0/0 A:d02ae3a0c6462513/1/0/1 A:d02ae3a0c6462513/0/0/0 A:d02ae3a0c6462513/1/0/1 A:d02ae3a0c6462513/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag (flag flipped)","r":"R:77a0b7479fd14241 A:d46d30ffe0d0390b/0/0/0 R:77a0b7479fd14241 A:d46d30ffe0d0390b/0/0/0 R:77a0b7479fd14241 A:d46d30ffe0d0390b/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag","r":"A:0069c5cd96f79421/0/1/1 A:0069c5cd96f79421/0/0/0 A:0069c5cd96f79421/0/1/1 A:0069c5cd96f79421/0/0/0 A:0069c5cd96f79421/0/1/1 A:0069c5cd96f79421/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-byron (flag flipped)","r":"R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-byron","r":"R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-inline-datum (flag flipped)","r":"R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-inline-datum","r":"R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:c12f35f249c90f36/0/0/0 R:8a8ff96f8061fcdc A:c12f35f249c90f36/0/0/0 R:8a8ff96f8061fcdc A:c12f35f249c90f36/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript","r":"A:34a78e202111a717/1/0/1 A:34a78e202111a717/0/0/0 A:34a78e202111a717/1/0/1 A:34a78e202111a717/0/0/0 A:34a78e202111a717/1/0/1 A:34a78e202111a717/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag (flag flipped)","r":"R:21bf45d14f2b3c02 A:3b8fcc275fe9b2b0/0/0/0 R:21bf45d14f2b3c02 A:3b8fcc275fe9b2b0/0/0/0 R:21bf45d14f2b3c02 A:3b8fcc275fe9b2b0/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag","r":"A:a667c4bb77800e11/0/1/1 A:a667c4bb77800e11/0/0/0 A:a667c4bb77800e11/0/1/1 A:a667c4bb77800e11/0/0/0 A:a667c4bb77800e11/0/1/1 A:a667c4bb77800e11/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain (flag flipped)","r":"R:8a8ff96f8061fcdc A:9ccb179c3cd835c1/0/0/0 R:8a8ff96f8061fcdc A:9ccb179c3cd835c1/0/0/0 R:8a8ff96f8061fcdc A:9ccb179c3cd835c1/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain","r":"A:a7056774e5ffe42a/1/0/1 A:a7056774e5ffe42a/0/0/0 A:a7056774e5ffe42a/1/0/1 A:a7056774e5ffe42a/0/0/0 A:a7056774e5ffe42a/1/0/1 A:a7056774e5ffe42a/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-fail-valid-tag (flag flipped)","r":"A:f21c467885f3703e/0/1/1 A:f21c467885f3703e/0/0/0 A:f21c467885f3703e/0/1/1 A:f21c467885f3703e/0/0/0 A:f21c467885f3703e/0/1/1 A:f21c467885f3703e/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-fail-valid-tag","r":"R:47c17a0116f6846f A:a1b96f7563709855/0/0/0 R:47c17a0116f6846f A:a1b96f7563709855/0/0/0 R:47c17a0116f6846f A:a1b96f7563709855/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-invalid-tag (flag flipped)","r":"R:48a320af58289b6c A:182c3336cd6ac8e1/0/0/0 R:48a320af58289b6c A:182c3336cd6ac8e1/0/0/0 R:48a320af58289b6c A:182c3336cd6ac8e1/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-invalid-tag","r":"A:7cf284bea38e6afa/0/1/1 A:7cf284bea38e6afa/0/0/0 A:7cf284bea38e6afa/0/1/1 A:7cf284bea38e6afa/0/0/0 A:7cf284bea38e6afa/0/1/1 A:7cf284bea38e6afa/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-pass-invalid-tag (flag flipped)","r":"A:814ae8e0d7d8c361/1/0/1 A:814ae8e0d7d8c361/0/0/0 A:814ae8e0d7d8c361/1/0/1 A:814ae8e0d7d8c361/0/0/0 A:814ae8e0d7d8c361/1/0/1 A:814ae8e0d7d8c361/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-pass-invalid-tag","r":"R:8a8ff96f8061fcdc A:07af78ba273f5bf8/0/0/0 R:8a8ff96f8061fcdc A:07af78ba273f5bf8/0/0/0 R:8a8ff96f8061fcdc A:07af78ba273f5bf8/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-byron (flag flipped)","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-byron","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-byron-invalid-tag (flag flipped)","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-byron-invalid-tag","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-inline-datum (flag flipped)","r":"R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-inline-datum","r":"R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-inline-datum-invalid-tag (flag flipped)","r":"R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-inline-datum-invalid-tag","r":"R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-plain (flag flipped)","r":"R:8a8ff96f8061fcdc A:2680d4fada507eb8/0/0/0 R:8a8ff96f8061fcdc A:2680d4fada507eb8/0/0/0 R:8a8ff96f8061fcdc A:2680d4fada507eb8/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-plain","r":"A:675bfeee048d482a/1/0/1 A:675bfeee048d482a/0/0/0 A:675bfeee048d482a/1/0/1 A:675bfeee048d482a/0/0/0 A:675bfeee048d482a/1/0/1 A:675bfeee048d482a/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:1dae230cdc4aa77c/0/0/0 R:8a8ff96f8061fcdc A:1dae230cdc4aa77c/0/0/0 R:8a8ff96f8061fcdc A:1dae230cdc4aa77c/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript","r":"A:c80150d3ff44f95d/1/0/1 A:c80150d3ff44f95d/0/0/0 A:c80150d3ff44f95d/1/0/1 A:c80150d3ff44f95d/0/0/0 A:c80150d3ff44f95d/1/0/1 A:c80150d3ff44f95d/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag (flag flipped)","r":"R:59d34b5bb44d7f44 A:dae75e4aa4d12173/0/0/0 R:59d34b5bb44d7f44 A:dae75e4aa4d12173/0/0/0 R:59d34b5bb44d7f44 A:dae75e4aa4d12173/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag","r":"A:69f446c3489b630d/0/1/1 A:69f446c3489b630d/0/0/0 A:69f446c3489b630d/0/1/1 A:69f446c3489b630d/0/0/0 A:69f446c3489b630d/0/1/1 A:69f446c3489b630d/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-fail-then-v1-refinput-inline-invalid-tag (flag flipped)","r":"R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-fail-then-v1-refinput-inline-invalid-tag","r":"R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-output-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:cdf9e73e2d942cf3/0/0/0 R:8a8ff96f8061fcdc A:cdf9e73e2d942cf3/0/0/0 R:8a8ff96f8061fcdc A:cdf9e73e2d942cf3/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-output-refscript","r":"A:18c14d9c12decd42/1/0/1 A:18c14d9c12decd42/0/0/0 A:18c14d9c12decd42/1/0/1 A:18c14d9c12decd42/0/0/0 A:18c14d9c12decd42/1/0/1 A:18c14d9c12decd42/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-byron (flag flipped)","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-byron","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-inline-datum (flag flipped)","r":"R:8a8ff96f8061fcdc A:fc7851712f6f1944/0/0/0 R:8a8ff96f8061fcdc A:fc7851712f6f1944/0/0/0 R:8a8ff96f8061fcdc A:fc7851712f6f1944/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-inline-datum","r":"A:ce6010a8e6ea2643/1/0/1 A:ce6010a8e6ea2643/0/0/0 A:ce6010a8e6ea2643/1/0/1 A:ce6010a8e6ea2643/0/0/0 A:ce6010a8e6ea2643/1/0/1 A:ce6010a8e6ea2643/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-byron (flag flipped)","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-byron","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-inline-datum (flag flipped)","r":"R:8a8ff96f8061fcdc A:521527cd0301c7e6/0/0/0 R:8a8ff96f8061fcdc A:521527cd0301c7e6/0/0/0 R:8a8ff96f8061fcdc A:521527cd0301c7e6/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-inline-datum","r":"A:375880cae08a9cdc/1/0/1 A:375880cae08a9cdc/0/0/0 A:375880cae08a9cdc/1/0/1 A:375880cae08a9cdc/0/0/0 A:375880cae08a9cdc/1/0/1 A:375880cae08a9cdc/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-inline-datum (flag flipped)","r":"R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-inline-datum","r":"R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:81c1e3615accd3f7/0/0/0 R:8a8ff96f8061fcdc A:81c1e3615accd3f7/0/0/0 R:8a8ff96f8061fcdc A:81c1e3615accd3f7/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript","r":"A:7e67ee917cd3484e/1/0/1 A:7e67ee917cd3484e/0/0/0 A:7e67ee917cd3484e/1/0/1 A:7e67ee917cd3484e/0/0/0 A:7e67ee917cd3484e/1/0/1 A:7e67ee917cd3484e/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript-invalid-tag (flag flipped)","r":"R:0d3c9e2cae6b7177 A:83a9470f2f9c9558/0/0/0 R:0d3c9e2cae6b7177 A:83a9470f2f9c9558/0/0/0 R:0d3c9e2cae6b7177 A:83a9470f2f9c9558/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript-invalid-tag","r":"A:ac4b077f75f06ba0/0/1/1 A:ac4b077f75f06ba0/0/0/0 A:ac4b077f75f06ba0/0/1/1 A:ac4b077f75f06ba0/0/0/0 A:ac4b077f75f06ba0/0/1/1 A:ac4b077f75f06ba0/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-byron (flag flipped)","r":"R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-byron","r":"R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-inline-datum (flag flipped)","r":"R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-inline-datum","r":"R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:5d1a7b4467b6a480/0/0/0 R:8a8ff96f8061fcdc A:5d1a7b4467b6a480/0/0/0 R:8a8ff96f8061fcdc A:5d1a7b4467b6a480/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript","r":"A:3e0e9e8c730bdfd8/1/0/1 A:3e0e9e8c730bdfd8/0/0/0 A:3e0e9e8c730bdfd8/1/0/1 A:3e0e9e8c730bdfd8/0/0/0 A:3e0e9e8c730bdfd8/1/0/1 A:3e0e9e8c730bdfd8/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript-invalid-tag (flag flipped)","r":"R:6a2dffda793f0198 A:f96d6b0af3f85230/0/0/0 R:6a2dffda793f0198 A:f96d6b0af3f85230/0/0/0 R:6a2dffda793f0198 A:f96d6b0af3f85230/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript-invalid-tag","r":"A:fb15fe240cda0068/0/1/1 A:fb15fe240cda0068/0/0/0 A:fb15fe240cda0068/0/1/1 A:fb15fe240cda0068/0/0/0 A:fb15fe240cda0068/0/1/1 A:fb15fe240cda0068/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain (flag flipped)","r":"R:8a8ff96f8061fcdc A:db28f784a158492d/0/0/0 R:8a8ff96f8061fcdc A:db28f784a158492d/0/0/0 R:8a8ff96f8061fcdc A:db28f784a158492d/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain","r":"A:23d68f9b62a587c2/1/0/1 A:23d68f9b62a587c2/0/0/0 A:23d68f9b62a587c2/1/0/1 A:23d68f9b62a587c2/0/0/0 A:23d68f9b62a587c2/1/0/1 A:23d68f9b62a587c2/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-fail-valid-tag (flag flipped)","r":"A:0ec4a4c9ccd69233/0/1/1 A:0ec4a4c9ccd69233/0/0/0 A:0ec4a4c9ccd69233/0/1/1 A:0ec4a4c9ccd69233/0/0/0 A:0ec4a4c9ccd69233/0/1/1 A:0ec4a4c9ccd69233/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-fail-valid-tag","r":"R:205b056cf7183565 A:01ba50dc902fb13a/0/0/0 R:205b056cf7183565 A:01ba50dc902fb13a/0/0/0 R:205b056cf7183565 A:01ba50dc902fb13a/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-invalid-tag (flag flipped)","r":"R:dbe5c1b39f9d05ba A:34c9c1f852e5d1b3/0/0/0 R:dbe5c1b39f9d05ba A:34c9c1f852e5d1b3/0/0/0 R:dbe5c1b39f9d05ba A:34c9c1f852e5d1b3/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-invalid-tag","r":"A:627da24346e4033f/0/1/1 A:627da24346e4033f/0/0/0 A:627da24346e4033f/0/1/1 A:627da24346e4033f/0/0/0 A:627da24346e4033f/0/1/1 A:627da24346e4033f/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-pass-invalid-tag (flag flipped)","r":"A:0ceacffcd51bd0d8/1/0/1 A:0ceacffcd51bd0d8/0/0/0 A:0ceacffcd51bd0d8/1/0/1 A:0ceacffcd51bd0d8/0/0/0 A:0ceacffcd51bd0d8/1/0/1 A:0ceacffcd51bd0d8/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-pass-invalid-tag","r":"R:8a8ff96f8061fcdc A:64af556ff732303b/0/0/0 R:8a8ff96f8061fcdc A:64af556ff732303b/0/0/0 R:8a8ff96f8061fcdc A:64af556ff732303b/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-byron (flag flipped)","r":"R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-byron","r":"R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-byron-invalid-tag (flag flipped)","r":"R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-byron-invalid-tag","r":"R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-inline-datum (flag flipped)","r":"R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-inline-datum","r":"R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-inline-datum-invalid-tag (flag flipped)","r":"R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-inline-datum-invalid-tag","r":"R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-plain (flag flipped)","r":"R:8a8ff96f8061fcdc A:3c4c8ff7a2f7760d/0/0/0 R:8a8ff96f8061fcdc A:3c4c8ff7a2f7760d/0/0/0 R:8a8ff96f8061fcdc A:3c4c8ff7a2f7760d/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-plain","r":"A:9c84f8d08e250700/1/0/1 A:9c84f8d08e250700/0/0/0 A:9c84f8d08e250700/1/0/1 A:9c84f8d08e250700/0/0/0 A:9c84f8d08e250700/1/0/1 A:9c84f8d08e250700/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:a52846666668b6c5/0/0/0 R:8a8ff96f8061fcdc A:a52846666668b6c5/0/0/0 R:8a8ff96f8061fcdc A:a52846666668b6c5/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript","r":"A:eadc8158c05c3f27/1/0/1 A:eadc8158c05c3f27/0/0/0 A:eadc8158c05c3f27/1/0/1 A:eadc8158c05c3f27/0/0/0 A:eadc8158c05c3f27/1/0/1 A:eadc8158c05c3f27/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript-invalid-tag (flag flipped)","r":"R:067bede50ded7e04 A:fe4d03b050d741b8/0/0/0 R:067bede50ded7e04 A:fe4d03b050d741b8/0/0/0 R:067bede50ded7e04 A:fe4d03b050d741b8/0/0/0"}
+{"id":"era-utxo/utxo/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript-invalid-tag","r":"A:712d2036a3f2ee3e/0/1/1 A:712d2036a3f2ee3e/0/0/0 A:712d2036a3f2ee3e/0/1/1 A:712d2036a3f2ee3e/0/0/0 A:712d2036a3f2ee3e/0/1/1 A:712d2036a3f2ee3e/0/0/0"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript (no integrity hash)","r":"R:7fabbb2a4281dbee"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag (no integrity hash)","r":"R:7fabbb2a4281dbee"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript (no integrity hash)","r":"R:7fabbb2a4281dbee"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag (no integrity hash)","r":"R:7fabbb2a4281dbee"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain (no integrity hash)","r":"R:7fabbb2a4281dbee"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-invalid-tag (no integrity hash)","r":"R:7fabbb2a4281dbee"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-plain (no integrity hash)","r":"R:7fabbb2a4281dbee"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript (no integrity hash)","r":"R:7fabbb2a4281dbee"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag (no integrity hash)","r":"R:7fabbb2a4281dbee"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-output-refscript (no integrity hash)","r":"R:10b91ee155febdf4"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-inline-datum (no integrity hash)","r":"R:10b91ee155febdf4"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-inline-datum (no integrity hash)","r":"R:b62226a4a8756a23"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-false (no integrity hash)","r":"R:4bdd75b483ee8eb2"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-true (no integrity hash)","r":"R:4bdd75b483ee8eb2"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript (no integrity hash)","r":"R:4992b8fc55eef1a1"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag (no integrity hash)","r":"R:4992b8fc55eef1a1"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript (no integrity hash)","r":"R:4992b8fc55eef1a1"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag (no integrity hash)","r":"R:4992b8fc55eef1a1"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain (no integrity hash)","r":"R:4992b8fc55eef1a1"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-invalid-tag (no integrity hash)","r":"R:4992b8fc55eef1a1"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-plain (no integrity hash)","r":"R:4992b8fc55eef1a1"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript (no integrity hash)","r":"R:4992b8fc55eef1a1"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag (no integrity hash)","r":"R:4992b8fc55eef1a1"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-output-refscript (no integrity hash)","r":"R:8e56ca33c37aa41d"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-inline-datum (no integrity hash)","r":"R:8e56ca33c37aa41d"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-inline-datum (no integrity hash)","r":"R:11a47ec7875541cd"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript (no integrity hash)","r":"R:e2841ed5072e66d7"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript-invalid-tag (no integrity hash)","r":"R:e2841ed5072e66d7"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript (no integrity hash)","r":"R:e2841ed5072e66d7"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript-invalid-tag (no integrity hash)","r":"R:e2841ed5072e66d7"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain (no integrity hash)","r":"R:e2841ed5072e66d7"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-invalid-tag (no integrity hash)","r":"R:e2841ed5072e66d7"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-plain (no integrity hash)","r":"R:e2841ed5072e66d7"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript (no integrity hash)","r":"R:e2841ed5072e66d7"}
+{"id":"era-utxo/utxow-no-integrity/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript-invalid-tag (no integrity hash)","r":"R:e2841ed5072e66d7"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-inline-datum (flag flipped)","r":"R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-inline-datum","r":"R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6 R:9b951ad98687b5a6"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:910704562c4d93b0/0/0/0 R:8a8ff96f8061fcdc A:910704562c4d93b0/0/0/0 R:8a8ff96f8061fcdc A:910704562c4d93b0/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript","r":"A:e5f82e5b0d774bc4/1/0/1 A:e5f82e5b0d774bc4/0/0/0 A:e5f82e5b0d774bc4/1/0/1 A:e5f82e5b0d774bc4/0/0/0 A:e5f82e5b0d774bc4/1/0/1 A:e5f82e5b0d774bc4/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag (flag flipped)","r":"R:238bbd1fae3f665e A:37ddf97c9a18ddfd/0/0/0 R:238bbd1fae3f665e A:37ddf97c9a18ddfd/0/0/0 R:238bbd1fae3f665e A:37ddf97c9a18ddfd/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag","r":"A:aad566270698fd51/0/1/1 A:aad566270698fd51/0/0/0 A:aad566270698fd51/0/1/1 A:aad566270698fd51/0/0/0 A:aad566270698fd51/0/1/1 A:aad566270698fd51/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-byron (flag flipped)","r":"R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-byron","r":"R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-inline-datum (flag flipped)","r":"R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-inline-datum","r":"R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:ed34d4ada3a1e951/0/0/0 R:8a8ff96f8061fcdc A:ed34d4ada3a1e951/0/0/0 R:8a8ff96f8061fcdc A:ed34d4ada3a1e951/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript","r":"A:f1e66f31a6b06070/1/0/1 A:f1e66f31a6b06070/0/0/0 A:f1e66f31a6b06070/1/0/1 A:f1e66f31a6b06070/0/0/0 A:f1e66f31a6b06070/1/0/1 A:f1e66f31a6b06070/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag (flag flipped)","r":"R:cba17d76f5b8421d A:da70796a8c96e3f6/0/0/0 R:cba17d76f5b8421d A:da70796a8c96e3f6/0/0/0 R:cba17d76f5b8421d A:da70796a8c96e3f6/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag","r":"A:86045e7090f1d248/0/1/1 A:86045e7090f1d248/0/0/0 A:86045e7090f1d248/0/1/1 A:86045e7090f1d248/0/0/0 A:86045e7090f1d248/0/1/1 A:86045e7090f1d248/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain (flag flipped)","r":"R:8a8ff96f8061fcdc A:38c6369c0d559d7f/0/0/0 R:8a8ff96f8061fcdc A:38c6369c0d559d7f/0/0/0 R:8a8ff96f8061fcdc A:38c6369c0d559d7f/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain","r":"A:22dab45c6b46765c/1/0/1 A:22dab45c6b46765c/0/0/0 A:22dab45c6b46765c/1/0/1 A:22dab45c6b46765c/0/0/0 A:22dab45c6b46765c/1/0/1 A:22dab45c6b46765c/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-fail-valid-tag (flag flipped)","r":"A:47dfa57401fd2b43/0/1/1 A:47dfa57401fd2b43/0/0/0 A:47dfa57401fd2b43/0/1/1 A:47dfa57401fd2b43/0/0/0 A:47dfa57401fd2b43/0/1/1 A:47dfa57401fd2b43/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-fail-valid-tag","r":"R:64b5315120c2cf25 A:002f2d70d92a9589/0/0/0 R:64b5315120c2cf25 A:002f2d70d92a9589/0/0/0 R:64b5315120c2cf25 A:002f2d70d92a9589/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-invalid-tag (flag flipped)","r":"R:dd5423fe71d8d8fd A:7d3a862cc99df14a/0/0/0 R:dd5423fe71d8d8fd A:7d3a862cc99df14a/0/0/0 R:dd5423fe71d8d8fd A:7d3a862cc99df14a/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-invalid-tag","r":"A:3328d6f70edc4f83/0/1/1 A:3328d6f70edc4f83/0/0/0 A:3328d6f70edc4f83/0/1/1 A:3328d6f70edc4f83/0/0/0 A:3328d6f70edc4f83/0/1/1 A:3328d6f70edc4f83/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-pass-invalid-tag (flag flipped)","r":"A:5d34c6c793da48c6/1/0/1 A:5d34c6c793da48c6/0/0/0 A:5d34c6c793da48c6/1/0/1 A:5d34c6c793da48c6/0/0/0 A:5d34c6c793da48c6/1/0/1 A:5d34c6c793da48c6/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-plain-pass-invalid-tag","r":"R:8a8ff96f8061fcdc A:0bcefa0718df656b/0/0/0 R:8a8ff96f8061fcdc A:0bcefa0718df656b/0/0/0 R:8a8ff96f8061fcdc A:0bcefa0718df656b/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-byron (flag flipped)","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-byron","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-byron-invalid-tag (flag flipped)","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-byron-invalid-tag","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-inline-datum (flag flipped)","r":"R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-inline-datum","r":"R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-inline-datum-invalid-tag (flag flipped)","r":"R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-inline-datum-invalid-tag","r":"R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-plain (flag flipped)","r":"R:8a8ff96f8061fcdc A:6e39bd86836f7609/0/0/0 R:8a8ff96f8061fcdc A:6e39bd86836f7609/0/0/0 R:8a8ff96f8061fcdc A:6e39bd86836f7609/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-plain","r":"A:e0bed8be0e7e0727/1/0/1 A:e0bed8be0e7e0727/0/0/0 A:e0bed8be0e7e0727/1/0/1 A:e0bed8be0e7e0727/0/0/0 A:e0bed8be0e7e0727/1/0/1 A:e0bed8be0e7e0727/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:495bb362d4e82bc9/0/0/0 R:8a8ff96f8061fcdc A:495bb362d4e82bc9/0/0/0 R:8a8ff96f8061fcdc A:495bb362d4e82bc9/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript","r":"A:b3f239e072e5e416/1/0/1 A:b3f239e072e5e416/0/0/0 A:b3f239e072e5e416/1/0/1 A:b3f239e072e5e416/0/0/0 A:b3f239e072e5e416/1/0/1 A:b3f239e072e5e416/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag (flag flipped)","r":"R:0fc8764405ad326f A:392e033d6f568718/0/0/0 R:0fc8764405ad326f A:392e033d6f568718/0/0/0 R:0fc8764405ad326f A:392e033d6f568718/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag","r":"A:87ac9b200a1dd870/0/1/1 A:87ac9b200a1dd870/0/0/0 A:87ac9b200a1dd870/0/1/1 A:87ac9b200a1dd870/0/0/0 A:87ac9b200a1dd870/0/1/1 A:87ac9b200a1dd870/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-fail-then-v1-refinput-inline-invalid-tag (flag flipped)","r":"R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-fail-then-v1-refinput-inline-invalid-tag","r":"R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d R:4910845d2ecbe22d"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-output-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:64473d0ca9fd538d/0/0/0 R:8a8ff96f8061fcdc A:64473d0ca9fd538d/0/0/0 R:8a8ff96f8061fcdc A:64473d0ca9fd538d/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-output-refscript","r":"A:456307853be5a6aa/1/0/1 A:456307853be5a6aa/0/0/0 A:456307853be5a6aa/1/0/1 A:456307853be5a6aa/0/0/0 A:456307853be5a6aa/1/0/1 A:456307853be5a6aa/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-byron (flag flipped)","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-byron","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-inline-datum (flag flipped)","r":"R:8a8ff96f8061fcdc A:fbec154eeb90df32/0/0/0 R:8a8ff96f8061fcdc A:fbec154eeb90df32/0/0/0 R:8a8ff96f8061fcdc A:fbec154eeb90df32/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v2-refinput-inline-datum","r":"A:31e34d3e4a2ef746/1/0/1 A:31e34d3e4a2ef746/0/0/0 A:31e34d3e4a2ef746/1/0/1 A:31e34d3e4a2ef746/0/0/0 A:31e34d3e4a2ef746/1/0/1 A:31e34d3e4a2ef746/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-byron (flag flipped)","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-byron","r":"R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3 R:a7b575937ee20fb3"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-inline-datum (flag flipped)","r":"R:8a8ff96f8061fcdc A:cebc73b8b69942d8/0/0/0 R:8a8ff96f8061fcdc A:cebc73b8b69942d8/0/0/0 R:8a8ff96f8061fcdc A:cebc73b8b69942d8/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/context-errors/submissions/conway-pv10.json/conway-pv10-v3-refinput-inline-datum","r":"A:9806ce5eb8c19b5e/1/0/1 A:9806ce5eb8c19b5e/0/0/0 A:9806ce5eb8c19b5e/1/0/1 A:9806ce5eb8c19b5e/0/0/0 A:9806ce5eb8c19b5e/1/0/1 A:9806ce5eb8c19b5e/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-false (flag flipped)","r":"R:022e70873c68bd4c A:ab76b2b2a0d33606/0/0/0 R:022e70873c68bd4c A:ab76b2b2a0d33606/0/0/0 R:022e70873c68bd4c A:ab76b2b2a0d33606/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-false","r":"A:17626afaa31b9c38/0/1/1 A:17626afaa31b9c38/0/0/0 A:17626afaa31b9c38/0/1/1 A:17626afaa31b9c38/0/0/0 A:17626afaa31b9c38/0/1/1 A:17626afaa31b9c38/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-true (flag flipped)","r":"A:3ed73e45fc73dbd2/0/1/1 A:3ed73e45fc73dbd2/0/0/0 A:3ed73e45fc73dbd2/0/1/1 A:3ed73e45fc73dbd2/0/0/0 A:3ed73e45fc73dbd2/0/1/1 A:3ed73e45fc73dbd2/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-fail-valid-true","r":"R:e790dabf634f4a6b A:3207c069260e26eb/0/0/0 R:e790dabf634f4a6b A:3207c069260e26eb/0/0/0 R:e790dabf634f4a6b A:3207c069260e26eb/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-false (flag flipped)","r":"A:d43d397a26ee9424/1/0/1 A:d43d397a26ee9424/0/0/0 A:d43d397a26ee9424/1/0/1 A:d43d397a26ee9424/0/0/0 A:d43d397a26ee9424/1/0/1 A:d43d397a26ee9424/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-false","r":"R:8a8ff96f8061fcdc A:89a6feef9de2e06d/0/0/0 R:8a8ff96f8061fcdc A:89a6feef9de2e06d/0/0/0 R:8a8ff96f8061fcdc A:89a6feef9de2e06d/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-true (flag flipped)","r":"R:8a8ff96f8061fcdc A:ab4f167edc3a0d19/0/0/0 R:8a8ff96f8061fcdc A:ab4f167edc3a0d19/0/0/0 R:8a8ff96f8061fcdc A:ab4f167edc3a0d19/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/plutus-boundaries/transactions/conway-pv10.json/raw-dst-pass-valid-true","r":"A:8e41194f1d2555ec/1/0/1 A:8e41194f1d2555ec/0/0/0 A:8e41194f1d2555ec/1/0/1 A:8e41194f1d2555ec/0/0/0 A:8e41194f1d2555ec/1/0/1 A:8e41194f1d2555ec/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-inline-datum (flag flipped)","r":"R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-inline-datum","r":"R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226 R:d6604f7b467b2226"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:497928912c48854f/0/0/0 R:8a8ff96f8061fcdc A:497928912c48854f/0/0/0 R:8a8ff96f8061fcdc A:497928912c48854f/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript","r":"A:d02ae3a0c6462513/1/0/1 A:d02ae3a0c6462513/0/0/0 A:d02ae3a0c6462513/1/0/1 A:d02ae3a0c6462513/0/0/0 A:d02ae3a0c6462513/1/0/1 A:d02ae3a0c6462513/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag (flag flipped)","r":"R:77a0b7479fd14241 A:d46d30ffe0d0390b/0/0/0 R:77a0b7479fd14241 A:d46d30ffe0d0390b/0/0/0 R:77a0b7479fd14241 A:d46d30ffe0d0390b/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-input-refscript-invalid-tag","r":"A:0069c5cd96f79421/0/1/1 A:0069c5cd96f79421/0/0/0 A:0069c5cd96f79421/0/1/1 A:0069c5cd96f79421/0/0/0 A:0069c5cd96f79421/0/1/1 A:0069c5cd96f79421/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-byron (flag flipped)","r":"R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-byron","r":"R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-inline-datum (flag flipped)","r":"R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-inline-datum","r":"R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:c12f35f249c90f36/0/0/0 R:8a8ff96f8061fcdc A:c12f35f249c90f36/0/0/0 R:8a8ff96f8061fcdc A:c12f35f249c90f36/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript","r":"A:34a78e202111a717/1/0/1 A:34a78e202111a717/0/0/0 A:34a78e202111a717/1/0/1 A:34a78e202111a717/0/0/0 A:34a78e202111a717/1/0/1 A:34a78e202111a717/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag (flag flipped)","r":"R:21bf45d14f2b3c02 A:3b8fcc275fe9b2b0/0/0/0 R:21bf45d14f2b3c02 A:3b8fcc275fe9b2b0/0/0/0 R:21bf45d14f2b3c02 A:3b8fcc275fe9b2b0/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-output-refscript-invalid-tag","r":"A:a667c4bb77800e11/0/1/1 A:a667c4bb77800e11/0/0/0 A:a667c4bb77800e11/0/1/1 A:a667c4bb77800e11/0/0/0 A:a667c4bb77800e11/0/1/1 A:a667c4bb77800e11/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain (flag flipped)","r":"R:8a8ff96f8061fcdc A:9ccb179c3cd835c1/0/0/0 R:8a8ff96f8061fcdc A:9ccb179c3cd835c1/0/0/0 R:8a8ff96f8061fcdc A:9ccb179c3cd835c1/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain","r":"A:a7056774e5ffe42a/1/0/1 A:a7056774e5ffe42a/0/0/0 A:a7056774e5ffe42a/1/0/1 A:a7056774e5ffe42a/0/0/0 A:a7056774e5ffe42a/1/0/1 A:a7056774e5ffe42a/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-fail-valid-tag (flag flipped)","r":"A:f21c467885f3703e/0/1/1 A:f21c467885f3703e/0/0/0 A:f21c467885f3703e/0/1/1 A:f21c467885f3703e/0/0/0 A:f21c467885f3703e/0/1/1 A:f21c467885f3703e/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-fail-valid-tag","r":"R:47c17a0116f6846f A:a1b96f7563709855/0/0/0 R:47c17a0116f6846f A:a1b96f7563709855/0/0/0 R:47c17a0116f6846f A:a1b96f7563709855/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-invalid-tag (flag flipped)","r":"R:48a320af58289b6c A:182c3336cd6ac8e1/0/0/0 R:48a320af58289b6c A:182c3336cd6ac8e1/0/0/0 R:48a320af58289b6c A:182c3336cd6ac8e1/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-invalid-tag","r":"A:7cf284bea38e6afa/0/1/1 A:7cf284bea38e6afa/0/0/0 A:7cf284bea38e6afa/0/1/1 A:7cf284bea38e6afa/0/0/0 A:7cf284bea38e6afa/0/1/1 A:7cf284bea38e6afa/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-pass-invalid-tag (flag flipped)","r":"A:814ae8e0d7d8c361/1/0/1 A:814ae8e0d7d8c361/0/0/0 A:814ae8e0d7d8c361/1/0/1 A:814ae8e0d7d8c361/0/0/0 A:814ae8e0d7d8c361/1/0/1 A:814ae8e0d7d8c361/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-plain-pass-invalid-tag","r":"R:8a8ff96f8061fcdc A:07af78ba273f5bf8/0/0/0 R:8a8ff96f8061fcdc A:07af78ba273f5bf8/0/0/0 R:8a8ff96f8061fcdc A:07af78ba273f5bf8/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-byron (flag flipped)","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-byron","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-byron-invalid-tag (flag flipped)","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-byron-invalid-tag","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-inline-datum (flag flipped)","r":"R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-inline-datum","r":"R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-inline-datum-invalid-tag (flag flipped)","r":"R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-inline-datum-invalid-tag","r":"R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-plain (flag flipped)","r":"R:8a8ff96f8061fcdc A:2680d4fada507eb8/0/0/0 R:8a8ff96f8061fcdc A:2680d4fada507eb8/0/0/0 R:8a8ff96f8061fcdc A:2680d4fada507eb8/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-plain","r":"A:675bfeee048d482a/1/0/1 A:675bfeee048d482a/0/0/0 A:675bfeee048d482a/1/0/1 A:675bfeee048d482a/0/0/0 A:675bfeee048d482a/1/0/1 A:675bfeee048d482a/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:1dae230cdc4aa77c/0/0/0 R:8a8ff96f8061fcdc A:1dae230cdc4aa77c/0/0/0 R:8a8ff96f8061fcdc A:1dae230cdc4aa77c/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript","r":"A:c80150d3ff44f95d/1/0/1 A:c80150d3ff44f95d/0/0/0 A:c80150d3ff44f95d/1/0/1 A:c80150d3ff44f95d/0/0/0 A:c80150d3ff44f95d/1/0/1 A:c80150d3ff44f95d/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag (flag flipped)","r":"R:59d34b5bb44d7f44 A:dae75e4aa4d12173/0/0/0 R:59d34b5bb44d7f44 A:dae75e4aa4d12173/0/0/0 R:59d34b5bb44d7f44 A:dae75e4aa4d12173/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v1-refinput-refscript-invalid-tag","r":"A:69f446c3489b630d/0/1/1 A:69f446c3489b630d/0/0/0 A:69f446c3489b630d/0/1/1 A:69f446c3489b630d/0/0/0 A:69f446c3489b630d/0/1/1 A:69f446c3489b630d/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-fail-then-v1-refinput-inline-invalid-tag (flag flipped)","r":"R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-fail-then-v1-refinput-inline-invalid-tag","r":"R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d R:d0c39649c15bae7d"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-output-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:cdf9e73e2d942cf3/0/0/0 R:8a8ff96f8061fcdc A:cdf9e73e2d942cf3/0/0/0 R:8a8ff96f8061fcdc A:cdf9e73e2d942cf3/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-output-refscript","r":"A:18c14d9c12decd42/1/0/1 A:18c14d9c12decd42/0/0/0 A:18c14d9c12decd42/1/0/1 A:18c14d9c12decd42/0/0/0 A:18c14d9c12decd42/1/0/1 A:18c14d9c12decd42/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-byron (flag flipped)","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-byron","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-inline-datum (flag flipped)","r":"R:8a8ff96f8061fcdc A:fc7851712f6f1944/0/0/0 R:8a8ff96f8061fcdc A:fc7851712f6f1944/0/0/0 R:8a8ff96f8061fcdc A:fc7851712f6f1944/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v2-refinput-inline-datum","r":"A:ce6010a8e6ea2643/1/0/1 A:ce6010a8e6ea2643/0/0/0 A:ce6010a8e6ea2643/1/0/1 A:ce6010a8e6ea2643/0/0/0 A:ce6010a8e6ea2643/1/0/1 A:ce6010a8e6ea2643/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-byron (flag flipped)","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-byron","r":"R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489 R:50177af28c4ac489"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-inline-datum (flag flipped)","r":"R:8a8ff96f8061fcdc A:521527cd0301c7e6/0/0/0 R:8a8ff96f8061fcdc A:521527cd0301c7e6/0/0/0 R:8a8ff96f8061fcdc A:521527cd0301c7e6/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv10.json/conway-pv10-v3-refinput-inline-datum","r":"A:375880cae08a9cdc/1/0/1 A:375880cae08a9cdc/0/0/0 A:375880cae08a9cdc/1/0/1 A:375880cae08a9cdc/0/0/0 A:375880cae08a9cdc/1/0/1 A:375880cae08a9cdc/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-inline-datum (flag flipped)","r":"R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-inline-datum","r":"R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575 R:caf3bb9ad8053575"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:81c1e3615accd3f7/0/0/0 R:8a8ff96f8061fcdc A:81c1e3615accd3f7/0/0/0 R:8a8ff96f8061fcdc A:81c1e3615accd3f7/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript","r":"A:7e67ee917cd3484e/1/0/1 A:7e67ee917cd3484e/0/0/0 A:7e67ee917cd3484e/1/0/1 A:7e67ee917cd3484e/0/0/0 A:7e67ee917cd3484e/1/0/1 A:7e67ee917cd3484e/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript-invalid-tag (flag flipped)","r":"R:0d3c9e2cae6b7177 A:83a9470f2f9c9558/0/0/0 R:0d3c9e2cae6b7177 A:83a9470f2f9c9558/0/0/0 R:0d3c9e2cae6b7177 A:83a9470f2f9c9558/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-input-refscript-invalid-tag","r":"A:ac4b077f75f06ba0/0/1/1 A:ac4b077f75f06ba0/0/0/0 A:ac4b077f75f06ba0/0/1/1 A:ac4b077f75f06ba0/0/0/0 A:ac4b077f75f06ba0/0/1/1 A:ac4b077f75f06ba0/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-byron (flag flipped)","r":"R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-byron","r":"R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3 R:0c64e465d54bf1c3"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-inline-datum (flag flipped)","r":"R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-inline-datum","r":"R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc R:81ab5ed266046adc"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:5d1a7b4467b6a480/0/0/0 R:8a8ff96f8061fcdc A:5d1a7b4467b6a480/0/0/0 R:8a8ff96f8061fcdc A:5d1a7b4467b6a480/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript","r":"A:3e0e9e8c730bdfd8/1/0/1 A:3e0e9e8c730bdfd8/0/0/0 A:3e0e9e8c730bdfd8/1/0/1 A:3e0e9e8c730bdfd8/0/0/0 A:3e0e9e8c730bdfd8/1/0/1 A:3e0e9e8c730bdfd8/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript-invalid-tag (flag flipped)","r":"R:6a2dffda793f0198 A:f96d6b0af3f85230/0/0/0 R:6a2dffda793f0198 A:f96d6b0af3f85230/0/0/0 R:6a2dffda793f0198 A:f96d6b0af3f85230/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-output-refscript-invalid-tag","r":"A:fb15fe240cda0068/0/1/1 A:fb15fe240cda0068/0/0/0 A:fb15fe240cda0068/0/1/1 A:fb15fe240cda0068/0/0/0 A:fb15fe240cda0068/0/1/1 A:fb15fe240cda0068/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain (flag flipped)","r":"R:8a8ff96f8061fcdc A:db28f784a158492d/0/0/0 R:8a8ff96f8061fcdc A:db28f784a158492d/0/0/0 R:8a8ff96f8061fcdc A:db28f784a158492d/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain","r":"A:23d68f9b62a587c2/1/0/1 A:23d68f9b62a587c2/0/0/0 A:23d68f9b62a587c2/1/0/1 A:23d68f9b62a587c2/0/0/0 A:23d68f9b62a587c2/1/0/1 A:23d68f9b62a587c2/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-fail-valid-tag (flag flipped)","r":"A:0ec4a4c9ccd69233/0/1/1 A:0ec4a4c9ccd69233/0/0/0 A:0ec4a4c9ccd69233/0/1/1 A:0ec4a4c9ccd69233/0/0/0 A:0ec4a4c9ccd69233/0/1/1 A:0ec4a4c9ccd69233/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-fail-valid-tag","r":"R:205b056cf7183565 A:01ba50dc902fb13a/0/0/0 R:205b056cf7183565 A:01ba50dc902fb13a/0/0/0 R:205b056cf7183565 A:01ba50dc902fb13a/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-invalid-tag (flag flipped)","r":"R:dbe5c1b39f9d05ba A:34c9c1f852e5d1b3/0/0/0 R:dbe5c1b39f9d05ba A:34c9c1f852e5d1b3/0/0/0 R:dbe5c1b39f9d05ba A:34c9c1f852e5d1b3/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-invalid-tag","r":"A:627da24346e4033f/0/1/1 A:627da24346e4033f/0/0/0 A:627da24346e4033f/0/1/1 A:627da24346e4033f/0/0/0 A:627da24346e4033f/0/1/1 A:627da24346e4033f/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-pass-invalid-tag (flag flipped)","r":"A:0ceacffcd51bd0d8/1/0/1 A:0ceacffcd51bd0d8/0/0/0 A:0ceacffcd51bd0d8/1/0/1 A:0ceacffcd51bd0d8/0/0/0 A:0ceacffcd51bd0d8/1/0/1 A:0ceacffcd51bd0d8/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-plain-pass-invalid-tag","r":"R:8a8ff96f8061fcdc A:64af556ff732303b/0/0/0 R:8a8ff96f8061fcdc A:64af556ff732303b/0/0/0 R:8a8ff96f8061fcdc A:64af556ff732303b/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-byron (flag flipped)","r":"R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-byron","r":"R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-byron-invalid-tag (flag flipped)","r":"R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-byron-invalid-tag","r":"R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e R:a7a3adfdd790523e"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-inline-datum (flag flipped)","r":"R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-inline-datum","r":"R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-inline-datum-invalid-tag (flag flipped)","r":"R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-inline-datum-invalid-tag","r":"R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d R:72ee383ddf39432d"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-plain (flag flipped)","r":"R:8a8ff96f8061fcdc A:3c4c8ff7a2f7760d/0/0/0 R:8a8ff96f8061fcdc A:3c4c8ff7a2f7760d/0/0/0 R:8a8ff96f8061fcdc A:3c4c8ff7a2f7760d/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-plain","r":"A:9c84f8d08e250700/1/0/1 A:9c84f8d08e250700/0/0/0 A:9c84f8d08e250700/1/0/1 A:9c84f8d08e250700/0/0/0 A:9c84f8d08e250700/1/0/1 A:9c84f8d08e250700/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript (flag flipped)","r":"R:8a8ff96f8061fcdc A:a52846666668b6c5/0/0/0 R:8a8ff96f8061fcdc A:a52846666668b6c5/0/0/0 R:8a8ff96f8061fcdc A:a52846666668b6c5/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript","r":"A:eadc8158c05c3f27/1/0/1 A:eadc8158c05c3f27/0/0/0 A:eadc8158c05c3f27/1/0/1 A:eadc8158c05c3f27/0/0/0 A:eadc8158c05c3f27/1/0/1 A:eadc8158c05c3f27/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript-invalid-tag (flag flipped)","r":"R:067bede50ded7e04 A:fe4d03b050d741b8/0/0/0 R:067bede50ded7e04 A:fe4d03b050d741b8/0/0/0 R:067bede50ded7e04 A:fe4d03b050d741b8/0/0/0"}
+{"id":"era-utxo/utxow/fixtures/reference/v1-context/conway-pv9.json/conway-pv9-v1-refinput-refscript-invalid-tag","r":"A:712d2036a3f2ee3e/0/1/1 A:712d2036a3f2ee3e/0/0/0 A:712d2036a3f2ee3e/0/1/1 A:712d2036a3f2ee3e/0/0/0 A:712d2036a3f2ee3e/0/1/1 A:712d2036a3f2ee3e/0/0/0"}
+{"id":"utxo-checks/assembled/conway-bootstrap-attributes-leios-b004fe0c/utxo-bootstrap-attributes-too-big","r":"R:78610210a5e23865 - R:38379da30574c8ec - R:38379da30574c8ec -"}
+{"id":"utxo-checks/assembled/conway-bootstrap-attributes/utxo-bootstrap-attributes-too-big","r":"R:78610210a5e23865 - R:38379da30574c8ec - R:38379da30574c8ec -"}
+{"id":"utxo-checks/assembled/conway-deleg-collateral/deleg-reg-deposit-wrong","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-deleg-collateral/deleg-unreg-refund-wrong","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-deleg-collateral/deleg-unreg-reward-balance","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-deleg-collateral/deleg-vote-unregistered-drep","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-deleg-collateral/govcert-drep-unreg-refund-wrong","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-deleg-collateral/utxo-collateral-non-ada","r":"R:b23098b62b3539d5 R:b23098b62b3539d5 R:b23098b62b3539d5 R:b23098b62b3539d5 R:b23098b62b3539d5 R:b23098b62b3539d5"}
+{"id":"utxo-checks/assembled/conway-deleg-collateral/utxo-collateral-script-locked","r":"R:ab9e01769aaef91e R:ab9e01769aaef91e R:ab9e01769aaef91e R:ab9e01769aaef91e R:ab9e01769aaef91e R:ab9e01769aaef91e"}
+{"id":"utxo-checks/assembled/conway-devnet/all-inputs-spent","r":"R:05b741e0c2f6c181 R:05b741e0c2f6c181 R:05b741e0c2f6c181 R:05b741e0c2f6c181 R:05b741e0c2f6c181 R:05b741e0c2f6c181"}
+{"id":"utxo-checks/assembled/conway-devnet/certs-gov-utxow","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/certs-two-failing","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/deleg-unregistered-to-unknown-pool","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/delegate-to-unknown-pool","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/drep-not-registered","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/drep-update-not-registered","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/expired","r":"R:bf10f2274cdca1ac R:bf10f2274cdca1ac R:bf10f2274cdca1ac R:bf10f2274cdca1ac R:bf10f2274cdca1ac R:bf10f2274cdca1ac"}
+{"id":"utxo-checks/assembled/conway-devnet/fee-too-small","r":"R:d76139624e4eed8a R:d76139624e4eed8a R:d76139624e4eed8a R:d76139624e4eed8a R:d76139624e4eed8a R:d76139624e4eed8a"}
+{"id":"utxo-checks/assembled/conway-devnet/gov-proposal-return-account-network","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/gov-proposal-wrong-deposit","r":"R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be"}
+{"id":"utxo-checks/assembled/conway-devnet/gov-treasury-withdrawal-zero","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/gov-unknown-voter-unknown-action","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/govcert-committee-unknown","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/govcert-drep-registered-wrong-deposit","r":"R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be"}
+{"id":"utxo-checks/assembled/conway-devnet/ledger-treasury-and-fee","r":"R:492ecf8f22319cf3 R:492ecf8f22319cf3 R:492ecf8f22319cf3 R:492ecf8f22319cf3 R:492ecf8f22319cf3 R:492ecf8f22319cf3"}
+{"id":"utxo-checks/assembled/conway-devnet/missing-witness","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/not-yet-valid","r":"R:f686c0761e0c4924 R:f686c0761e0c4924 R:f686c0761e0c4924 R:f686c0761e0c4924 R:f686c0761e0c4924 R:f686c0761e0c4924"}
+{"id":"utxo-checks/assembled/conway-devnet/output-too-small","r":"R:2ecc8b68716df46b R:2ecc8b68716df46b R:2ecc8b68716df46b R:2ecc8b68716df46b R:2ecc8b68716df46b R:2ecc8b68716df46b"}
+{"id":"utxo-checks/assembled/conway-devnet/pool-retire-unregistered","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/pool-retirement-wrong-epoch","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/proposal-return-account-unknown","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/script-integrity-hash-mismatch","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/stake-key-not-registered","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/stake-key-registered","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/supplemental-datum","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/treasury-mismatch","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/tx-too-large","r":"R:8689a1747604ab28 - R:8689a1747604ab28 - R:8689a1747604ab28 -"}
+{"id":"utxo-checks/assembled/conway-devnet/tx-too-large-spent-inputs","r":"R:4abfe493994ff348 R:05b741e0c2f6c181 R:4abfe493994ff348 R:05b741e0c2f6c181 R:4abfe493994ff348 R:05b741e0c2f6c181"}
+{"id":"utxo-checks/assembled/conway-devnet/utxo-bad-input-missing-witness","r":"R:6ed1ec99de6a30d8 R:6ed1ec99de6a30d8 R:6ed1ec99de6a30d8 R:6ed1ec99de6a30d8 R:6ed1ec99de6a30d8 R:6ed1ec99de6a30d8"}
+{"id":"utxo-checks/assembled/conway-devnet/utxo-fee-interval-balance","r":"R:5a4fc1dbb305c105 R:5a4fc1dbb305c105 R:5a4fc1dbb305c105 R:5a4fc1dbb305c105 R:5a4fc1dbb305c105 R:5a4fc1dbb305c105"}
+{"id":"utxo-checks/assembled/conway-devnet/utxo-mint-no-collateral","r":"R:3cf214ea11261398 R:3cf214ea11261398 R:3cf214ea11261398 R:3cf214ea11261398 R:3cf214ea11261398 R:3cf214ea11261398"}
+{"id":"utxo-checks/assembled/conway-devnet/utxo-mint-units-too-big","r":"R:af75dd7425b098e4 R:af75dd7425b098e4 R:af75dd7425b098e4 R:af75dd7425b098e4 R:af75dd7425b098e4 R:af75dd7425b098e4"}
+{"id":"utxo-checks/assembled/conway-devnet/utxo-small-and-wrong-network-outputs","r":"R:005cb310ad63efe5 R:2ecc8b68716df46b R:005cb310ad63efe5 R:2ecc8b68716df46b R:005cb310ad63efe5 R:2ecc8b68716df46b"}
+{"id":"utxo-checks/assembled/conway-devnet/utxos-script-fails-flag-true","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/utxos-script-passes-flag-false","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/utxow-malformed-witness-and-reference-script","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/utxow-spend-redeemer-without-datum-wrong-hash","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/utxow-spend-without-datum-or-redeemer","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/utxow-spend-without-script-with-extra-datum","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/value-not-conserved","r":"R:45e9143c40db7ec4 R:45e9143c40db7ec4 R:45e9143c40db7ec4 R:45e9143c40db7ec4 R:45e9143c40db7ec4 R:45e9143c40db7ec4"}
+{"id":"utxo-checks/assembled/conway-devnet/vote-on-unknown-action","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/withdrawal-more-than-balance","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/withdrawal-network-flag-false","r":"R:0156c5a1aa9e57e4 - R:0156c5a1aa9e57e4 - R:0156c5a1aa9e57e4 -"}
+{"id":"utxo-checks/assembled/conway-devnet/withdrawal-network-flag-true","r":"R:0156c5a1aa9e57e4 - R:0156c5a1aa9e57e4 - R:0156c5a1aa9e57e4 -"}
+{"id":"utxo-checks/assembled/conway-devnet/withdrawal-unregistered-account","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-devnet/wrong-network-output","r":"R:f372b37f5f5422bc - R:f372b37f5f5422bc - R:f372b37f5f5422bc -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-committee-update-conflicting","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-committee-update-expired-member","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-parameter-change-coins-per-utxo-byte-zero","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-parameter-change-collateral-percentage-zero","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-parameter-change-committee-max-term-length-zero","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-parameter-change-drep-deposit-zero","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-parameter-change-empty","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-parameter-change-gov-action-deposit-zero","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-parameter-change-gov-action-lifetime-zero","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-parameter-change-guardrails-unexpected","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-parameter-change-max-block-body-size-zero","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-parameter-change-max-block-header-size-zero","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-parameter-change-max-value-size-zero","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-parameter-change-pool-deposit-zero","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-treasury-withdrawal-guardrails-unexpected","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-gov-proposals/gov-treasury-withdrawal-unregistered-account","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-governance/gov-hard-fork-cannot-follow","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-governance/gov-parameter-change-malformed","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-governance/gov-pool-vote-on-treasury-withdrawal","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-governance/gov-previous-action-unknown","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-governance/gov-treasury-withdrawal-wrong-network","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-governance/gov-vote-on-expired-action","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-governance/utxo-body-network-id-wrong","r":"R:5bd8cb0a1e027490 - R:5bd8cb0a1e027490 - R:5bd8cb0a1e027490 -"}
+{"id":"utxo-checks/assembled/conway-three-certificates/certs-three-failing","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-v11-coverage/deleg-reg-deposit-wrong-v11","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-v11-coverage/deleg-unreg-refund-wrong-v11","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-v11-coverage/gov-parameter-change-n-opt-zero-v11","r":"- - - - - -"}
+{"id":"utxo-checks/assembled/conway-v11-coverage/gov-vote-unelected-committee-member-v11","r":"- - - - - -"}
+{"id":"utxo-checks/crafted/collateral-word16","r":"- - R:4111d2969c17d574"}
+{"id":"utxo-checks/crafted/deposits-refunds","r":"1001400000 400005 1001400000 400005 15000003400005 15001004400007"}
+{"id":"utxo-checks/crafted/empty-inputs","r":"R:16fbe5897dd03a00"}
+{"id":"utxo-checks/crafted/fee-one-over","r":"R:87dd3f557d930fb0"}
+{"id":"utxo-checks/crafted/fee-one-under","r":"R:2c44ea8bc99a98d4"}
+{"id":"utxo-checks/crafted/forecast-order","r":"R:b3c115f7aff7f331"}
+{"id":"utxo-checks/crafted/reference-inputs-spent-v10","r":"R:d56ecbf348605cbb"}
+{"id":"utxo-checks/crafted/repeated-reference-scripts","r":"985824"}
+{"id":"utxo-checks/crafted/tier-ref-script-fee","r":"0 15 383985 384000 384018 844782 844800 6335648 3361858001"}
+{"id":"utxo-checks/crafted/too-many-collateral","r":"R:cdac42149b060f48"}
+{"id":"utxo-checks/crafted/total-collateral-not-balance","r":"R:88131a91f672a40c"}
+{"id":"utxo-checks/crafted/values-over-one-byte","r":"R:8cb169054e0032b6"}
+{"id":"utxo-checks/predicates/conway-bootstrap-attributes-leios-b004fe0c/utxo-bootstrap-attributes-too-big","r":"- - - - - - - - - - R:38379da30574c8ec - - - -"}
+{"id":"utxo-checks/predicates/conway-bootstrap-attributes/utxo-bootstrap-attributes-too-big","r":"- - - - - - - - - - R:38379da30574c8ec - - - -"}
+{"id":"utxo-checks/predicates/conway-deleg-collateral/deleg-reg-deposit-wrong","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-deleg-collateral/deleg-unreg-refund-wrong","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-deleg-collateral/deleg-unreg-reward-balance","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-deleg-collateral/deleg-vote-unregistered-drep","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-deleg-collateral/govcert-drep-unreg-refund-wrong","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-deleg-collateral/utxo-collateral-non-ada","r":"- - - - - - - - - - - - R:b23098b62b3539d5 - -"}
+{"id":"utxo-checks/predicates/conway-deleg-collateral/utxo-collateral-script-locked","r":"- - - - - - - - - - - - R:ab9e01769aaef91e - -"}
+{"id":"utxo-checks/predicates/conway-devnet/all-inputs-spent","r":"- - - R:42220b13624f46fe - - - - - - - R:6b036ec9cd582a06 - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/certs-gov-utxow","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/certs-two-failing","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/deleg-unregistered-to-unknown-pool","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/delegate-to-unknown-pool","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/drep-not-registered","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/drep-update-not-registered","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/expired","r":"- R:bf10f2274cdca1ac - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/fee-too-small","r":"- - - - - - - - - - - - R:d76139624e4eed8a - -"}
+{"id":"utxo-checks/predicates/conway-devnet/gov-proposal-return-account-network","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/gov-proposal-wrong-deposit","r":"- - - - - - - - - - - R:e8dca2b562c151be - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/gov-treasury-withdrawal-zero","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/gov-unknown-voter-unknown-action","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/govcert-committee-unknown","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/govcert-drep-registered-wrong-deposit","r":"- - - - - - - - - - - R:e8dca2b562c151be - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/ledger-treasury-and-fee","r":"- - - - - - - - - - - - R:492ecf8f22319cf3 - -"}
+{"id":"utxo-checks/predicates/conway-devnet/missing-witness","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/not-yet-valid","r":"- R:f686c0761e0c4924 - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/output-too-small","r":"- - - - - - - - R:2ecc8b68716df46b - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/pool-retire-unregistered","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/pool-retirement-wrong-epoch","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/proposal-return-account-unknown","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/script-integrity-hash-mismatch","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/stake-key-not-registered","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/stake-key-registered","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/supplemental-datum","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/treasury-mismatch","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/tx-too-large","r":"- - - - - - - - - - - - - R:8689a1747604ab28 -"}
+{"id":"utxo-checks/predicates/conway-devnet/tx-too-large-spent-inputs","r":"- - - R:42220b13624f46fe - - - - - - - R:6b036ec9cd582a06 - R:8689a1747604ab28 -"}
+{"id":"utxo-checks/predicates/conway-devnet/utxo-bad-input-missing-witness","r":"- - - R:6ed1ec99de6a30d8 - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/utxo-fee-interval-balance","r":"- R:bf10f2274cdca1ac - - - - - - - - - R:9d7e9334a9e55c91 R:492ecf8f22319cf3 - -"}
+{"id":"utxo-checks/predicates/conway-devnet/utxo-mint-no-collateral","r":"- - - - - - - - - - - - R:3cf214ea11261398 - -"}
+{"id":"utxo-checks/predicates/conway-devnet/utxo-mint-units-too-big","r":"- - - - - - - - - - - - R:84e636f4a1a6b867 - R:c34b94b34fc7f4c5"}
+{"id":"utxo-checks/predicates/conway-devnet/utxo-small-and-wrong-network-outputs","r":"- - - - R:f372b37f5f5422bc - - - R:2ecc8b68716df46b - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/utxos-script-fails-flag-true","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/utxos-script-passes-flag-false","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/utxow-malformed-witness-and-reference-script","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/utxow-spend-redeemer-without-datum-wrong-hash","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/utxow-spend-without-datum-or-redeemer","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/utxow-spend-without-script-with-extra-datum","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/value-not-conserved","r":"- - - - - - - - - - - R:45e9143c40db7ec4 - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/vote-on-unknown-action","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/withdrawal-more-than-balance","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/withdrawal-network-flag-false","r":"- - - - - R:0156c5a1aa9e57e4 - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/withdrawal-network-flag-true","r":"- - - - - R:0156c5a1aa9e57e4 - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/withdrawal-unregistered-account","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-devnet/wrong-network-output","r":"- - - - R:f372b37f5f5422bc - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-committee-update-conflicting","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-committee-update-expired-member","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-parameter-change-coins-per-utxo-byte-zero","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-parameter-change-collateral-percentage-zero","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-parameter-change-committee-max-term-length-zero","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-parameter-change-drep-deposit-zero","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-parameter-change-empty","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-parameter-change-gov-action-deposit-zero","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-parameter-change-gov-action-lifetime-zero","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-parameter-change-guardrails-unexpected","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-parameter-change-max-block-body-size-zero","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-parameter-change-max-block-header-size-zero","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-parameter-change-max-value-size-zero","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-parameter-change-pool-deposit-zero","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-treasury-withdrawal-guardrails-unexpected","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-gov-proposals/gov-treasury-withdrawal-unregistered-account","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-governance/gov-hard-fork-cannot-follow","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-governance/gov-parameter-change-malformed","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-governance/gov-pool-vote-on-treasury-withdrawal","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-governance/gov-previous-action-unknown","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-governance/gov-treasury-withdrawal-wrong-network","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-governance/gov-vote-on-expired-action","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-governance/utxo-body-network-id-wrong","r":"- - - - - - R:5bd8cb0a1e027490 - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-three-certificates/certs-three-failing","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-v11-coverage/deleg-reg-deposit-wrong-v11","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-v11-coverage/deleg-unreg-refund-wrong-v11","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-v11-coverage/gov-parameter-change-n-opt-zero-v11","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/predicates/conway-v11-coverage/gov-vote-unelected-committee-member-v11","r":"- - - - - - - - - - - - - - -"}
+{"id":"utxo-checks/utxo/conway-bootstrap-attributes-leios-b004fe0c/utxo-bootstrap-attributes-too-big","r":"R:78610210a5e23865 A:39bc76d9cd56c7f9 R:38379da30574c8ec A:39bc76d9cd56c7f9 R:38379da30574c8ec A:39bc76d9cd56c7f9"}
+{"id":"utxo-checks/utxo/conway-bootstrap-attributes/utxo-bootstrap-attributes-too-big","r":"R:78610210a5e23865 A:452dc4549e23be85 R:38379da30574c8ec A:452dc4549e23be85 R:38379da30574c8ec A:452dc4549e23be85"}
+{"id":"utxo-checks/utxo/conway-constructors-v11/ledger-withdrawal-accounts-missing-v11","r":"A:3357cba26adb8254 A:3357cba26adb8254 A:3357cba26adb8254 A:3357cba26adb8254 A:3357cba26adb8254 A:3357cba26adb8254"}
+{"id":"utxo-checks/utxo/conway-constructors-v11/ledger-withdrawal-amounts-wrong-v11","r":"A:ba40cc6aaa3f71a8 A:ba40cc6aaa3f71a8 A:ba40cc6aaa3f71a8 A:ba40cc6aaa3f71a8 A:ba40cc6aaa3f71a8 A:ba40cc6aaa3f71a8"}
+{"id":"utxo-checks/utxo/conway-constructors-v11/pool-cost-too-low-v11","r":"A:79aa578152c6076b A:79aa578152c6076b A:79aa578152c6076b A:79aa578152c6076b A:79aa578152c6076b A:79aa578152c6076b"}
+{"id":"utxo-checks/utxo/conway-constructors-v11/pool-vrf-key-registered-v11","r":"A:9713ec75818c72b1 A:9713ec75818c72b1 A:9713ec75818c72b1 A:9713ec75818c72b1 A:9713ec75818c72b1 A:9713ec75818c72b1"}
+{"id":"utxo-checks/utxo/conway-constructors-v11/utxow-script-integrity-hash-mismatch-v11","r":"A:f43ad87eee019ebb A:f43ad87eee019ebb A:f43ad87eee019ebb A:f43ad87eee019ebb A:f43ad87eee019ebb A:f43ad87eee019ebb"}
+{"id":"utxo-checks/utxo/conway-constructors/govcert-committee-member-resigned","r":"A:a748c57084850a2c A:a748c57084850a2c A:a748c57084850a2c A:a748c57084850a2c A:a748c57084850a2c A:a748c57084850a2c"}
+{"id":"utxo-checks/utxo/conway-constructors/mempool-inputs-empty","r":"R:df7d6a88557dcc83 R:a224e5511fe202eb R:df7d6a88557dcc83 R:a224e5511fe202eb R:df7d6a88557dcc83 R:a224e5511fe202eb"}
+{"id":"utxo-checks/utxo/conway-constructors/pool-metadata-hash-too-big","r":"A:b65c3d45be18269d A:b65c3d45be18269d A:b65c3d45be18269d A:b65c3d45be18269d A:b65c3d45be18269d A:b65c3d45be18269d"}
+{"id":"utxo-checks/utxo/conway-constructors/pool-reward-account-wrong-network","r":"A:f716eb5f3c6e632b A:f716eb5f3c6e632b A:f716eb5f3c6e632b A:f716eb5f3c6e632b A:f716eb5f3c6e632b A:f716eb5f3c6e632b"}
+{"id":"utxo-checks/utxo/conway-constructors/utxo-collateral-inputs-too-many","r":"R:4111d2969c17d574 R:4111d2969c17d574 R:4111d2969c17d574 R:4111d2969c17d574 R:4111d2969c17d574 R:4111d2969c17d574"}
+{"id":"utxo-checks/utxo/conway-constructors/utxo-reference-input-spent","r":"R:4bef3144ab4ea501 R:4bef3144ab4ea501 R:4bef3144ab4ea501 R:4bef3144ab4ea501 R:4bef3144ab4ea501 R:4bef3144ab4ea501"}
+{"id":"utxo-checks/utxo/conway-constructors/utxo-total-collateral-incorrect","r":"R:1da50b9e6ddb124c R:1da50b9e6ddb124c R:1da50b9e6ddb124c R:1da50b9e6ddb124c R:1da50b9e6ddb124c R:1da50b9e6ddb124c"}
+{"id":"utxo-checks/utxo/conway-constructors/utxow-metadata-hash-conflicting","r":"A:9bf4fb5ab55b917f A:9bf4fb5ab55b917f A:9bf4fb5ab55b917f A:9bf4fb5ab55b917f A:9bf4fb5ab55b917f A:9bf4fb5ab55b917f"}
+{"id":"utxo-checks/utxo/conway-constructors/utxow-metadata-hash-missing","r":"A:86787137a37e3d6f A:86787137a37e3d6f A:86787137a37e3d6f A:86787137a37e3d6f A:86787137a37e3d6f A:86787137a37e3d6f"}
+{"id":"utxo-checks/utxo/conway-constructors/utxow-metadata-invalid","r":"A:32be8868c31be4bd A:32be8868c31be4bd A:32be8868c31be4bd A:32be8868c31be4bd A:32be8868c31be4bd A:32be8868c31be4bd"}
+{"id":"utxo-checks/utxo/conway-constructors/utxow-metadata-missing","r":"A:195d30e547fb7f2a A:195d30e547fb7f2a A:195d30e547fb7f2a A:195d30e547fb7f2a A:195d30e547fb7f2a A:195d30e547fb7f2a"}
+{"id":"utxo-checks/utxo/conway-constructors/utxow-native-script-fails","r":"A:670b0699e707d94e A:670b0699e707d94e A:670b0699e707d94e A:670b0699e707d94e A:670b0699e707d94e A:670b0699e707d94e"}
+{"id":"utxo-checks/utxo/conway-constructors/utxow-signature-invalid","r":"A:86787137a37e3d6f A:86787137a37e3d6f A:86787137a37e3d6f A:86787137a37e3d6f A:86787137a37e3d6f A:86787137a37e3d6f"}
+{"id":"utxo-checks/utxo/conway-constructors/utxow-unspendable-no-datum","r":"A:1f02e6406b8ec400 A:1f02e6406b8ec400 A:1f02e6406b8ec400 A:1f02e6406b8ec400 A:1f02e6406b8ec400 A:1f02e6406b8ec400"}
+{"id":"utxo-checks/utxo/conway-deleg-collateral/deleg-reg-deposit-wrong","r":"A:bb379e3bd099f9d5 A:bb379e3bd099f9d5 A:bb379e3bd099f9d5 A:bb379e3bd099f9d5 A:bb379e3bd099f9d5 A:bb379e3bd099f9d5"}
+{"id":"utxo-checks/utxo/conway-deleg-collateral/deleg-unreg-refund-wrong","r":"A:92f704cdc9fc757d A:92f704cdc9fc757d A:92f704cdc9fc757d A:92f704cdc9fc757d A:92f704cdc9fc757d A:92f704cdc9fc757d"}
+{"id":"utxo-checks/utxo/conway-deleg-collateral/deleg-unreg-reward-balance","r":"A:c293ea69c7c5e93b A:c293ea69c7c5e93b A:c293ea69c7c5e93b A:c293ea69c7c5e93b A:c293ea69c7c5e93b A:c293ea69c7c5e93b"}
+{"id":"utxo-checks/utxo/conway-deleg-collateral/deleg-vote-unregistered-drep","r":"A:c67cedd81090a286 A:c67cedd81090a286 A:c67cedd81090a286 A:c67cedd81090a286 A:c67cedd81090a286 A:c67cedd81090a286"}
+{"id":"utxo-checks/utxo/conway-deleg-collateral/govcert-drep-unreg-refund-wrong","r":"A:8c717dd54e458ff7 A:8c717dd54e458ff7 A:8c717dd54e458ff7 A:8c717dd54e458ff7 A:8c717dd54e458ff7 A:8c717dd54e458ff7"}
+{"id":"utxo-checks/utxo/conway-deleg-collateral/utxo-collateral-non-ada","r":"R:b23098b62b3539d5 R:b23098b62b3539d5 R:b23098b62b3539d5 R:b23098b62b3539d5 R:b23098b62b3539d5 R:b23098b62b3539d5"}
+{"id":"utxo-checks/utxo/conway-deleg-collateral/utxo-collateral-script-locked","r":"R:ab9e01769aaef91e R:ab9e01769aaef91e R:ab9e01769aaef91e R:ab9e01769aaef91e R:ab9e01769aaef91e R:ab9e01769aaef91e"}
+{"id":"utxo-checks/utxo/conway-devnet/all-inputs-spent","r":"R:ffeefcbc3c656410 R:ffeefcbc3c656410 R:ffeefcbc3c656410 R:ffeefcbc3c656410 R:ffeefcbc3c656410 R:ffeefcbc3c656410"}
+{"id":"utxo-checks/utxo/conway-devnet/certs-gov-utxow","r":"A:7b0e2e69bde92c90 A:7b0e2e69bde92c90 A:7b0e2e69bde92c90 A:7b0e2e69bde92c90 A:7b0e2e69bde92c90 A:7b0e2e69bde92c90"}
+{"id":"utxo-checks/utxo/conway-devnet/certs-two-failing","r":"A:81a4e02235853c94 A:81a4e02235853c94 A:81a4e02235853c94 A:81a4e02235853c94 A:81a4e02235853c94 A:81a4e02235853c94"}
+{"id":"utxo-checks/utxo/conway-devnet/deleg-unregistered-to-unknown-pool","r":"A:d40de9b4450ec799 A:d40de9b4450ec799 A:d40de9b4450ec799 A:d40de9b4450ec799 A:d40de9b4450ec799 A:d40de9b4450ec799"}
+{"id":"utxo-checks/utxo/conway-devnet/delegate-to-unknown-pool","r":"A:dc22b93f62e3e9af A:dc22b93f62e3e9af A:dc22b93f62e3e9af A:dc22b93f62e3e9af A:dc22b93f62e3e9af A:dc22b93f62e3e9af"}
+{"id":"utxo-checks/utxo/conway-devnet/drep-not-registered","r":"A:286fecafbb46fef1 A:286fecafbb46fef1 A:286fecafbb46fef1 A:286fecafbb46fef1 A:286fecafbb46fef1 A:286fecafbb46fef1"}
+{"id":"utxo-checks/utxo/conway-devnet/drep-update-not-registered","r":"A:4ccb234b0b394a1d A:4ccb234b0b394a1d A:4ccb234b0b394a1d A:4ccb234b0b394a1d A:4ccb234b0b394a1d A:4ccb234b0b394a1d"}
+{"id":"utxo-checks/utxo/conway-devnet/expired","r":"R:bf10f2274cdca1ac R:bf10f2274cdca1ac R:bf10f2274cdca1ac R:bf10f2274cdca1ac R:bf10f2274cdca1ac R:bf10f2274cdca1ac"}
+{"id":"utxo-checks/utxo/conway-devnet/fee-too-small","r":"R:d76139624e4eed8a R:d76139624e4eed8a R:d76139624e4eed8a R:d76139624e4eed8a R:d76139624e4eed8a R:d76139624e4eed8a"}
+{"id":"utxo-checks/utxo/conway-devnet/gov-proposal-return-account-network","r":"A:32c9c7220b8e71b3 A:32c9c7220b8e71b3 A:32c9c7220b8e71b3 A:32c9c7220b8e71b3 A:32c9c7220b8e71b3 A:32c9c7220b8e71b3"}
+{"id":"utxo-checks/utxo/conway-devnet/gov-proposal-wrong-deposit","r":"R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be"}
+{"id":"utxo-checks/utxo/conway-devnet/gov-treasury-withdrawal-zero","r":"A:44d1f2b1319330cd A:44d1f2b1319330cd A:44d1f2b1319330cd A:44d1f2b1319330cd A:44d1f2b1319330cd A:44d1f2b1319330cd"}
+{"id":"utxo-checks/utxo/conway-devnet/gov-unknown-voter-unknown-action","r":"A:18667bcae3dbca75 A:18667bcae3dbca75 A:18667bcae3dbca75 A:18667bcae3dbca75 A:18667bcae3dbca75 A:18667bcae3dbca75"}
+{"id":"utxo-checks/utxo/conway-devnet/govcert-committee-unknown","r":"A:2baf14cc0d8f455a A:2baf14cc0d8f455a A:2baf14cc0d8f455a A:2baf14cc0d8f455a A:2baf14cc0d8f455a A:2baf14cc0d8f455a"}
+{"id":"utxo-checks/utxo/conway-devnet/govcert-drep-registered-wrong-deposit","r":"R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be"}
+{"id":"utxo-checks/utxo/conway-devnet/ledger-treasury-and-fee","r":"R:492ecf8f22319cf3 R:492ecf8f22319cf3 R:492ecf8f22319cf3 R:492ecf8f22319cf3 R:492ecf8f22319cf3 R:492ecf8f22319cf3"}
+{"id":"utxo-checks/utxo/conway-devnet/missing-witness","r":"A:c5ea3586979691ca A:c5ea3586979691ca A:c5ea3586979691ca A:c5ea3586979691ca A:c5ea3586979691ca A:c5ea3586979691ca"}
+{"id":"utxo-checks/utxo/conway-devnet/not-yet-valid","r":"R:f686c0761e0c4924 R:f686c0761e0c4924 R:f686c0761e0c4924 R:f686c0761e0c4924 R:f686c0761e0c4924 R:f686c0761e0c4924"}
+{"id":"utxo-checks/utxo/conway-devnet/output-too-small","r":"R:2ecc8b68716df46b R:2ecc8b68716df46b R:2ecc8b68716df46b R:2ecc8b68716df46b R:2ecc8b68716df46b R:2ecc8b68716df46b"}
+{"id":"utxo-checks/utxo/conway-devnet/pool-retire-unregistered","r":"A:71950b7577565eb2 A:71950b7577565eb2 A:71950b7577565eb2 A:71950b7577565eb2 A:71950b7577565eb2 A:71950b7577565eb2"}
+{"id":"utxo-checks/utxo/conway-devnet/pool-retirement-wrong-epoch","r":"A:fae80673993bc4d3 A:fae80673993bc4d3 A:fae80673993bc4d3 A:fae80673993bc4d3 A:fae80673993bc4d3 A:fae80673993bc4d3"}
+{"id":"utxo-checks/utxo/conway-devnet/proposal-return-account-unknown","r":"A:4f5c978994560ee4 A:4f5c978994560ee4 A:4f5c978994560ee4 A:4f5c978994560ee4 A:4f5c978994560ee4 A:4f5c978994560ee4"}
+{"id":"utxo-checks/utxo/conway-devnet/script-integrity-hash-mismatch","r":"A:b9d22fbbcb60a8a9 A:b9d22fbbcb60a8a9 A:b9d22fbbcb60a8a9 A:b9d22fbbcb60a8a9 A:b9d22fbbcb60a8a9 A:b9d22fbbcb60a8a9"}
+{"id":"utxo-checks/utxo/conway-devnet/stake-key-not-registered","r":"A:5b882de1f0b016ab A:5b882de1f0b016ab A:5b882de1f0b016ab A:5b882de1f0b016ab A:5b882de1f0b016ab A:5b882de1f0b016ab"}
+{"id":"utxo-checks/utxo/conway-devnet/stake-key-registered","r":"A:78b79f4cfe0e2f82 A:78b79f4cfe0e2f82 A:78b79f4cfe0e2f82 A:78b79f4cfe0e2f82 A:78b79f4cfe0e2f82 A:78b79f4cfe0e2f82"}
+{"id":"utxo-checks/utxo/conway-devnet/supplemental-datum","r":"A:eaade30e979da547 A:eaade30e979da547 A:eaade30e979da547 A:eaade30e979da547 A:eaade30e979da547 A:eaade30e979da547"}
+{"id":"utxo-checks/utxo/conway-devnet/treasury-mismatch","r":"A:c1c2eb8fa63b802c A:c1c2eb8fa63b802c A:c1c2eb8fa63b802c A:c1c2eb8fa63b802c A:c1c2eb8fa63b802c A:c1c2eb8fa63b802c"}
+{"id":"utxo-checks/utxo/conway-devnet/tx-too-large","r":"R:8689a1747604ab28 A:903ef6e722421393 R:8689a1747604ab28 A:903ef6e722421393 R:8689a1747604ab28 A:903ef6e722421393"}
+{"id":"utxo-checks/utxo/conway-devnet/tx-too-large-spent-inputs","r":"R:74254231013ea50d R:ffeefcbc3c656410 R:74254231013ea50d R:ffeefcbc3c656410 R:74254231013ea50d R:ffeefcbc3c656410"}
+{"id":"utxo-checks/utxo/conway-devnet/utxo-bad-input-missing-witness","r":"R:6ed1ec99de6a30d8 R:6ed1ec99de6a30d8 R:6ed1ec99de6a30d8 R:6ed1ec99de6a30d8 R:6ed1ec99de6a30d8 R:6ed1ec99de6a30d8"}
+{"id":"utxo-checks/utxo/conway-devnet/utxo-fee-interval-balance","r":"R:dd8f7a2ff589cefa R:dd8f7a2ff589cefa R:dd8f7a2ff589cefa R:dd8f7a2ff589cefa R:dd8f7a2ff589cefa R:dd8f7a2ff589cefa"}
+{"id":"utxo-checks/utxo/conway-devnet/utxo-mint-no-collateral","r":"R:867be31710351cbb R:867be31710351cbb R:867be31710351cbb R:867be31710351cbb R:867be31710351cbb R:867be31710351cbb"}
+{"id":"utxo-checks/utxo/conway-devnet/utxo-mint-units-too-big","r":"R:f272d4f077d3f5a4 R:f272d4f077d3f5a4 R:f272d4f077d3f5a4 R:f272d4f077d3f5a4 R:f272d4f077d3f5a4 R:f272d4f077d3f5a4"}
+{"id":"utxo-checks/utxo/conway-devnet/utxo-small-and-wrong-network-outputs","r":"R:5fa92ad1c679a4e8 R:2ecc8b68716df46b R:5fa92ad1c679a4e8 R:2ecc8b68716df46b R:5fa92ad1c679a4e8 R:2ecc8b68716df46b"}
+{"id":"utxo-checks/utxo/conway-devnet/utxos-script-fails-flag-true","r":"R:0bf627838a95f3e3 A:3f1ccd6b35d36b0a R:0bf627838a95f3e3 A:3f1ccd6b35d36b0a R:0bf627838a95f3e3 A:3f1ccd6b35d36b0a"}
+{"id":"utxo-checks/utxo/conway-devnet/utxos-script-passes-flag-false","r":"R:8a8ff96f8061fcdc A:cbcf3bd9d3a6e8f4 R:8a8ff96f8061fcdc A:cbcf3bd9d3a6e8f4 R:8a8ff96f8061fcdc A:cbcf3bd9d3a6e8f4"}
+{"id":"utxo-checks/utxo/conway-devnet/utxow-malformed-witness-and-reference-script","r":"A:7897cce471d881d1 A:7897cce471d881d1 A:7897cce471d881d1 A:7897cce471d881d1 A:7897cce471d881d1 A:7897cce471d881d1"}
+{"id":"utxo-checks/utxo/conway-devnet/utxow-spend-redeemer-without-datum-wrong-hash","r":"A:fc627ab39d175a7a A:fc627ab39d175a7a A:fc627ab39d175a7a A:fc627ab39d175a7a A:fc627ab39d175a7a A:fc627ab39d175a7a"}
+{"id":"utxo-checks/utxo/conway-devnet/utxow-spend-without-datum-or-redeemer","r":"R:2ee8793ee6714d6a R:2ee8793ee6714d6a R:2ee8793ee6714d6a R:2ee8793ee6714d6a R:2ee8793ee6714d6a R:2ee8793ee6714d6a"}
+{"id":"utxo-checks/utxo/conway-devnet/utxow-spend-without-script-with-extra-datum","r":"A:bbb3c74285445ee8 A:bbb3c74285445ee8 A:bbb3c74285445ee8 A:bbb3c74285445ee8 A:bbb3c74285445ee8 A:bbb3c74285445ee8"}
+{"id":"utxo-checks/utxo/conway-devnet/value-not-conserved","r":"R:45e9143c40db7ec4 R:45e9143c40db7ec4 R:45e9143c40db7ec4 R:45e9143c40db7ec4 R:45e9143c40db7ec4 R:45e9143c40db7ec4"}
+{"id":"utxo-checks/utxo/conway-devnet/vote-on-unknown-action","r":"A:8e466139c62a234a A:8e466139c62a234a A:8e466139c62a234a A:8e466139c62a234a A:8e466139c62a234a A:8e466139c62a234a"}
+{"id":"utxo-checks/utxo/conway-devnet/withdrawal-more-than-balance","r":"A:273084a56fa102cb A:273084a56fa102cb A:273084a56fa102cb A:273084a56fa102cb A:273084a56fa102cb A:273084a56fa102cb"}
+{"id":"utxo-checks/utxo/conway-devnet/withdrawal-network-flag-false","r":"R:0156c5a1aa9e57e4 A:c8e057668c8f40d0 R:0156c5a1aa9e57e4 A:c8e057668c8f40d0 R:0156c5a1aa9e57e4 A:c8e057668c8f40d0"}
+{"id":"utxo-checks/utxo/conway-devnet/withdrawal-network-flag-true","r":"R:0156c5a1aa9e57e4 A:8bc68fa0805b747c R:0156c5a1aa9e57e4 A:8bc68fa0805b747c R:0156c5a1aa9e57e4 A:8bc68fa0805b747c"}
+{"id":"utxo-checks/utxo/conway-devnet/withdrawal-unregistered-account","r":"A:019c2ad10c26becc A:019c2ad10c26becc A:019c2ad10c26becc A:019c2ad10c26becc A:019c2ad10c26becc A:019c2ad10c26becc"}
+{"id":"utxo-checks/utxo/conway-devnet/wrong-network-output","r":"R:f372b37f5f5422bc A:459e5be2d22a062f R:f372b37f5f5422bc A:459e5be2d22a062f R:f372b37f5f5422bc A:459e5be2d22a062f"}
+{"id":"utxo-checks/utxo/conway-gov-order/gov-pool-votes-disallowed-out-of-order","r":"A:af307793ac44435b A:af307793ac44435b A:af307793ac44435b A:af307793ac44435b A:af307793ac44435b A:af307793ac44435b"}
+{"id":"utxo-checks/utxo/conway-gov-order/gov-treasury-withdrawal-accounts-out-of-order","r":"A:216ae0e5af20fc71 A:216ae0e5af20fc71 A:216ae0e5af20fc71 A:216ae0e5af20fc71 A:216ae0e5af20fc71 A:216ae0e5af20fc71"}
+{"id":"utxo-checks/utxo/conway-gov-order/gov-voters-unknown-out-of-order","r":"A:b05f6bbf6bea9058 A:b05f6bbf6bea9058 A:b05f6bbf6bea9058 A:b05f6bbf6bea9058 A:b05f6bbf6bea9058 A:b05f6bbf6bea9058"}
+{"id":"utxo-checks/utxo/conway-gov-order/gov-votes-on-expired-actions-out-of-order","r":"A:b853d5d38c56ec39 A:b853d5d38c56ec39 A:b853d5d38c56ec39 A:b853d5d38c56ec39 A:b853d5d38c56ec39 A:b853d5d38c56ec39"}
+{"id":"utxo-checks/utxo/conway-gov-order/gov-votes-on-unknown-actions-out-of-order","r":"A:6b1a4fccfb6f0dbf A:6b1a4fccfb6f0dbf A:6b1a4fccfb6f0dbf A:6b1a4fccfb6f0dbf A:6b1a4fccfb6f0dbf A:6b1a4fccfb6f0dbf"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-committee-update-conflicting","r":"A:e879ea2a7e0504a2 A:e879ea2a7e0504a2 A:e879ea2a7e0504a2 A:e879ea2a7e0504a2 A:e879ea2a7e0504a2 A:e879ea2a7e0504a2"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-committee-update-expired-member","r":"A:ff1848463c540331 A:ff1848463c540331 A:ff1848463c540331 A:ff1848463c540331 A:ff1848463c540331 A:ff1848463c540331"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-parameter-change-coins-per-utxo-byte-zero","r":"A:0ea0aa325fe2a310 A:0ea0aa325fe2a310 A:0ea0aa325fe2a310 A:0ea0aa325fe2a310 A:0ea0aa325fe2a310 A:0ea0aa325fe2a310"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-parameter-change-collateral-percentage-zero","r":"A:e181787be963b54d A:e181787be963b54d A:e181787be963b54d A:e181787be963b54d A:e181787be963b54d A:e181787be963b54d"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-parameter-change-committee-max-term-length-zero","r":"A:3c5c181307bc288b A:3c5c181307bc288b A:3c5c181307bc288b A:3c5c181307bc288b A:3c5c181307bc288b A:3c5c181307bc288b"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-parameter-change-drep-deposit-zero","r":"A:6f6724b427a71347 A:6f6724b427a71347 A:6f6724b427a71347 A:6f6724b427a71347 A:6f6724b427a71347 A:6f6724b427a71347"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-parameter-change-empty","r":"A:72bcb78fa4194e9d A:72bcb78fa4194e9d A:72bcb78fa4194e9d A:72bcb78fa4194e9d A:72bcb78fa4194e9d A:72bcb78fa4194e9d"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-parameter-change-gov-action-deposit-zero","r":"A:013fd53d8d8ab2f1 A:013fd53d8d8ab2f1 A:013fd53d8d8ab2f1 A:013fd53d8d8ab2f1 A:013fd53d8d8ab2f1 A:013fd53d8d8ab2f1"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-parameter-change-gov-action-lifetime-zero","r":"A:6d2320b6c4aade2f A:6d2320b6c4aade2f A:6d2320b6c4aade2f A:6d2320b6c4aade2f A:6d2320b6c4aade2f A:6d2320b6c4aade2f"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-parameter-change-guardrails-unexpected","r":"A:106cd82bef5eb114 A:106cd82bef5eb114 A:106cd82bef5eb114 A:106cd82bef5eb114 A:106cd82bef5eb114 A:106cd82bef5eb114"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-parameter-change-max-block-body-size-zero","r":"A:53160752deb6dd61 A:53160752deb6dd61 A:53160752deb6dd61 A:53160752deb6dd61 A:53160752deb6dd61 A:53160752deb6dd61"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-parameter-change-max-block-header-size-zero","r":"A:bdf8857d87bf237c A:bdf8857d87bf237c A:bdf8857d87bf237c A:bdf8857d87bf237c A:bdf8857d87bf237c A:bdf8857d87bf237c"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-parameter-change-max-value-size-zero","r":"A:14036cfeaaa41715 A:14036cfeaaa41715 A:14036cfeaaa41715 A:14036cfeaaa41715 A:14036cfeaaa41715 A:14036cfeaaa41715"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-parameter-change-pool-deposit-zero","r":"A:f9eb2bd1b41e93cf A:f9eb2bd1b41e93cf A:f9eb2bd1b41e93cf A:f9eb2bd1b41e93cf A:f9eb2bd1b41e93cf A:f9eb2bd1b41e93cf"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-treasury-withdrawal-guardrails-unexpected","r":"A:3121ba9b7e085537 A:3121ba9b7e085537 A:3121ba9b7e085537 A:3121ba9b7e085537 A:3121ba9b7e085537 A:3121ba9b7e085537"}
+{"id":"utxo-checks/utxo/conway-gov-proposals/gov-treasury-withdrawal-unregistered-account","r":"A:276e53b9402114ea A:276e53b9402114ea A:276e53b9402114ea A:276e53b9402114ea A:276e53b9402114ea A:276e53b9402114ea"}
+{"id":"utxo-checks/utxo/conway-governance/gov-hard-fork-cannot-follow","r":"A:8559cfad90f9cef9 A:8559cfad90f9cef9 A:8559cfad90f9cef9 A:8559cfad90f9cef9 A:8559cfad90f9cef9 A:8559cfad90f9cef9"}
+{"id":"utxo-checks/utxo/conway-governance/gov-parameter-change-malformed","r":"A:4772824285e9c8b2 A:4772824285e9c8b2 A:4772824285e9c8b2 A:4772824285e9c8b2 A:4772824285e9c8b2 A:4772824285e9c8b2"}
+{"id":"utxo-checks/utxo/conway-governance/gov-pool-vote-on-treasury-withdrawal","r":"A:d1e30fca2c22ab48 A:d1e30fca2c22ab48 A:d1e30fca2c22ab48 A:d1e30fca2c22ab48 A:d1e30fca2c22ab48 A:d1e30fca2c22ab48"}
+{"id":"utxo-checks/utxo/conway-governance/gov-previous-action-unknown","r":"A:b4442c2d93c7c762 A:b4442c2d93c7c762 A:b4442c2d93c7c762 A:b4442c2d93c7c762 A:b4442c2d93c7c762 A:b4442c2d93c7c762"}
+{"id":"utxo-checks/utxo/conway-governance/gov-treasury-withdrawal-wrong-network","r":"A:129d784faa559592 A:129d784faa559592 A:129d784faa559592 A:129d784faa559592 A:129d784faa559592 A:129d784faa559592"}
+{"id":"utxo-checks/utxo/conway-governance/gov-vote-on-expired-action","r":"A:2bc0cd97835d23fc A:2bc0cd97835d23fc A:2bc0cd97835d23fc A:2bc0cd97835d23fc A:2bc0cd97835d23fc A:2bc0cd97835d23fc"}
+{"id":"utxo-checks/utxo/conway-governance/utxo-body-network-id-wrong","r":"R:5bd8cb0a1e027490 A:c211d3f7c7fcd114 R:5bd8cb0a1e027490 A:c211d3f7c7fcd114 R:5bd8cb0a1e027490 A:c211d3f7c7fcd114"}
+{"id":"utxo-checks/utxo/conway-mempool/mempool-authorization-after-admitted-proposal","r":"R:193aa2fb8ebb43e4 R:193aa2fb8ebb43e4 R:193aa2fb8ebb43e4 R:193aa2fb8ebb43e4 R:193aa2fb8ebb43e4 R:193aa2fb8ebb43e4"}
+{"id":"utxo-checks/utxo/conway-mempool/mempool-unelected-committee-voter","r":"A:ec67de256dd979ae A:ec67de256dd979ae A:ec67de256dd979ae A:ec67de256dd979ae A:ec67de256dd979ae A:ec67de256dd979ae"}
+{"id":"utxo-checks/utxo/conway-mempool/mempool-unelected-voters-with-ledger-failures","r":"R:a0301b57292b3660 R:a0301b57292b3660 R:a0301b57292b3660 R:a0301b57292b3660 R:a0301b57292b3660 R:a0301b57292b3660"}
+{"id":"utxo-checks/utxo/conway-mempool/mempool-vote-on-admitted-proposal","r":"A:2854a791b3b65a63 A:2854a791b3b65a63 A:2854a791b3b65a63 A:2854a791b3b65a63 A:2854a791b3b65a63 A:2854a791b3b65a63"}
+{"id":"utxo-checks/utxo/conway-three-certificates/certs-three-failing","r":"A:d07b1591c4af8b04 A:d07b1591c4af8b04 A:d07b1591c4af8b04 A:d07b1591c4af8b04 A:d07b1591c4af8b04 A:d07b1591c4af8b04"}
+{"id":"utxo-checks/utxo/conway-v11-coverage/deleg-reg-deposit-wrong-v11","r":"A:8528c2aa02dc9d95 A:8528c2aa02dc9d95 A:8528c2aa02dc9d95 A:8528c2aa02dc9d95 A:8528c2aa02dc9d95 A:8528c2aa02dc9d95"}
+{"id":"utxo-checks/utxo/conway-v11-coverage/deleg-unreg-refund-wrong-v11","r":"A:44119dde29448360 A:44119dde29448360 A:44119dde29448360 A:44119dde29448360 A:44119dde29448360 A:44119dde29448360"}
+{"id":"utxo-checks/utxo/conway-v11-coverage/gov-parameter-change-n-opt-zero-v11","r":"A:27f032f1c62ef366 A:27f032f1c62ef366 A:27f032f1c62ef366 A:27f032f1c62ef366 A:27f032f1c62ef366 A:27f032f1c62ef366"}
+{"id":"utxo-checks/utxo/conway-v11-coverage/gov-vote-unelected-committee-member-v11","r":"A:15cd775b075aaa00 A:15cd775b075aaa00 A:15cd775b075aaa00 A:15cd775b075aaa00 A:15cd775b075aaa00 A:15cd775b075aaa00"}
+{"id":"utxo-checks/utxow/conway-bootstrap-attributes-leios-b004fe0c/utxo-bootstrap-attributes-too-big","r":"R:78610210a5e23865 A:39bc76d9cd56c7f9 R:38379da30574c8ec A:39bc76d9cd56c7f9 R:38379da30574c8ec A:39bc76d9cd56c7f9"}
+{"id":"utxo-checks/utxow/conway-bootstrap-attributes/utxo-bootstrap-attributes-too-big","r":"R:78610210a5e23865 A:452dc4549e23be85 R:38379da30574c8ec A:452dc4549e23be85 R:38379da30574c8ec A:452dc4549e23be85"}
+{"id":"utxo-checks/utxow/conway-constructors-v11/ledger-withdrawal-accounts-missing-v11","r":"A:3357cba26adb8254 A:3357cba26adb8254 A:3357cba26adb8254 A:3357cba26adb8254 A:3357cba26adb8254 A:3357cba26adb8254"}
+{"id":"utxo-checks/utxow/conway-constructors-v11/ledger-withdrawal-amounts-wrong-v11","r":"A:ba40cc6aaa3f71a8 A:ba40cc6aaa3f71a8 A:ba40cc6aaa3f71a8 A:ba40cc6aaa3f71a8 A:ba40cc6aaa3f71a8 A:ba40cc6aaa3f71a8"}
+{"id":"utxo-checks/utxow/conway-constructors-v11/pool-cost-too-low-v11","r":"A:79aa578152c6076b A:79aa578152c6076b A:79aa578152c6076b A:79aa578152c6076b A:79aa578152c6076b A:79aa578152c6076b"}
+{"id":"utxo-checks/utxow/conway-constructors-v11/pool-vrf-key-registered-v11","r":"A:9713ec75818c72b1 A:9713ec75818c72b1 A:9713ec75818c72b1 A:9713ec75818c72b1 A:9713ec75818c72b1 A:9713ec75818c72b1"}
+{"id":"utxo-checks/utxow/conway-constructors-v11/utxow-script-integrity-hash-mismatch-v11","r":"R:7a543d6c89253d2d R:7a543d6c89253d2d R:7a543d6c89253d2d R:7a543d6c89253d2d R:7a543d6c89253d2d R:7a543d6c89253d2d"}
+{"id":"utxo-checks/utxow/conway-constructors/govcert-committee-member-resigned","r":"A:a748c57084850a2c A:a748c57084850a2c A:a748c57084850a2c A:a748c57084850a2c A:a748c57084850a2c A:a748c57084850a2c"}
+{"id":"utxo-checks/utxow/conway-constructors/mempool-inputs-empty","r":"R:ef2035cadd4ec091 R:a224e5511fe202eb R:ef2035cadd4ec091 R:a224e5511fe202eb R:ef2035cadd4ec091 R:a224e5511fe202eb"}
+{"id":"utxo-checks/utxow/conway-constructors/pool-metadata-hash-too-big","r":"A:b65c3d45be18269d A:b65c3d45be18269d A:b65c3d45be18269d A:b65c3d45be18269d A:b65c3d45be18269d A:b65c3d45be18269d"}
+{"id":"utxo-checks/utxow/conway-constructors/pool-reward-account-wrong-network","r":"A:f716eb5f3c6e632b A:f716eb5f3c6e632b A:f716eb5f3c6e632b A:f716eb5f3c6e632b A:f716eb5f3c6e632b A:f716eb5f3c6e632b"}
+{"id":"utxo-checks/utxow/conway-constructors/utxo-collateral-inputs-too-many","r":"R:4111d2969c17d574 R:4111d2969c17d574 R:4111d2969c17d574 R:4111d2969c17d574 R:4111d2969c17d574 R:4111d2969c17d574"}
+{"id":"utxo-checks/utxow/conway-constructors/utxo-reference-input-spent","r":"R:4bef3144ab4ea501 R:4bef3144ab4ea501 R:4bef3144ab4ea501 R:4bef3144ab4ea501 R:4bef3144ab4ea501 R:4bef3144ab4ea501"}
+{"id":"utxo-checks/utxow/conway-constructors/utxo-total-collateral-incorrect","r":"R:1da50b9e6ddb124c R:1da50b9e6ddb124c R:1da50b9e6ddb124c R:1da50b9e6ddb124c R:1da50b9e6ddb124c R:1da50b9e6ddb124c"}
+{"id":"utxo-checks/utxow/conway-constructors/utxow-metadata-hash-conflicting","r":"R:e41aba828c9bc266 A:9bf4fb5ab55b917f R:e41aba828c9bc266 A:9bf4fb5ab55b917f R:e41aba828c9bc266 A:9bf4fb5ab55b917f"}
+{"id":"utxo-checks/utxow/conway-constructors/utxow-metadata-hash-missing","r":"R:f58719b647f60f92 A:86787137a37e3d6f R:f58719b647f60f92 A:86787137a37e3d6f R:f58719b647f60f92 A:86787137a37e3d6f"}
+{"id":"utxo-checks/utxow/conway-constructors/utxow-metadata-invalid","r":"R:a95a7b540442aad8 A:32be8868c31be4bd R:a95a7b540442aad8 A:32be8868c31be4bd R:a95a7b540442aad8 A:32be8868c31be4bd"}
+{"id":"utxo-checks/utxow/conway-constructors/utxow-metadata-missing","r":"R:616c3cc23fedd50c A:195d30e547fb7f2a R:616c3cc23fedd50c A:195d30e547fb7f2a R:616c3cc23fedd50c A:195d30e547fb7f2a"}
+{"id":"utxo-checks/utxow/conway-constructors/utxow-native-script-fails","r":"R:076b44502f5f397d R:076b44502f5f397d R:076b44502f5f397d R:076b44502f5f397d R:076b44502f5f397d R:076b44502f5f397d"}
+{"id":"utxo-checks/utxow/conway-constructors/utxow-signature-invalid","r":"R:15d990a3715dbc51 A:86787137a37e3d6f R:15d990a3715dbc51 A:86787137a37e3d6f R:15d990a3715dbc51 A:86787137a37e3d6f"}
+{"id":"utxo-checks/utxow/conway-constructors/utxow-unspendable-no-datum","r":"R:aaac917ee74767bc R:aaac917ee74767bc R:aaac917ee74767bc R:aaac917ee74767bc R:aaac917ee74767bc R:aaac917ee74767bc"}
+{"id":"utxo-checks/utxow/conway-deleg-collateral/deleg-reg-deposit-wrong","r":"A:bb379e3bd099f9d5 A:bb379e3bd099f9d5 A:bb379e3bd099f9d5 A:bb379e3bd099f9d5 A:bb379e3bd099f9d5 A:bb379e3bd099f9d5"}
+{"id":"utxo-checks/utxow/conway-deleg-collateral/deleg-unreg-refund-wrong","r":"A:92f704cdc9fc757d A:92f704cdc9fc757d A:92f704cdc9fc757d A:92f704cdc9fc757d A:92f704cdc9fc757d A:92f704cdc9fc757d"}
+{"id":"utxo-checks/utxow/conway-deleg-collateral/deleg-unreg-reward-balance","r":"A:c293ea69c7c5e93b A:c293ea69c7c5e93b A:c293ea69c7c5e93b A:c293ea69c7c5e93b A:c293ea69c7c5e93b A:c293ea69c7c5e93b"}
+{"id":"utxo-checks/utxow/conway-deleg-collateral/deleg-vote-unregistered-drep","r":"A:c67cedd81090a286 A:c67cedd81090a286 A:c67cedd81090a286 A:c67cedd81090a286 A:c67cedd81090a286 A:c67cedd81090a286"}
+{"id":"utxo-checks/utxow/conway-deleg-collateral/govcert-drep-unreg-refund-wrong","r":"A:8c717dd54e458ff7 A:8c717dd54e458ff7 A:8c717dd54e458ff7 A:8c717dd54e458ff7 A:8c717dd54e458ff7 A:8c717dd54e458ff7"}
+{"id":"utxo-checks/utxow/conway-deleg-collateral/utxo-collateral-non-ada","r":"R:b23098b62b3539d5 R:b23098b62b3539d5 R:b23098b62b3539d5 R:b23098b62b3539d5 R:b23098b62b3539d5 R:b23098b62b3539d5"}
+{"id":"utxo-checks/utxow/conway-deleg-collateral/utxo-collateral-script-locked","r":"R:ab9e01769aaef91e R:ab9e01769aaef91e R:ab9e01769aaef91e R:ab9e01769aaef91e R:ab9e01769aaef91e R:ab9e01769aaef91e"}
+{"id":"utxo-checks/utxow/conway-devnet/all-inputs-spent","r":"R:05b741e0c2f6c181 R:05b741e0c2f6c181 R:05b741e0c2f6c181 R:05b741e0c2f6c181 R:05b741e0c2f6c181 R:05b741e0c2f6c181"}
+{"id":"utxo-checks/utxow/conway-devnet/certs-gov-utxow","r":"R:dd6e84a19866f18a R:dd6e84a19866f18a R:dd6e84a19866f18a R:dd6e84a19866f18a R:dd6e84a19866f18a R:dd6e84a19866f18a"}
+{"id":"utxo-checks/utxow/conway-devnet/certs-two-failing","r":"A:81a4e02235853c94 A:81a4e02235853c94 A:81a4e02235853c94 A:81a4e02235853c94 A:81a4e02235853c94 A:81a4e02235853c94"}
+{"id":"utxo-checks/utxow/conway-devnet/deleg-unregistered-to-unknown-pool","r":"A:d40de9b4450ec799 A:d40de9b4450ec799 A:d40de9b4450ec799 A:d40de9b4450ec799 A:d40de9b4450ec799 A:d40de9b4450ec799"}
+{"id":"utxo-checks/utxow/conway-devnet/delegate-to-unknown-pool","r":"A:dc22b93f62e3e9af A:dc22b93f62e3e9af A:dc22b93f62e3e9af A:dc22b93f62e3e9af A:dc22b93f62e3e9af A:dc22b93f62e3e9af"}
+{"id":"utxo-checks/utxow/conway-devnet/drep-not-registered","r":"A:286fecafbb46fef1 A:286fecafbb46fef1 A:286fecafbb46fef1 A:286fecafbb46fef1 A:286fecafbb46fef1 A:286fecafbb46fef1"}
+{"id":"utxo-checks/utxow/conway-devnet/drep-update-not-registered","r":"A:4ccb234b0b394a1d A:4ccb234b0b394a1d A:4ccb234b0b394a1d A:4ccb234b0b394a1d A:4ccb234b0b394a1d A:4ccb234b0b394a1d"}
+{"id":"utxo-checks/utxow/conway-devnet/expired","r":"R:bf10f2274cdca1ac R:bf10f2274cdca1ac R:bf10f2274cdca1ac R:bf10f2274cdca1ac R:bf10f2274cdca1ac R:bf10f2274cdca1ac"}
+{"id":"utxo-checks/utxow/conway-devnet/fee-too-small","r":"R:d76139624e4eed8a R:d76139624e4eed8a R:d76139624e4eed8a R:d76139624e4eed8a R:d76139624e4eed8a R:d76139624e4eed8a"}
+{"id":"utxo-checks/utxow/conway-devnet/gov-proposal-return-account-network","r":"A:32c9c7220b8e71b3 A:32c9c7220b8e71b3 A:32c9c7220b8e71b3 A:32c9c7220b8e71b3 A:32c9c7220b8e71b3 A:32c9c7220b8e71b3"}
+{"id":"utxo-checks/utxow/conway-devnet/gov-proposal-wrong-deposit","r":"R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be"}
+{"id":"utxo-checks/utxow/conway-devnet/gov-treasury-withdrawal-zero","r":"A:44d1f2b1319330cd A:44d1f2b1319330cd A:44d1f2b1319330cd A:44d1f2b1319330cd A:44d1f2b1319330cd A:44d1f2b1319330cd"}
+{"id":"utxo-checks/utxow/conway-devnet/gov-unknown-voter-unknown-action","r":"A:18667bcae3dbca75 A:18667bcae3dbca75 A:18667bcae3dbca75 A:18667bcae3dbca75 A:18667bcae3dbca75 A:18667bcae3dbca75"}
+{"id":"utxo-checks/utxow/conway-devnet/govcert-committee-unknown","r":"A:2baf14cc0d8f455a A:2baf14cc0d8f455a A:2baf14cc0d8f455a A:2baf14cc0d8f455a A:2baf14cc0d8f455a A:2baf14cc0d8f455a"}
+{"id":"utxo-checks/utxow/conway-devnet/govcert-drep-registered-wrong-deposit","r":"R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be R:e8dca2b562c151be"}
+{"id":"utxo-checks/utxow/conway-devnet/ledger-treasury-and-fee","r":"R:492ecf8f22319cf3 R:492ecf8f22319cf3 R:492ecf8f22319cf3 R:492ecf8f22319cf3 R:492ecf8f22319cf3 R:492ecf8f22319cf3"}
+{"id":"utxo-checks/utxow/conway-devnet/missing-witness","r":"R:d3557e07d8a084fc R:d3557e07d8a084fc R:d3557e07d8a084fc R:d3557e07d8a084fc R:d3557e07d8a084fc R:d3557e07d8a084fc"}
+{"id":"utxo-checks/utxow/conway-devnet/not-yet-valid","r":"R:f686c0761e0c4924 R:f686c0761e0c4924 R:f686c0761e0c4924 R:f686c0761e0c4924 R:f686c0761e0c4924 R:f686c0761e0c4924"}
+{"id":"utxo-checks/utxow/conway-devnet/output-too-small","r":"R:2ecc8b68716df46b R:2ecc8b68716df46b R:2ecc8b68716df46b R:2ecc8b68716df46b R:2ecc8b68716df46b R:2ecc8b68716df46b"}
+{"id":"utxo-checks/utxow/conway-devnet/pool-retire-unregistered","r":"A:71950b7577565eb2 A:71950b7577565eb2 A:71950b7577565eb2 A:71950b7577565eb2 A:71950b7577565eb2 A:71950b7577565eb2"}
+{"id":"utxo-checks/utxow/conway-devnet/pool-retirement-wrong-epoch","r":"A:fae80673993bc4d3 A:fae80673993bc4d3 A:fae80673993bc4d3 A:fae80673993bc4d3 A:fae80673993bc4d3 A:fae80673993bc4d3"}
+{"id":"utxo-checks/utxow/conway-devnet/proposal-return-account-unknown","r":"A:4f5c978994560ee4 A:4f5c978994560ee4 A:4f5c978994560ee4 A:4f5c978994560ee4 A:4f5c978994560ee4 A:4f5c978994560ee4"}
+{"id":"utxo-checks/utxow/conway-devnet/script-integrity-hash-mismatch","r":"R:f0c623ac0e0fa324 R:f0c623ac0e0fa324 R:f0c623ac0e0fa324 R:f0c623ac0e0fa324 R:f0c623ac0e0fa324 R:f0c623ac0e0fa324"}
+{"id":"utxo-checks/utxow/conway-devnet/stake-key-not-registered","r":"A:5b882de1f0b016ab A:5b882de1f0b016ab A:5b882de1f0b016ab A:5b882de1f0b016ab A:5b882de1f0b016ab A:5b882de1f0b016ab"}
+{"id":"utxo-checks/utxow/conway-devnet/stake-key-registered","r":"A:78b79f4cfe0e2f82 A:78b79f4cfe0e2f82 A:78b79f4cfe0e2f82 A:78b79f4cfe0e2f82 A:78b79f4cfe0e2f82 A:78b79f4cfe0e2f82"}
+{"id":"utxo-checks/utxow/conway-devnet/supplemental-datum","r":"R:255c5e5f1a4816bf R:255c5e5f1a4816bf R:255c5e5f1a4816bf R:255c5e5f1a4816bf R:255c5e5f1a4816bf R:255c5e5f1a4816bf"}
+{"id":"utxo-checks/utxow/conway-devnet/treasury-mismatch","r":"A:c1c2eb8fa63b802c A:c1c2eb8fa63b802c A:c1c2eb8fa63b802c A:c1c2eb8fa63b802c A:c1c2eb8fa63b802c A:c1c2eb8fa63b802c"}
+{"id":"utxo-checks/utxow/conway-devnet/tx-too-large","r":"R:8689a1747604ab28 A:903ef6e722421393 R:8689a1747604ab28 A:903ef6e722421393 R:8689a1747604ab28 A:903ef6e722421393"}
+{"id":"utxo-checks/utxow/conway-devnet/tx-too-large-spent-inputs","r":"R:4abfe493994ff348 R:05b741e0c2f6c181 R:4abfe493994ff348 R:05b741e0c2f6c181 R:4abfe493994ff348 R:05b741e0c2f6c181"}
+{"id":"utxo-checks/utxow/conway-devnet/utxo-bad-input-missing-witness","r":"R:7d673b94a909c97b R:7d673b94a909c97b R:7d673b94a909c97b R:7d673b94a909c97b R:7d673b94a909c97b R:7d673b94a909c97b"}
+{"id":"utxo-checks/utxow/conway-devnet/utxo-fee-interval-balance","r":"R:5a4fc1dbb305c105 R:5a4fc1dbb305c105 R:5a4fc1dbb305c105 R:5a4fc1dbb305c105 R:5a4fc1dbb305c105 R:5a4fc1dbb305c105"}
+{"id":"utxo-checks/utxow/conway-devnet/utxo-mint-no-collateral","r":"R:3cf214ea11261398 R:3cf214ea11261398 R:3cf214ea11261398 R:3cf214ea11261398 R:3cf214ea11261398 R:3cf214ea11261398"}
+{"id":"utxo-checks/utxow/conway-devnet/utxo-mint-units-too-big","r":"R:af75dd7425b098e4 R:af75dd7425b098e4 R:af75dd7425b098e4 R:af75dd7425b098e4 R:af75dd7425b098e4 R:af75dd7425b098e4"}
+{"id":"utxo-checks/utxow/conway-devnet/utxo-small-and-wrong-network-outputs","r":"R:005cb310ad63efe5 R:2ecc8b68716df46b R:005cb310ad63efe5 R:2ecc8b68716df46b R:005cb310ad63efe5 R:2ecc8b68716df46b"}
+{"id":"utxo-checks/utxow/conway-devnet/utxos-script-fails-flag-true","r":"R:0bf627838a95f3e3 A:3f1ccd6b35d36b0a R:0bf627838a95f3e3 A:3f1ccd6b35d36b0a R:0bf627838a95f3e3 A:3f1ccd6b35d36b0a"}
+{"id":"utxo-checks/utxow/conway-devnet/utxos-script-passes-flag-false","r":"R:8a8ff96f8061fcdc A:cbcf3bd9d3a6e8f4 R:8a8ff96f8061fcdc A:cbcf3bd9d3a6e8f4 R:8a8ff96f8061fcdc A:cbcf3bd9d3a6e8f4"}
+{"id":"utxo-checks/utxow/conway-devnet/utxow-malformed-witness-and-reference-script","r":"R:1f5473c921f4141b R:842cbb4e9a9c22f5 R:1f5473c921f4141b R:842cbb4e9a9c22f5 R:1f5473c921f4141b R:842cbb4e9a9c22f5"}
+{"id":"utxo-checks/utxow/conway-devnet/utxow-spend-redeemer-without-datum-wrong-hash","r":"R:4048ccd7e9df9649 R:4048ccd7e9df9649 R:4048ccd7e9df9649 R:4048ccd7e9df9649 R:4048ccd7e9df9649 R:4048ccd7e9df9649"}
+{"id":"utxo-checks/utxow/conway-devnet/utxow-spend-without-datum-or-redeemer","r":"R:7bb956c45983af22 R:7bb956c45983af22 R:7bb956c45983af22 R:7bb956c45983af22 R:7bb956c45983af22 R:7bb956c45983af22"}
+{"id":"utxo-checks/utxow/conway-devnet/utxow-spend-without-script-with-extra-datum","r":"R:b7a3de385fc74630 R:b7a3de385fc74630 R:b7a3de385fc74630 R:b7a3de385fc74630 R:b7a3de385fc74630 R:b7a3de385fc74630"}
+{"id":"utxo-checks/utxow/conway-devnet/value-not-conserved","r":"R:45e9143c40db7ec4 R:45e9143c40db7ec4 R:45e9143c40db7ec4 R:45e9143c40db7ec4 R:45e9143c40db7ec4 R:45e9143c40db7ec4"}
+{"id":"utxo-checks/utxow/conway-devnet/vote-on-unknown-action","r":"A:8e466139c62a234a A:8e466139c62a234a A:8e466139c62a234a A:8e466139c62a234a A:8e466139c62a234a A:8e466139c62a234a"}
+{"id":"utxo-checks/utxow/conway-devnet/withdrawal-more-than-balance","r":"A:273084a56fa102cb A:273084a56fa102cb A:273084a56fa102cb A:273084a56fa102cb A:273084a56fa102cb A:273084a56fa102cb"}
+{"id":"utxo-checks/utxow/conway-devnet/withdrawal-network-flag-false","r":"R:0156c5a1aa9e57e4 A:c8e057668c8f40d0 R:0156c5a1aa9e57e4 A:c8e057668c8f40d0 R:0156c5a1aa9e57e4 A:c8e057668c8f40d0"}
+{"id":"utxo-checks/utxow/conway-devnet/withdrawal-network-flag-true","r":"R:0156c5a1aa9e57e4 A:8bc68fa0805b747c R:0156c5a1aa9e57e4 A:8bc68fa0805b747c R:0156c5a1aa9e57e4 A:8bc68fa0805b747c"}
+{"id":"utxo-checks/utxow/conway-devnet/withdrawal-unregistered-account","r":"A:019c2ad10c26becc A:019c2ad10c26becc A:019c2ad10c26becc A:019c2ad10c26becc A:019c2ad10c26becc A:019c2ad10c26becc"}
+{"id":"utxo-checks/utxow/conway-devnet/wrong-network-output","r":"R:f372b37f5f5422bc A:459e5be2d22a062f R:f372b37f5f5422bc A:459e5be2d22a062f R:f372b37f5f5422bc A:459e5be2d22a062f"}
+{"id":"utxo-checks/utxow/conway-gov-order/gov-pool-votes-disallowed-out-of-order","r":"A:af307793ac44435b A:af307793ac44435b A:af307793ac44435b A:af307793ac44435b A:af307793ac44435b A:af307793ac44435b"}
+{"id":"utxo-checks/utxow/conway-gov-order/gov-treasury-withdrawal-accounts-out-of-order","r":"A:216ae0e5af20fc71 A:216ae0e5af20fc71 A:216ae0e5af20fc71 A:216ae0e5af20fc71 A:216ae0e5af20fc71 A:216ae0e5af20fc71"}
+{"id":"utxo-checks/utxow/conway-gov-order/gov-voters-unknown-out-of-order","r":"A:b05f6bbf6bea9058 A:b05f6bbf6bea9058 A:b05f6bbf6bea9058 A:b05f6bbf6bea9058 A:b05f6bbf6bea9058 A:b05f6bbf6bea9058"}
+{"id":"utxo-checks/utxow/conway-gov-order/gov-votes-on-expired-actions-out-of-order","r":"A:b853d5d38c56ec39 A:b853d5d38c56ec39 A:b853d5d38c56ec39 A:b853d5d38c56ec39 A:b853d5d38c56ec39 A:b853d5d38c56ec39"}
+{"id":"utxo-checks/utxow/conway-gov-order/gov-votes-on-unknown-actions-out-of-order","r":"A:6b1a4fccfb6f0dbf A:6b1a4fccfb6f0dbf A:6b1a4fccfb6f0dbf A:6b1a4fccfb6f0dbf A:6b1a4fccfb6f0dbf A:6b1a4fccfb6f0dbf"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-committee-update-conflicting","r":"A:e879ea2a7e0504a2 A:e879ea2a7e0504a2 A:e879ea2a7e0504a2 A:e879ea2a7e0504a2 A:e879ea2a7e0504a2 A:e879ea2a7e0504a2"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-committee-update-expired-member","r":"A:ff1848463c540331 A:ff1848463c540331 A:ff1848463c540331 A:ff1848463c540331 A:ff1848463c540331 A:ff1848463c540331"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-parameter-change-coins-per-utxo-byte-zero","r":"A:0ea0aa325fe2a310 A:0ea0aa325fe2a310 A:0ea0aa325fe2a310 A:0ea0aa325fe2a310 A:0ea0aa325fe2a310 A:0ea0aa325fe2a310"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-parameter-change-collateral-percentage-zero","r":"A:e181787be963b54d A:e181787be963b54d A:e181787be963b54d A:e181787be963b54d A:e181787be963b54d A:e181787be963b54d"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-parameter-change-committee-max-term-length-zero","r":"A:3c5c181307bc288b A:3c5c181307bc288b A:3c5c181307bc288b A:3c5c181307bc288b A:3c5c181307bc288b A:3c5c181307bc288b"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-parameter-change-drep-deposit-zero","r":"A:6f6724b427a71347 A:6f6724b427a71347 A:6f6724b427a71347 A:6f6724b427a71347 A:6f6724b427a71347 A:6f6724b427a71347"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-parameter-change-empty","r":"A:72bcb78fa4194e9d A:72bcb78fa4194e9d A:72bcb78fa4194e9d A:72bcb78fa4194e9d A:72bcb78fa4194e9d A:72bcb78fa4194e9d"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-parameter-change-gov-action-deposit-zero","r":"A:013fd53d8d8ab2f1 A:013fd53d8d8ab2f1 A:013fd53d8d8ab2f1 A:013fd53d8d8ab2f1 A:013fd53d8d8ab2f1 A:013fd53d8d8ab2f1"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-parameter-change-gov-action-lifetime-zero","r":"A:6d2320b6c4aade2f A:6d2320b6c4aade2f A:6d2320b6c4aade2f A:6d2320b6c4aade2f A:6d2320b6c4aade2f A:6d2320b6c4aade2f"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-parameter-change-guardrails-unexpected","r":"A:106cd82bef5eb114 A:106cd82bef5eb114 A:106cd82bef5eb114 A:106cd82bef5eb114 A:106cd82bef5eb114 A:106cd82bef5eb114"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-parameter-change-max-block-body-size-zero","r":"A:53160752deb6dd61 A:53160752deb6dd61 A:53160752deb6dd61 A:53160752deb6dd61 A:53160752deb6dd61 A:53160752deb6dd61"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-parameter-change-max-block-header-size-zero","r":"A:bdf8857d87bf237c A:bdf8857d87bf237c A:bdf8857d87bf237c A:bdf8857d87bf237c A:bdf8857d87bf237c A:bdf8857d87bf237c"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-parameter-change-max-value-size-zero","r":"A:14036cfeaaa41715 A:14036cfeaaa41715 A:14036cfeaaa41715 A:14036cfeaaa41715 A:14036cfeaaa41715 A:14036cfeaaa41715"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-parameter-change-pool-deposit-zero","r":"A:f9eb2bd1b41e93cf A:f9eb2bd1b41e93cf A:f9eb2bd1b41e93cf A:f9eb2bd1b41e93cf A:f9eb2bd1b41e93cf A:f9eb2bd1b41e93cf"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-treasury-withdrawal-guardrails-unexpected","r":"A:3121ba9b7e085537 A:3121ba9b7e085537 A:3121ba9b7e085537 A:3121ba9b7e085537 A:3121ba9b7e085537 A:3121ba9b7e085537"}
+{"id":"utxo-checks/utxow/conway-gov-proposals/gov-treasury-withdrawal-unregistered-account","r":"A:276e53b9402114ea A:276e53b9402114ea A:276e53b9402114ea A:276e53b9402114ea A:276e53b9402114ea A:276e53b9402114ea"}
+{"id":"utxo-checks/utxow/conway-governance/gov-hard-fork-cannot-follow","r":"A:8559cfad90f9cef9 A:8559cfad90f9cef9 A:8559cfad90f9cef9 A:8559cfad90f9cef9 A:8559cfad90f9cef9 A:8559cfad90f9cef9"}
+{"id":"utxo-checks/utxow/conway-governance/gov-parameter-change-malformed","r":"A:4772824285e9c8b2 A:4772824285e9c8b2 A:4772824285e9c8b2 A:4772824285e9c8b2 A:4772824285e9c8b2 A:4772824285e9c8b2"}
+{"id":"utxo-checks/utxow/conway-governance/gov-pool-vote-on-treasury-withdrawal","r":"A:d1e30fca2c22ab48 A:d1e30fca2c22ab48 A:d1e30fca2c22ab48 A:d1e30fca2c22ab48 A:d1e30fca2c22ab48 A:d1e30fca2c22ab48"}
+{"id":"utxo-checks/utxow/conway-governance/gov-previous-action-unknown","r":"A:b4442c2d93c7c762 A:b4442c2d93c7c762 A:b4442c2d93c7c762 A:b4442c2d93c7c762 A:b4442c2d93c7c762 A:b4442c2d93c7c762"}
+{"id":"utxo-checks/utxow/conway-governance/gov-treasury-withdrawal-wrong-network","r":"A:129d784faa559592 A:129d784faa559592 A:129d784faa559592 A:129d784faa559592 A:129d784faa559592 A:129d784faa559592"}
+{"id":"utxo-checks/utxow/conway-governance/gov-vote-on-expired-action","r":"A:2bc0cd97835d23fc A:2bc0cd97835d23fc A:2bc0cd97835d23fc A:2bc0cd97835d23fc A:2bc0cd97835d23fc A:2bc0cd97835d23fc"}
+{"id":"utxo-checks/utxow/conway-governance/utxo-body-network-id-wrong","r":"R:5bd8cb0a1e027490 A:c211d3f7c7fcd114 R:5bd8cb0a1e027490 A:c211d3f7c7fcd114 R:5bd8cb0a1e027490 A:c211d3f7c7fcd114"}
+{"id":"utxo-checks/utxow/conway-mempool/mempool-authorization-after-admitted-proposal","r":"R:193aa2fb8ebb43e4 R:193aa2fb8ebb43e4 R:193aa2fb8ebb43e4 R:193aa2fb8ebb43e4 R:193aa2fb8ebb43e4 R:193aa2fb8ebb43e4"}
+{"id":"utxo-checks/utxow/conway-mempool/mempool-unelected-committee-voter","r":"A:ec67de256dd979ae A:ec67de256dd979ae A:ec67de256dd979ae A:ec67de256dd979ae A:ec67de256dd979ae A:ec67de256dd979ae"}
+{"id":"utxo-checks/utxow/conway-mempool/mempool-unelected-voters-with-ledger-failures","r":"R:a0301b57292b3660 R:a0301b57292b3660 R:a0301b57292b3660 R:a0301b57292b3660 R:a0301b57292b3660 R:a0301b57292b3660"}
+{"id":"utxo-checks/utxow/conway-mempool/mempool-vote-on-admitted-proposal","r":"A:2854a791b3b65a63 A:2854a791b3b65a63 A:2854a791b3b65a63 A:2854a791b3b65a63 A:2854a791b3b65a63 A:2854a791b3b65a63"}
+{"id":"utxo-checks/utxow/conway-three-certificates/certs-three-failing","r":"A:d07b1591c4af8b04 A:d07b1591c4af8b04 A:d07b1591c4af8b04 A:d07b1591c4af8b04 A:d07b1591c4af8b04 A:d07b1591c4af8b04"}
+{"id":"utxo-checks/utxow/conway-v11-coverage/deleg-reg-deposit-wrong-v11","r":"A:8528c2aa02dc9d95 A:8528c2aa02dc9d95 A:8528c2aa02dc9d95 A:8528c2aa02dc9d95 A:8528c2aa02dc9d95 A:8528c2aa02dc9d95"}
+{"id":"utxo-checks/utxow/conway-v11-coverage/deleg-unreg-refund-wrong-v11","r":"A:44119dde29448360 A:44119dde29448360 A:44119dde29448360 A:44119dde29448360 A:44119dde29448360 A:44119dde29448360"}
+{"id":"utxo-checks/utxow/conway-v11-coverage/gov-parameter-change-n-opt-zero-v11","r":"A:27f032f1c62ef366 A:27f032f1c62ef366 A:27f032f1c62ef366 A:27f032f1c62ef366 A:27f032f1c62ef366 A:27f032f1c62ef366"}
+{"id":"utxo-checks/utxow/conway-v11-coverage/gov-vote-unelected-committee-member-v11","r":"A:15cd775b075aaa00 A:15cd775b075aaa00 A:15cd775b075aaa00 A:15cd775b075aaa00 A:15cd775b075aaa00 A:15cd775b075aaa00"}
+{"id":"utxo-checks/values/conway-bootstrap-attributes-leios-b004fe0c/utxo-bootstrap-attributes-too-big","r":"169461 900000000000000 900000000000000 0 0"}
+{"id":"utxo-checks/values/conway-bootstrap-attributes/utxo-bootstrap-attributes-too-big","r":"320 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-deleg-collateral/deleg-reg-deposit-wrong","r":"332 15000003000000 15000003000000 400000 0"}
+{"id":"utxo-checks/values/conway-deleg-collateral/deleg-unreg-refund-wrong","r":"332 15000003400000 15000003400000 0 400000"}
+{"id":"utxo-checks/values/conway-deleg-collateral/deleg-unreg-reward-balance","r":"336 15000003400000 15000003400000 0 400000"}
+{"id":"utxo-checks/values/conway-deleg-collateral/deleg-vote-unregistered-drep","r":"363 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-deleg-collateral/govcert-drep-unreg-refund-wrong","r":"336 15000005000000 15000005000000 0 2000000"}
+{"id":"utxo-checks/values/conway-deleg-collateral/utxo-collateral-non-ada","r":"94262 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 0 0"}
+{"id":"utxo-checks/values/conway-deleg-collateral/utxo-collateral-script-locked","r":"94161 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 0 0"}
+{"id":"utxo-checks/values/conway-devnet/all-inputs-spent","r":"200 0 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/certs-gov-utxow","r":"435 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/certs-two-failing","r":"476 15000004000000 15000004000000 400000 1000000"}
+{"id":"utxo-checks/values/conway-devnet/deleg-unregistered-to-unknown-pool","r":"361 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/delegate-to-unknown-pool","r":"370 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/drep-not-registered","r":"345 15000004000000 15000004000000 0 1000000"}
+{"id":"utxo-checks/values/conway-devnet/drep-update-not-registered","r":"341 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/expired","r":"202 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/fee-too-small","r":"196 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/gov-proposal-return-account-network","r":"305 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-devnet/gov-proposal-wrong-deposit","r":"301 15000003000000 15000003999995 1000000 0"}
+{"id":"utxo-checks/values/conway-devnet/gov-treasury-withdrawal-zero","r":"339 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-devnet/gov-unknown-voter-unknown-action","r":"369 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/govcert-committee-unknown","r":"363 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/govcert-drep-registered-wrong-deposit","r":"333 15000003000000 15000003999995 1000000 0"}
+{"id":"utxo-checks/values/conway-devnet/ledger-treasury-and-fee","r":"192 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/missing-witness","r":"200 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/not-yet-valid","r":"210 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/output-too-small","r":"233 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/pool-retire-unregistered","r":"330 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/pool-retirement-wrong-epoch","r":"339 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/proposal-return-account-unknown","r":"300 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-devnet/script-integrity-hash-mismatch","r":"188072 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 0 0"}
+{"id":"utxo-checks/values/conway-devnet/stake-key-not-registered","r":"370 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/stake-key-registered","r":"345 15000003000000 15000003000000 400000 0"}
+{"id":"utxo-checks/values/conway-devnet/supplemental-datum","r":"233 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/treasury-mismatch","r":"202 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/tx-too-large","r":"18844 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/tx-too-large-spent-inputs","r":"18844 0 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/utxo-bad-input-missing-witness","r":"230 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/utxo-fee-interval-balance","r":"192 15000003000000 15000002999995 0 0"}
+{"id":"utxo-checks/values/conway-devnet/utxo-mint-no-collateral","r":"94123 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 0 0"}
+{"id":"utxo-checks/values/conway-devnet/utxo-mint-units-too-big","r":"8799517 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 0 0"}
+{"id":"utxo-checks/values/conway-devnet/utxo-small-and-wrong-network-outputs","r":"264 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/utxos-script-fails-flag-true","r":"188072 15000003000000+ebb18a12777410738fdeaa77ec0fd582685d677b6b34de9a6e3b6d7e.746f6b656e=1 15000003000000+ebb18a12777410738fdeaa77ec0fd582685d677b6b34de9a6e3b6d7e.746f6b656e=1 0 0"}
+{"id":"utxo-checks/values/conway-devnet/utxos-script-passes-flag-false","r":"188072 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 0 0"}
+{"id":"utxo-checks/values/conway-devnet/utxow-malformed-witness-and-reference-script","r":"247 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/utxow-spend-redeemer-without-datum-wrong-hash","r":"94182 15000013000000 15000013000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/utxow-spend-without-datum-or-redeemer","r":"378 15000013000000 15000013000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/utxow-spend-without-script-with-extra-datum","r":"94179 15000013000000 15000013000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/value-not-conserved","r":"200 15000003000000 15000002900000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/vote-on-unknown-action","r":"375 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/withdrawal-more-than-balance","r":"329 15000003000001 15000003000001 0 0"}
+{"id":"utxo-checks/values/conway-devnet/withdrawal-network-flag-false","r":"188207 15000003000000+ebb18a12777410738fdeaa77ec0fd582685d677b6b34de9a6e3b6d7e.746f6b656e=1 15000003000000+ebb18a12777410738fdeaa77ec0fd582685d677b6b34de9a6e3b6d7e.746f6b656e=1 0 0"}
+{"id":"utxo-checks/values/conway-devnet/withdrawal-network-flag-true","r":"188207 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 15000003000000+186e32faa80a26810392fda6d559c7ed4721a65ce1c9d4ef3e1c87b4.746f6b656e=1 0 0"}
+{"id":"utxo-checks/values/conway-devnet/withdrawal-unregistered-account","r":"329 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-devnet/wrong-network-output","r":"237 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-committee-update-conflicting","r":"382 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-committee-update-expired-member","r":"349 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-parameter-change-coins-per-utxo-byte-zero","r":"310 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-parameter-change-collateral-percentage-zero","r":"310 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-parameter-change-committee-max-term-length-zero","r":"311 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-parameter-change-drep-deposit-zero","r":"311 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-parameter-change-empty","r":"308 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-parameter-change-gov-action-deposit-zero","r":"311 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-parameter-change-gov-action-lifetime-zero","r":"311 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-parameter-change-guardrails-unexpected","r":"374 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-parameter-change-max-block-body-size-zero","r":"310 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-parameter-change-max-block-header-size-zero","r":"310 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-parameter-change-max-value-size-zero","r":"310 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-parameter-change-pool-deposit-zero","r":"310 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-treasury-withdrawal-guardrails-unexpected","r":"406 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-gov-proposals/gov-treasury-withdrawal-unregistered-account","r":"343 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-governance/gov-hard-fork-cannot-follow","r":"309 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-governance/gov-parameter-change-malformed","r":"310 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-governance/gov-pool-vote-on-treasury-withdrawal","r":"369 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-governance/gov-previous-action-unknown","r":"341 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-governance/gov-treasury-withdrawal-wrong-network","r":"343 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-governance/gov-vote-on-expired-action","r":"369 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-governance/utxo-body-network-id-wrong","r":"196 15000003000000 15000003000000 0 0"}
+{"id":"utxo-checks/values/conway-three-certificates/certs-three-failing","r":"540 15000004000000 15000004000000 400000 1000000"}
+{"id":"utxo-checks/values/conway-v11-coverage/deleg-reg-deposit-wrong-v11","r":"332 15000003000000 15000003000000 400000 0"}
+{"id":"utxo-checks/values/conway-v11-coverage/deleg-unreg-refund-wrong-v11","r":"332 15000003400000 15000003400000 0 400000"}
+{"id":"utxo-checks/values/conway-v11-coverage/gov-parameter-change-n-opt-zero-v11","r":"310 15000003000000 15000003000000 1000000 0"}
+{"id":"utxo-checks/values/conway-v11-coverage/gov-vote-unelected-committee-member-v11","r":"369 15000003000000 15000003000000 0 0"}
+{"id":"utxow-checks/crafted/datums-without-redeemers","r":"R:2bc16717074463e3"}
+{"id":"utxow-checks/crafted/extra-redeemers","r":"R:eaa98e265d4974e8"}
+{"id":"utxow-checks/crafted/extraneous-script","r":"R:848e20935bb044a6"}
+{"id":"utxow-checks/crafted/integrity-hash-v10","r":"R:0739f1ae46fca81b"}
+{"id":"utxow-checks/crafted/integrity-hash-v11","r":"R:014323ad33119e04"}
+{"id":"utxow-checks/crafted/missing-redeemers","r":"R:d155684eb1e5d4ba"}
+{"id":"utxow-checks/crafted/without-datum-v1","r":"R:2671d3ebbb7a86c7"}
+{"id":"utxow-checks/crafted/without-datum-v3","r":"-"}
+{"id":"utxow-checks/predicates/conway-bootstrap-attributes-leios-b004fe0c/utxo-bootstrap-attributes-too-big","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-bootstrap-attributes/utxo-bootstrap-attributes-too-big","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-deleg-collateral/deleg-reg-deposit-wrong","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-deleg-collateral/deleg-unreg-refund-wrong","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-deleg-collateral/deleg-unreg-reward-balance","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-deleg-collateral/deleg-vote-unregistered-drep","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-deleg-collateral/govcert-drep-unreg-refund-wrong","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-deleg-collateral/utxo-collateral-non-ada","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-deleg-collateral/utxo-collateral-script-locked","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/all-inputs-spent","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/certs-gov-utxow","r":"- - R:dd6e84a19866f18a - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/certs-two-failing","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/deleg-unregistered-to-unknown-pool","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/delegate-to-unknown-pool","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/drep-not-registered","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/drep-update-not-registered","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/expired","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/fee-too-small","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/gov-proposal-return-account-network","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/gov-proposal-wrong-deposit","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/gov-treasury-withdrawal-zero","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/gov-unknown-voter-unknown-action","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/govcert-committee-unknown","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/govcert-drep-registered-wrong-deposit","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/ledger-treasury-and-fee","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/missing-witness","r":"- - R:d3557e07d8a084fc - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/not-yet-valid","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/output-too-small","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/pool-retire-unregistered","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/pool-retirement-wrong-epoch","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/proposal-return-account-unknown","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/script-integrity-hash-mismatch","r":"- - - - - R:f0c623ac0e0fa324"}
+{"id":"utxow-checks/predicates/conway-devnet/stake-key-not-registered","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/stake-key-registered","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/supplemental-datum","r":"- - - R:255c5e5f1a4816bf - -"}
+{"id":"utxow-checks/predicates/conway-devnet/treasury-mismatch","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/tx-too-large","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/tx-too-large-spent-inputs","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/utxo-bad-input-missing-witness","r":"- - R:d3557e07d8a084fc - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/utxo-fee-interval-balance","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/utxo-mint-no-collateral","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/utxo-mint-units-too-big","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/utxo-small-and-wrong-network-outputs","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/utxos-script-fails-flag-true","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/utxos-script-passes-flag-false","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/utxow-malformed-witness-and-reference-script","r":"- R:842cbb4e9a9c22f5 - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/utxow-spend-redeemer-without-datum-wrong-hash","r":"- - - R:2db21100268e5f13 - R:30d8ff321a47b34c"}
+{"id":"utxow-checks/predicates/conway-devnet/utxow-spend-without-datum-or-redeemer","r":"- - - R:2db21100268e5f13 R:edbaddba9445503d R:2c1835a0fa0baff5"}
+{"id":"utxow-checks/predicates/conway-devnet/utxow-spend-without-script-with-extra-datum","r":"- R:a125959db69b1ffb - R:369da15facdb542a R:0a7c0945e77bda77 R:c8672b6303bd9217"}
+{"id":"utxow-checks/predicates/conway-devnet/value-not-conserved","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/vote-on-unknown-action","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/withdrawal-more-than-balance","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/withdrawal-network-flag-false","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/withdrawal-network-flag-true","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/withdrawal-unregistered-account","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-devnet/wrong-network-output","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-committee-update-conflicting","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-committee-update-expired-member","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-parameter-change-coins-per-utxo-byte-zero","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-parameter-change-collateral-percentage-zero","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-parameter-change-committee-max-term-length-zero","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-parameter-change-drep-deposit-zero","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-parameter-change-empty","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-parameter-change-gov-action-deposit-zero","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-parameter-change-gov-action-lifetime-zero","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-parameter-change-guardrails-unexpected","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-parameter-change-max-block-body-size-zero","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-parameter-change-max-block-header-size-zero","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-parameter-change-max-value-size-zero","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-parameter-change-pool-deposit-zero","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-treasury-withdrawal-guardrails-unexpected","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-gov-proposals/gov-treasury-withdrawal-unregistered-account","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-governance/gov-hard-fork-cannot-follow","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-governance/gov-parameter-change-malformed","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-governance/gov-pool-vote-on-treasury-withdrawal","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-governance/gov-previous-action-unknown","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-governance/gov-treasury-withdrawal-wrong-network","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-governance/gov-vote-on-expired-action","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-governance/utxo-body-network-id-wrong","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-three-certificates/certs-three-failing","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-v11-coverage/deleg-reg-deposit-wrong-v11","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-v11-coverage/deleg-unreg-refund-wrong-v11","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-v11-coverage/gov-parameter-change-n-opt-zero-v11","r":"- - - - - -"}
+{"id":"utxow-checks/predicates/conway-v11-coverage/gov-vote-unelected-committee-member-v11","r":"- - - - - -"}

@@ -5,13 +5,20 @@ import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import munit.{Assertions, Location}
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.ledger.era.rules.{CertsPredFailure, ConwayLedgerPredFailure}
+import xyz.kd5ujc.scarab.ledger.era.UtxoRecordings
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  CertsPredFailure,
+  ConwayLedgerPredFailure,
+  ConwayUtxoPredFailure,
+  ConwayUtxowPredFailure
+}
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
   ConwayCertState,
   LedgerState,
   PState,
   ProtVer,
+  UTxOState,
   ShelleyBasedEra,
   Word64
 }
@@ -117,6 +124,36 @@ object FlatRecordings:
     */
   lazy val plutusCaseFiles: Map[String, String] =
     keyed("plutus-case-files.jsonl", "file")(field("plutus-case-files.jsonl", _, "bytes"))
+
+  /** The judgments of Conway's era UTXO, UTXOW and their predicates that the flat ones gave the
+    * same of, in `ConwayUtxoChecksSuite`, `ConwayUtxowChecksSuite` and `EraUtxoSuite`
+    * (`utxo-judgments.jsonl`): each id to its cells, separated by spaces.
+    */
+  lazy val utxoJudgments: Map[String, Vector[String]] =
+    keyed("utxo-judgments.jsonl", "id")(field("utxo-judgments.jsonl", _, "r"))
+      .map((k, v) => k -> v.split(' ').toVector)
+
+  /** A UTXO refusal's cell: `R:` and the digest of the `ApplyTxErr` bytes of its failures in their
+    * order, each under LEDGER's UTXOW, as the node sends UTXO's refusal.
+    */
+  def utxoRefused(failures: Iterable[ConwayUtxoPredFailure[Conway]])(using Location): String =
+    utxowRefused(failures.map(ConwayUtxowPredFailure.UtxoFailure[Conway](_)))
+
+  /** A UTXOW refusal's cell: `R:` and the digest of the `ApplyTxErr` bytes of its failures in their
+    * order, each under LEDGER's `ConwayUtxowFailure`, as the node sends UTXOW's refusal.
+    */
+  def utxowRefused(failures: Iterable[ConwayUtxowPredFailure[Conway]])(using Location): String =
+    refused(failures.map(ConwayLedgerPredFailure.ConwayUtxowFailure[Conway](_)))
+
+  /** A UTXO or UTXOW admission's cell: `A:` and the digest of the UTxO state it leaves in the form
+    * of `UtxoRecordings.state`, which holds the UTxO set whole (its diff and stamps among it), then
+    * the counters of the scripts it ran: succeeded, failed, run.
+    */
+  def utxoAdmitted(state: UTxOState[Conway], counters: (Long, Long, Long))(using
+      Location
+  ): String =
+    val (succeeded, failed, scripts) = counters
+    s"${UtxoRecordings.stateCell(state)}/$succeeded/$failed/$scripts"
 
   /** A CERTS refusal's cell: `R:` and the digest of the `ApplyTxErr` bytes of its failures in their
     * order, each under LEDGER's `ConwayCertsFailure`, as the node sends CERTS's refusal.

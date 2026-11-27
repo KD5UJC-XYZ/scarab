@@ -16,7 +16,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   PParams,
   TxLevel
 }
-import xyz.kd5ujc.scarab.ledger.rules.Deposits
 import xyz.kd5ujc.scarab.ledger.rules.NativeRewardFixture
 import xyz.kd5ujc.scarab.ledger.state.{
   Coin,
@@ -44,14 +43,15 @@ import DijkstraCorpus.*
   * The transactions are those recorded on the public Leios testnet's chain, which its ledger
   * accepted, so each registration declares the deposit its parameters ask, and the reference's
   * UTXOW cases, with their parameters: 217. Of the 189 without sub-transactions, the 176 the Conway
-  * decoder reads have their deposits and refunds compared with the flat rules' (`Deposits.of`,
-  * `DijkstraUtxo.declaredRefunds`); the 13 it refuses, for a field Dijkstra adds or changes, are
-  * counted by their typed refusal. Every one without certificates has the parameters' deposit for
-  * each of its proposals at both levels. The flat path has no computation of a batch's, so crafted
-  * batches give the refunds of each level and the deposits of a pool registered twice in the batch,
-  * of a pool the state holds and of proposals at both levels, each total derived by hand from the
-  * reference's rules. The accounts and obligations are those of Conway's instance, on a state of
-  * distinct deposits and a delegation to a pool and a DRep.
+  * decoder reads have their deposits held to those the flat Conway UTXO's `Deposits.of` gave,
+  * recorded before it was deleted (`UtxoRecordings`, `dijkstra-deposits/`), and their refunds to
+  * those its certificates declare (`DijkstraUtxo.declaredRefunds`); the 13 it refuses, for a field
+  * Dijkstra adds or changes, are counted by their typed refusal. Every one without certificates has
+  * the parameters' deposit for each of its proposals at both levels. The flat path has no
+  * computation of a batch's, so crafted batches give the refunds of each level and the deposits of
+  * a pool registered twice in the batch, of a pool the state holds and of proposals at both levels,
+  * each total derived by hand from the reference's rules. The accounts and obligations are those of
+  * Conway's instance, on a state of distinct deposits and a delegation to a pool and a DRep.
   */
 class DijkstraStateSuite extends FunSuite:
   private val bodies = EraTxBody.dijkstra
@@ -118,7 +118,9 @@ class DijkstraStateSuite extends FunSuite:
       case _                                                              => BigInt(0)
     }.sum
 
-  test("the deposits and refunds of a transaction without sub-transactions equal the flat rules'") {
+  test(
+    "the deposits and refunds of a transaction without sub-transactions are the flat rules' recorded ones"
+  ) {
     val forms = cases.flatMap(c => conwayForm(c).map(c -> _))
     val compared = forms.collect { case (c, Right(flat)) =>
       val deposits =
@@ -130,14 +132,15 @@ class DijkstraStateSuite extends FunSuite:
         LedgerStateGen.conwayAccounts,
         c.tx.body
       )(using bodies, BothLevels.Top)
+      // the deposits the flat Conway UTXO's `Deposits.of` gave, recorded before it was deleted
+      val id = s"dijkstra-deposits/${c.name}"
       assertEquals(
-        (deposits.value, refunds.value),
-        (
-          Deposits.of(c.stored, LedgerStateGen.conwayCert, flat.body)._1,
-          declaredRefunds(flat.body)
-        ),
-        c.name
+        Vector(deposits.value.toString),
+        xyz.kd5ujc.scarab.ledger.era.UtxoRecordings.utxos
+          .getOrElse(id, fail(s"no recording of $id")),
+        id
       )
+      assertEquals(refunds.value, declaredRefunds(flat.body), c.name)
       (deposits.value, refunds.value)
     }
     // the transactions the Conway decoder refuses, each for a field Dijkstra adds or changes, are

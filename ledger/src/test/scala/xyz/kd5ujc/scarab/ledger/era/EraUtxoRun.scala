@@ -29,6 +29,7 @@ import xyz.kd5ujc.scarab.ledger.state.{Conway, UTxOState}
 import xyz.kd5ujc.scarab.plutus.{
   EvalFailure,
   EvalRequest,
+  EvalResult,
   ScriptEvaluator,
   ScriptFailure as UplcScriptFailure
 }
@@ -184,6 +185,43 @@ object EraUtxoRun:
     case EvalFailure.Script(UplcScriptFailure.Uplc(EvaluationError.Cek(cek), logs)) =>
       Cause.Machine(cek.error, logs)
     case other => Cause.Other(other)
+
+  /** The failures of the scripts a UTXO failure reports, each with its cause and its script with
+    * its context: those of a tag mismatch whose scripts failed unexpectedly.
+    */
+  def scriptFailures(f: ConwayUtxoPredFailure[Conway]): List[rules.FailureDescription] = f match
+    case ConwayUtxoPredFailure.UtxosFailure(
+          rules.ConwayUtxosPredFailure
+            .ValidationTagMismatch(_, rules.TagMismatchDescription.FailedUnexpectedly(fs))
+        ) =>
+      fs.toList
+    case _ => Nil
+
+  /** Whether the cause of each script failure of `failures` is the one `evaluator` gives its
+    * request. A refusal's bytes hold the request whole, but not always the cause: the reference's
+    * text of a script that ended at an explicit `error` leaves its trace out
+    * (`PlutusFailureCbor.description`), so the cause is held by its request this way.
+    */
+  def causesHeld(
+      failures: Iterable[ConwayUtxoPredFailure[Conway]],
+      evaluator: ScriptEvaluator[Id]
+  ): Boolean =
+    failures.flatMap(scriptFailures).forall {
+      case rules.FailureDescription.PlutusFailure(failure, pwc) =>
+        evaluator.evaluate(PlutusWithContext.evalRequest(pwc)) match
+          case EvalResult.Failure(reason, _, _) => cause(reason) == cause(failure)
+          case EvalResult.Success(_, _)         => false
+    }
+
+  /** [[causesHeld]] of UTXOW's failures: those UTXO reports through it. */
+  def utxowCausesHeld(
+      failures: Iterable[rules.ConwayUtxowPredFailure[Conway]],
+      evaluator: ScriptEvaluator[Id]
+  ): Boolean =
+    causesHeld(
+      failures.collect { case rules.ConwayUtxowPredFailure.UtxoFailure(f) => f },
+      evaluator
+    )
 
   /** A collection's failure: a missing redeemer by its purpose in the flat form, a missing script
     * by its hash, a missing cost model by its language, and a context's failure to translate by its
