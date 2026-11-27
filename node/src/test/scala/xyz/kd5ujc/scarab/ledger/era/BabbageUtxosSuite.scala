@@ -478,7 +478,15 @@ class BabbageUtxosSuite extends FunSuite:
     val typed = typedOutcome(j, validation)
     (flat, typed) match
       case (Outcome.Accepted(f, fc), Outcome.Accepted(e, ec)) =>
-        assertEquals(e.utxo.utxo.toMap, f.utxo.utxo.toMap, s"${j.name}: UTxO")
+        // the UTxO set's entries and the totals it keeps of them, then the record whole
+        val (eu, fu) = (e.utxo.utxo, f.utxo.utxo)
+        assertEquals(eu.toMap, fu.toMap, s"${j.name}: UTxO")
+        assertEquals(
+          (eu.coin, eu.count, eu.stake, eu.ptrStake),
+          (fu.coin, fu.count, fu.stake, fu.ptrStake),
+          s"${j.name}: UTxO totals"
+        )
+        assertEquals(eu, fu, s"${j.name}: UTxO record")
         assertEquals(e.deposited, f.deposited, s"${j.name}: deposits")
         assertEquals(e.fees, f.fees, s"${j.name}: fees")
         assertEquals(e.instantStake, f.instantStake, s"${j.name}: instant stake")
