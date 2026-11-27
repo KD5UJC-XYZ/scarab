@@ -363,17 +363,6 @@ class BabbageUtxosSuite extends FunSuite:
     case Refused(failures: List[Seen])
     case Accepted(state: UTxOState[Babbage], counters: (Long, Long, Long))
 
-  /** The flat UTXOS's failures on `j` as it records them, for their encoding. */
-  private def flatFailures(j: Judged): NonEmptyChain[PredicateFailure] =
-    Judgment.run(FlatUtxos.sts[Babbage], RuleT.Policy.Accumulate)(
-      j.globals,
-      FlatUtxoEnv(j.ctx, j.pp, j.cert),
-      Counted(j.state, PlutusStats.zero),
-      FlatStAnnTx(j.flat, Utxo(j.known))
-    ) match
-      case Right(Left(failures)) => failures
-      case other                 => fail(s"${j.name}: not refused: $other")
-
   private def flatOutcome(j: Judged, validation: TxEnv.Validation): Outcome =
     val ctx = j.ctx.copy(validation = validation)
     val ann = FlatStAnnTx(j.flat, Utxo(j.known))
@@ -396,11 +385,12 @@ class BabbageUtxosSuite extends FunSuite:
           (after.plutus.succeeded, after.plutus.failed, after.plutus.scripts)
         )
 
-  private def typedOutcome(
+  /** The era rule's UTXOS on `j`: the parameters and UTxO set it read, and its judgment. */
+  private def typedRun(
       j: Judged,
       validation: TxEnv.Validation,
-      evaluator: ScriptEvaluator[Id] = ScarabEvaluator.default
-  ): Outcome =
+      evaluator: ScriptEvaluator[Id]
+  ): (PParams[Babbage], UTxO[Babbage], Either[UDefect, Either[NonEmptyChain[URec], US]]) =
     val pp = PParams[Babbage](right(s"${j.name} parameters")(BabbagePParams.fromStored(j.pp)))
     val utxo = right(s"${j.name} UTxO")(BabbageEraUTxO.fromStored(j.known))
     val gov = right(s"${j.name} governance state")(
@@ -413,14 +403,56 @@ class BabbageUtxosSuite extends FunSuite:
       Map.empty,
       j.typed
     )
-    UtxosRun.run(
-      j.globals,
-      UtxosEnv(slotNo(j.slot), pp, j.cert),
-      stAnnTx,
-      gov,
-      evaluator,
-      validation
-    ) match
+    (
+      pp,
+      utxo,
+      UtxosRun.run(
+        j.globals,
+        UtxosEnv(slotNo(j.slot), pp, j.cert),
+        stAnnTx,
+        gov,
+        evaluator,
+        validation
+      )
+    )
+
+  /** The era rule's UTXOS failures on `j`, as it records them, for their encoding. */
+  private def typedFailures(j: Judged): NonEmptyChain[URec] =
+    typedRun(j, TxEnv.Validation.All, ScarabEvaluator.default)._3 match
+      case Right(Left(failures)) => failures
+      case other                 => fail(s"${j.name}: not refused: $other")
+
+  /** An era failure of UTXOS or PPUP as the flat failure the node's refusal encoder writes, as the
+    * era encoder of Conway's failures projects a script's failure (`ConwayFailureCbor`): its cause
+    * and its request.
+    */
+  private def flatOf(f: URec): PredicateFailure = f match
+    case AlonzoUtxosPredFailure.UpdateFailure(p) =>
+      PredicateFailure.utxo(UtxoFailure.Update(flatPpupOf(p)))
+    case AlonzoUtxosPredFailure.ValidationTagMismatch(flag, description) =>
+      PredicateFailure.utxo(
+        UtxoFailure.Utxos(
+          UtxosFailure.ValidationTagMismatch(
+            flag == IsPhase2Valid.Phase2Valid,
+            description match
+              case TagMismatchDescription.PassedUnexpectedly => None
+              case TagMismatchDescription.FailedUnexpectedly(fs) =>
+                Some(fs.toList.toVector.map { case FailureDescription.PlutusFailure(cause, pwc) =>
+                  xyz.kd5ujc.scarab.ledger
+                    .PlutusFailure(cause, Bytes.empty, Some(PlutusWithContext.evalRequest(pwc)))
+                })
+          )
+        )
+      )
+    case AlonzoUtxosPredFailure.CollectErrors(es) => fail(s"not encoded here: $es")
+
+  private def typedOutcome(
+      j: Judged,
+      validation: TxEnv.Validation,
+      evaluator: ScriptEvaluator[Id] = ScarabEvaluator.default
+  ): Outcome =
+    val (pp, utxo, judged) = typedRun(j, validation, evaluator)
+    judged match
       case Left(defect) => fail(s"${j.name}: era defect $defect")
       case Right(Left(failures)) =>
         val needed = EraUTxO.babbage
@@ -522,10 +554,15 @@ class BabbageUtxosSuite extends FunSuite:
         assertEquals(failures, List(Seen.Collected(List(Collect.BadTranslation(error)))), c.name)
       case None =>
         assert(v.text.contains("ValidationTagMismatch"), s"${c.name}: ${v.text}")
+        // the description the reference recorded: the scripts passed against the flag, or failed
+        val passed = v.text.contains("PassedUnexpectedly")
+        assertNotEquals(passed, v.text.contains("FailedUnexpectedly"), s"${c.name}: ${v.text}")
         failures match
-          case List(Seen.PassedUnexpectedly(flag))    => assertEquals(flag, c.tx.isValid, c.name)
-          case List(Seen.FailedUnexpectedly(flag, _)) => assertEquals(flag, c.tx.isValid, c.name)
-          case other => fail(s"${c.name}: not a validation tag mismatch: $other")
+          case List(Seen.PassedUnexpectedly(flag)) if passed =>
+            assertEquals(flag, c.tx.isValid, c.name)
+          case List(Seen.FailedUnexpectedly(flag, _)) if !passed =>
+            assertEquals(flag, c.tx.isValid, c.name)
+          case other => fail(s"${c.name}: not the recorded validation tag mismatch: $other")
 
   test(
     "the V1-context submissions: the flat rules' judgment and state, and the reference's verdict"
@@ -1017,11 +1054,11 @@ class BabbageUtxosSuite extends FunSuite:
       spendFailures,
       List(Seen.Collected(List(Collect.NoRedeemer(0, BigInt(scripted.head)))))
     )
-    // those refused by UTXOS alone: the flat rule's failures are the reference's, byte for byte
+    // those refused by UTXOS alone: the era rule's failures are the reference's, byte for byte
     val alone = refusals.filter(_.families.forall(f => f == Family.UTXOS || f == Family.PPUP))
     assertEquals(alone.size, 3)
     alone.foreach { r =>
-      val failures = flatFailures(r.judged)
+      val failures = typedFailures(r.judged).map(flatOf)
       assertEquals(
         LocalSubmission.reasonItem(
           Rejection.Ledger(
