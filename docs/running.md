@@ -102,5 +102,6 @@ Each topic of this guide has a page of its own; the section names below are the 
 | [Stalls and failures that stop the node](running/troubleshooting.md) | Stall watchdog; Failures that stop the node (#154); The JVM does not take an option |
 | [Monitoring long runs](running/monitoring.md) | Monitoring long runs |
 | [Fuzzing the decoders](running/fuzzing.md) | Fuzzing the decoders (roadmap K3) |
+| [Timing of the secret paths](running/secret-timing.md) | What it measures (and does not cover); The nightly check; What a result means, and what to do; Running it by hand |
 | [Capture and the devnet scenarios](running/devnet.md) | `capture`: recording blocks; Devnet scenarios (`scripts/devnet.py`) |
 | [Conformance reports for node-diversity-conformance](running/conformance.md) | Running a scenario locally; Names and the reports repository; Publishing on demand (and setting up the reports repository and its key); Moving to a newer corpus |
