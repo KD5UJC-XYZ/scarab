@@ -58,9 +58,28 @@ class ScriptsAheadSameSuite extends ScalaCheckSuite:
     // the proven information with another purpose: not found
     assertEquals(results.lookup(request(info(shared, PlutusData.int(1)))), None)
     assertEquals(results.counts, ScriptsAhead.Counts(1, 0, 2))
+    assert(results.provenPairs > 0)
     // dropping the block drops its proven pairs too
     results.drop(block)
     assertEquals(results.held._1, 0)
+    assertEquals(results.provenPairs, 0)
+  }
+
+  test("the proven pairs stay within their bound") {
+    val results = ScriptsAhead.Results.create(ScriptsAhead.Bounds)
+    // contexts whose information has many children, each a pair of its own once proved
+    (0 until 40).foreach { t =>
+      val d = PlutusData.List(
+        Vector.tabulate(200)(i => PlutusData.List(Vector(PlutusData.int(t), PlutusData.int(i))))
+      )
+      val kept = request(info(d, PlutusData.int(t)))
+      assert(results.put(block, kept, result))
+      assertEquals(results.lookup(request(info(copied(d), PlutusData.int(t)))), Some(result))
+      assert(results.provenPairs <= ScriptsAhead.Same.Proven, results.provenPairs.toString)
+    }
+    assertEquals(results.provenPairs, ScriptsAhead.Same.Proven)
+    results.drop(block)
+    assertEquals(results.provenPairs, 0)
   }
 
   test("a transaction's information shared by its scripts' contexts is charged once a block") {

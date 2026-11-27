@@ -485,10 +485,13 @@ object ScriptsAhead:
       */
     def proved(request: EvalRequest, entry: Entry): Held =
       // a pair of a block no longer kept would never be dropped
-      if proven.sizeIs >= Same.Proven || !blocks.contains(entry.block) then this
+      if !blocks.contains(entry.block) then this
       else
-        val pairs =
-          Same.pairs(request.args, entry.request.args).filterNot((k, _) => proven.contains(k))
+        val pairs = Same
+          .pairs(request.args, entry.request.args)
+          .distinctBy(_._1)
+          .filterNot((k, _) => proven.contains(k))
+          .take((Same.Proven - proven.size).max(0))
         if pairs.isEmpty then this
         else
           copy(
@@ -753,6 +756,9 @@ object ScriptsAhead:
 
     /** How the rules found their scripts, since the start. */
     def counts: Counts = state.get.counts
+
+    /** The proven pairs kept, for the suites. */
+    private[node] def provenPairs: Int = state.get.proven.size
 
     /** The results kept and their estimated bytes, for the suites. */
     private[node] def held: (Int, Long) =
