@@ -23,14 +23,18 @@ import xyz.kd5ujc.scarab.network.Fibers
   * of threads ([[parallelism]]).
   *
   * What the worker sees: the checks only fill the cache, whose verdicts are functions of their
-  * keys, and the worker's own preparation still asks for the block's checks
-  * (`BlockSelection.Before.prepare`), which finds those already made; for a block being verified
-  * when the worker reaches it, once that verification ends ([[reached]]). A verdict is taken by the
-  * rules when they reach the check, as without this, so a bad signature in a queued block is
-  * refused when the worker applies that block: the same refusal, in the same order, blaming the
-  * same peer. A block the worker never applies causes nothing but the work. A failure of a check
-  * made ahead is no information and is discarded ([[VerificationCache.warm]] already discards a
-  * provider defect): the rules ask the provider themselves.
+  * keys. When the worker prepares a block (`BlockSelection.Before.prepare`), once a verification
+  * under way has ended ([[reached]]), it asks for the block's checks only if the cache does not
+  * hold every verdict of them (`VerificationCache.holds`): a block not verified ahead, or one whose
+  * verdicts a clear of the cache's maps dropped since, is checked there as without this. Besides
+  * its verdicts the worker's own checks left the cache only the decoded block, which the
+  * verification ahead left there as well, and the key hashes, which the rules compute where they
+  * are missing; so the rules find what they read either way. A verdict is taken by the rules when
+  * they reach the check, as without this, so a bad signature in a queued block is refused when the
+  * worker applies that block: the same refusal, in the same order, blaming the same peer. A block
+  * the worker never applies causes nothing but the work. A failure of a check made ahead is no
+  * information and is discarded ([[VerificationCache.warm]] already discards a provider defect):
+  * the rules ask the provider themselves.
   *
   * Which blocks: the worker takes each block from the queue and either prepares it ([[reached]]) or
   * passes it by ([[passed]]: older than the immutable tip, or already processed). Either way the
@@ -110,6 +114,11 @@ final class VerifyAhead[F[_]: Async] private (
         case Some(Slot.Queued() | Slot.Unverified() | Slot.Abandoned()) => (held - hash, F.unit)
         case None                                                       => (held, F.unit)
     }.flatten
+
+  /** The worker prepared a block without asking for its checks, every verdict of them being in the
+    * cache.
+    */
+  def skipped: F[Unit] = tallies.update(_.skip)
 
   /** How the worker found the blocks it prepared, since the start. */
   def counts: F[Counts] = tallies.get
@@ -230,15 +239,18 @@ object VerifyAhead:
   enum Reach:
     case Hit, Joined, Miss
 
-  /** The blocks the worker prepared, by how it found them. */
-  final case class Counts(hit: Long, joined: Long, miss: Long):
+  /** The blocks the worker prepared, by how it found them, and of them those it prepared without
+    * asking for their checks (`skipped`).
+    */
+  final case class Counts(hit: Long, joined: Long, miss: Long, skipped: Long):
     def counted(reach: Reach): Counts = reach match
       case Reach.Hit    => copy(hit = hit + 1)
       case Reach.Joined => copy(joined = joined + 1)
       case Reach.Miss   => copy(miss = miss + 1)
+    def skip: Counts = copy(skipped = skipped + 1)
 
   object Counts:
-    val zero: Counts = Counts(0, 0, 0)
+    val zero: Counts = Counts(0, 0, 0, 0)
 
   /** The checks of queued blocks run by `verifier` on one fiber, which stops when the resource is
     * released. A verifier that ends gives its value to [[VerifyAhead.stopped]].

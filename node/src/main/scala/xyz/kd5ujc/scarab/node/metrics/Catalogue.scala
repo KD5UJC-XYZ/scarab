@@ -631,6 +631,10 @@ object Catalogue:
     MetricName("scarab_preverify_ahead_miss_total"),
     "Blocks the selection worker prepared whose signature checks were not made ahead of it."
   )
+  val preverifySkipped = CounterDef(
+    MetricName("scarab_preverify_skipped_total"),
+    "Blocks the selection worker prepared without asking for their signature checks, the verification cache holding every verdict of them."
+  )
   val poolBodies = GaugeDef(
     MetricName("scarab_block_pool_bodies"),
     "Received bodies the block pool holds in memory (with a received log, only until their admission is processed)."
@@ -1342,6 +1346,7 @@ object Catalogue:
     preverifyAheadHit,
     preverifyAheadJoined,
     preverifyAheadMiss,
+    preverifySkipped,
     poolBodies,
     poolBodyBytes,
     replayedBlocks,

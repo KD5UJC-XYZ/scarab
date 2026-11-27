@@ -45,6 +45,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     ForgedChain.forge(0 until 90, epoch = 0).unsafeRunSync()(using munitIORuntime)
 
   private def header(i: Int): Header = forged.headers(i)
+  private val boom = new IllegalStateException("provider broke")
   private def raw(i: Int): Bytes = forged.raws(i)
 
   // ------------------------------------------------------------------ the verifier
@@ -125,7 +126,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           held <- ahead.held.get
         yield
           assertEquals(reach, VerifyAhead.Reach.Hit)
-          assertEquals(counts, VerifyAhead.Counts(1, 0, 0))
+          assertEquals(counts, VerifyAhead.Counts(1, 0, 0, 0))
           assertEquals(verified, hashes(0, Sentinel))
           assertEquals(held.keySet, Set(header(Sentinel).hash))
       }
@@ -172,7 +173,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         yield
           assertEquals(reach, VerifyAhead.Reach.Miss)
           assertEquals(verified, hashes(0, Sentinel))
-          assertEquals(counts, VerifyAhead.Counts(0, 0, 1))
+          assertEquals(counts, VerifyAhead.Counts(0, 0, 1, 0))
       }
     yield ()
   }
@@ -284,7 +285,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             // the worker's own preparation, then the rules take the decoded block
             _ <- cache.warm[IO](Vector(raw(target)), ForgedChain.config, 2)
             taken <- IO(cache.takePrepared(header(target).hash))
-            left <- IO(cache.holds(header(target).hash))
+            left <- IO(cache.takePrepared(header(target).hash).isDefined)
           yield
             assertEquals(reach, VerifyAhead.Reach.Joined)
             assert(taken.isDefined)
@@ -292,6 +293,62 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         }
         .guarantee(IO(cache.shutdown()))
     yield ()
+  }
+
+  test("a block whose verdicts a clear dropped is not held, and the worker checks it again") {
+    // maps of one verdict each: the third block's warming clears what the first two left
+    val cache =
+      VerificationCache.unsafe(2, bounds = VerificationCache.Bounds(1, 4096, 16384))
+    cache.noteEpochNonce(forged.genesis.ledgerEpoch, forged.genesis.protocol.epochNonce)
+    def warmed(i: Int) = cache.warm[IO](Vector(raw(i)), ForgedChain.config, 1)
+    for
+      _ <- warmed(0)
+      first <- IO(cache.holds(header(0).hash))
+      _ <- warmed(1) *> warmed(2)
+      held <- IO((0 to 2).map(i => cache.holds(header(i).hash)))
+      asked <- Ref.of[IO, Vector[Bytes]](Vector.empty)
+      idle <- VerifyAhead.idle[IO]
+      prep = BlockSelection.Before.delivered[IO](
+        None,
+        blocks => asked.update(_ ++ blocks) *> cache.warm[IO](blocks, ForgedChain.config, 1),
+        hash => IO(cache.holds(hash)),
+        idle,
+        (_, _) => IO.unit
+      )
+      _ <- Handle
+        .allow[NodeError](List(2, 0).traverse_(i => prep.prepare(header(i), raw(i))))
+        .rescue(e => IO(fail(e.message)))
+      preverified <- asked.get
+      counts <- idle.counts
+      _ <- IO(cache.shutdown())
+    yield
+      assert(first, "the first block is held once warmed")
+      assertEquals(held, Vector(false, false, true))
+      // the block still held is prepared without its checks, the one whose verdicts were dropped
+      // with them
+      assertEquals(preverified, Vector(raw(0)))
+      assertEquals(counts.skipped, 1L)
+  }
+
+  test("a block whose check met a provider defect is not held: the worker asks for its checks") {
+    val defect = ProviderDefect.Kes(xyz.kd5ujc.scarab.crypto.kes.Sum6Kes.Failure.Defect(boom))
+    // the real verifiers, except that the certificate of the second block meets a defect
+    val failing = new Verdicts:
+      export Verdicts.Direct.{keyHash, praosVrf, takePrepared, tpraosVrf, witness}
+      def opCert(
+          h: Header.Shelley,
+          slotsPerKesPeriod: BigInt,
+          maxKesEvolutions: BigInt
+      ): Either[OCertError | ProviderDefect, Unit] =
+        if h.hash == header(1).hash then Left(defect)
+        else Verdicts.Direct.opCert(h, slotsPerKesPeriod, maxKesEvolutions)
+    val cache = VerificationCache.unsafe(2, failing)
+    cache.noteEpochNonce(forged.genesis.ledgerEpoch, forged.genesis.protocol.epochNonce)
+    cache
+      .warm[IO](Vector(raw(0), raw(1), raw(2)), ForgedChain.config, 2)
+      .map(_ => (0 to 2).map(i => cache.holds(header(i).hash)))
+      .guarantee(IO(cache.shutdown()))
+      .map(held => assertEquals(held, Vector(true, false, true)))
   }
 
   test("a verification that fails is discarded: a miss, and the verifier goes on") {
@@ -420,10 +477,12 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     * node's preparation with nothing made ahead (`Idle`); with the script's held block held until
     * the verifier has verified the blocks queued behind it (`Before`); or with the checks of the
     * script's last queued block started ahead and released only when the worker reaches it, so that
-    * the worker most likely finds them being made (`During`).
+    * the worker most likely finds them being made (`During`); or as `Before` over a cache whose
+    * maps hold two verdicts each, so that they are cleared again and again between the checks made
+    * ahead and the worker, which then makes them itself (`Evicted`).
     */
   private enum Schedule:
-    case Baseline, Idle, Before, During
+    case Baseline, Idle, Before, During, Evicted
 
   private final case class Seen(
       end: SessionEnd,
@@ -442,7 +501,13 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     */
   private def session(script: Script, schedule: Schedule): IO[Seen] =
     val provider = BadSignature(script.bad)
-    val cache = VerificationCache.unsafe(2, provider)
+    val bounds =
+      if schedule == Schedule.Evicted then VerificationCache.Bounds(2, 4096, 2)
+      else VerificationCache.Bounds.Default
+    val cache = VerificationCache.unsafe(2, provider, bounds = bounds)
+    // the epoch nonce of the chain's start, as the node knows the one of its tip: the VRF proofs
+    // of its epoch's blocks are verified ahead
+    cache.noteEpochNonce(script.genesis.ledgerEpoch, script.genesis.protocol.epochNonce)
     NodeScope.resource
       .use { node =>
         for
@@ -458,7 +523,10 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               None,
               None,
               ForgedChain.mirrorEnv.byron,
-              xyz.kd5ujc.scarab.plutus.PlutusBackend.default
+              xyz.kd5ujc.scarab.plutus.PlutusBackend.default,
+              afterBlock = Some((_, _, s) =>
+                IO.delay(cache.noteEpochNonce(s.ledgerEpoch, s.protocol.epochNonce))
+              )
             ),
             event => emitted.update(_ :+ event),
             ForgedChain.geometry
@@ -482,6 +550,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 base.verify(h, bytes).flatTap(_ => queued.complete(()).void.whenA(h.hash == last))
           )
           preverify = (blocks: Vector[Bytes]) => cache.warm[IO](blocks, ForgedChain.config)
+          holds = (hash: Bytes) => IO(cache.holds(hash))
           seen <- VerifyAhead.resource[IO](verifier).use { verifyAhead =>
             for
               idle <- VerifyAhead.idle[IO]
@@ -489,14 +558,15 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               prep = schedule match
                 case Schedule.Baseline => baseline(preverify)
                 case Schedule.Idle =>
-                  BlockSelection.Before.delivered[IO](None, preverify, idle, noReads)
-                case Schedule.Before | Schedule.During =>
-                  BlockSelection.Before.delivered[IO](None, preverify, verifyAhead, noReads)
+                  BlockSelection.Before.delivered[IO](None, preverify, holds, idle, noReads)
+                case Schedule.Before | Schedule.During | Schedule.Evicted =>
+                  BlockSelection.Before.delivered[IO](None, preverify, holds, verifyAhead, noReads)
               before = held(
                 prep,
                 h =>
                   schedule match
-                    case Schedule.Before => queued.get.whenA(h.hash == script.holdAt.hash)
+                    case Schedule.Before | Schedule.Evicted =>
+                      queued.get.whenA(h.hash == script.holdAt.hash)
                     case Schedule.During =>
                       (started.get *> release.complete(()).start.void).whenA(h.hash == last)
                     case _ => IO.unit
@@ -574,6 +644,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       idle <- session(badSignature, Schedule.Idle)
       before <- session(badSignature, Schedule.Before)
       during <- session(badSignature, Schedule.During)
+      evicted <- session(badSignature, Schedule.Evicted)
     yield
       // the baseline refuses the target, blames its sender, and stops at its predecessor
       assertEquals(expected.invalid.keySet, Set(target.hash))
@@ -583,13 +654,18 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       same(idle, expected)
       same(before, expected)
       same(during, expected)
-      // nothing was made ahead in the first, the checks of the held queue in the second, and the
-      // target's were released as the worker reached it in the third
-      assertEquals(idle.counts.hit + idle.counts.joined, 0L)
+      same(evicted, expected)
+      // nothing was made ahead in the first, the checks of the held queue in the second, which the
+      // worker then did not ask for again, and the target's were released as the worker reached
+      // it in the third; in the fourth the cache's clears dropped most of what was made ahead, and
+      // the worker made those checks itself
+      assertEquals(idle.counts.hit + idle.counts.joined + idle.counts.skipped, 0L)
       assert(idle.counts.miss > index.toLong, idle.counts.toString)
       assert(before.counts.hit >= index.toLong, before.counts.toString)
+      assert(before.counts.skipped >= index.toLong, before.counts.toString)
       assertEquals(before.calls, 1)
       assert(during.counts.hit + during.counts.joined > 0, during.counts.toString)
+      assert(evicted.counts.hit > evicted.counts.skipped, evicted.counts.toString)
   }
 
   test("a rollback over queued blocks verified ahead: the same switch, events and states") {
@@ -598,6 +674,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       expected <- session(rollback, Schedule.Baseline)
       before <- session(rollback, Schedule.Before)
       during <- session(rollback, Schedule.During)
+      evicted <- session(rollback, Schedule.Evicted)
     yield
       // the baseline adopts the first fork, then switches to the second and rolls the first back
       assertEquals(expected.chain.tip, longer.headers.last.point)
@@ -611,8 +688,12 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(expected.invalid, Map.empty)
       same(before, expected)
       same(during, expected)
-      // the eight blocks of the forks were verified while the worker was held before them
+      same(evicted, expected)
+      // the eight blocks of the forks were verified while the worker was held before them, and
+      // the worker did not ask for their checks again
       assert(before.counts.hit >= 8L, before.counts.toString)
+      assert(before.counts.skipped >= 8L, before.counts.toString)
+      assert(evicted.counts.hit > evicted.counts.skipped, evicted.counts.toString)
   }
 
   // ------------------------------------------------------------------ the era-walking chain
@@ -674,11 +755,13 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       states: Vector[MirrorState],
       refused: Option[(Int, NodeError)],
       firstAsked: Option[Int],
-      asked: Int
+      asked: Int,
+      skipped: Int
   )
 
-  /** The era-walking chain applied as the worker applies it, each block's checks asked for when it
-    * is prepared, and, `window > 0`, also when it enters a queue of `window` blocks.
+  /** The era-walking chain applied as the worker applies it: each block's checks asked for when it
+    * is prepared, and, `window > 0`, also when it enters a queue of `window` blocks, the worker
+    * then asking for them only where the cache does not hold every verdict of the block.
     */
   private def applied(bad: (Bytes, Bytes, Bytes), window: Int): IO[Applied] =
     val provider = BadWitness(bad)
@@ -696,7 +779,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     def warm(i: Int) = chainRaws.lift(i).traverse_(r => cache.warm[IO](Vector(r), setup.praos, 2))
     def noted(at: Int, run: Applied) =
       run.copy(firstAsked = run.firstAsked.orElse(Option.when(provider.asked > 0)(at)))
-    val start = Applied(Vector(setup.mirrorStart), None, None, 0)
+    val start = Applied(Vector(setup.mirrorStart), None, None, 0, 0)
     (0 until window - 1).toList.traverse_(warm) *>
       chainRaws.indices.toList
         .foldLeftM(start) { (run, i) =>
@@ -704,8 +787,9 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           else
             for
               _ <- warm(i + window - 1).whenA(window > 0)
-              _ <- warm(i)
-              prepared = noted(i, run)
+              skip <- IO(window > 0 && cache.holds(chainHeaders(i).hash))
+              _ <- warm(i).unlessA(skip)
+              prepared = noted(i, run.copy(skipped = run.skipped + (if skip then 1 else 0)))
               next <- Handle
                 .allow[NodeError](
                   rules(prepared.states.last, chainHeaders(i), chainRaws(i))
@@ -740,4 +824,6 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals((without.asked, ahead.asked), (1, 1))
       assertEquals(without.firstAsked, Some(flagged))
       assert(ahead.firstAsked.exists(_ < flagged), ahead.firstAsked.toString)
+      // the worker asked for no check of most of the blocks it applied
+      assert(ahead.skipped > flagged / 2, ahead.skipped.toString)
   }

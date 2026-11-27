@@ -350,6 +350,7 @@ object Main extends IOApp:
       work: Option[SelectionWork[IO]],
       received: Option[ReceivedBlocks[IO]],
       preverify: Peer.Prepare[IO],
+      holds: xyz.kd5ujc.scarab.codec.Bytes => IO[Boolean],
       verifier: Option[VerifyAhead.Verifier[IO]],
       readAhead: ReadAheadStore[IO],
       collectors: Collectors.Registry[IO],
@@ -368,7 +369,7 @@ object Main extends IOApp:
             follower.committedChain.get.map(chain => ReadAheadStore.inputs(raw, chain.state))
           )
         given BlockSelection.Before[IO] =
-          BlockSelection.Before.delivered[IO](received, preverify, verifyAhead, readsAhead)
+          BlockSelection.Before.delivered[IO](received, preverify, holds, verifyAhead, readsAhead)
         // a reader of the read-ahead, or the verifier of the checks made ahead, that ends stops the
         // node, raised here (FIB-2)
         readAhead.stopped.flatMap(fatal).background *>
@@ -2947,6 +2948,7 @@ object Main extends IOApp:
             genesisRuntime.map(_.work),
             receivedBlocks,
             rules.warm,
+            hash => IO(run.cache.holds(hash)),
             verifier(follower, blockPool, run.cache, rules.praosConfig),
             store,
             collectors,

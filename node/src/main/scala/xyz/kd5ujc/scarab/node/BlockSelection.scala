@@ -318,21 +318,25 @@ private[node] object BlockSelection:
 
   object Before:
     /** The node's: a delivered block is written to the received log (`received`, when the node
-      * keeps one) and its signature checks asked for (`preverify`), finding those made ahead of the
-      * worker ([[VerifyAhead]], #1499); when a Shelley-based block enters the queue its store reads
-      * (`reads`, #1484) and its signature checks are asked for ahead of the worker; one passed by
-      * is the verifier's no longer.
+      * keeps one) and its signature checks asked for (`preverify`), unless the verification cache
+      * holds every verdict of them already (`holds`), as it does for a block whose checks were all
+      * made ahead of the worker ([[VerifyAhead]], #1499); when a Shelley-based block enters the
+      * queue its store reads (`reads`, #1484) and its signature checks are asked for ahead of the
+      * worker; one passed by is the verifier's no longer.
       */
     def delivered[F[_]: cats.Monad](
         received: Option[ReceivedBlocks[F]],
         preverify: Peer.Prepare[F],
+        holds: Bytes => F[Boolean],
         verifyAhead: VerifyAhead[F],
         reads: (Header, Bytes) => F[Unit]
     ): Before[F] = new Before[F]:
       def prepare(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit] =
         store(header, raw) *> (header match
-          case _: Header.Shelley => verifyAhead.reached(header.hash).void
-          case _                 => cats.Monad[F].unit) *> preverify(Vector(raw))
+          case _: Header.Shelley =>
+            verifyAhead.reached(header.hash) *>
+              holds(header.hash).ifM(verifyAhead.skipped, preverify(Vector(raw)))
+          case _ => preverify(Vector(raw)))
       def store(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit] =
         received.traverse_(
           _.put(BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary), raw)

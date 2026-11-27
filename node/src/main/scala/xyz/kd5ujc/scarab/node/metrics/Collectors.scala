@@ -112,14 +112,15 @@ object Collectors:
     })
 
   /** How the selection worker found the signature checks of the blocks it prepared: made ahead of
-    * it, being made, or not (#1499).
+    * it, being made, or not; and of how many it asked for none, the cache holding them (#1499).
     */
   def verifyAhead[F[_]: Monad](ahead: VerifyAhead[F])(using metrics: Metrics[F]): F[Unit] =
     import Catalogue.*
     ahead.counts.flatMap(c =>
       metrics.advance(preverifyAheadHit, c.hit.toDouble) *>
         metrics.advance(preverifyAheadJoined, c.joined.toDouble) *>
-        metrics.advance(preverifyAheadMiss, c.miss.toDouble)
+        metrics.advance(preverifyAheadMiss, c.miss.toDouble) *>
+        metrics.advance(preverifySkipped, c.skipped.toDouble)
     )
 
   /** The bodies the block pool holds in memory. */

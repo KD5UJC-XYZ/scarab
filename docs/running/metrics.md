@@ -396,6 +396,7 @@ the operator's choice; a node whose metrics are public publishes its schedule.
 | `scarab_preverify_ahead_hit_total` | counter |  | Blocks the selection worker prepared whose signature checks were made ahead of it, while queued. | none |
 | `scarab_preverify_ahead_joined_total` | counter |  | Blocks the selection worker prepared while their signature checks were being made ahead of it. | none |
 | `scarab_preverify_ahead_miss_total` | counter |  | Blocks the selection worker prepared whose signature checks were not made ahead of it. | none |
+| `scarab_preverify_skipped_total` | counter |  | Blocks the selection worker prepared without asking for their signature checks, the verification cache holding every verdict of them. | none |
 | `scarab_block_pool_bodies` | gauge |  | Received bodies the block pool holds in memory (with a received log, only until their admission is processed). | none |
 | `scarab_block_pool_body_bytes` | gauge |  | Bytes of the received bodies the block pool holds in memory. | none |
 | `scarab_replay_blocks` | gauge |  | Stored blocks applied again at the start (so far, then in total). | none |

@@ -60,7 +60,8 @@ final class VerificationCache private (
     val parallelism: Int,
     direct: Verdicts,
     layout: StateLayout,
-    private[node] val running: java.util.concurrent.Semaphore
+    private[node] val running: java.util.concurrent.Semaphore,
+    bounds: VerificationCache.Bounds
 ) extends Verdicts:
   private final case class WitnessKey(vkey: Bytes, signature: Bytes, message: Bytes)
   private final case class HeaderKey(
@@ -69,11 +70,22 @@ final class VerificationCache private (
       maxKesEvolutions: BigInt
   )
 
-  private val Limit = 100000
+  private val Limit = bounds.verdicts
   private def MinChunk = VerificationCache.MinChunk
   private val witnesses = new ConcurrentHashMap[WitnessKey, java.lang.Boolean]()
   private val headers = new ConcurrentHashMap[HeaderKey, Either[OCertError, Unit]]()
   private val prepared = new ConcurrentHashMap[Bytes, Prepared]()
+
+  // The blocks whose every verdict a warming kept, by the generation of the verdict maps it began
+  // in ([[holds]]). Each clear of a verdict map moves the generation first, so a block whose
+  // warming a clear overlapped is no longer held, whichever finished first.
+  private val complete = new ConcurrentHashMap[Bytes, java.lang.Long]()
+  private val generation = new java.util.concurrent.atomic.AtomicLong(0)
+
+  /** `clear` of a verdict map, its generation moved first ([[holds]]). */
+  private def evicting(clear: => Unit): Unit =
+    generation.incrementAndGet(): Unit
+    clear
 
   // VRF proofs depend on the epoch nonce, which only the sequential rules know; the verdicts are
   // keyed by the derived alpha string, so a block warmed under a wrong nonce is just a miss.
@@ -106,7 +118,7 @@ final class VerificationCache private (
             .sortBy(_.envelope.header.slot)
           pending.asJava
             .parallelStream()
-            .forEach(p => warmVrf(p.envelope.header, config, epochNonce.get))
+            .forEach(p => warmVrf(p.envelope.header, config, epochNonce.get): Unit)
         }
       }
 
@@ -136,29 +148,40 @@ final class VerificationCache private (
   def summary: String =
     s"witness=$witnessStats opCert=$opCertStats vrf=$vrfStats warmed=$warmedStats"
 
+  /** Warm the VRF verdict(s) of `header` under the epoch nonce `hint`: whether every one is kept
+    * (none is for a block of another epoch than the hint's, or one the providers failed on).
+    */
   private def warmVrf(
       header: Header.Shelley,
       config: PraosConfig,
       hint: (BigInt, Nonce)
-  ): Unit =
-    if hint != null && config.geometry.epochOf(header.slot) == hint._1 then
-      header.vrf match
-        case HeaderVrf.Praos(cert) =>
-          Praos.vrfInput(hint._2, header.slot).foreach { input =>
-            Vrf.alpha(input).foreach { alpha =>
+  ): Boolean =
+    def kept(result: Vrf.Result) = ProviderDefect.ofVrf(result).isEmpty
+    hint != null && config.geometry.epochOf(header.slot) == hint._1 && (header.vrf match
+      case HeaderVrf.Praos(cert) =>
+        Praos
+          .vrfInput(hint._2, header.slot)
+          .flatMap(input => Vrf.alpha(input).map(input -> _))
+          .exists((input, alpha) =>
+            kept(
               keepVrf(
                 VrfKey(0, alpha, header.vrfVkey, cert.proof, cert.output),
                 direct.praosVrf(input, header.vrfVkey, cert.proof, cert.output)
               )
-            }
-          }
-        case HeaderVrf.TPraos(nonceCert, leaderCert) =>
-          for (uc, cert) <- Seq(TPraos.SeedEta -> nonceCert, TPraos.SeedL -> leaderCert) do
+            )
+          )
+      case HeaderVrf.TPraos(nonceCert, leaderCert) =>
+        Seq(TPraos.SeedEta -> nonceCert, TPraos.SeedL -> leaderCert)
+          .map { (uc, cert) =>
             val alpha = TPraos.seed(uc, header.slot, hint._2)
-            keepVrf(
-              VrfKey(1, alpha, header.vrfVkey, cert.proof, cert.output),
-              direct.tpraosVrf(alpha, header.vrfVkey, cert.proof, cert.output)
-            ): Unit
+            kept(
+              keepVrf(
+                VrfKey(1, alpha, header.vrfVkey, cert.proof, cert.output),
+                direct.tpraosVrf(alpha, header.vrfVkey, cert.proof, cert.output)
+              )
+            )
+          }
+          .forall(identity))
 
   /** The verdicts as header-first validation reads them (G6): computed once if they are not there
     * yet and *kept*, so that the block's own validation, which comes later and consumes them
@@ -174,7 +197,7 @@ final class VerificationCache private (
         slotsPerKesPeriod: BigInt,
         maxKesEvolutions: BigInt
     ): Either[OCertError | ProviderDefect, Unit] =
-      if headers.size > Limit then headers.clear()
+      if headers.size > Limit then evicting(headers.clear())
       keepHeader(
         HeaderKey(header.hash, slotsPerKesPeriod, maxKesEvolutions),
         direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions)
@@ -194,7 +217,7 @@ final class VerificationCache private (
 
     /** The kept VRF verdict of `key`, or `verdict` kept now. */
     private def keptVrf(key: VrfKey, verdict: => Vrf.Result): Vrf.Result =
-      if vrfs.size > 16384 then vrfs.clear()
+      if vrfs.size > bounds.vrfs then evicting(vrfs.clear())
       keepVrf(key, verdict)
 
     def keyHash(vkey: Bytes): Bytes = VerificationCache.this.keyHash(vkey)
@@ -224,19 +247,24 @@ final class VerificationCache private (
                   HeaderKey(h.hash, config.slotsPerKesPeriod, config.maxKesEvolutions),
                   direct.opCert(h, config.slotsPerKesPeriod, config.maxKesEvolutions)
                 )
-                warmVrf(h, config, (epoch, nonce))
+                warmVrf(h, config, (epoch, nonce)): Unit
               }
             }
           )
           .void
 
-  /** Whether the block `hash` was decoded while warming and all its checks were made, and the rules
-    * have not taken it yet ([[takePrepared]]).
+  /** Whether every verdict of the block `hash` 's checks is here: a warming decoded it and kept the
+    * verdict of each of its checks (none a provider failed on, its VRF under the epoch nonce of its
+    * epoch), no verdict map was cleared since that warming began, and the rules have not taken the
+    * block ([[takePrepared]]). Two map reads, no decoding.
     */
-  def holds(hash: Bytes): Boolean = prepared.containsKey(hash)
+  def holds(hash: Bytes): Boolean =
+    Option(complete.get(hash)).exists(_.longValue == generation.get) && prepared.containsKey(hash)
 
   /** The block decoded while warming, if any (taken once). */
-  override def takePrepared(hash: Bytes): Option[Prepared] = Option(prepared.remove(hash))
+  override def takePrepared(hash: Bytes): Option[Prepared] =
+    complete.remove(hash)
+    Option(prepared.remove(hash))
 
   private def compute(key: WitnessKey): Either[ProviderDefect, Boolean] =
     direct.witness(key.vkey, key.signature, key.message)
@@ -320,8 +348,13 @@ final class VerificationCache private (
     opCertStats.record(known.isDefined)
     known.getOrElse(direct.opCert(header, slotsPerKesPeriod, maxKesEvolutions))
 
-  /** One independent signature check whose verdict goes into a cache. */
-  private type Job = () => Unit
+  /** One independent signature check whose verdict goes into a cache: whether the verdict is kept
+    * there (it is not where a provider failed: a defect is never kept).
+    */
+  private type Job = () => Boolean
+
+  /** A job as it is scheduled: its outcome recorded, any failure discarded. */
+  private type Task = () => Unit
 
   // Ranges are warmed concurrently (one `warm` per fetched range): all of them together run at most
   // `parallelism` chunks at once ([[running]]), so that several single-block batches do not put
@@ -333,21 +366,26 @@ final class VerificationCache private (
   private final class Pending(val block: Prepared, jobs: Int):
     private val remaining = new java.util.concurrent.atomic.AtomicInteger(jobs)
     private val failed = new java.util.concurrent.atomic.AtomicBoolean(false)
+    private val partial = new java.util.concurrent.atomic.AtomicBoolean(false)
     def failure(): Unit = failed.set(true)
+    def unkept(): Unit = partial.set(true)
     def finished(): Boolean = remaining.decrementAndGet() == 0 && !failed.get
+    def kept: Boolean = !partial.get
 
   /** Decode a block and split its signature checks into independent jobs: the operational
     * certificate and KES signature of the header, the VRF proof(s), and one job per distinct vkey
     * or bootstrap witness. Never fails: a block that does not decode has no jobs and is left for
     * the rules to report.
     */
-  private def jobsOf(raw: Bytes, config: PraosConfig): Vector[Job] =
+  private def jobsOf(raw: Bytes, config: PraosConfig): Vector[Task] =
     lastConfig.set(config)
-    if witnesses.size > Limit then witnesses.clear()
-    if headers.size > Limit then headers.clear()
-    if prepared.size > 4096 then prepared.clear()
-    if vrfs.size > 16384 then vrfs.clear()
-    NodeRules.decodeShelley(raw, layout).fold(Vector.empty[Job]) { p =>
+    if witnesses.size > Limit then evicting(witnesses.clear())
+    if headers.size > Limit then evicting(headers.clear())
+    if prepared.size > bounds.prepared then evicting { prepared.clear(); complete.clear() }
+    if vrfs.size > bounds.vrfs then evicting(vrfs.clear())
+    // the generation the block's verdicts are kept in: a clear after this makes it not held
+    val begun = generation.get
+    NodeRules.decodeShelley(raw, layout).fold(Vector.empty[Task]) { p =>
       val b = p.envelope
       val key = HeaderKey(b.header.hash, config.slotsPerKesPeriod, config.maxKesEvolutions)
       val triples = (p match
@@ -384,15 +422,23 @@ final class VerificationCache private (
             keepHeader(
               key,
               direct.opCert(b.header, config.slotsPerKesPeriod, config.maxKesEvolutions)
-            ): Unit,
+            ) match
+              case Left(_: ProviderDefect)         => false
+              case Left(_: OCertError) | Right(()) => true
+          ,
           () => warmVrf(b.header, config, epochNonce.get)
         ) ++ triples.map(witnessJob)
       val pending = new Pending(p, checks.size)
       // a job's defect is discarded (the validation asks the provider itself); the last job to
-      // finish stores the block's prepared checks
+      // finish stores the block's prepared checks, and the block as held where every verdict was
+      // kept
       checks.map { job => () =>
-        Either.catchNonFatal(job()).left.foreach(_ => pending.failure())
-        if pending.finished() then prepared.put(b.header.hash, p): Unit
+        Either
+          .catchNonFatal(job())
+          .fold(_ => pending.failure(), kept => if !kept then pending.unkept())
+        if pending.finished() then
+          prepared.put(b.header.hash, p)
+          if pending.kept then complete.put(b.header.hash, begun): Unit
       }
     }
 
@@ -404,9 +450,10 @@ final class VerificationCache private (
   private def witnessJob(k: WitnessKey): Job = () =>
     val present = witnesses.containsKey(k)
     warmedStats.record(present)
-    if !present then
+    present || {
       keyHash(k.vkey)
-      compute(k).foreach(valid => witnesses.put(k, valid)): Unit
+      compute(k).map(valid => witnesses.put(k, valid)).isRight
+    }
 
   /** The jobs of a batch in chunks of about `perChunk` jobs: a few chunks per thread so that a slow
     * one does not leave the others idle, and never fewer than [[MinChunk]] jobs (about a
@@ -430,7 +477,7 @@ final class VerificationCache private (
   def warm[F[_]: Async](blocks: Vector[Bytes], config: PraosConfig, parallelism: Int): F[Unit] =
     if blocks.isEmpty then Async[F].unit
     else
-      val guarded: (=> Vector[Job]) => Vector[Job] = body =>
+      val guarded: (=> Vector[Task]) => Vector[Task] = body =>
         Either.catchNonFatal(body).getOrElse(Vector.empty)
       blocks
         .parTraverseN(parallelism)(b => Async[F].blocking(guarded(jobsOf(b, config))))
@@ -439,7 +486,7 @@ final class VerificationCache private (
   /** `jobs` in [[chunked]] chunks on up to `parallelism` `blocking` threads, under the bound all
     * warming shares ([[running]]), each chunk holding one permit ([[permit]]).
     */
-  private def run[F[_]: Async](jobs: Vector[Job], parallelism: Int): F[Unit] =
+  private def run[F[_]: Async](jobs: Vector[Task], parallelism: Int): F[Unit] =
     chunked(jobs, parallelism)
       .parTraverseN(parallelism)(chunk => permit[F].surround(Async[F].blocking(chunk.foreach(_()))))
       .void
@@ -476,11 +523,11 @@ final class VerificationCache private (
     * provider itself.
     */
   def warmWitnesses[F[_]: Async](checks: Vector[WitnessCheck]): F[Unit] =
-    Async[F].delay(if witnesses.size > Limit then witnesses.clear()) *>
+    Async[F].delay(if witnesses.size > Limit then evicting(witnesses.clear())) *>
       run(
         checks.distinct.map { c =>
           val job = witnessJob(WitnessKey(c.vkey, c.signature, c.message))
-          (() => Either.catchNonFatal(job()).getOrElse(())): Job
+          (() => Either.catchNonFatal(job()).fold(_ => (), _ => ())): Task
         },
         parallelism
       )
@@ -490,6 +537,15 @@ final class VerificationCache private (
     warm[F](blocks, config, parallelism)
 
 object VerificationCache:
+  /** How many entries the maps hold before they are cleared: the witness and certificate verdicts
+    * (each), the decoded blocks and the VRF verdicts. A suite may give smaller ones, to clear them
+    * between two warmings.
+    */
+  private[node] final case class Bounds(verdicts: Int, prepared: Int, vrfs: Int)
+
+  private[node] object Bounds:
+    val Default: Bounds = Bounds(100000, 4096, 16384)
+
   /** The fewest checks worth a task of their own. */
   private val MinChunk = 8
 
@@ -506,7 +562,8 @@ object VerificationCache:
           parallelism,
           Verdicts.Direct,
           layout,
-          new java.util.concurrent.Semaphore(parallelism)
+          new java.util.concurrent.Semaphore(parallelism),
+          Bounds.Default
         )
       )
     )(c => Sync[F].delay(c.shutdown()))
@@ -517,11 +574,13 @@ object VerificationCache:
       parallelism: Int = defaultParallelism,
       direct: Verdicts = Verdicts.Direct,
       running: Option[java.util.concurrent.Semaphore] = None,
-      layout: StateLayout = StateLayout.Node11_1
+      layout: StateLayout = StateLayout.Node11_1,
+      bounds: Bounds = Bounds.Default
   ): VerificationCache =
     new VerificationCache(
       parallelism,
       direct,
       layout,
-      running.getOrElse(new java.util.concurrent.Semaphore(parallelism))
+      running.getOrElse(new java.util.concurrent.Semaphore(parallelism)),
+      bounds
     )
