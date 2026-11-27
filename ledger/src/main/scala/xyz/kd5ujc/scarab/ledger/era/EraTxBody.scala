@@ -3,9 +3,10 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import scala.collection.immutable.SortedSet
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{LedgerDecodeError, RewardAccount, TxIn, Update}
+import xyz.kd5ujc.scarab.ledger.{LedgerDecodeError, RewardAccount, TxIn}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.AccountBalanceInterval
 import xyz.kd5ujc.scarab.ledger.state.{
+  Babbage,
   Coin,
   Conway,
   Credential,
@@ -104,7 +105,10 @@ trait ShelleyEraTxBody[E <: EraTag] extends EraTxBody[E]:
     */
   override def certsOf: ShelleyEraTxCert[E]
 
-  def update(body: TxBody[TxLevel.Top, E]): Option[Update]
+  /** `updateTxBodyL` (`Shelley/TxBody.hs:97-100`, cardano-ledger f649f975): the typed update
+    * proposal ([[Update]]).
+    */
+  def update(body: TxBody[TxLevel.Top, E]): Option[Update[E]]
 
 /** The slots a transaction is valid in, from Allegra (`data ValidityInterval`,
   * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:130-134`, cardano-ledger f649f975):
@@ -330,8 +334,17 @@ enum EraField:
   case Update, CurrentTreasury, MultiAsset, Datum, ReferenceScript, NegativeValue,
     GenesisDelegation, InstantaneousRewards
 
+  /** A certificate Conway brought (a deposit, a vote delegation, a DRep's or a committee member's),
+    * which no decoder before Conway reads.
+    */
+  case ConwayCertificate
+
 /** The instances of each era, the one place that lists the eras having each body class. */
 object EraTxBody:
+  given babbage: ((ShelleyEraTxBody[Babbage] & BabbageEraTxBody[Babbage] &
+    AlonzoEraTxBodyToConway[Babbage]) { type Level[L <: TxLevel] = TopOnly[L] }) =
+    xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxBody.instance
+
   given conway: ((ConwayEraTxBody[Conway] & AlonzoEraTxBodyToConway[Conway]) {
     type Level[L <: TxLevel] = TopOnly[L]
   }) =
