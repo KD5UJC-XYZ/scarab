@@ -345,7 +345,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
 
   // A fork is applied block by block on an in-memory chain and committed only whole (`switchTo`);
   // the candidates are then truncated at the invalid block and decided again against the current
-  // chain (ouroboros-consensus 82ecba32 `ChainSel.hs:1145-1186`), so the valid prefix of a fork is
+  // chain (ouroboros-consensus 82ecba32 `ChainSel.hs:1145-1183`), so the valid prefix of a fork is
   // adopted only if it is preferred on its own (blinklabs-io/dingo#6048).
   test(
     "a peer's longer fork with an invalid middle block: the chain and its state stay as they are"
@@ -403,7 +403,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
   // startup, reaches the invalid block inside the switch: startup selects from the anchor, so the
   // one-block chain is a rival candidate, and the truncated prefix, reinserted among the
   // candidates, ranks above it (the reference's `sortCandidates` over the reinserted prefix and
-  // the other candidates, `ChainSel.hs:1141-1186`).
+  // the other candidates, `ChainSel.hs:1141-1183`).
   test("a selection over a longer fork with an invalid middle block adopts its valid prefix") {
     for
       forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
