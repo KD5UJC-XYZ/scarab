@@ -184,9 +184,14 @@ digits of the SHA-256 of the bytes it names.
     each transaction without sub-transactions that Conway's decoder reads, by its id.
 
   Recorded at Scarab commit `6448028a5`, the head of the flat CERTS's deletion with the case files pinned, with these
-  suites beside the ones that compared the two rules: every comparison agreed. The flat UTXO's deletion's parent,
-  `1ca5f3bff`, adds these recordings and the suites that read them; the suites of `6448028a5` were run again there
-  beside them, every comparison agreed, and the recordings written were these, byte for byte. Each of the two files
+  suites beside the ones that compared the two rules: every comparison agreed. The suites of `6448028a5` were run
+  again at `1ca5f3bff`, which adds these recordings and the suites that read them, and wrote these, byte for byte.
+  The flat UTXO's deletion was then rebased onto the head of the pull request that deleted the flat CERTS (#1493),
+  after the flat GOV's was squash-merged (#1487), which leaves `6448028a5` and `1ca5f3bff` on no branch. The
+  deletion's parent is now `24568efb3`, which differs from `1ca5f3bff` only outside the ledger: the read-ahead of
+  queued blocks' store reads (#1484), the fuzz job's differential targets (#1418) and documents (#1490, and the CERTS
+  recording's paragraph above). The recorders were run again at `24568efb3` with the suites of the case files' pin,
+  `08f1821b9`, beside them: every comparison agreed, and the files they wrote were these, byte for byte. Each of the two files
   holds the judgments of the suites named alone: an id under no prefix named fails. A verdict without one (`N`)
   holds no cause; each is checked to have the evaluator's own on the script the rule stopped at. The comparisons that had other
   oracles are not here: the reference's bytes where only UTXO or UTXOW refused, the reference's verdicts and script
@@ -203,8 +208,8 @@ digits of the SHA-256 of the bytes it names.
   (`ConwayPhase2.storedErrors`, through the purposes' flat form, `ConwayUtxowPredFailure.storedPurposes` when recorded
   and `ConwayPhase2`'s own since, and `ConwayTxCert.toStored`), and
   the flat observation of the same transaction wrote the same bytes (#85's item 7152417866). Recorded on Scarab
-  commit `c187e8b90` with the suite that reads them, committed as `6448028a5`, before the flat Conway UTXO, UTXOW and
-  UTXOS were deleted.
+  commit `c187e8b90` with the suite that reads them, committed as `6448028a5` (`08f1821b9` after the rebase above),
+  before the flat Conway UTXO, UTXOW and UTXOS were deleted; written again at `24568efb3`, byte for byte.
 
 Commit `84bf3a1cd` is the base this work started from; `3aaa942aa` the last of it with the flat encoder. The
 tests that wrote these lines and their throwaway checkouts were removed after. The digests are Scarab's own,
