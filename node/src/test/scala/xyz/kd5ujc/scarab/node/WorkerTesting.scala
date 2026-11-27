@@ -137,20 +137,24 @@ private[scarab] object WorkerTesting extends munit.Assertions:
     * then, `None`), or until the worker tells the node to stop (that fault). The session's own end
     * is raised as it is, once the worker, which outlives every session, has decided what the
     * session delivered before it ended; an end the worker's decisions make due is waited for.
+    * `report`, when given, hears each refusal the worker blames on the session's peer, which with
+    * diffusion pipelining on (`diffusion`) is not one of the tip it announced.
     */
   def run[S](
       follower: Follower[IO, S],
       blocks: BlockPool[IO],
       peer: Scripted[IO],
       done: IO[Unit],
-      before: BlockSelection.Before[IO] = BlockSelection.Before.noop[IO]
+      before: BlockSelection.Before[IO] = BlockSelection.Before.noop[IO],
+      report: Option[ValidationError => IO[Unit]] = None,
+      diffusion: BlockPool.Diffusion = BlockPool.Diffusion.On
   )(using
       Stateful[IO, VolatileChain[S]],
       Raise[IO, NodeError]
   ): IO[Option[Fatal]] =
     Deferred[IO, Fatal].flatMap { stopped =>
       selection(follower, blocks, stopped.complete(_).void, before).surround {
-        val following = (blocks.session >>= (delivering(peer, _)))
+        val following = (blocks.session(report, diffusion) >>= (delivering(peer, _)))
           .use(fed =>
             IO.race(
               follower.session(fed.peer),
@@ -182,12 +186,14 @@ private[scarab] object WorkerTesting extends munit.Assertions:
       blocks: BlockPool[IO],
       peer: Scripted[IO],
       done: IO[Unit],
-      before: BlockSelection.Before[IO] = BlockSelection.Before.noop[IO]
+      before: BlockSelection.Before[IO] = BlockSelection.Before.noop[IO],
+      report: Option[ValidationError => IO[Unit]] = None,
+      diffusion: BlockPool.Diffusion = BlockPool.Diffusion.On
   )(using
       Stateful[IO, VolatileChain[S]],
       Raise[IO, NodeError]
   ): IO[Unit] =
-    run(follower, blocks, peer, done, before).flatMap(
+    run(follower, blocks, peer, done, before, report, diffusion).flatMap(
       _.traverse_(fault => IO(fail(s"the node was told to stop: $fault")))
     )
 

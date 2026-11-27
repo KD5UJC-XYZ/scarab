@@ -230,6 +230,11 @@ final class VerificationCache private (
           )
           .void
 
+  /** Whether the block `hash` was decoded while warming and all its checks were made, and the rules
+    * have not taken it yet ([[takePrepared]]).
+    */
+  def holds(hash: Bytes): Boolean = prepared.containsKey(hash)
+
   /** The block decoded while warming, if any (taken once). */
   override def takePrepared(hash: Bytes): Option[Prepared] = Option(prepared.remove(hash))
 

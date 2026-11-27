@@ -350,59 +350,66 @@ object Main extends IOApp:
       work: Option[SelectionWork[IO]],
       received: Option[ReceivedBlocks[IO]],
       preverify: Peer.Prepare[IO],
-      verifier: VerifyAhead.Verifier[IO],
+      verifier: Option[VerifyAhead.Verifier[IO]],
       readAhead: ReadAheadStore[IO],
       collectors: Collectors.Registry[IO],
       fatal: Fatal => IO[Unit],
       origin: Option[xyz.kd5ujc.scarab.codec.Bytes]
   )(using Raise[IO, NodeError], Log[IO], Metrics[IO]): Resource[IO, Unit] =
-    VerifyAhead.resource[IO](verifier).flatMap { verifyAhead =>
-      // a Shelley-based block's store reads, read ahead of the worker from the selected chain's
-      // tip as a reader finds it (#1484)
-      def readsAhead(@scala.annotation.unused header: Header, raw: xyz.kd5ujc.scarab.codec.Bytes) =
-        readAhead.ahead(
-          follower.committedChain.get.map(chain => ReadAheadStore.inputs(raw, chain.state))
-        )
-      given BlockSelection.Before[IO] =
-        BlockSelection.Before.delivered[IO](received, preverify, verifyAhead, readsAhead)
-      // a reader of the read-ahead, or the verifier of the checks made ahead, that ends stops the
-      // node, raised here (FIB-2)
-      readAhead.stopped.flatMap(fatal).background *>
-        verifyAhead.stopped.flatMap(fatal).background *>
-        Resource.eval(collectors.add(Collectors.verifyAhead(verifyAhead))) *> Resource
-          .eval(
-            work.fold(
-              SelectionWork
-                .create[IO](pool.fetchCoordinator.refreshGenesis, events = Some(Log.genesis[IO]))
-            )(IO.pure)
+    verifier.fold(Resource.eval(VerifyAhead.idle[IO]))(VerifyAhead.resource[IO]).flatMap {
+      verifyAhead =>
+        // a Shelley-based block's store reads, read ahead of the worker from the selected chain's
+        // tip as a reader finds it (#1484)
+        def readsAhead(
+            @scala.annotation.unused header: Header,
+            raw: xyz.kd5ujc.scarab.codec.Bytes
+        ) =
+          readAhead.ahead(
+            follower.committedChain.get.map(chain => ReadAheadStore.inputs(raw, chain.state))
           )
-          .flatMap(shared => follower.blockSelection(pool, shared, fatal, origin))
+        given BlockSelection.Before[IO] =
+          BlockSelection.Before.delivered[IO](received, preverify, verifyAhead, readsAhead)
+        // a reader of the read-ahead, or the verifier of the checks made ahead, that ends stops the
+        // node, raised here (FIB-2)
+        readAhead.stopped.flatMap(fatal).background *>
+          verifyAhead.stopped.flatMap(fatal).background *>
+          Resource.eval(collectors.add(Collectors.verifyAhead(verifyAhead))) *> Resource
+            .eval(
+              work.fold(
+                SelectionWork
+                  .create[IO](pool.fetchCoordinator.refreshGenesis, events = Some(Log.genesis[IO]))
+              )(IO.pure)
+            )
+            .flatMap(shared => follower.blockSelection(pool, shared, fatal, origin))
     }
 
   /** What the checks of a queued block made ahead of the worker are ([[VerifyAhead]], #1499): the
     * worker's own two checks of whether it would prepare the block, as far as the committed chain
     * and the pool say now; the block's signature checks into `cache` on at most half its threads
-    * ([[VerifyAhead.parallelism]]), with the rule configuration as it is then; and the decoded
-    * block they leave there, dropped for a block the worker passes by.
+    * ([[VerifyAhead.parallelism]]), with the rule configuration as it is then, and whether the
+    * cache holds the block with all of them made; and the decoded block they leave there, dropped
+    * for a block the worker passes by. None on a machine with no processor to spare beside the
+    * worker.
     */
   private[node] def verifier(
       follower: Follower[IO, MirrorState],
       pool: BlockPool[IO],
       cache: VerificationCache,
       praosConfig: Ref[IO, consensus.PraosConfig]
-  ): VerifyAhead.Verifier[IO] =
-    VerifyAhead.Verifier[IO](
-      header =>
-        (
-          follower.committedChain.get.map(Follower.youngerThanImmutable(_, header)),
-          pool.processedForest.map(!_.contains(header.hash))
-        ).mapN(_ && _),
-      (_, raw) =>
-        praosConfig.get.flatMap(
-          cache.warm[IO](Vector(raw), _, VerifyAhead.parallelism(cache.parallelism))
-        ),
-      hash => IO(cache.takePrepared(hash)).void
-    )
+  ): Option[VerifyAhead.Verifier[IO]] =
+    VerifyAhead.parallelism(cache.parallelism).map { threads =>
+      VerifyAhead.Verifier[IO](
+        header =>
+          (
+            follower.committedChain.get.map(Follower.youngerThanImmutable(_, header)),
+            pool.processedForest.map(!_.contains(header.hash))
+          ).mapN(_ && _),
+        (header, raw) =>
+          praosConfig.get.flatMap(cache.warm[IO](Vector(raw), _, threads)) *>
+            IO(cache.holds(header.hash)),
+        hash => IO(cache.takePrepared(hash)).void
+      )
+    }
 
   private def createGenesisRuntime(
       setup: NodeSetup,

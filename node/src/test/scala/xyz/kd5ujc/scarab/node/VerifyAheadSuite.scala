@@ -59,7 +59,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   /** A verifier over the forged blocks that records what it verified and dropped. A block in
     * `gated` says when its verification starts, waits for its release and says when it is recorded;
     * one in `unwanted` is one the worker would pass by; one in `failing` fails after it is
-    * recorded.
+    * recorded; one in `unchecked` is one whose checks the cache cannot all make.
     */
   private final class Probe(
       gated: Map[Bytes, Gates],
@@ -72,7 +72,8 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
 
     def verifier(
         unwanted: Set[Int] = Set.empty,
-        failing: Set[Int] = Set.empty
+        failing: Set[Int] = Set.empty,
+        unchecked: Set[Int] = Set.empty
     ): VerifyAhead.Verifier[IO] =
       def in(set: Set[Int], h: Header) = set.exists(header(_).hash == h.hash)
       VerifyAhead.Verifier[IO](
@@ -81,12 +82,13 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           gated.get(h.hash).traverse_(g => g.started.complete(()) *> g.release.get) *>
             verified.update(_ :+ h.hash) *>
             gated.get(h.hash).traverse_(_.recorded.complete(())) *>
-            IO.raiseError(new IllegalStateException("verifier broke")).whenA(in(failing, h)),
+            IO.raiseError(new IllegalStateException("verifier broke")).whenA(in(failing, h)) *>
+            IO.pure(!in(unchecked, h)),
         hash => discarded.update(_ :+ hash)
       )
 
-  /** A probe whose blocks `gated` wait for their release, with the last of `0 until 40` (the
-    * sentinel) saying when the verifier has finished everything asked for before it.
+  /** A probe whose blocks `gated` wait for their release, with the [[Sentinel]] saying when the
+    * verifier has finished everything asked for before it.
     */
   private def probe(gated: Int*): IO[Probe] =
     (
@@ -120,7 +122,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           reach <- ahead.reached(header(0).hash)
           counts <- ahead.counts
           verified <- p.verified.get
-          held <- ahead.held
+          held <- ahead.held.get
         yield
           assertEquals(reach, VerifyAhead.Reach.Hit)
           assertEquals(counts, VerifyAhead.Counts(1, 0, 0))
@@ -130,19 +132,26 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     yield ()
   }
 
-  test("a block being verified when the worker reaches it is joined, and verified once") {
+  test("a block being verified when the worker reaches it is joined: the worker waits for it") {
     for
       p <- probe(0)
       _ <- VerifyAhead.resource[IO](p.verifier()).use { ahead =>
         for
           _ <- ahead.ahead(header(0), raw(0)) *> p.started(0)
-          reach <- ahead.reached(header(0).hash)
-          _ <- p.release(0) *> drained(p, ahead)
+          // the worker reaches the block while it is being verified; what was verified when the
+          // worker goes on
+          joining <- ahead.reached(header(0).hash).flatMap(r => p.verified.get.map(r -> _)).start
+          // released only once the worker has taken the block from the verifier
+          _ <- ahead.held.waitUntil(!_.contains(header(0).hash)) *> p.release(0)
+          joined <- joining.joinWithNever
+          (reach, seen) = joined
+          _ <- drained(p, ahead)
           verified <- p.verified.get
           discarded <- p.discarded.get
-          held <- ahead.held
+          held <- ahead.held.get
         yield
           assertEquals(reach, VerifyAhead.Reach.Joined)
+          assertEquals(seen, hashes(0))
           assertEquals(verified, hashes(0, Sentinel))
           assertEquals(discarded, Vector.empty)
           assert(!held.contains(header(0).hash))
@@ -178,7 +187,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           _ <- p.release(0) *> drained(p, ahead)
           verified <- p.verified.get
           discarded <- p.discarded.get
-          held <- ahead.held
+          held <- ahead.held.get
           counts <- ahead.counts
         yield
           assertEquals(verified, hashes(0, Sentinel))
@@ -199,7 +208,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           early <- p.discarded.get
           _ <- p.release(0) *> drained(p, ahead)
           discarded <- p.discarded.get
-          held <- ahead.held
+          held <- ahead.held.get
         yield
           assertEquals(early, Vector.empty)
           assertEquals(discarded, hashes(0))
@@ -216,7 +225,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           _ <- ahead.ahead(header(0), raw(0)) *> drained(p, ahead)
           _ <- ahead.passed(header(0).hash)
           discarded <- p.discarded.get
-          held <- ahead.held
+          held <- ahead.held.get
         yield
           assertEquals(discarded, hashes(0))
           assert(!held.contains(header(0).hash))
@@ -236,6 +245,52 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           assertEquals(reach, VerifyAhead.Reach.Miss)
           assertEquals(verified, hashes(Sentinel))
       }
+    yield ()
+  }
+
+  test("a block whose checks the cache cannot all make is a miss") {
+    for
+      p <- probe()
+      _ <- VerifyAhead.resource[IO](p.verifier(unchecked = Set(0))).use { ahead =>
+        for
+          _ <- ahead.ahead(header(0), raw(0)) *> drained(p, ahead)
+          reach <- ahead.reached(header(0).hash)
+        yield assertEquals(reach, VerifyAhead.Reach.Miss)
+      }
+    yield ()
+  }
+
+  test("over the cache, a joined block leaves no decoded copy once the rules took theirs") {
+    val cache = VerificationCache.unsafe(2)
+    val target = 3
+    for
+      started <- Deferred[IO, Unit]
+      release <- Deferred[IO, Unit]
+      verifier = VerifyAhead.Verifier[IO](
+        _ => IO.pure(true),
+        (h, bytes) =>
+          (started.complete(()) *> release.get).whenA(h.hash == header(target).hash) *>
+            cache.warm[IO](Vector(bytes), ForgedChain.config, 1) *> IO(cache.holds(h.hash)),
+        hash => IO(cache.takePrepared(hash)).void
+      )
+      _ <- VerifyAhead
+        .resource[IO](verifier)
+        .use { ahead =>
+          for
+            _ <- ahead.ahead(header(target), raw(target)) *> started.get
+            joining <- ahead.reached(header(target).hash).start
+            _ <- ahead.held.waitUntil(!_.contains(header(target).hash)) *> release.complete(())
+            reach <- joining.joinWithNever
+            // the worker's own preparation, then the rules take the decoded block
+            _ <- cache.warm[IO](Vector(raw(target)), ForgedChain.config, 2)
+            taken <- IO(cache.takePrepared(header(target).hash))
+            left <- IO(cache.holds(header(target).hash))
+          yield
+            assertEquals(reach, VerifyAhead.Reach.Joined)
+            assert(taken.isDefined)
+            assert(!left, "a decoded copy was left in the cache")
+        }
+        .guarantee(IO(cache.shutdown()))
     yield ()
   }
 
@@ -264,7 +319,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         for
           _ <- ahead.ahead(header(0), raw(0)) *> p.started(0)
           _ <- asked.toList.traverse_(i => ahead.ahead(header(i), raw(i)))
-          held <- ahead.held
+          held <- ahead.held.get
           dropped <- ahead.reached(header(asked.last).hash)
           _ <- p.release(0)
         yield
@@ -279,7 +334,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       ahead <- VerifyAhead.idle[IO]
       _ <- ahead.ahead(header(0), raw(0))
       reach <- ahead.reached(header(0).hash)
-      held <- ahead.held
+      held <- ahead.held.get
     yield
       assertEquals(reach, VerifyAhead.Reach.Miss)
       assertEquals(held, Map.empty)
@@ -313,7 +368,8 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   /** How the worker meets the checks: as before checks were made ahead (`Baseline`); through the
     * node's preparation with nothing made ahead (`Idle`); with the first block held until the
     * verifier has verified it and the ten queued behind it, the target the last of them (`Before`);
-    * or with the target's checks being made ahead when the worker reaches it (`During`).
+    * or with the target's checks started ahead and released only when the worker reaches it, so
+    * that the worker most likely finds them being made (`During`).
     */
   private enum Schedule:
     case Baseline, Idle, Before, During
@@ -323,13 +379,15 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       invalid: Map[Bytes, ValidationError],
       events: Vector[FollowerEvent],
       chain: VolatileChain[MirrorState],
+      blamed: Vector[ValidationError],
       counts: VerifyAhead.Counts,
       calls: Int
   )
 
   /** A follower session over the real block rules of the forged chain with the verification cache
     * as their verifiers, against a peer announcing every forged header, whose blocks the node's
-    * selection worker adopts with the preparation `schedule` gives.
+    * selection worker adopts with the preparation `schedule` gives. Diffusion pipelining is off, so
+    * that the refusal of a block the peer delivered is blamed on it.
     */
   private def session(schedule: Schedule): IO[Seen] =
     val provider = BadSignature()
@@ -360,16 +418,22 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           queued <- Deferred[IO, Unit]
           started <- Deferred[IO, Unit]
           release <- Deferred[IO, Unit]
-          base = Main.verifier(follower, pool, cache, praos)
+          base = Main
+            .verifier(follower, pool, cache, praos)
+            .getOrElse(fail("a cache of two threads verifies ahead"))
+          blamed <- Ref.of[IO, Vector[ValidationError]](Vector.empty)
           // the node's verifier, counting what it verified and, `During`, holding the target
           verifier = base.copy(verify =
             (h, bytes) =>
               (started.complete(()) *> release.get)
                 .whenA(schedule == Schedule.During && h.hash == target.hash) *>
-                base.verify(h, bytes) *>
-                verifiedCount
-                  .updateAndGet(_ + 1)
-                  .flatMap(n => queued.complete(()).void.whenA(n > index))
+                base
+                  .verify(h, bytes)
+                  .flatTap(_ =>
+                    verifiedCount
+                      .updateAndGet(_ + 1)
+                      .flatMap(n => queued.complete(()).void.whenA(n > index))
+                  )
           )
           preverify = (blocks: Vector[Bytes]) => cache.warm[IO](blocks, ForgedChain.config)
           seen <- VerifyAhead.resource[IO](verifier).use { verifyAhead =>
@@ -387,9 +451,9 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 h =>
                   schedule match
                     case Schedule.Before => queued.get.whenA(h.hash == header(0).hash)
-                    case Schedule.During => started.get.whenA(h.hash == target.hash)
-                    case _               => IO.unit,
-                h => release.complete(()).void.whenA(h.hash == target.hash)
+                    case Schedule.During =>
+                      (started.get *> release.complete(()).start.void).whenA(h.hash == target.hash)
+                    case _ => IO.unit
               )
               queue <- Queue.unbounded[IO, SyncEvent]
               _ <- forged.headers
@@ -407,15 +471,24 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               end <- SessionEnd
                 .scoped(node) { (_, _) ?=>
                   WorkerTesting
-                    .follow(follower, pool, peer, done.get, before)
+                    .follow(
+                      follower,
+                      pool,
+                      peer,
+                      done.get,
+                      before,
+                      Some(refusal => blamed.update(_ :+ refusal)),
+                      BlockPool.Diffusion.Off
+                    )
                     .as(SessionEnd.Stopped(false))
                 }
                 .timeout(60.seconds)
               chain <- ref.get
               invalid <- pool.invalidBlocks.snapshot
               events <- emitted.get
-              counts <- verifyAhead.counts
-            yield Seen(end, invalid.entries, events, chain, counts, provider.calls)
+              counts <- if schedule == Schedule.Idle then idle.counts else verifyAhead.counts
+              blames <- blamed.get
+            yield Seen(end, invalid.entries, events, chain, blames, counts, provider.calls)
           }
         yield seen
       }
@@ -430,15 +503,14 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       def ahead(header: Header, raw: Bytes): IO[Unit] = IO.unit
       def passed(header: Header): IO[Unit] = IO.unit
 
-  /** `before`, its preparation of a block held by `first` before and followed by `after` after. */
+  /** `before`, its preparation of a block held by `first`. */
   private def held(
       before: BlockSelection.Before[IO],
-      first: Header => IO[Unit],
-      after: Header => IO[Unit]
+      first: Header => IO[Unit]
   ): BlockSelection.Before[IO] =
     new BlockSelection.Before[IO]:
       def prepare(header: Header, raw: Bytes)(using Raise[IO, NodeError]): IO[Unit] =
-        first(header) *> before.prepare(header, raw) *> after(header)
+        first(header) *> before.prepare(header, raw)
       def store(header: Header, raw: Bytes)(using Raise[IO, NodeError]): IO[Unit] =
         before.store(header, raw)
       def ahead(header: Header, raw: Bytes): IO[Unit] = before.ahead(header, raw)
@@ -449,6 +521,7 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assertEquals(seen.invalid, expected.invalid)
     assertEquals(seen.events, expected.events)
     assertEquals(seen.chain, expected.chain)
+    assertEquals(seen.blamed, expected.blamed)
 
   test("a bad signature in the middle of the queue: the same refusal, blame and states") {
     for
@@ -461,15 +534,17 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(expected.invalid.keySet, Set(target.hash))
       assertEquals(expected.chain.tip, forged.headers(index - 1).point)
       assertEquals(expected.calls, 1)
+      assertEquals(expected.blamed.map(_.point), Vector(target.point))
       same(idle, expected)
       same(before, expected)
       same(during, expected)
       // nothing was made ahead in the first, the checks of the held queue in the second, and the
-      // target's were being made when the worker reached it in the third
+      // target's were released as the worker reached it in the third
       assertEquals(idle.counts.hit + idle.counts.joined, 0L)
+      assert(idle.counts.miss > index.toLong, idle.counts.toString)
       assert(before.counts.hit >= index.toLong, before.counts.toString)
       assertEquals(before.calls, 1)
-      assert(during.counts.joined >= 1, during.counts.toString)
+      assert(during.counts.hit + during.counts.joined > 0, during.counts.toString)
   }
 
   // ------------------------------------------------------------------ the era-walking chain
