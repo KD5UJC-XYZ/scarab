@@ -655,8 +655,10 @@ class BabbagePlutusContextSuite extends munit.FunSuite:
               AlonzoPlutusPurpose.AlonzoSpending(AsItem(in))
             )
             .map(_.map(_.getPlutusData))
-          assertEquals(ours.isRight, true, c.name)
-          assertEquals(ours.toOption, flatSpendingDatum(c, index, in, out).toOption, c.name)
+          // both read the datum, and the same one
+          val flat = flatSpendingDatum(c, index, in, out)
+          assert(ours.isRight && flat.isRight, s"${c.name}: $ours, $flat")
+          assertEquals(ours.toOption, flat.toOption, c.name)
           ours.toOption.flatten.isDefined
         }
       }
