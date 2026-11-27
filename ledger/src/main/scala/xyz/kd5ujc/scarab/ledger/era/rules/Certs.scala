@@ -83,8 +83,7 @@ import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
 // reference's functions of that module under their names, and its transition records the
 // reference's own failures (`CertsFailures.scala`), each rule's injected and a sub-rule's embedded
 // as the reference's `InjectRuleFailure` and `Embed` instances do. A value outside the state's
-// vocabulary is raised as a defect (`LedgerDefect`), as the flat rules raise it, and no decoded
-// certificate holds one.
+// vocabulary is raised as a defect (`LedgerDefect`), and no decoded certificate holds one.
 
 /** The protocol parameters' field `l` (`ppLensHKD . l`). */
 private[rules] def field[E <: EraTag, A](pp: PParams[E])(
@@ -492,7 +491,7 @@ object DELEG:
 
 /** `ConwayGovCertEnv` (`Conway/Rules/GovCert.hs:82-90`, cardano-ledger f649f975): the parameters,
   * the epoch, the committee and the proposals to update it. The committee and the proposals are the
-  * node's records, which the flat rules read too.
+  * node's records.
   */
 final case class ConwayGovCertEnv[E <: EraTag](
     pp: PParams[E],
@@ -748,11 +747,7 @@ final case class CertsEnv[E <: EraTag](
   * build), where the gate is gone (`Conway/Rules/Ledger.hs:397-403` and `Conway/Rules/Certs.hs:220`
   * at 29a7d656, `Conway/Rules/Certs.hs:220` at 9df9f98c). The rules derive it from the build the
   * judgment's `Globals` name ([[of]]), as POOL reads its layout, so a judgment cannot pair one
-  * build with another's rule, until the builds are types (#1063). The flat rules gate at version 11
-  * under every build, so under the 11.2 and Leios builds at versions 9 and 10 they refuse a
-  * withdrawal that does not drain its account in CERTS where the reference refuses it in LEDGER,
-  * with the same verdict and state
-  * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484).
+  * build with another's rule, until the builds are types (#1063).
   */
 enum WithdrawalsRule derives CanEqual:
   /** 11.1: LEDGER's above version 10, CERTS's base case's below. */

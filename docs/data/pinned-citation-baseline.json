@@ -16,7 +16,7 @@
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraScripts.scala": 3,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/V12.scala": 10,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/json/JsonValue.scala": 7,
-  "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Certs.scala": 25,
+  "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Certs.scala": 11,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/GenesisStart.scala": 12,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Handover.scala": 2,
   "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyUtxo.scala": 4,

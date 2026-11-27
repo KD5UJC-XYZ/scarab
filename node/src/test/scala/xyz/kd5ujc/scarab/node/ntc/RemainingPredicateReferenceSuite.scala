@@ -169,7 +169,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
         assertEquals(actual, expected, name)
         // The shared POOL encoding must reach clients in every Shelley-based era.
         failures.toChain.toVector.zip(field[Vector[String]](result, "failureCbor")).foreach {
-          (f, bytes) => clientEncodings(name, ShelleyPoolPredFailure.toStored(f), f, hex(bytes))
+          (f, bytes) => clientEncodings(name, flatPool(f), f, hex(bytes))
         }
 
   /** The LocalTxSubmission refusal of one POOL failure in every Shelley-based era ends with the
@@ -202,8 +202,29 @@ class RemainingPredicateReferenceSuite extends FunSuite:
     )
     assert(conway.hex.endsWith(bytes.hex), s"$name ${Era.Conway}")
 
-  /** The flat POOL failure `f` in Conway's era types: the inverse of
-    * `ShelleyPoolPredFailure.toStored`, which gives `f` back.
+  /** POOL's failure of Conway's era types in the flat form the eras before Conway send it in: the
+    * same values, a hash as its bytes, a coin or an epoch as its integer, a network as its wire
+    * byte.
+    */
+  private def flatPool(f: ShelleyPoolPredFailure[Conway]): PoolFailure = f match
+    case ShelleyPoolPredFailure.StakePoolNotRegisteredOnKeyPOOL(p) =>
+      PoolFailure.StakePoolNotRegisteredOnKey(p.bytes)
+    case ShelleyPoolPredFailure.StakePoolRetirementWrongEpochPOOL(current, latest) =>
+      PoolFailure.StakePoolRetirementWrongEpoch(
+        current.storedBy(_.toBigInt),
+        latest.storedBy(_.toBigInt)
+      )
+    case ShelleyPoolPredFailure.StakePoolCostTooLowPOOL(m) =>
+      PoolFailure.StakePoolCostTooLow(m.storedBy(_.value))
+    case ShelleyPoolPredFailure.WrongNetworkPOOL(m, p) =>
+      PoolFailure.WrongNetworkPool(m.storedBy(_.wire), p.bytes)
+    case ShelleyPoolPredFailure.PoolMedataHashTooBig(p, size) =>
+      PoolFailure.PoolMedataHashTooBig(p.bytes, size)
+    case ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(p, v) =>
+      PoolFailure.VRFKeyHashAlreadyRegistered(p.bytes, v.bytes)
+
+  /** The flat POOL failure `f` in Conway's era types: the inverse of [[flatPool]], which gives `f`
+    * back.
     */
   private def eraPool(name: String, f: PoolFailure): ShelleyPoolPredFailure[Conway] =
     import xyz.kd5ujc.scarab.ledger.era.Mismatch as M
@@ -230,7 +251,7 @@ class RemainingPredicateReferenceSuite extends FunSuite:
         ShelleyPoolPredFailure.PoolMedataHashTooBig(pool(p), size)
       case PoolFailure.VRFKeyHashAlreadyRegistered(p, v) =>
         ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(pool(p), ok(VRFVerKeyHash.fromBytes(v)))
-    assertEquals(ShelleyPoolPredFailure.toStored(era), f, name)
+    assertEquals(flatPool(era), f, name)
     era
 
   /** The failure the era's UTXO reports for a failure of Shelley's predicate, as captured. The

@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.rules
 
-import cats.data.NonEmptyChain
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Mismatch, PoolFailure, PredicateFailure, TestLedger}
-import xyz.kd5ujc.scarab.ledger.era.{EraCertsRun, PParams, PoolCert}
+import xyz.kd5ujc.scarab.ledger.TestLedger
+import xyz.kd5ujc.scarab.ledger.era.{EraCertsRun, Mismatch, PParams, PoolCert}
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
 import xyz.kd5ujc.scarab.ledger.state.{
   Conway,
@@ -100,21 +99,19 @@ class CertsEpochWrapSuite extends FunSuite:
         Empty.pState,
         PoolCert.RetirePool(pool, epoch(top))
       )
-      .map(_.left.map(_.map(f => PredicateFailure.pool(ShelleyPoolPredFailure.toStored(f)))))
+      .map(_.left.map(_.toChain.toVector))
     // the limit is (2^64 - 2) + 2, which wraps to 0, so no retirement epoch is within it; the
     // failures are in the order the reference reports them, the last recorded first
     assertEquals(
       verdict,
       Right(
         Left(
-          NonEmptyChain(
-            PredicateFailure.pool(
-              PoolFailure.StakePoolRetirementWrongEpoch(
-                Mismatch(top, top - 1),
-                Mismatch(top, BigInt(0))
-              )
+          Vector[ShelleyPoolPredFailure[Conway]](
+            ShelleyPoolPredFailure.StakePoolRetirementWrongEpochPOOL(
+              Mismatch(epoch(top), epoch(top - 1)),
+              Mismatch(epoch(top), epoch(0))
             ),
-            PredicateFailure.pool(PoolFailure.StakePoolNotRegisteredOnKey(pool.bytes))
+            ShelleyPoolPredFailure.StakePoolNotRegisteredOnKeyPOOL(pool)
           )
         )
       )

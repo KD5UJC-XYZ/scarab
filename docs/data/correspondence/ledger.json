@@ -8736,7 +8736,7 @@
    "class": "Gap",
    "structure": "differs",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85",
-   "note": "Conway's two certificate-state instances in one value, given in the root class's companion; its members are compared with the flat path's (ConwayCertsChecksSuite, ConwayUtxoChecksSuite), not yet with the reference's own results",
+   "note": "Conway's two certificate-state instances in one value, given in the root class's companion; its members are compared with the deposits the state holds (ConwayCertsChecksSuite) and with the flat path's (ConwayUtxoChecksSuite), not yet with the reference's own results",
    "digest": "9f34ba24178e879e"
   },
   "class ledger.era.rules.CertEnv": {
@@ -9052,7 +9052,7 @@
     "ConwayCertsChecksSuite",
     "CertsEpochWrapSuite"
    ],
-   "note": "the dormant shift in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); of a transaction of either level, as the reference's is (Tx l era), which SUBENTITIES runs on a sub-transaction (#85)",
+   "note": "the dormant shift in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; of a transaction of either level, as the reference's is (Tx l era), which SUBENTITIES runs on a sub-transaction (#85)",
    "digest": "b0480c18b1e038e4"
   },
   "def ledger.era.rules.CERTS.updateDormantDRepExpiry": {
@@ -9074,7 +9074,7 @@
     "ConwayCertsChecksSuite",
     "CertsEpochWrapSuite"
    ],
-   "note": "the dormant shift in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031)",
+   "note": "the dormant shift in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do",
    "digest": "03ce213b8238c023"
   },
   "def ledger.era.rules.CERTS.updateVotingDRepExpiries": {
@@ -9096,7 +9096,7 @@
     "ConwayCertsChecksSuite",
     "CertsEpochWrapSuite"
    ],
-   "note": "each voting DRep's credential is read into the state's vocabulary first, refused as a Vocab defect as the flat rule does, which no decoded vote is; the expiry is computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031); of a transaction of either level, as the reference's is (Tx l era), which SUBENTITIES runs on a sub-transaction (#85)",
+   "note": "each voting DRep's credential is read into the state's vocabulary first, refused as a Vocab defect, which no decoded vote is; the expiry is computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; of a transaction of either level, as the reference's is (Tx l era), which SUBENTITIES runs on a sub-transaction (#85)",
    "digest": "14d00332f9596fdf"
   },
   "def ledger.era.rules.DELEG.conwayDelegTransition": {
@@ -9160,7 +9160,7 @@
     "ConwayCertsChecksSuite",
     "CertsEpochWrapSuite"
    ],
-   "note": "computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031)",
+   "note": "computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do",
    "digest": "8fce2c980d120907"
   },
   "def ledger.era.rules.GOVCERT.computeDRepExpiryVersioned": {
@@ -9182,7 +9182,7 @@
     "ConwayCertsChecksSuite",
     "CertsEpochWrapSuite"
    ],
-   "note": "computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do; the flat rules sum as integers and refuse a result outside EpochNo, which differs only past epoch 2^64 (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031)",
+   "note": "computed in Word64 arithmetic that wraps, as the reference's addEpochInterval and binOpEpochNo do",
    "digest": "0e4aae59b8535e66"
   },
   "def ledger.era.rules.GOVCERT.conwayGovCertTransition": {
@@ -31020,7 +31020,7 @@
    "evidence": [
     "ConwayCertsChecksSuite"
    ],
-   "note": "its constructors in the order of their tags (:126-142); StakeKeyRegisteredDELEG is DelegAccountAlreadyRegistered at 29a7d656 and 9df9f98c, a newtype over the same credential with the same tag and bytes (Conway/Rules/Deleg.hs:108 at 29a7d656); no encoder of its own yet: its refusals are compared with the reference's bytes through ConwayCertsPredFailure.toStored and the node's encoder",
+   "note": "its constructors in the order of their tags (:126-142); StakeKeyRegisteredDELEG is DelegAccountAlreadyRegistered at 29a7d656 and 9df9f98c, a newtype over the same credential with the same tag and bytes (Conway/Rules/Deleg.hs:108 at 29a7d656); written by Conway's encoder (ConwayFailureCbor)",
    "digest": "15b6920a2ba28c77"
   },
   "enum ledger.era.rules.ShelleyPoolPredFailure": {
@@ -32326,7 +32326,7 @@
     "ConwayCertsChecksSuite",
     "ConwayLedgerChecksSuite"
    ],
-   "note": "the 11.1 build's protocol-version gate and the 11.2 and Leios builds' unconditional move, derived by CERTS (and LEDGER) from the build the judgment's Globals name, the source POOL reads its layout from, until the builds are types (#1063); the flat rules gate at version 11 under every build (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484)",
+   "note": "the 11.1 build's protocol-version gate and the 11.2 and Leios builds' unconditional move, derived by CERTS (and LEDGER) from the build the judgment's Globals name, the source POOL reads its layout from, until the builds are types (#1063)",
    "digest": "c30d3cdb3f8e550c"
   },
   "def ledger.era.rules.WithdrawalsRule#inLedger": {
@@ -50265,16 +50265,9 @@
    ]
   },
   {
-   "reason": "the era-typed certificate rules' failures' adapter to the node's flat failure type (ConwayCertsPredFailure.toStored and the toStored of each rule below CERTS, with the two mismatch conversions), which the comparisons with the flat rules and the node's encoders read until the era's failures have their encoders (§3.4 of docs/design/era-typed-transactions.md); the companions of the failure types, their injections and embeddings, with each failure's equality with itself only; the sub-rules' judgment and events wrapped into the rule's (wrapped, told), the contramap of a Judge and of a Tell, which the reference's trans does with Embed; and the build's withdrawals rule's constructor from the build; and the companions of the sub-transactions' certificate rules' and SUBENTITIES' failures, events and injections, with each type's equality with itself only",
+   "reason": "the companions of the era-typed certificate rules' failure types, their injections and embeddings, with each failure's equality with itself only; the sub-rules' judgment and events wrapped into the rule's (wrapped, told), the contramap of a Judge and of a Tell, which the reference's trans does with Embed; and the build's withdrawals rule's constructor from the build; and the companions of the sub-transactions' certificate rules' and SUBENTITIES' failures, events and injections, with each type's equality with itself only",
    "definitions": [
-    "def ledger.era.rules.ConwayCertPredFailure.toStored",
-    "def ledger.era.rules.ConwayCertsPredFailure.toStored",
-    "def ledger.era.rules.ConwayDelegPredFailure.toStored",
-    "def ledger.era.rules.ConwayGovCertPredFailure.toStored",
-    "def ledger.era.rules.ShelleyPoolPredFailure.toStored",
     "def ledger.era.rules.WithdrawalsRule.of",
-    "def ledger.era.rules.coins",
-    "def ledger.era.rules.epochs",
     "def ledger.era.rules.told",
     "def ledger.era.rules.wrapped",
     "given ledger.era.rules.ConwayCertPredFailure.given_CanEqual_ConwayCertPredFailure_E_ConwayCertPredFailure_E",

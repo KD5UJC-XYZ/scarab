@@ -6,11 +6,12 @@ import xyz.kd5ujc.scarab.ledger.{PredicateFailure, Tx}
 import xyz.kd5ujc.scarab.ledger.era.EraUtxoRun
 import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState}
 
-/** The withdrawals the 11.2 and Leios builds check in LEDGER at every version, where the flat rules
-  * check them in CERTS below 11 under every build: the named difference
+/** The withdrawals the 11.2 and Leios builds check in LEDGER at every version, where the flat
+  * rules, since deleted, checked them in CERTS below 11 under every build
   * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484), on the corpus cases
-  * whose withdrawal fails, and the reference's form of their refusal, for the suites that compare
-  * the era rules with the flat ones (`ConwayLedgerChecksSuite`, `ConwayMempoolRunSuite`).
+  * whose withdrawal fails, and the reference's form of their refusal, for the suites that compared
+  * the era rules with the flat ones and hold them to their recorded judgments
+  * (`ConwayLedgerChecksSuite`, `ConwayMempoolRunSuite`).
   */
 object MovedWithdrawals:
   /** What the reference's LEDGER makes of a case's one withdrawal under the moved withdrawals
