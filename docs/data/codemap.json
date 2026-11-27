@@ -1562,12 +1562,14 @@
     {
       "module": "tools",
       "path": "crypto/vrf",
-      "responsibility": "Hand-run timing test of the `crypto.vrf` package's secret path (its package, for its package-private access): a dudect-style fixed-against-random comparison of proving, the output and the constant-time multiplications",
+      "responsibility": "Timing test of the secret paths of VRF proving and KES signing, in the `crypto.vrf` package for its package-private access: a dudect-style fixed-against-random comparison of proving, the output, KES signing and evolution and the constant-time multiplications, with the controls that decide whether a run is conclusive; run by hand and nightly (`scripts/secret_timing.py`)",
       "entryPoints": [
         "SecretPathTiming"
       ],
       "suites": [],
-      "docs": []
+      "docs": [
+        "docs/running/secret-timing.md"
+      ]
     },
     {
       "module": "tools",

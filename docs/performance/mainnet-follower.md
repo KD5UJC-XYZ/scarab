@@ -639,3 +639,10 @@ power. The value-dependent effect the field control shows could be of the kind d
 produce (the Hertzbleed class), to which a laptop part with turbo is subject; telling it from other causes needs a
 machine with its frequency pinned, which these runs did not have. The source-level structure it complements is in
 `secret.Draft03Key` and `scripts/check_crypto_guard.py`; the review of the JVM and processor behaviour remains #230.
+
+**2026-11-26.** The test now also times KES signing and evolution, marks a run inconclusive when one of its controls
+fails, and runs nightly on a GitHub-hosted runner, three times a night, a leak failing the job only when it repeats:
+[Timing of the secret paths](../running/secret-timing.md) is the home of what it covers and how it decides. The
+random/random control now draws both classes from one pool: with an early exit put into the multiplication on
+purpose, two pools of random scalars, which differ by their draw, made the control read near 10 and could have
+turned that leak into an inconclusive run. The table above predates the KES targets and that change.
