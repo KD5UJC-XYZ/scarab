@@ -60,7 +60,7 @@ jobs:
             network/src/test/resources/upstream/ouroboros-network-protocol-codecs
             build.sbt project scripts/sbtw
             scripts/ci_changes.py .github/workflows/fuzz-gate.yml
-            scripts/sodium_oracle.py
+            scripts/sodium_oracle.py scripts/check_differential_fuzz.py
           )
           if [ "$EVENT" = "workflow_dispatch" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
@@ -100,19 +100,18 @@ jobs:
           library=$(python3 scripts/sodium_oracle.py --download --download-dir "$RUNNER_TEMP/sodium-source" --out "$RUNNER_TEMP/sodium")
           test -f "$library"
           echo "SCARAB_SODIUM_ORACLE=$library" >> "$GITHUB_ENV"
-      # A differential target that is skipped prints no count: the step fails unless each one ran against the oracle.
+      # A differential target that is skipped prints no tally: scripts/check_differential_fuzz.py fails the step unless
+      # each one ran against the oracle, on the cases its floors leave, with each kind of agreement often enough.
       - name: Fuzz the decoders (100000 cases, seeds 1 to 4)
         if: steps.detect.outputs.run == 'true'
+        env:
+          CASES: 100000
+          SEEDS: 4
         run: |
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/logs"
-          bash scripts/sbtw "fuzz 100000 1 4" 2>&1 | tee "$RUNNER_TEMP/logs/fuzz.log"
-          for target in sodium-ed25519 sodium-vrf-verify sodium-vrf-prove; do
-            if ! grep -Eq " $target: [0-9]+ cases, [0-9]+ accepted" "$RUNNER_TEMP/logs/fuzz.log"; then
-              echo "::error::$target did not run against the libsodium oracle"
-              exit 1
-            fi
-          done
+          bash scripts/sbtw "fuzz $CASES 1 $SEEDS" 2>&1 | tee "$RUNNER_TEMP/logs/fuzz.log"
+          python3 scripts/check_differential_fuzz.py "$RUNNER_TEMP/logs/fuzz.log" --cases "$CASES" --seeds "$SEEDS"
       - name: Upload the log
         if: failure() && steps.detect.outputs.run == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

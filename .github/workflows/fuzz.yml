@@ -91,12 +91,7 @@ jobs:
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/logs"
           bash scripts/sbtw "fuzz $CASES $FIRST $SEEDS" 2>&1 | tee "$RUNNER_TEMP/logs/fuzz.log"
-          for target in sodium-ed25519 sodium-vrf-verify sodium-vrf-prove; do
-            if ! grep -Eq " $target: [0-9]+ cases, [0-9]+ accepted" "$RUNNER_TEMP/logs/fuzz.log"; then
-              echo "::error::$target did not run against the libsodium oracle"
-              exit 1
-            fi
-          done
+          python3 scripts/check_differential_fuzz.py "$RUNNER_TEMP/logs/fuzz.log" --cases "$CASES" --seeds "$SEEDS"
       - name: Upload the log
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
