@@ -9,7 +9,8 @@ import org.bouncycastle.math.ec.rfc8032.Ed25519
 import scala.util.Try
 import xyz.kd5ujc.scarab.codec.Bytes
 
-/** The Ed25519 verifiers the cross-check suites compare, each with the outcomes it has.
+/** The Ed25519 verifiers the cross-check suites and the `ed25519-verification` fuzz target
+  * (`CurveTargets`) compare, each with the outcomes it has.
   *
   *   - Scarab's `StrictEd25519`, whose rule is the reference's: cardano-crypto-class's
   *     `verifyDSIGN` for Ed25519 (cardano-base `060819b59c184b951a54e3c563304983c53a3eac`,
@@ -47,7 +48,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
   * the equation holds, and Bouncy Castle accepts what Scarab accepts and also a signature whose
   * small-order R or torsion component satisfies only the cofactored equation.
   */
-private[witness] object Ed25519Verifiers:
+private[scarab] object Ed25519Verifiers:
   enum Jdk:
     case Verified, Rejected
 

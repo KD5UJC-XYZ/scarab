@@ -220,3 +220,26 @@ object Curve25519Gen:
 
   def le(value: BigInt, size: Int): Array[Byte] = M.le(value, size)
   def fromLe(bytes: Array[Byte]): BigInt = M.fromLe(bytes)
+
+  /** The square root modulo p that `sqrtRatioM1` calls non-negative (its low bit clear), if any. */
+  def nonNegativeRoot(w: BigInt): Option[BigInt] =
+    val c = w.modPow((p + 3) / 8, p)
+    val root =
+      if (c * c - w).mod(p) == 0 then Some(c)
+      else if (c * c + w).mod(p) == 0 then Some((c * sqrtM1).mod(p))
+      else None
+    root.map(r => if r.testBit(0) then p - r else r)
+
+  /** What `sqrtRatioM1` gives for u and v of the values `x` and `y` modulo p: 1 when u/v is a
+    * square and 0 when it is not (0/v and 0/0 count as squares, u/0 for u not 0 does not), and the
+    * non-negative root of u/v, or of i u/v when u/v is not a square (0 when v is 0). The oracle of
+    * `FieldElementSuite` and of the `curve25519-arithmetic` fuzz target.
+    */
+  def sqrtRatio(x: BigInt, y: BigInt): (Int, BigInt) =
+    if x.mod(p) == 0 then (1, BigInt(0))
+    else if y.mod(p) == 0 then (0, BigInt(0))
+    else
+      val w = (x * y.modPow(p - 2, p)).mod(p)
+      nonNegativeRoot(w) match
+        case Some(r) => (1, r)
+        case None    => (0, nonNegativeRoot((w * sqrtM1).mod(p)).get)

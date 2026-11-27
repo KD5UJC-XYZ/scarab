@@ -47,15 +47,6 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
   private val made: Gen[FieldElement] =
     Gen.frequency(2 -> fieldInput.map(element), 1 -> Gen.zip(loose, loose).map(_.multiply(_)))
 
-  /** The square root modulo p that `sqrtRatioM1` calls non-negative (its low bit clear), if any. */
-  private def nonNegativeRoot(w: BigInt): Option[BigInt] =
-    val c = w.modPow((p + 3) / 8, p)
-    val root =
-      if (c * c - w).mod(p) == 0 then Some(c)
-      else if (c * c + w).mod(p) == 0 then Some((c * Curve25519Gen.sqrtM1).mod(p))
-      else None
-    root.map(r => if r.testBit(0) then p - r else r)
-
   property("fromByteArray reads the low 255 bits modulo p within the reduced bounds") {
     forAllNoShrink(fieldInput) { v =>
       val fe = element(v)
@@ -237,14 +228,7 @@ class FieldElementSuite extends munit.ScalaCheckSuite:
     )
     forAllNoShrink(operands) { (u, v) =>
       val (x, y) = (value(u), value(v))
-      val (square, root) =
-        if x == 0 then (1, BigInt(0))
-        else if y == 0 then (0, BigInt(0))
-        else
-          val w = (x * y.modPow(p - 2, p)).mod(p)
-          nonNegativeRoot(w) match
-            case Some(r) => (1, r)
-            case None    => (0, nonNegativeRoot((w * Curve25519Gen.sqrtM1).mod(p)).get)
+      val (square, root) = sqrtRatio(x, y)
       val result = FieldElement.sqrtRatioM1(u, v)
       assertEquals(
         result.wasSquare,
