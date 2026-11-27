@@ -903,10 +903,12 @@ cites its upstream file and line at the pinned version, a revision registered in
   same results, the same bytes on the wire and on disk, the same inputs accepted, and inputs that mean the same, so
   that nothing a peer, client or operator sees changes but how fast or how lightly the node runs. It is not a
   difference in [REF-4](#ref-4)'s four classes. Each one needs the owner's approval first, one at a time
-  ([what approval is](#approval)), and its evidence is an equivalence test: the same inputs applied with and without
-  it give the same results, so it keeps the evidence the path it stands beside already has. Its Scarab-only code is
-  glue whose reason names the Optimisation; a mapped definition it changes keeps its class, with structure `differs`
-  and the equivalence suite named. A change that alters anything observable is not an Optimisation but a Deviation.
+  ([what approval is](#approval)). Its evidence has two parts: the differential evidence the path it stands beside
+  already has against the reference (that path's suites, kept and still run), and an equivalence test showing that
+  the same inputs applied with and without the Optimisation give the same results, so that the reference evidence
+  carries over to it. Its Scarab-only code is glue whose reason names the Optimisation; a mapped definition it
+  changes keeps its class, with structure `differs` and both the reference suites and the equivalence suite in its
+  `evidence`. A change that alters anything observable is not an Optimisation: [REF-4](#ref-4) classifies it.
 - Do not copy reference defects: each is an Improvement ([REF-2](#ref-2), [REF-4](#ref-4)), recorded in the map.
 - Use the reference's on-disk and on-wire formats wherever a reference node or tool reads them, and keep observable
   behaviour within the invariants of [REF-1](#ref-1).
@@ -937,7 +939,12 @@ pin; what Scarab does; approval), and the class goes in the approval cell, with 
 | Improvement | a row whose approval cell names the defect and links the standing approval, for example `Improvement (e): [#474](https://github.com/KD5UJC-XYZ/scarab/issues/474#issuecomment-6880015076)`. The reference cell cites the evidence: the pinned line, or the run that showed it, and for (e) the fix commit |
 | Deviation | a row whose approval cell links the record of the owner's approval ([what approval is](#approval)), for example `Deviation: [decision](link)`, and a row in the [decisions register](decisions.md) |
 | Gap | no row: a bullet under "Gaps" that starts with its issue (`- #N: …`) |
-| Optimisation ([REF-6](#ref-6)) | no row, since nothing observable differs: the section opens with `None` and goes on in prose, one paragraph for each Optimisation, naming it, the pinned reference line its internal structure differs from, the equivalence suite, and the owner's approval with the UTC times of the question and the answer |
+
+An Optimisation ([REF-6](#ref-6)) is not a class and has no row, since nothing observable differs. The pull request
+records it in one paragraph for each: what it is, the pinned reference line its internal structure differs from, its
+reference and equivalence suites, and the owner's approval with the UTC times of the question and the answer. When the
+section has no row, it opens with `None` and the paragraphs follow; when it has rows, the paragraphs go under "What and
+why" instead, since every line after the table must be a row.
 
 - **Scope:** pull requests of level 1 and above.
 - **Exceptions:** a bot's pull request and a promotion of `dev`, which `scripts/pr_policy.py` does not check.
