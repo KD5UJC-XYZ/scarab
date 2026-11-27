@@ -33,10 +33,14 @@ class AvailableBlocksPropertySuite extends ScalaCheckSuite:
       parent: Option[Bytes],
       number: Int,
       slot: Int,
-      boundary: Boolean
+      boundary: Boolean,
+      namesGenesis: Boolean
   ): Header =
+    // a boundary block of epoch 0 names the genesis whatever its previous hash holds (#1505); one
+    // of a later epoch names its parent
+    val epoch = if boundary && !namesGenesis then 1 else 0
     Header
-      .UnsizedByron(hash(id), hash(id), boundary, 0, slot, 100000, number, parent)
+      .UnsizedByron(hash(id), hash(id), boundary, epoch, slot, 100000, number, parent)
       .withSizeHint(FetchTesting.sizeHint(1))
 
   /** Hash of Byron's genesis predecessor, and of a parent no block of the forest has. */
@@ -67,6 +71,7 @@ class AvailableBlocksPropertySuite extends ScalaCheckSuite:
                   else Gen.oneOf(built).map(h => Some(h) -> Some(h.hash)))
           )
           boundary <- Gen.frequency(6 -> false, 1 -> true)
+          namesGenesis <- Gen.frequency(4 -> Gen.const(false), 1 -> Gen.const(boundary))
           skew <- Gen.frequency(8 -> Gen.const(0), 1 -> Gen.choose(-2, 2))
           base = parent._1.fold(-1)(_.blockNo.toInt)
           number = (if boundary then base.max(0) else base + 1) + skew
@@ -79,7 +84,8 @@ class AvailableBlocksPropertySuite extends ScalaCheckSuite:
           if alias then None else parent._2,
           number.max(0),
           slot,
-          boundary
+          boundary,
+          namesGenesis
         )
       }
     }
@@ -88,7 +94,7 @@ class AvailableBlocksPropertySuite extends ScalaCheckSuite:
     * of the forest's blocks after it.
     */
   private def localOf(forest: Vector[Header], alias: Option[Bytes]): Gen[ChainSelection.Local] =
-    val byParent = forest.groupBy(_.prevHash)
+    val byParent = forest.groupBy(_.predecessor)
     def path(from: Option[Bytes], also: Option[Bytes], length: Int): Gen[Vector[Header]] =
       val next = byParent.getOrElse(from, Vector.empty) ++
         also.toVector.flatMap(a => byParent.getOrElse(Some(a), Vector.empty))
@@ -121,7 +127,7 @@ class AvailableBlocksPropertySuite extends ScalaCheckSuite:
             )
         case _ =>
           Gen.choose(Absent, Absent + 3).flatMap { n =>
-            val anchor = header(n, None, 1, 0, false)
+            val anchor = header(n, None, 1, 0, false, false)
             path(Some(anchor.hash), None, length).map(blocks =>
               ChainSelection.Local(
                 anchor.point,
@@ -257,7 +263,7 @@ class AvailableBlocksPropertySuite extends ScalaCheckSuite:
   private val origin =
     ChainSelection.Local(Point.Origin, SelectView(-1, 0, None, 0, None), Vector.empty)
   private def chain(length: Int): Vector[Header] =
-    Vector.tabulate(length)(i => header(i + 1, Option.when(i > 0)(hash(i)), i, i, false))
+    Vector.tabulate(length)(i => header(i + 1, Option.when(i > 0)(hash(i)), i, i, false, false))
 
   test("a deep chain is walked back and forward on a 256 KiB thread") {
     val headers = chain(30000)

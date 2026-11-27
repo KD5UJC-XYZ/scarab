@@ -557,7 +557,9 @@ final class FetchCoordinator[F[_]: Async] private (
     val (request, next) = peer.request match
       case Some(old) =>
         val joined =
-          old.headers.lastOption.exists(l => headers.headOption.exists(_.prevHash.contains(l.hash)))
+          old.headers.lastOption.exists(l =>
+            headers.headOption.exists(_.predecessor.contains(l.hash))
+          )
         (
           old.copy(
             headers = old.headers ++ headers,

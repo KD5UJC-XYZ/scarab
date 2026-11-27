@@ -25,4 +25,9 @@ the successors of each selected point, as `chainSelectionForBlock` and `ChainSel
 same order, as the whole-forest construction it replaced, over random forests with forks, orphans, hidden blocks,
 Byron boundary blocks and Byron's genesis alias (`AvailableBlocksPropertySuite`), and that the index after any
 sequence of insertions, removals, collections and seedings is the one rebuilt from the blocks
-(`ProcessedForestSuite`). Unchecked: the index has not been compared with a reference node's VolatileDB.
+(`ProcessedForestSuite`). A block is filed under the predecessor consensus's `headerPrevHash` gives (`biPrevHash`,
+`Storage/VolatileDB/Impl/Parser.hs:117-123`): a Byron boundary block that names the genesis (epoch 0, or the "Genesis"
+tag) is after genesis whatever bytes its header holds as the previous hash, as the received log's index, BlockFetch's
+ranges and ChainSync's known-invalid check read it too; the recorded first boundary blocks of mainnet and preprod,
+and forged ones naming other blocks, are checked through the gate, the forest, the candidate walks and the rules
+(`GenesisNamingBoundarySuite`, #1505). Unchecked: the index has not been compared with a reference node's VolatileDB.

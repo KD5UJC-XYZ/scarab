@@ -257,9 +257,9 @@ final class NodeHeaderRules[S](
       previous.fold(BigInt(0))(p => p.slot + (if previousBoundary && !boundary then 0 else 1))
     val expectedHash = previous.map(_.hash)
     // a Byron boundary header that names the genesis has none, as consensus's `headerPrevHash`
-    // reads it (`Header.Byron.namesGenesis`, #754)
+    // reads it (`Header.predecessor`, #754, #1505)
     val actualHash = header match
-      case h: Header.Byron if h.boundary => Option.unless(h.namesGenesis)(h.prevHash).flatten
+      case h: Header.Byron if h.boundary => h.predecessor
       case _ =>
         header.prevHash.filterNot(h =>
           header.era == Era.Byron && byron.exists(_.ledger.genesis.hash == h) && previous.isEmpty

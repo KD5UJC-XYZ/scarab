@@ -256,16 +256,18 @@ object ChainStorage:
     */
   private val AdvanceEvery = 128
 
-  /** The predecessor a received block's header names, its contents not decoded; none when the
-    * header cannot be read (the open of the received log cuts a record whose block does not decode,
-    * [[ReceivedBlocks.Check]]).
+  /** The predecessor a received block's header names, as chain selection reads it
+    * ([[xyz.kd5ujc.scarab.ledger.Header.predecessor]], consensus's `headerPrevHash`: genesis for a
+    * Byron boundary block that names the genesis, whatever bytes it holds there, #1505), its
+    * contents not decoded; none when the header cannot be read (the open of the received log cuts a
+    * record whose block does not decode, [[ReceivedBlocks.Check]]).
     */
   def predecessorOf(byronEpochSlots: BigInt)(raw: Bytes): Option[ReceivedBlocks.Predecessor] =
     Block
       .decodeHeader(raw, byronEpochSlots)
       .toOption
       .map(
-        _.prevHash.fold(ReceivedBlocks.Predecessor.Genesis)(ReceivedBlocks.Predecessor.Block(_))
+        _.predecessor.fold(ReceivedBlocks.Predecessor.Genesis)(ReceivedBlocks.Predecessor.Block(_))
       )
 
   /** @param snapshotPolicy
