@@ -742,13 +742,15 @@ class DijkstraUtxowSuite extends FunSuite:
       case other => fail(s"not admitted: $other")
   }
 
-  test("top-level UTXOW under NonStatic skips exactly the reference's four checks on the signal") {
+  test(
+    "top-level UTXOW under NonStatic skips the reference's four checks on the signal, not the rest"
+  ) {
     // `dijkstraUtxowTransition` (`Dijkstra/Rules/Utxow.hs:216-325`, cardano-ledger 9df9f98c) runs
     // four of its checks with `runTestOnSignal` (`:294`, `:301`, `:305`, `:318`): the signatures,
     // the auxiliary data, the well-formed scripts and the required guards. A transaction failing
     // all four, and two checks run with `runTest` beside them: the needed key witnesses (`:297`;
     // its input is the owner's, whose key does not sign) and the required guards' datums
-    // (`:322`; a key's guard with a datum). Its auxiliary data hash names no auxiliary data, and
+    // (`:321`; a key's guard with a datum). Its auxiliary data hash names no auxiliary data, and
     // its first output holds a reference script that is no Plutus program
     val guardKey = Bytes(Vector.fill(28)(0x72.toByte))
     val junk = Bytes(Vector(0.toByte))

@@ -1212,8 +1212,7 @@ class DijkstraLedgerSuite extends FunSuite:
     // @Int`), so a total is refused exactly when it is above the limit. 1024 reference inputs, each
     // naming the same decoded output, whose reference script is a binary of 1 MiB, read by the top
     // level and by two sub-transactions: the batch holds 3 GiB, past `Int.MaxValue` and within
-    // `Word32`. The predicates are run alone: LEDGER and BBODY whole would also price the scripts
-    // (`tierRefScriptFee`), a failure of their own.
+    // `Word32`. The predicates are run alone, not LEDGER or BBODY whole.
     val mib = 1L << 20
     // `B.refScriptOut`'s output, encoded without the encoder's default bound of 1 MiB
     def unbounded(n: xyz.kd5ujc.scarab.codec.Node) = xyz.kd5ujc.scarab.codec.Cbor
