@@ -151,7 +151,9 @@ object CostModel:
     * with the parameters `values`, each an `Int64`. Whether they make an evaluation context is the
     * evaluator's to check, as for every model here.
     */
-  def mkCostModel[L <: Language](values: Vector[Long])(using PlutusLanguage[L]): CostModel[L] =
+  private[era] def mkCostModel[L <: Language](values: Vector[Long])(using
+      PlutusLanguage[L]
+  ): CostModel[L] =
     new CostModel[L](values)
 
   /** The model of language `L` among the valid ones (`Map.lookup lang (costModelsValid

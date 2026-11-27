@@ -50406,7 +50406,7 @@
     "BabbagePParamsSuite"
    ],
    "note": "the evaluation context is the evaluator's to make, as for every model here (`CostModel`)",
-   "digest": "682bba809c895468"
+   "digest": "31fa479988d344a4"
   },
   "def ledger.era.CostModels.singleton": {
    "upstream": [

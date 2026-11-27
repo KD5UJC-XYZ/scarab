@@ -3340,9 +3340,11 @@ Conway's rules on the classes follow as the rest of stage 2.
     on which the reference throws, is the upgrade's refusal.
   - The typed proposal `Update[E]` over `ProposedPPUpdates[E]`. Its decoder of a body's key 6 also keeps each
     value's bytes, the form the node stores a proposal in (ADR 0006), and the stored form is read back into the
-    era, so no persisted format changes. Against the flat decoder on generated updates written in shortest and
-    wide forms and on the recorded PPUP proposal, the stored form is the flat one byte for byte and the
-    refusals agree, but for the site and key two of them name. Nothing reads the typed update yet.
+    era, so no persisted format changes. Against the flat decoder, on generated updates written in shortest and
+    wide forms, on the forms at the edge of both readers (each width and one over it, indefinite and detached
+    records, a delegate proposing twice) and on the recorded Babbage proposals of the era walk and the PPUP
+    corpus, the stored form is the flat one byte for byte and the two accept alike; of eight crafted refusals,
+    two name another site or the repeated key. Nothing reads the typed update yet.
   - Found: the flat path merges an update's cost models into the parameters' at every era
     (`ProtocolParams.update`), where Babbage's and Alonzo's generic `applyPPUpdates` replace them whole (#85).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that

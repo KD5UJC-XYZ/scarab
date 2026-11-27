@@ -3,11 +3,12 @@ package xyz.kd5ujc.scarab.ledger.era.babbage
 
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
-import xyz.kd5ujc.scarab.codec.Bytes
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.{
   CborRead,
   DecodeField,
   DecoderVersion,
+  DetachedRecords,
   LedgerDecodeError,
   TxBody,
   Update as StoredUpdate
@@ -38,8 +39,32 @@ class BabbageUpdateSuite extends ScalaCheckSuite:
   private def flat(update: String): Either[LedgerDecodeError, StoredUpdate] =
     TxBody.decode(body(update), ProtocolEra.Babbage).map(_.update.getOrElse(fail("no update")))
 
+  /** The update of the same body read the typed way, its key 6 taken from the body as the flat
+    * decoder reads it, its detached records among its items (`DetachedRecords.Shapes.body`).
+    */
   private def typed(update: String): Either[LedgerDecodeError, KeptUpdate[Babbage]] =
-    CborRead.decode(hex(update)).flatMap(KeptUpdate.decode[Babbage](_))
+    DetachedRecords.read(
+      body(update),
+      Cbor.Limits.Unbounded,
+      DetachedRecords.Shapes.body(ProtocolEra.Babbage, version)
+    )(LedgerDecodeError.Syntax(_))(root =>
+      root.value match
+        case Value.Map(kvs) =>
+          kvs
+            .collectFirst { case (k, v) if k.value == Value.UInt(6) => v }
+            .toRight(
+              LedgerDecodeError.MissingField(DecodeField.TransactionBody, DecodeField.Update)
+            )
+            .flatMap(KeptUpdate.decode[Babbage](_))
+        case other =>
+          Left(
+            LedgerDecodeError.Expected(
+              DecodeField.TransactionBody,
+              LedgerDecodeError.Shape.Map,
+              other
+            )
+          )
+    )
 
   property(
     "a body's update read the typed way is stored as the flat decoder stores it, byte for byte"
@@ -121,3 +146,97 @@ class BabbageUpdateSuite extends ScalaCheckSuite:
       typed(one(uint(14) -> array(Seq(uint(9), uint(0))))).map(_.update.proposals.updates.size),
       Right(1)
     )
+
+  /** The outcomes of the forms at the edges of what the two decoders read, each run both ways. */
+  private val edges: Vector[(String, String)] =
+    def one(fields: (String, String)*): String =
+      array(Seq(map(Seq(genesisKey(4) -> map(fields))), uint(5)))
+    val widths =
+      Vector(0, 1, 5, 6, 16, 17).map(_ -> word64) ++ Vector(2, 3, 7, 22).map(_ -> word32) ++
+        Vector(4, 8, 23, 24).map(_ -> word16)
+    val half = ratio(1, 2, false)
+    // one over a Word64 is a bignum, tag 2 over its nine bytes
+    def over(max: BigInt) = if max == word64 then "c249" + "01" + "00" * 8 else uint(max + 1)
+    widths.map((k, max) => s"key $k one over its width" -> one(uint(k) -> over(max))) ++
+      widths.map((k, max) => s"key $k at its width" -> one(uint(k) -> uint(max))) ++
+      Vector(
+        "a minor over Word32" -> one(uint(14) -> array(Seq(uint(8), uint(word32 + 1)))),
+        "a version, indefinite" -> one(uint(14) -> "9f0800ff"),
+        "cost models, an indefinite model" -> one(
+          uint(18) -> map(Seq(uint(0) -> ("9f" + Seq.tabulate(166)(i => uint(i)).mkString + "ff")))
+        ),
+        "cost models, an indefinite map" -> one(
+          uint(18) -> ("bf" + uint(0) + array(Seq.tabulate(166)(i => uint(i))) + "ff")
+        ),
+        "prices, indefinite" -> one(uint(19) -> ("9f" + half + half + "ff")),
+        "prices, detached" -> one(uint(19) -> ("9fff" + half + half)),
+        "units, indefinite" -> one(uint(20) -> "9f0a0bff"),
+        "units, detached" -> one(uint(21) -> "9fff0a0b"),
+        "a ratio, its list indefinite" -> one(uint(10) -> "d81e9f0102ff"),
+        "a ratio above one" -> one(uint(10) -> ratio(3, 2, false)),
+        "a ratio over zero" -> one(uint(9) -> ratio(1, 0, false)),
+        "a genesis key twice" -> array(
+          Seq(
+            map(
+              Seq(
+                genesisKey(4) -> map(Seq(uint(8) -> uint(1))),
+                genesisKey(4) -> map(Seq(uint(8) -> uint(2)))
+              )
+            ),
+            uint(5)
+          )
+        ),
+        "an update map, indefinite" -> array(
+          Seq(map(Seq(genesisKey(4) -> ("bf" + uint(8) + uint(1) + "ff"))), uint(5))
+        )
+      )
+
+  test("at the edges of what they read, the two decoders accept alike and store alike"):
+    edges.foreach { (what, u) =>
+      (flat(u), typed(u)) match
+        case (Right(f), Right(t)) => assertEquals(t.stored, f, what)
+        case (Left(_), Left(_))   => ()
+        case (f, t)               => fail(s"$what: flat $f, typed ${t.map(_.stored)}")
+    }
+
+  test("a ratio written as 2/4 is the same typed value as 1/2"):
+    def one(r: String) = array(Seq(map(Seq(genesisKey(3) -> map(Seq(uint(10) -> r)))), uint(1)))
+    val (a, b) =
+      (right("1/2")(typed(one(ratio(1, 2, false)))), right("2/4")(typed(one(ratio(2, 4, false)))))
+    assertEquals(a.update, b.update)
+    assertNotEquals(a.stored, b.stored)
+
+  test(
+    "the recorded era walk's Babbage update proposals read the typed way as the flat decoder stores them"
+  ):
+    val compared = java.nio.file.Files
+      .readString(java.nio.file.Path.of("fixtures/eras/blocks.hex"))
+      .linesIterator
+      .filter(_.nonEmpty)
+      .map(l => xyz.kd5ujc.scarab.ledger.Block.decode(hex(l), BigInt(50)))
+      .map(right("block")(_))
+      .collect {
+        case b: xyz.kd5ujc.scarab.ledger.Block.Shelley if b.era == ProtocolEra.Babbage => b
+      }
+      .flatMap(b =>
+        b.transactions.flatMap { t =>
+          val flatTx = right(s"${t.id.hex} flat")(xyz.kd5ujc.scarab.ledger.Tx.fromBlock(t, b.era))
+          val key6 = right("body")(CborRead.decode(t.body)).value match
+            case xyz.kd5ujc.scarab.codec.Value.Map(kvs) =>
+              kvs.collectFirst {
+                case (k, v) if k.value == xyz.kd5ujc.scarab.codec.Value.UInt(6) => v
+              }
+            case other => fail(s"not a body: $other")
+          key6.map { n =>
+            val kept = right(s"${t.id.hex} typed")(KeptUpdate.decode[Babbage](n))
+            assertEquals(Some(kept.stored), flatTx.body.update, t.id.hex)
+            assertEquals(
+              KeptUpdate.fromStored[Babbage](kept.stored).map(_.update),
+              Right(kept.update)
+            )
+            t.id.hex
+          }
+        }
+      )
+      .toVector
+    assert(clue(compared).nonEmpty)
