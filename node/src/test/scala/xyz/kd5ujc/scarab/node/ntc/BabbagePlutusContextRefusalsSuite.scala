@@ -6,6 +6,8 @@ import io.circe.Json
 import io.circe.parser.parse
 import java.nio.file.{Files, Path}
 import munit.FunSuite
+import scala.jdk.CollectionConverters.*
+import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
@@ -272,6 +274,85 @@ class BabbagePlutusContextRefusalsSuite extends FunSuite:
     assertEquals(outcomes.map(_._3).sum, 9)
     // the genesis delegations are in force, and a case proposes an update they must sign
     assert(refused.exists(s => s.genDelegs.nonEmpty && s.flat.body.update.isDefined))
+  }
+
+  // ---- the forecast-horizon corpora's Babbage cases, with the clock of their era history
+
+  /** The Babbage cases of the forecast-horizon corpora
+    * (`fixtures/reference/plutus-forecast-horizon`): each transaction with the UTxO set and state
+    * it was judged on, and the clock of the cluster's era history at the recorded tip, as
+    * `PastHorizonReferenceSuite` builds it.
+    */
+  private lazy val horizon: Vector[Seen] =
+    val root = Path.of("fixtures/reference/plutus-forecast-horizon")
+    Vector("babbage-horizon", "babbage-known-horizon").flatMap { name =>
+      val dir = root.resolve(name)
+      val setup = right(s"$name genesis")(
+        xyz.kd5ujc.scarab.node.NodeSetup
+          .fromDirectory(xyz.kd5ujc.scarab.protocol.ReferenceBuild.Default)(dir.resolve("genesis"))
+      )
+      Files.list(dir.resolve("cases")).iterator.asScala.toVector.sorted.map { file =>
+        val json = parse(Files.readString(file)).fold(e => fail(e.message), identity)
+        val label = s"$name/${field[String](json, "label")}"
+        def bytes(key: String) =
+          Bytes.fromArray(Files.readAllBytes(dir.resolve(field[String](json, key))))
+        val item = hex(field[String](json, "item"))
+        val raw = right(s"$label item")(LocalSubmission.unwrap(item)).raw
+        val nes: NewEpochState[Babbage] =
+          right(s"$label state")(HaskellState.decode[Babbage](bytes("state")).leftMap(_.render))
+        val tip = right(s"$label tip")(json.hcursor.downField("tip").get[BigInt]("slot"))
+        val clock = PastHorizonReferenceSuite.clockAt(setup, Era.Babbage, nes.epoch.toBigInt, tip)
+        Seen(
+          label,
+          right(s"$label flat")(FlatTx.fromEnvelope(raw, Era.Babbage)),
+          right(s"$label typed")(BabbageTx.fromEnvelope(raw, StateLayout.Node11_1)),
+          right(s"$label UTxO")(UtxoCodecs.utxo.decodeBytes(bytes("utxo"))),
+          nes.es.ls.utxo.gov.curPParams,
+          nes.es.ls.cert.dState.genDelegs.map((g, pair) => g.bytes -> pair),
+          clock.posix
+        )
+      }
+    }
+
+  test(
+    "the Babbage cases of the forecast-horizon corpora: contexts and their clock refusals are the flat path's"
+  ) {
+    val outcomes = horizon.map { s =>
+      val result = ctx.mkTxInfoResult(s.lti)
+      val v1 = ctx
+        .lookupTxInfoResult[Language.PlutusV1](result)
+        .unPlutusTxInfoResult
+        .left
+        .map(asFlat)
+        .map(ToData[PV1.TxInfo].toBuiltinData)
+      val v2 = ctx
+        .lookupTxInfoResult[Language.PlutusV2](result)
+        .unPlutusTxInfoResult
+        .left
+        .map(asFlat)
+        .map(ToData[PV2.TxInfo].toBuiltinData)
+      assertEquals(v1, ScriptContexts.txInfo(PlutusLanguage.V1, s.flat, s.env), s.label)
+      assertEquals(v2, ScriptContexts.txInfo(PlutusLanguage.V2, s.flat, s.env), s.label)
+      (s.label, sameCollection(s))
+    }
+    // three cases: inside the horizon collected, past it refused by the clock, with and without the
+    // next era's epoch configured
+    assertEquals(
+      outcomes.map((label, o) =>
+        label -> o.fold(_.map(_.productPrefix), rs => rs.map(_ => "request"))
+      ),
+      Vector(
+        "babbage-horizon/plutus-upper-bound-inside-horizon-babbage" -> List("request"),
+        "babbage-horizon/plutus-upper-bound-past-horizon-babbage" -> List("BadTranslation"),
+        "babbage-known-horizon/plutus-upper-bound-past-horizon-babbage" -> List("BadTranslation")
+      )
+    )
+    outcomes.foreach((label, o) =>
+      o.left.foreach(_.foreach {
+        case Collected.BadTranslation(TranslationError.PastHorizon(_, _)) => ()
+        case other => fail(s"$label: not past the horizon: $other")
+      })
+    )
   }
 
   // ---- the context matrix's Babbage rows, against the reference's bytes

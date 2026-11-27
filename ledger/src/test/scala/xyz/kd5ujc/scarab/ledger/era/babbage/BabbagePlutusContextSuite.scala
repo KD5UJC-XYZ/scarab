@@ -680,6 +680,50 @@ class BabbagePlutusContextSuite extends munit.FunSuite:
     }
   }
 
+  test(
+    "an annotated transaction keeps the runnables of a warm cache, and adds the scripts it provides"
+  ) {
+    val c = oracleCases
+      .find(c =>
+        field[Boolean](c.oracle, "collected") && eraCollect(c).exists(
+          _.exists(_.plutusLanguage.language == PlutusLanguage.V1)
+        )
+      )
+      .getOrElse(fail("no collected case with a Plutus V1 script"))
+    val utxo = utxoOf(c)
+    val cold = BabbageEraUTxO.mkStAnnTx(c.posix, eraParams(c), utxo, Map.empty, c.era)
+    val (hash, _) = cold.asatPlutusRunnableCache
+      .find((_, r) => r.language == PlutusLanguage.V1)
+      .getOrElse(fail("no Plutus V1 runnable"))
+    val earlier = Bytes(Vector.fill(28)(7.toByte))
+    // a cached runnable of the same hash with another binary, which the contexts must then carry
+    val cached = SupportedPlutusRunnable(
+      EraPlutusTxInfo.babbagePlutusV1,
+      PlutusRunnable[Language.PlutusV1](Plutus(Bytes(Vector(1.toByte))), hash)
+    )
+    val other = SupportedPlutusRunnable(
+      EraPlutusTxInfo.babbagePlutusV1,
+      PlutusRunnable[Language.PlutusV1](Plutus(Bytes.empty), earlier)
+    )
+    val warm =
+      BabbageEraUTxO.mkStAnnTx(
+        c.posix,
+        eraParams(c),
+        utxo,
+        Map(hash -> cached, earlier -> other),
+        c.era
+      )
+    val kept = t.cacheStAnnTx[TxLevel.Top](warm)
+    assert(kept(hash) eq cached)
+    assert(kept(earlier) eq other)
+    assertEquals(kept.keySet, cold.asatPlutusRunnableCache.keySet + earlier)
+    val scripts = warm.asatPlutusScriptsWithContext.fold(e => fail(e.toString), identity)
+    assert(
+      scripts.exists(_.pwcScript.plutusRunnableBinary.binary == Bytes(Vector(1.toByte))),
+      "the contexts carry the cached runnable"
+    )
+  }
+
   test("Babbage supports Plutus V1 and V2, each looked up as its own translation gives it") {
     assertEquals(
       PlutusLanguage.values.toVector.map(l => ctx.mkSupportedLanguage(l).map(_.language)),
