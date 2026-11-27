@@ -68,7 +68,9 @@ object Sodium:
     "crypto_sign_ed25519_seed_keypair" -> FunctionDescriptor.of(I, A, A, A),
     "crypto_sign_ed25519_detached" -> FunctionDescriptor.of(I, A, A, A, J, A),
     "crypto_core_ed25519_add" -> FunctionDescriptor.of(I, A, A, A),
-    "crypto_core_ed25519_is_valid_point" -> FunctionDescriptor.of(I, A),
+    "crypto_core_ed25519_from_uniform" -> FunctionDescriptor.of(I, A, A),
+    "crypto_scalarmult_ed25519_noclamp" -> FunctionDescriptor.of(I, A, A, A),
+    "crypto_scalarmult_ed25519_base_noclamp" -> FunctionDescriptor.of(I, A, A),
     "crypto_vrf_ietfdraft03_keypair_from_seed" -> FunctionDescriptor.of(I, A, A, A),
     "crypto_vrf_ietfdraft03_prove" -> FunctionDescriptor.of(I, A, A, A, J),
     "crypto_vrf_ietfdraft03_verify" -> FunctionDescriptor.of(I, A, A, A, A, J),
@@ -194,13 +196,38 @@ object Sodium:
         )
       }
 
-    /** `crypto_core_ed25519_is_valid_point`: whether the encoding is canonical and a point of the
-      * prime-order subgroup but the identity. A key either side accepts is canonical, on the curve
-      * and not of small order, so for such a key false means mixed order.
+    /** `crypto_core_ed25519_from_uniform`: the Elligator 2 map of the 32 bytes, its cofactor
+      * cleared, which the VRF's hash to curve applies to its hash with bit 255 cleared.
       */
-    def ed25519PrimeOrder(point: Array[Byte]): Boolean =
-      sized("point", point, 32)
-      confined(arena => status("crypto_core_ed25519_is_valid_point", in(arena, point)) == 1)
+    def ed25519FromUniform(r: Array[Byte]): Array[Byte] =
+      sized("uniform string", r, 32)
+      confined { arena =>
+        val p = out(arena, 32)
+        val s = status("crypto_core_ed25519_from_uniform", p, in(arena, r))
+        if s != 0 then throw new IllegalStateException(s"from uniform returned $s")
+        read(p, 32)
+      }
+
+    /** `crypto_scalarmult_ed25519_noclamp`: [n]P for a point of the prime-order subgroup and a
+      * scalar below 2^255; none for any other point, or when the product is the identity.
+      */
+    def ed25519Multiply(n: Array[Byte], p: Array[Byte]): Option[Array[Byte]] =
+      sized("scalar", n, 32)
+      sized("point", p, 32)
+      confined { arena =>
+        val q = out(arena, 32)
+        val s = status("crypto_scalarmult_ed25519_noclamp", q, in(arena, n), in(arena, p))
+        Option.when(s == 0)(read(q, 32))
+      }
+
+    /** `crypto_scalarmult_ed25519_base_noclamp`: [n]B for a scalar below 2^255; none when zero. */
+    def ed25519MultiplyBase(n: Array[Byte]): Option[Array[Byte]] =
+      sized("scalar", n, 32)
+      confined { arena =>
+        val q = out(arena, 32)
+        val s = status("crypto_scalarmult_ed25519_base_noclamp", q, in(arena, n))
+        Option.when(s == 0)(read(q, 32))
+      }
 
     /** `crypto_vrf_ietfdraft03_keypair_from_seed`: the public key and `seed || public key`. */
     def vrfKeypair(seed: Array[Byte]): (Array[Byte], Array[Byte]) =

@@ -20,9 +20,11 @@ import xyz.kd5ujc.scarab.crypto.witness.{StrictEd25519, VerificationResult}
   *     operational certificates, KES leaves). `ByronEd25519` has no target here: the reference
   *     verifies Byron signatures with ed25519-donna through cardano-crypto, not with libsodium.
   *   - `sodium-vrf-verify`: `StrictDraft03.verify` against `crypto_vrf_ietfdraft03_verify` (the
-  *     verdict and the output), the output of each proof that verifies against
-  *     `crypto_vrf_ietfdraft03_proof_to_hash`, and `PraosVrfCertificate.verifyAlpha` against the
-  *     reference's verify-then-compare of a claimed output.
+  *     verdict and the output), and `PraosVrfCertificate.verifyAlpha` against the reference's
+  *     verify-then-compare of a claimed output. The output of each proof that verifies is also
+  *     checked against `crypto_vrf_ietfdraft03_proof_to_hash`, which the native verify computes it
+  *     with: a check of the binding, not further evidence. One known difference is held as a fixed
+  *     case ([[alphaBound]]).
   *   - `sodium-vrf-prove`: for the same seed and alpha, `Draft03Prover` 's public key, proof and
   *     output against `crypto_vrf_ietfdraft03_keypair_from_seed`, `_prove` and `_proof_to_hash`
   *     (proofs are deterministic), and for the Praos input the alpha of `PraosVrfCertificate.alpha`
@@ -30,40 +32,57 @@ import xyz.kd5ujc.scarab.crypto.witness.{StrictEd25519, VerificationResult}
   *
   * A fuzz input is read as the choices of one case ([[Choices]]): a mutation, two arguments and a
   * mode, then the bytes the mode takes. The modes are bytes chosen by the fuzzer, a valid signature
-  * or proof made by the oracle from a seed, and one valid under a mixed-order key (the key plus a
-  * point of small order, the challenge found divisible by that order). The mutations put the edge
-  * cases where the two might differ: every small-order point in both signs, every non-canonical y,
-  * points with a small-order component added, sign bits flipped, scalars at and above L (S + kL, L,
-  * L - 1, 2^252, the top bits set) and bit flips. The seeds are these cases and the committed
-  * corpora of `fixtures/witness`, `fixtures/wycheproof-ed25519` and `fixtures/vrf`. `FuzzSuite`
-  * requires each run to see a case both sides accept and, for the verifiers, one both refuse and
-  * one both accept under a mixed-order key.
+  * or proof made by the oracle from a seed, one valid under a mixed-order key (the key plus a point
+  * of small order, the challenge ground until the equation leaves nothing of it) and, for the VRF,
+  * one whose Gamma, or whose key and Gamma, have a component of small order ([[madeProof]]). The
+  * point's order is chosen first, so that orders 2, 4 and 8 are as likely. The mutations put the
+  * edge cases where the two might differ: every small-order point in both signs, every
+  * non-canonical y, points with a small-order component added, sign bits flipped, scalars at and
+  * above L (S + kL, L, L - 1, 2^252, the top bits set) and bit flips. The seeds are these cases and
+  * the committed corpora of `fixtures/witness`, `fixtures/wycheproof-ed25519` and `fixtures/vrf`.
+  *
+  * [[run]] checks every seed once, then the random cases, and requires its tallies to hold each of
+  * the target's `required` kinds: a case both sides accept and, for the verifiers, one both refuse
+  * and one both accept with a component of each order 2, 4 and 8 in the key and, for the VRF, in
+  * Gamma. The torsion tallies come from the construction (which point was added and was not changed
+  * by a mutation), not from a predicate of the oracle. Each run prints its tallies, and
+  * `scripts/check_differential_fuzz.py` holds the fuzz workflows' floors on them.
   */
 object SodiumTargets:
   private val P: BigInt = (BigInt(1) << 255) - 19
   private val L: BigInt = Sodium.L
 
-  /** Cases both sides accepted, of those the ones under a mixed-order key, and cases both refused,
-    * by target.
-    */
-  private val accepted = new ConcurrentHashMap[String, LongAdder]()
-  private val mixed = new ConcurrentHashMap[String, LongAdder]()
-  private val refused = new ConcurrentHashMap[String, LongAdder]()
-  private def count(map: ConcurrentHashMap[String, LongAdder], name: String): Unit =
-    map.computeIfAbsent(name, _ => new LongAdder).increment()
-  private def sum(map: ConcurrentHashMap[String, LongAdder], name: String): Long =
-    Option(map.get(name)).fold(0L)(_.sum())
+  /** The part of a case a point of small order was added to. */
+  enum Part:
+    case Key, Gamma
 
-  final case class Tally(accepted: Long, mixed: Long, refused: Long):
+  /** What a tally counts: cases both sides accepted, cases both refused, and the accepted cases
+    * whose key or Gamma was built with a component of a given order.
+    */
+  enum Kind:
+    case Accepted, Refused
+    case Torsion(part: Part, order: Int)
+
+  final case class Tally(counts: Map[Kind, Long]):
+    def apply(kind: Kind): Long = counts.getOrElse(kind, 0L)
     def -(earlier: Tally): Tally =
-      Tally(accepted - earlier.accepted, mixed - earlier.mixed, refused - earlier.refused)
+      Tally((counts.keySet ++ earlier.counts.keySet).map(k => k -> (this(k) - earlier(k))).toMap)
+    def +(other: Tally): Tally =
+      Tally((counts.keySet ++ other.counts.keySet).map(k => k -> (this(k) + other(k))).toMap)
+
+  private val counters = new ConcurrentHashMap[(String, Kind), LongAdder]()
+  private def count(name: String, kind: Kind): Unit =
+    counters.computeIfAbsent((name, kind), _ => new LongAdder).increment()
 
   /** The cases of `name` so far. */
-  def tally(name: String): Tally = Tally(sum(accepted, name), sum(mixed, name), sum(refused, name))
+  def tally(name: String): Tally =
+    Tally(counters.asScala.collect {
+      case ((n, kind), adder) if n == name => kind -> adder.sum()
+    }.toMap)
 
-  private def agreed(oracle: Sodium.Oracle, name: String, key: Array[Byte]): Unit =
-    count(accepted, name)
-    if !oracle.ed25519PrimeOrder(key) then count(mixed, name)
+  private def agreed(name: String, torsion: Seq[(Part, Option[Int])]): Unit =
+    count(name, Kind.Accepted)
+    torsion.foreach((part, order) => order.foreach(o => count(name, Kind.Torsion(part, o))))
 
   /** The fuzz input as the choices of one case: each read takes the next bytes, zeros past the end.
     */
@@ -96,17 +115,23 @@ object SodiumTargets:
   private val order8b = hex("c7176a703d4dd84fba3c0b760d10670f2a2053fa2c39ccc64ec7fd7792ac037a")
   private val basePoint = hex("5866666666666666666666666666666666666666666666666666666666666666")
 
-  /** The points of small order but the identity, each with its order: what a mixed-order key adds.
+  /** The orders of the points of small order but the identity, and the points of each: what a
+    * mixed-order key or Gamma adds.
     */
-  private val torsion: Vector[(Array[Byte], Int)] = Vector(
-    encoding(P - 1, false) -> 2,
-    encoding(0, false) -> 4,
-    encoding(0, true) -> 4,
-    order8a -> 8,
-    negated(order8a) -> 8,
-    order8b -> 8,
-    negated(order8b) -> 8
+  val orders: Vector[Int] = Vector(2, 4, 8)
+  private val torsion: Map[Int, Vector[Array[Byte]]] = Map(
+    2 -> Vector(encoding(P - 1, false)),
+    4 -> Vector(encoding(0, false), encoding(0, true)),
+    8 -> Vector(order8a, negated(order8a), order8b, negated(order8b))
   )
+
+  /** The point of small order `small` chooses, and its order: the order first, so that each is as
+    * likely, then the point of that order.
+    */
+  private def smallPoint(small: Int): (Array[Byte], Int) =
+    val order = orders(small % orders.size)
+    val points = torsion(order)
+    (points((small / orders.size) % points.size), order)
 
   /** Encodings at the edges: every small-order point in both signs, every non-canonical y (p to p +
     * 18) in both signs, the base point and its negation, y = 2 and all ones.
@@ -143,7 +168,7 @@ object SodiumTargets:
       bytes.updated(at, (bytes(at) ^ (1 << (bit & 7))).toByte)
 
   private def add(oracle: Sodium.Oracle, point: Array[Byte], small: Int): Array[Byte] =
-    oracle.ed25519Add(point, torsion(small % torsion.size)._1).getOrElse(point)
+    oracle.ed25519Add(point, smallPoint(small)._1).getOrElse(point)
 
   /** A scalar at `from` of `bytes` replaced. */
   private def scalar(bytes: Array[Byte], from: Int)(f: BigInt => BigInt): Array[Byte] =
@@ -160,7 +185,15 @@ object SodiumTargets:
 
   // --- Ed25519 -----------------------------------------------------------------------------------
 
-  private final case class Signed(key: Array[Byte], signature: Array[Byte], message: Array[Byte]):
+  /** A case: its key, signature and message, and the order of the small-order point its key was
+    * built with, if any and if no mutation changed the key since.
+    */
+  private final case class Signed(
+      key: Array[Byte],
+      signature: Array[Byte],
+      message: Array[Byte],
+      keyTorsion: Option[Int] = None
+  ):
     override def toString: String =
       s"key ${show(key)}, signature ${show(signature)}, message ${show(message)}"
 
@@ -175,15 +208,17 @@ object SodiumTargets:
       message: Array[Byte]
   ): Signed =
     val (key, secret) = oracle.ed25519Keypair(seed)
-    val (point, order) = torsion(small % torsion.size)
+    val (point, order) = smallPoint(small)
     val mixed = oracle.ed25519Add(key, point).getOrElse(key)
     val signing = secret.take(32) ++ mixed
     val attempts = (0 until 64).iterator.map { i =>
       val m = message :+ i.toByte
-      Signed(mixed, oracle.ed25519Sign(signing, m), m)
+      Signed(mixed, oracle.ed25519Sign(signing, m), m, Some(order))
     }
     val h = (s: Signed) => Scalars.decode(sha512(s.signature.take(32), s.key, s.message)).mod(L)
-    attempts.find(s => h(s).mod(order) == 0).getOrElse(Signed(mixed, Array.fill(64)(0), message))
+    attempts
+      .find(s => h(s).mod(order) == 0)
+      .getOrElse(Signed(mixed, Array.fill(64)(0), message, Some(order)))
 
   private def signed(oracle: Sodium.Oracle, c: Choices, small: Int): Signed = c.byte() % 3 match
     case 0 => Signed(c.take(32), c.take(64), c.rest())
@@ -195,7 +230,12 @@ object SodiumTargets:
 
   private val signatureMutations = 14
 
+  /** The case `kind` makes of `s`; a changed key no longer counts as built with its point. */
   private def mutateSigned(oracle: Sodium.Oracle, s: Signed, kind: Int, a: Int, b: Int): Signed =
+    val m = mutatedSigned(oracle, s, kind, a, b)
+    if m.key.sameElements(s.key) then m else m.copy(keyTorsion = None)
+
+  private def mutatedSigned(oracle: Sodium.Oracle, s: Signed, kind: Int, a: Int, b: Int): Signed =
     val r = s.signature.take(32)
     val withR = (r2: Array[Byte]) => s.copy(signature = r2 ++ s.signature.drop(32))
     kind % signatureMutations match
@@ -240,14 +280,24 @@ object SodiumTargets:
               s"Scarab ${if verified then "accepts" else "refuses"}, libsodium " +
                 s"${if reference then "accepts" else "refuses"}: $s"
             )
-          if verified then agreed(oracle, name, s.key) else count(refused, name)
+          if verified then agreed(name, Seq(Part.Key -> s.keyTorsion))
+          else count(name, Kind.Refused)
         case Left(error) =>
           violation(name, s"Scarab gave no verdict ($error), libsodium ${reference}: $s")
     }
 
   // --- VRF verification --------------------------------------------------------------------------
 
-  private final case class Proved(key: Array[Byte], proof: Array[Byte], alpha: Array[Byte]):
+  /** A case: its key, proof and alpha, and the orders of the small-order points its key and Gamma
+    * were built with, if any and if no mutation changed them since.
+    */
+  private final case class Proved(
+      key: Array[Byte],
+      proof: Array[Byte],
+      alpha: Array[Byte],
+      keyTorsion: Option[Int] = None,
+      gammaTorsion: Option[Int] = None
+  ):
     override def toString: String = s"key ${show(key)}, proof ${show(proof)}, alpha ${show(alpha)}"
 
   /** A proof valid under the mixed-order key Y + T: proved with that key's bytes, and alpha
@@ -264,32 +314,114 @@ object SodiumTargets:
       alpha: Array[Byte]
   ): Proved =
     val (key, secret) = oracle.vrfKeypair(seed)
-    val (point, order) = torsion(small % torsion.size)
+    val (point, order) = smallPoint(small)
     val mixed = oracle.ed25519Add(key, point).getOrElse(key)
     val proving = secret.take(32) ++ mixed
     (0 until 64).iterator
       .flatMap { i =>
         val m = alpha :+ i.toByte
-        oracle.vrfProve(proving, m).map(Proved(mixed, _, m))
+        oracle.vrfProve(proving, m).map(Proved(mixed, _, m, keyTorsion = Some(order)))
       }
-      .find(p => (L - Scalars.decode(p.proof.slice(32, 48))).mod(order) == 0)
-      .getOrElse(Proved(mixed, Array.fill(80)(0), alpha))
+      .find(p => cancels(p.proof, order))
+      .getOrElse(Proved(mixed, Array.fill(80)(0), alpha, keyTorsion = Some(order)))
+
+  /** Whether [L - c]T vanishes for T of `order`, c being the proof's challenge. */
+  private def cancels(proof: Array[Byte], order: Int): Boolean =
+    (L - Scalars.decode(proof.slice(32, 48))).mod(order) == 0
+
+  /** The secret scalar x of a VRF seed, modulo L: SHA-512 of the seed, its first half clamped, as
+    * `crypto_vrf_seed_keypair` and `crypto_vrf_ietfdraft03_prove` compute it
+    * (IntersectMBO/libsodium dbb48cce `src/libsodium/crypto_vrf/crypto_vrf.c:59-67`,
+    * `ietfdraft03/prove.c:25-28`).
+    */
+  private def secretScalar(seed: Array[Byte]): BigInt =
+    val az = sha512(seed).take(32)
+    az(0) = (az(0) & 248).toByte
+    az(31) = ((az(31) & 127) | 64).toByte
+    Scalars.decode(az).mod(L)
+
+  /** H, the hash to curve of `key` and `alpha`: the Elligator 2 map of the first 32 bytes of
+    * SHA-512(0x04 || 0x01 || key || alpha), bit 255 cleared (`ietfdraft03/verify.c:75-83`).
+    */
+  private def hashToCurve(
+      oracle: Sodium.Oracle,
+      key: Array[Byte],
+      alpha: Array[Byte]
+  ): Array[Byte] =
+    val r = sha512(Array[Byte](4, 1), key, alpha).take(32)
+    r(31) = (r(31) & 0x7f).toByte
+    oracle.ed25519FromUniform(r)
+
+  /** A proof made here, with the oracle's group arithmetic, whose key is Y + T1 and whose Gamma is
+    * [x]H + T2, either point of small order left out. The verifier computes U = [L - c](Y + T1) +
+    * [s]B and V = [L - c]Gamma + [s]H; with s = k + cx, they are [k]B + [L - c]T1 and [k]H + [L -
+    * c]T2. The challenge is c = SHA-512(0x04 || 0x02 || H || Gamma || [k]B || [k]H), its first 16
+    * bytes, so the proof verifies exactly when [L - c]T1 and [L - c]T2 vanish, that is when c is
+    * congruent to L modulo the larger order: the nonce k is drawn again until it is
+    * (`ietfdraft03/verify.c:86-104`). The output is that of [8]Gamma, the same as without T2.
+    */
+  private def madeProof(
+      oracle: Sodium.Oracle,
+      seed: Array[Byte],
+      alpha: Array[Byte],
+      keyPoint: Option[(Array[Byte], Int)],
+      gammaPoint: Option[(Array[Byte], Int)]
+  ): Proved =
+    val (plain, _) = oracle.vrfKeypair(seed)
+    val key = keyPoint.flatMap((t, _) => oracle.ed25519Add(plain, t)).getOrElse(plain)
+    val x = secretScalar(seed)
+    val h = hashToCurve(oracle, key, alpha)
+    val gamma = oracle
+      .ed25519Multiply(Scalars.encode(x), h)
+      .flatMap(g => gammaPoint.fold(Option(g))((t, _) => oracle.ed25519Add(g, t)))
+      .getOrElse(Array.fill[Byte](32)(0))
+    val order = (keyPoint.toSeq ++ gammaPoint.toSeq).map(_._2).maxOption.getOrElse(1)
+    val made = (0 until 64).iterator.flatMap { i =>
+      val k = Scalars.decode(sha512(seed, alpha, Array(i.toByte))).mod(L)
+      for
+        kb <- oracle.ed25519MultiplyBase(Scalars.encode(k))
+        kh <- oracle.ed25519Multiply(Scalars.encode(k), h)
+        c = sha512(Array[Byte](4, 2), h, gamma, kb, kh).take(16)
+        s = (k + Scalars.decode(c) * x).mod(L)
+      yield gamma ++ c ++ Scalars.encode(s)
+    }
+    Proved(
+      key,
+      made.find(cancels(_, order)).getOrElse(Array.fill(80)(0)),
+      alpha,
+      keyPoint.map(_._2),
+      gammaPoint.map(_._2)
+    )
 
   // Alphas are kept below `StrictDraft03.MaxAlphaBytes`, which Scarab refuses as an envelope before
   // the verifier; a header's alpha has 32 bytes.
   private def alphaOf(c: Choices): Array[Byte] = c.rest().take(1 << 16)
 
-  private def proved(oracle: Sodium.Oracle, c: Choices, small: Int): Proved = c.byte() % 3 match
+  private def proved(oracle: Sodium.Oracle, c: Choices, small: Int): Proved = c.byte() % 5 match
     case 0 => Proved(c.take(32), c.take(80), alphaOf(c))
     case 1 =>
       val (key, secret) = oracle.vrfKeypair(c.take(32))
       val alpha = alphaOf(c)
       Proved(key, oracle.vrfProve(secret, alpha).getOrElse(Array.fill(80)(0)), alpha)
-    case _ => mixedProof(oracle, c.take(32), small, alphaOf(c))
+    case 2 => mixedProof(oracle, c.take(32), small, alphaOf(c))
+    case 3 => madeProof(oracle, c.take(32), alphaOf(c), None, Some(smallPoint(small)))
+    case _ =>
+      val other = c.byte()
+      madeProof(oracle, c.take(32), alphaOf(c), Some(smallPoint(small)), Some(smallPoint(other)))
 
   private val proofMutations = 15
 
+  /** The case `kind` makes of `p`; a changed key or Gamma no longer counts as built with its point.
+    */
   private def mutateProved(oracle: Sodium.Oracle, p: Proved, kind: Int, a: Int, b: Int): Proved =
+    val m = mutatedProved(oracle, p, kind, a, b)
+    m.copy(
+      keyTorsion = if m.key.sameElements(p.key) then m.keyTorsion else None,
+      gammaTorsion =
+        if m.proof.take(32).sameElements(p.proof.take(32)) then m.gammaTorsion else None
+    )
+
+  private def mutatedProved(oracle: Sodium.Oracle, p: Proved, kind: Int, a: Int, b: Int): Proved =
     val gamma = p.proof.take(32)
     val withGamma = (g: Array[Byte]) => p.copy(proof = g ++ p.proof.drop(32))
     kind % proofMutations match
@@ -332,8 +464,8 @@ object SodiumTargets:
             )
           if !oracle.vrfProofToHash(p.proof).exists(_.sameElements(expected)) then
             violation(name, s"libsodium's proof to hash is not the verified output: $p")
-          agreed(oracle, name, p.key)
-        case (StrictDraft03.Result.Rejected(_), None) => count(refused, name)
+          agreed(name, Seq(Part.Key -> p.keyTorsion, Part.Gamma -> p.gammaTorsion))
+        case (StrictDraft03.Result.Rejected(_), None) => count(name, Kind.Refused)
         case (scarab, theirs) =>
           violation(
             name,
@@ -427,7 +559,7 @@ object SodiumTargets:
           case other => violation(name, s"the Praos certificate is $other: $what")
       }
       key.forget()
-      count(accepted, name)
+      count(name, Kind.Accepted)
     }
 
   private def praosInput(slot: Array[Byte], nonce: Option[Array[Byte]]): PraosVrfCertificate.Input =
@@ -444,7 +576,8 @@ object SodiumTargets:
   // --- seeds -------------------------------------------------------------------------------------
 
   /** Every mode with every mutation and a few arguments, each over four pseudo-random seeds and
-    * messages.
+    * messages, and the unmutated cases over twelve, whose torsion arguments then choose every point
+    * of small order.
     */
   private def generated(modes: Int, mutations: Int): Vector[Array[Byte]] =
     val r = new Random(1418)
@@ -452,9 +585,9 @@ object SodiumTargets:
       mode <- 0 until modes
       mutation <- 0 until mutations
       argument <- Vector(0, 1, 37, 255)
-      _ <- 0 until 4
-    yield Array(mutation, argument, (argument * 7 + mutation) & 0xff, mode).map(_.toByte) ++
-      Array.fill(96 + r.nextInt(48))(r.nextInt(256).toByte)).toVector
+      fill <- 0 until (if mutation == 0 then 12 else 4)
+    yield Array(mutation, argument, (argument * 7 + mutation + fill) & 0xff, mode).map(_.toByte) ++
+      Array.fill(97 + r.nextInt(48))(r.nextInt(256).toByte)).toVector
 
   /** The rows of a corpus table (`id`, key, signature or proof, message) that `keep` names and
     * whose key and signature have the sizes the functions take, as raw cases; rows of other sizes
@@ -505,7 +638,7 @@ object SodiumTargets:
   // the further rows of `fixtures/vrf` but its re-runs of `vectors.tsv` and its unstructured bytes:
   // the mixed-order, torsion, negative-zero and scalar-boundary mutations
   private val vrfSeeds: () => Vector[Array[Byte]] = () =>
-    generated(3, proofMutations) ++ table("fixtures/vrf/vectors.tsv", 32 -> 80) ++
+    generated(5, proofMutations) ++ table("fixtures/vrf/vectors.tsv", 32 -> 80) ++
       table(
         "fixtures/vrf/additional.tsv",
         32 -> 80,
@@ -518,15 +651,116 @@ object SodiumTargets:
       Array(i.toByte) ++ Array.fill(41 + r.nextInt(48))(r.nextInt(256).toByte)
     )
 
-  /** A differential target: the share of the run's cases it takes (a case costs it up to two
-    * milliseconds, a decoder's microseconds, and the fuzz gate has one hour for all of them), and
-    * whether its run must also see a case both sides refuse and one both accept under a mixed-order
-    * key.
+  // --- the known difference ----------------------------------------------------------------------
+
+  /** `StrictDraft03.MaxAlphaBytes` as it stands since the prototype's first publication: 1 MiB. */
+  private val RecordedAlphaBound: Int = 1048576
+
+  /** The one difference between the VRF verifier and the reference that is known and kept, held
+    * here as a fixed case so that a change on either side is seen: `StrictDraft03.verify` refuses
+    * an alpha over `StrictDraft03.MaxAlphaBytes` (1 MiB) as `AlphaTooLarge`, before the verifier,
+    * and the reference verifies a proof over any alpha (cardano-base 060819b5
+    * `cardano-crypto-praos/src/Cardano/Crypto/VRF/Praos.hs:502-512` hands its length to
+    * `crypto_vrf_ietfdraft03_verify` unchecked). The limit came with the research prototype's first
+    * publication (commit 58172e52d, "alpha exceeds 1 MiB research limit"), and became the typed
+    * case in #188; no issue or row of the decisions register records it. No caller reaches it: both
+    * verify alphas the node builds itself, 32 bytes each (`PraosVrfCertificate.alpha`,
+    * `TPraos.seed`), as the reference's `mkInputVRF` and `mkSeed` are 32-byte Blake2b-256 hashes.
+    * The question of the limit is with the owner (#1418). At the limit both verify the proof to the
+    * same output; one byte over it, the oracle verifies it and Scarab refuses exactly so. The bound
+    * is written out ([[RecordedAlphaBound]]), not read from `StrictDraft03`, so that moving it
+    * fails this case.
     */
-  final case class Differential(target: Target, share: Int, verifier: Boolean)
+  private def alphaBound(): Unit =
+    val name = "sodium-vrf-verify alpha bound"
+    val oracle = Sodium.loaded
+    val (key, secret) = oracle.vrfKeypair(Array.fill(32)(0x2a.toByte))
+    Vector(RecordedAlphaBound, RecordedAlphaBound + 1).foreach { size =>
+      val alpha = Array.fill(size)(0x61.toByte)
+      val proof = oracle
+        .vrfProve(secret, alpha)
+        .getOrElse(violation(name, s"libsodium proves nothing over $size bytes"))
+      val reference = oracle
+        .vrfVerify(key, proof, alpha)
+        .getOrElse(violation(name, s"libsodium refuses its proof over an alpha of $size bytes"))
+      val scarab =
+        StrictDraft03.verify(Bytes.fromArray(key), Bytes.fromArray(proof), Bytes.fromArray(alpha))
+      val expected =
+        if size <= RecordedAlphaBound then StrictDraft03.Result.Verified(Bytes.fromArray(reference))
+        else StrictDraft03.Result.MalformedEnvelope(StrictDraft03.EnvelopeError.AlphaTooLarge(size))
+      if scarab != expected then
+        violation(name, s"over an alpha of $size bytes Scarab gives $scarab, not $expected")
+    }
+
+  // --- the targets -------------------------------------------------------------------------------
+
+  /** A differential target: the share of the run's cases it takes (a case costs it up to two
+    * milliseconds, a decoder's microseconds, and the fuzz gate has one hour for all of them), the
+    * kinds its run must count at least once, and the fixed cases it checks first.
+    */
+  final case class Differential(
+      target: Target,
+      share: Int,
+      required: Vector[Kind],
+      fixed: () => Unit = () => ()
+  )
+
+  private val verifierKinds: Vector[Kind] = Vector(Kind.Accepted, Kind.Refused)
+  private def torsionKinds(part: Part): Vector[Kind] = orders.map(Kind.Torsion(part, _))
 
   val all: Vector[Differential] = Vector(
-    Differential(Target("sodium-ed25519", ed25519Seeds, ed25519("sodium-ed25519")), 2, true),
-    Differential(Target("sodium-vrf-verify", vrfSeeds, vrfVerify("sodium-vrf-verify")), 8, true),
-    Differential(Target("sodium-vrf-prove", proveSeeds, vrfProve("sodium-vrf-prove")), 20, false)
+    Differential(
+      Target("sodium-ed25519", ed25519Seeds, ed25519("sodium-ed25519")),
+      2,
+      verifierKinds ++ torsionKinds(Part.Key)
+    ),
+    Differential(
+      Target("sodium-vrf-verify", vrfSeeds, vrfVerify("sodium-vrf-verify")),
+      8,
+      verifierKinds ++ torsionKinds(Part.Key) ++ torsionKinds(Part.Gamma),
+      alphaBound
+    ),
+    Differential(
+      Target("sodium-vrf-prove", proveSeeds, vrfProve("sodium-vrf-prove")),
+      20,
+      Vector(Kind.Accepted)
+    )
   )
+
+  private def label(kind: Kind): String = kind match
+    case Kind.Accepted             => "accepted"
+    case Kind.Refused              => "refused"
+    case Kind.Torsion(part, order) => s"${part.toString.toLowerCase}$order"
+
+  private def json(t: Tally, kinds: Vector[Kind]): io.circe.Json =
+    io.circe.Json.obj(kinds.map(k => label(k) -> io.circe.Json.fromLong(t(k)))*)
+
+  /** One run of `d`: its fixed cases, every seed once, then its share of the run's cases at random.
+    * It prints a line for the reader and the `differential` line
+    * `scripts/check_differential_fuzz.py` reads, and returns the required kinds it did not count:
+    * none if the run is complete.
+    */
+  def run(d: Differential): Vector[Kind] =
+    val name = d.target.name
+    d.fixed()
+    val start = tally(name)
+    val corpus = d.target.corpus()
+    corpus.foreach(seed => d.target.check(new Input(seed)))
+    val afterSeeds = tally(name)
+    Runner.run(name, Mutate.generator(corpus.toIndexedSeq), d.share)(d.target.check)
+    val seeds = afterSeeds - start
+    val random = tally(name) - afterSeeds
+    val cases = math.max(1, FuzzConfig.cases / d.share) * FuzzConfig.seeds
+    val torsion = d.required.collect { case k: Kind.Torsion => s"${label(k)} ${random(k)}" }
+    val withTorsion =
+      if torsion.isEmpty then "" else torsion.mkString(" (accepted with torsion: ", ", ", ")")
+    val sides = s"${random(Kind.Accepted)} accepted and ${random(Kind.Refused)} refused by both"
+    println(s"  $name: $cases cases, $sides$withTorsion; ${corpus.size} seeds first")
+    val line = io.circe.Json.obj(
+      "target" -> io.circe.Json.fromString(name),
+      "cases" -> io.circe.Json.fromInt(cases),
+      "seeds" -> json(seeds, d.required),
+      "run" -> json(random, d.required)
+    )
+    println(s"  differential ${line.noSpaces}")
+    d.required.filter(k => (seeds + random)(k) == 0)

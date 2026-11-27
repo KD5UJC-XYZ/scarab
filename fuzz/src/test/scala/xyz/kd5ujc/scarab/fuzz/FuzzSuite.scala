@@ -29,34 +29,17 @@ class FuzzSuite extends FunSuite:
     assertEquals(names.filter(Targets.all.map(_.name).contains(_)), Vector.empty[String])
   }
 
-  // The differential targets against the libsodium the reference links (`SodiumTargets`): skipped when
-  // `Sodium.Variable` names no library, failed when it names one that cannot be used. Each run must see
-  // a case both sides accept and, for the verifiers, one both refuse and one both accept under a
-  // mixed-order key.
-  for SodiumTargets.Differential(target, share, verifier) <- SodiumTargets.all do
-    test(s"fuzz ${target.name}") {
+  // The differential targets against the libsodium the reference links (`SodiumTargets`): skipped
+  // when `Sodium.Variable` names no library, failed when it names one that cannot be used, and failed
+  // when the run (`SodiumTargets.run`) did not count each kind the target requires.
+  for differential <- SodiumTargets.all do
+    test(s"fuzz ${differential.target.name}") {
       Sodium.oracle match
         case Left(Sodium.Unavailable.NotConfigured) =>
-          println(s"  ${target.name}: skipped: ${Sodium.notConfigured}")
+          println(s"  ${differential.target.name}: skipped: ${Sodium.notConfigured}")
           assume(false, Sodium.notConfigured)
         case Left(why) =>
           fail(s"the libsodium oracle named by ${Sodium.Variable} cannot be used: $why")
         case Right(_) =>
-          val before = SodiumTargets.tally(target.name)
-          Runner.run(target.name, Mutate.generator(target.corpus().toIndexedSeq), share)(
-            target.check
-          )
-          val run = SodiumTargets.tally(target.name) - before
-          val sides =
-            if verifier then
-              s"${run.accepted} accepted (${run.mixed} under a mixed-order key) and ${run.refused} refused"
-            else s"${run.accepted} accepted"
-          val cases = math.max(1, FuzzConfig.cases / share) * FuzzConfig.seeds
-          println(s"  ${target.name}: $cases cases, $sides by both")
-          assert(run.accepted > 0, s"${target.name}: no case that both sides accept")
-          assert(!verifier || run.refused > 0, s"${target.name}: no case that both sides refuse")
-          assert(
-            !verifier || run.mixed > 0,
-            s"${target.name}: no mixed-order key both sides accept"
-          )
+          assertEquals(SodiumTargets.run(differential), Vector.empty, "kinds the run never counted")
     }
