@@ -110,13 +110,9 @@ object NativeRules:
     def after(c: Counted[LedgerState[E]]) =
       Counted(nes.copy(es = nes.es.copy(ls = c.state)), c.plutus)
     era match
-      case ShelleyBasedEra.SConway =>
-        JudgedSts(Ledger)(LedgerFailure.Rejected(t.body.id, _))(
-          globals,
-          LedgerEnv(ctx, nes.es.chainAccount.treasury),
-          Counted(nes.es.ls, plutus),
-          t
-        ).map(after)
+      // Conway's LEDGER runs on the era types alone, on a transaction's bytes
+      // (`era.conway.ConwayTestKit.judge`, #85)
+      case ShelleyBasedEra.SConway => broken("no LEDGER on the flat Conway transaction (#85)")
       case ShelleyBasedEra.SShelley =>
         shelley[E](nes, t, ctx, plutus, globals)(using summon[PreConway[Shelley]]).map(after)
       case ShelleyBasedEra.SAllegra =>

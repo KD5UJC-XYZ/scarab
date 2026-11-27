@@ -44,6 +44,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScarabEvaluator, ScriptEvaluator}
 import xyz.kd5ujc.scarab.protocol.{Era as ProtocolEra, ReferenceBuild, StateLayout}
+import xyz.kd5ujc.scarab.node.ntc.FlatRecordings
 
 /** Conway's UTXO on the era types whole (`era/rules/Utxo.scala`, `conwayUtxoTransition`,
   * cardano-ledger f649f975 `Conway/Rules/Utxo.hs:211-244`): Babbage's predicates, UTXOS as its
@@ -58,7 +59,9 @@ import xyz.kd5ujc.scarab.protocol.{Era as ProtocolEra, ReferenceBuild, StateLayo
   * (`ConwayUtxoPredFailure.toStored`) where it has one; a script's failure is compared by its error
   * and trace with its request, and a collection's failure by its kind (their contents are
   * `EraPlutusContextSuite` 's), the two the flat form cannot hold. An admitted transaction leaves
-  * the same state, and UTXOS's events embedded in UTXO's say what the flat counters count.
+  * the same state, and UTXOS's events embedded in UTXO's say what the flat counters count. LEDGER
+  * whole on the same cases gives the flat LEDGER's judgments, recorded before it was deleted
+  * (`fixtures/conway-flat-refusals/ledger-judgments.jsonl`).
   */
 class EraUtxoSuite extends munit.FunSuite:
   private given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
@@ -542,51 +545,37 @@ class EraUtxoSuite extends munit.FunSuite:
 
   // ---- LEDGER whole: its checks, CERTS, GOV, then UTXOW ----------------------------------------
 
-  /** An action of a GOV failure as `c`'s proposals read it. */
-  private def readOf(c: Case) =
-    val b = EraTxBody.conway
-    rules.ConwayGovPredFailure.readOf(
-      b.proposalProcedures[TxLevel.Top](t.body[TxLevel.Top](c.typed)(using t.bodyOf.top))(using
-        b.top
-      ).toVector
-    )
-
-  /** Both LEDGERs on `c`, from the chain that holds its outputs, at the root: the same outcome,
-    * which is returned, and where admitted the same state; the counters UTXOS's events give,
-    * through UTXO's, UTXOW's and LEDGER's embeddings, are the flat rule's (`Counted.plutus`).
+  /** What the era LEDGER made of a case, at the root: no verdict, its failures in the reference's
+    * order, or the counters the events of an admission give, through UTXO's, UTXOW's and LEDGER's
+    * embeddings ([[EraLedgerRun.counters]]), with its judgment's cell of the recording
+    * (`ledger-judgments.jsonl`: the flat LEDGER's outcome, `FlatRecordings.refused` and
+    * `admitted`).
     */
-  private def sameLedger(
+  private enum Whole:
+    case NoVerdict(reason: EvalFailure.Unsupported)
+    case Refused(failures: NonEmptyChain[rules.LedgerPredFailure[Conway]], cell: String)
+    case Admitted(succeeded: Long, failed: Long, scripts: Long, cell: String)
+
+  /** The era LEDGER on `c`, from the chain that holds its outputs, at the root. */
+  private def wholeLedger(
       c: Case,
       build: ReferenceBuild,
       validation: TxEnv.Validation,
       evaluator: ScriptEvaluator[Id]
-  ): Outcome =
+  ): Whole =
     val what = s"${c.name} under ${build.name}, $validation (LEDGER)"
     val nes = Build.funded(Build.nes[Conway](5, c.flatPp), c.utxo)
     val ls = ConwayNewEpochState.ls.get(nes)
-    val account = nes.es.chainAccount
     val globals =
       TestLedger.globals.copy(ledger = TestLedger.globals.ledger.copy(referenceBuild = build))
-    val ctx = env.copy(
-      clock = Some(c.clock),
-      evaluator = evaluator,
-      validation = validation,
-      referenceBuild = build
-    )
-    val flat = Judgment.run(xyz.kd5ujc.scarab.ledger.rules.Ledger, RuleT.Policy.Accumulate)(
-      globals,
-      xyz.kd5ujc.scarab.ledger.rules.LedgerEnv(ctx, account.treasury),
-      Counted(ls, PlutusStats.zero),
-      c.flat
-    )
-    val era = EraLedgerRun.ledger(
+    EraLedgerRun.ledger(
       globals,
       rules.LedgerEnv[Conway](
         env.slot,
         Some(right("epoch")(xyz.kd5ujc.scarab.ledger.state.EpochNo.fromBigInt(env.epoch))),
         xyz.kd5ujc.scarab.ledger.state.TxIx.txIxFromIntegral(0).getOrElse(fail("index 0")),
         c.pp,
-        account
+        nes.es.chainAccount
       ),
       stAnnTx(c),
       UtxoContext[Conway](
@@ -600,84 +589,73 @@ class EraUtxoSuite extends munit.FunSuite:
       evaluator,
       env.verdicts,
       env.decoder
-    )
-    val theirs = flat match
-      case Left(LedgerFailure.Unavailable(_, _, reason)) => Outcome.NoVerdict(reason)
-      case Left(other)                                   => fail(s"$what: flat defect $other")
-      case Right(Left(fs)) =>
-        Outcome.Refused(fs.toList.map(f => EraUtxoRun.form(f).getOrElse(fail(s"$what: $f"))))
-      case Right(Right(counted)) =>
-        Outcome.Admitted(counted.plutus.succeeded, counted.plutus.failed, counted.plutus.scripts)
-    val ours = era match
+    ) match
       case Left(EraLedgerRun.Defect.Script(ScriptVerdictUnavailable(_, reason))) =>
-        Outcome.NoVerdict(reason)
-      case Left(defect) => fail(s"$what: era defect $defect")
-      case Right(Left(fs)) =>
-        Outcome.Refused(
-          fs.toList.map(f =>
-            EraLedgerRun.form(f, purposes(c), readOf(c)).getOrElse(fail(s"$what: $f"))
-          )
-        )
+        Whole.NoVerdict(reason)
+      case Left(defect)    => fail(s"$what: era defect $defect")
+      case Right(Left(fs)) => Whole.Refused(fs, FlatRecordings.refused(fs.toChain.toVector))
       case Right(Right((state, events))) =>
         val (succeeded, failed, scripts) = EraLedgerRun
           .counters(t.isValid(c.typed) == IsPhase2Valid.Phase2Valid, events)
           .getOrElse(fail(s"$what: events $events"))
-        flat match
-          case Right(Right(counted)) =>
-            assert(
-              summon[cats.Eq[LedgerState[Conway]]].eqv(state, counted.state),
-              s"$what: $state\n${counted.state}"
-            )
-          case _ => ()
-        Outcome.Admitted(succeeded, failed, scripts)
-    assertEquals(ours, theirs, what)
-    // a collection's errors with their contents, the translations' failures among them, which the
-    // comparison's form keeps by kind alone: in the node's flat form (`EraLedgerRun.flat`)
-    (era, flat) match
-      case (Right(Left(fs)), Right(Left(flatFs))) =>
-        val collected = fs.toList.zip(flatFs.toList).collect {
-          case (
-                e,
-                f @ PredicateFailure.Utxow(
-                  UtxowFailure.Utxo(
-                    UtxoFailure.Utxos(xyz.kd5ujc.scarab.ledger.UtxosFailure.CollectErrors(_))
-                  )
-                )
-              ) =>
-            (e, f)
-        }
-        collected.foreach((e, f) =>
-          assertEquals(EraLedgerRun.flat(e, purposes(c), readOf(c)), Right(f), what)
+        Whole.Admitted(
+          succeeded,
+          failed,
+          scripts,
+          FlatRecordings.admitted(state, succeeded, failed, scripts)
         )
-      case _ => ()
-    ours
 
-  test("LEDGER whole, as submitted: the reference's verdict and the flat LEDGER's") {
+  test("LEDGER whole, as submitted: the reference's verdict") {
     recorded.foreach { c =>
-      sameLedger(c, ReferenceBuild.Release11_1, TxEnv.Validation.All, scarab) match
-        case Outcome.Admitted(_, _, _) => assert(c.accepted, s"${c.name}: the reference refused")
-        case Outcome.Refused(_)        => assert(!c.accepted, s"${c.name}: the reference accepted")
-        case Outcome.NoVerdict(reason) => fail(s"${c.name}: no verdict, $reason")
+      wholeLedger(c, ReferenceBuild.Release11_1, TxEnv.Validation.All, scarab) match
+        case Whole.Admitted(_, _, _, _) => assert(c.accepted, s"${c.name}: the reference refused")
+        case Whole.Refused(_, _)        => assert(!c.accepted, s"${c.name}: the reference accepted")
+        case Whole.NoVerdict(reason)    => fail(s"${c.name}: no verdict, $reason")
     }
   }
 
   test("LEDGER whole on every case, both flags, each build and each policy: the flat LEDGER's") {
-    // the counters LEDGER's events give are the flat rule's, a passing and a failing run of scripts
-    // among them
-    val outcomes = for
-      c <- everyCase
-      build <- ReferenceBuild.values.toVector
-      validation <- TxEnv.Validation.values.toVector
-    yield sameLedger(c, build, validation, scarab)
-    assert(outcomes.exists { case Outcome.Admitted(1, 0, n) => n > 0; case _ => false })
-    assert(outcomes.exists { case Outcome.Admitted(0, 1, n) => n > 0; case _ => false })
-    assert(outcomes.exists { case Outcome.Refused(_) => true; case _ => false })
-    // a translation's failure among the collections' compared with their contents
+    // the flat LEDGER, before it was deleted, judged each case under each build and policy, and
+    // the era LEDGER gave the same failures in the same order, or the same state and the same
+    // counters; the era LEDGER's judgments were recorded (`fixtures/conway-flat-refusals`)
+    val recording = FlatRecordings.judgments("era-utxo-ledger/")
+    val judged = everyCase.map { c =>
+      val wholes = for
+        build <- ReferenceBuild.values.toVector
+        validation <- TxEnv.Validation.values.toVector
+      yield wholeLedger(c, build, validation, scarab)
+      val cells = wholes.map {
+        case Whole.NoVerdict(_)            => "N"
+        case Whole.Refused(_, cell)        => cell
+        case Whole.Admitted(_, _, _, cell) => cell
+      }
+      val id = s"era-utxo-ledger/${c.name}"
+      assertEquals(cells, recording.getOrElse(id, fail(s"no recording of $id")), c.name)
+      id -> wholes
+    }
+    assertEquals(judged.map(_._1).toSet, recording.keySet, "the cases recorded")
+    assertEquals(judged.size, recording.size, "each case once")
+    val outcomes = judged.flatMap(_._2)
+    // a passing and a failing run of scripts among them
+    assert(outcomes.exists { case Whole.Admitted(1, 0, n, _) => n > 0; case _ => false })
+    assert(outcomes.exists { case Whole.Admitted(0, 1, n, _) => n > 0; case _ => false })
+    assert(outcomes.exists { case Whole.Refused(_, _) => true; case _ => false })
+    // a translation's failure among the collections'
     assert(outcomes.exists {
-      case Outcome.Refused(fs) =>
+      case Whole.Refused(fs, _) =>
         fs.exists {
-          case Failure.CollectErrors(kinds) => kinds.contains(EraUtxoRun.Collect.BadTranslation)
-          case _                            => false
+          case rules.ConwayLedgerPredFailure.ConwayUtxowFailure(
+                rules.ConwayUtxowPredFailure.UtxoFailure(
+                  rules.ConwayUtxoPredFailure.UtxosFailure(
+                    rules.ConwayUtxosPredFailure.CollectErrors(es)
+                  )
+                )
+              ) =>
+            es.exists {
+              case CollectError.BadTranslation(_) => true
+              case _                              => false
+            }
+          case _ => false
         }
       case _ => false
     })

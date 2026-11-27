@@ -43,9 +43,10 @@ fixtures/reference/plutus-data-chunks contains synthetic CBOR inputs and origina
 verdicts from the same reference CLI, under the project's Apache-2.0 license. No node was contacted.
 
 fixtures/conway-flat-refusals contains digests of the bytes Scarab's own former flat Conway encoders
-wrote for its test cases and the refusal corpus's Conway cases, recorded by this project's
-Apache-2.0 tests before those encoders were removed. They are distributed under this project's
-Apache-2.0 license; no third-party material and no key is included.
+wrote for its test cases and the refusal corpus's Conway cases, and of the judgments of its former
+flat Conway LEDGER, recorded by this project's Apache-2.0 tests before those were removed. They
+are distributed under this project's Apache-2.0 license; no third-party material and no key is
+included.
 
 This source distribution includes test fixtures derived from Cardano Ledger,
 Cardano Base, Ouroboros Network, Ouroboros Consensus, Amaru and Scalus-node.

@@ -2,8 +2,15 @@
 package xyz.kd5ujc.scarab.ledger.era.conway
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational}
-import xyz.kd5ujc.scarab.ledger.{Block, DetachedRecords, LedgerDecodeError, Unsigned}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  CborRead,
+  DecodeField,
+  DetachedRecords,
+  LedgerDecodeError,
+  Unsigned
+}
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 import xyz.kd5ujc.scarab.ledger.era.{
   AllegraTx,
@@ -56,8 +63,12 @@ final class ConwayTx private (
 object ConwayTx:
   given CanEqual[ConwayTx, ConwayTx] = CanEqual.derived
 
-  /** A transaction of a Conway block, its parts read by Conway's decoders, a pool's parameters in
-    * `layout` ([[ConwayTxBody.decode]]).
+  /** A transaction of a Conway block, its parts read by Conway's decoders in one pass each, a
+    * pool's parameters in `layout` ([[ConwayTxBody.decode]], [[ConwayTxWits.decode]],
+    * [[ConwayTxAuxData.decode]]): the body, the witness set and the auxiliary data in that order,
+    * the first refusal the transaction's (`DecCBOR (Annotator (AlonzoTx l era))`,
+    * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs:536-554`, cardano-ledger f649f975, and the
+    * block body's segments, `Alonzo/BlockBody/Internal.hs:212-256`).
     */
   def decode(t: Block.Transaction, layout: StateLayout): Either[EraTxError, ConwayTx] =
     (
@@ -66,17 +77,78 @@ object ConwayTx:
       t.auxiliaryData.traverse(ConwayTxAuxData.decode)
     ).mapN((body, wits, aux) => ConwayTx(body, wits, IsPhase2Valid.of(t.isValid), aux))
 
-  /** A whole Conway transaction as a client or a peer submits it: its parts as the flat decoder
-    * splits them ([[xyz.kd5ujc.scarab.ledger.Tx.envelopeParts]]), each read by Conway's decoders,
-    * as [[xyz.kd5ujc.scarab.ledger.Tx.fromEnvelope]] reads them.
+  /** A whole Conway transaction as a client or a peer submits it (`decodeRecordNamed "AlonzoTx"`,
+    * `Alonzo/Tx.hs:536-554`, cardano-ledger f649f975), its parts split as the flat decoder splits
+    * them ([[xyz.kd5ujc.scarab.ledger.Tx.envelopeParts]]) and each read by Conway's decoders, as
+    * [[xyz.kd5ujc.scarab.ledger.Tx.fromEnvelope]] reads them. Bytes that hold no empty indefinite
+    * list (`9f ff`) hold no detached record ([[DetachedRecords.mayHold]]), and each part is then
+    * read from its item in the transaction's tree, which is the tree its own bytes parse to;
+    * otherwise each part is parsed again from its bytes, with the records its own walk finds, as
+    * the flat decoder reads it.
     */
   def fromEnvelope(bytes: Bytes, layout: StateLayout): Either[EraTxError, ConwayTx] =
+    if DetachedRecords.mayHold(bytes) then fromEnvelopeWith(bytes)(decode(_, layout))
+    else
+      Cbor
+        .decode(bytes, Cbor.Limits.Unbounded)
+        .leftMap(e => EraTxError.Decode(LedgerDecodeError.Syntax(e)))
+        .flatMap(root => items(root).leftMap(EraTxError.Decode(_)))
+        .flatMap((body, wits, aux, valid) =>
+          (
+            ConwayTxBody.fromItem(body, layout),
+            ConwayTxWits.fromItem(wits),
+            aux.traverse(ConwayTxAuxData.fromItem)
+          ).mapN((b, w, a) => ConwayTx(b, w, IsPhase2Valid.of(valid), a))
+        )
+
+  /** The parts of a whole transaction's item as the flat decoder splits them from Alonzo on
+    * ([[xyz.kd5ujc.scarab.ledger.Tx.envelopeParts]]): a list of four with a boolean third, or of
+    * three whose third, the auxiliary data or null, is not a boolean, the transaction then valid.
+    */
+  private def items(
+      node: Node
+  ): Either[LedgerDecodeError, (Node, Node, Option[Node], Boolean)] =
+    def aux(n: Node) = n.value match
+      case Value.Null => None
+      case _          => Some(n)
+    def length(expected: Int, actual: Int) =
+      Left(LedgerDecodeError.ArrayLength(DecodeField.Transaction, expected, actual))
+    CborRead.array(node, DecodeField.Transaction).flatMap {
+      case Vector(body, wits, flag, auxiliary) =>
+        CborRead.bool(flag, DecodeField.IsValid).map((body, wits, aux(auxiliary), _))
+      case Vector(body, wits, auxiliary) =>
+        auxiliary.value match
+          // read as the flag, the auxiliary data after it missing
+          case Value.Bool(_) => length(4, 3)
+          case _             => Right((body, wits, aux(auxiliary), true))
+      case xs => length(if xs.sizeIs < 3 then 3 else 4, xs.size)
+    }
+
+  private def fromEnvelopeWith(bytes: Bytes)(
+      read: Block.Transaction => Either[EraTxError, ConwayTx]
+  ): Either[EraTxError, ConwayTx] =
     DetachedRecords
       .read(bytes, Cbor.Limits.Unbounded, DetachedRecords.Shapes.transaction(Era.Conway))(
         LedgerDecodeError.Syntax(_)
       )(xyz.kd5ujc.scarab.ledger.Tx.envelopeParts(_, Era.Conway))
       .leftMap(EraTxError.Decode(_))
-      .flatMap(decode(_, layout))
+      .flatMap(read)
+
+  /** The two passes [[decode]] replaced (#85): each part read by the flat decoder at Conway, then
+    * projected into Conway's types ([[ConwayTxBody.decodeByFlat]], [[ConwayTxWits.decodeByFlat]],
+    * [[ConwayTxAuxData.decodeByFlat]]). Kept for the differential and the bench until the flat
+    * decoder goes (stage 6a of `docs/design/era-typed-transactions.md`).
+    */
+  def decodeByFlat(t: Block.Transaction, layout: StateLayout): Either[EraTxError, ConwayTx] =
+    (
+      ConwayTxBody.decodeByFlat(t.body, layout),
+      ConwayTxWits.decodeByFlat(t.witnesses),
+      t.auxiliaryData.traverse(ConwayTxAuxData.decodeByFlat)
+    ).mapN((body, wits, aux) => ConwayTx(body, wits, IsPhase2Valid.of(t.isValid), aux))
+
+  /** [[fromEnvelope]] in the two passes it replaced ([[decodeByFlat]]), kept with it. */
+  def fromEnvelopeByFlat(bytes: Bytes, layout: StateLayout): Either[EraTxError, ConwayTx] =
+    fromEnvelopeWith(bytes)(decodeByFlat(_, layout))
 
   val instance: AlonzoEraTx[Conway] { val bodyOf: EraTxBody.conway.type } =
     new AlonzoEraTx[Conway]:

@@ -6,6 +6,7 @@ import java.nio.file.Path
 import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.plutus.*
 import munit.FunSuite
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
 import xyz.kd5ujc.scarab.ledger.rules.NativeRules
 import xyz.kd5ujc.scarab.ledger.state.{Build, Coin, Conway, ConwayNewEpochState, NewEpochState}
 import xyz.kd5ujc.scarab.protocol.Era
@@ -70,9 +71,9 @@ class PreprodSecp256k1RulesSuite extends FunSuite:
   test(
     "the Conway rules accept it: the script gets False, not an error, for the all-zero signature"
   ) {
-    val after = NativeRules
-      .txIn[Conway](world, c.tx, env(ScarabEvaluator.default))
-      .fold(f => fail(f.message), identity)
-    assertEquals(after.plutus.succeeded, 1L)
-    assertEquals(after.state.es.ls.utxo.fees.value, c.tx.body.fee)
+    val after = ConwayTestKit
+      .judge(world, ConwayTestKit.built(c.tx), env(ScarabEvaluator.default))
+      .fold(f => fail(s"refused: $f"), identity)
+    assertEquals(after.succeeded, 1L)
+    assertEquals(after.nes.es.ls.utxo.fees.value, c.tx.body.fee)
   }

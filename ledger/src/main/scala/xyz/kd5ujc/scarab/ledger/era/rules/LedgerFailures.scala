@@ -2,17 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era.rules
 
 import cats.data.{NonEmptyList, NonEmptyMap}
-import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{
-  GovAction as FlatGovAction,
-  MempoolProblem,
-  PredicateFailure,
-  Purpose
-}
-import xyz.kd5ujc.scarab.ledger.era.GovAction
-import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
-import xyz.kd5ujc.scarab.ledger.era.AsItem
-import xyz.kd5ujc.scarab.ledger.rules.Convert
+import xyz.kd5ujc.scarab.ledger.MempoolProblem
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
   Coin,
@@ -542,53 +532,9 @@ object InjectLedgersFailure:
   given dijkstraGov: InjectLedgersFailure[DijkstraGovPredFailure[Dijkstra], Dijkstra] =
     through[DijkstraGovPredFailure[Dijkstra]]
 
-/** What a LEDGER failure's flat form cannot hold without what the transaction gives: UTXOW's
-  * ([[UtxowUnprojected]]), and an action of GOV's failure that none of the transaction's proposals
-  * was read as ([[GovActionNotRead]]).
-  */
-enum LedgerUnprojected:
-  case Utxow(cause: UtxowUnprojected)
-  case Gov(cause: GovActionNotRead[Conway])
-
 object ConwayLedgerPredFailure:
   given [E <: EraTag]: CanEqual[ConwayLedgerPredFailure[E], ConwayLedgerPredFailure[E]] =
     CanEqual.derived
-
-  /** The failure in the node's flat form (`PredicateFailure`), glue the comparisons with the flat
-    * rules and the node's encoder read until the era's failures have their encoders (#85): UTXOW's
-    * through [[ConwayUtxowPredFailure.toStored]], a missing redeemer's purpose by `purpose`,
-    * CERTS's through [[ConwayCertsPredFailure.toStored]], and GOV's through
-    * [[ConwayGovPredFailure.toStored]], an action by `read`. It is one-way.
-    */
-  def toStored(
-      failure: ConwayLedgerPredFailure[Conway],
-      purpose: ConwayPlutusPurpose[AsItem] => Option[Purpose],
-      read: GovAction[Conway] => Option[FlatGovAction]
-  ): Either[LedgerUnprojected, PredicateFailure] =
-    failure match
-      case ConwayUtxowFailure(f) =>
-        ConwayUtxowPredFailure.toStored(f, purpose).leftMap(LedgerUnprojected.Utxow(_))
-      case ConwayCertsFailure(f) => Right(ConwayCertsPredFailure.toStored(f))
-      case ConwayGovFailure(f) =>
-        ConwayGovPredFailure.toStored(f, read).leftMap(LedgerUnprojected.Gov(_))
-      case ConwayWdrlNotDelegatedToDRep(keys) =>
-        Right(PredicateFailure.WdrlNotDelegatedToDRep(keys.toList.toVector.map(_.bytes)))
-      case ConwayTreasuryValueMismatch(m) => Right(PredicateFailure.TreasuryValueMismatch(coins(m)))
-      case ConwayTxRefScriptsSizeTooBig(m) =>
-        Right(PredicateFailure.TxRefScriptsSizeTooBig(m.stored))
-      case ConwayMempoolFailure(p) => Right(PredicateFailure.Mempool(p))
-      case ConwayWithdrawalsMissingAccounts(ws) =>
-        Right(
-          PredicateFailure.WithdrawalsMissingAccounts(
-            ws.map((account, coin) => Convert.rewardAccountBack(account) -> coin.value)
-          )
-        )
-      case ConwayIncompleteWithdrawals(ms) =>
-        Right(
-          PredicateFailure.IncompleteWithdrawals(
-            ms.toSortedMap.toMap.map((account, m) => Convert.rewardAccountBack(account) -> coins(m))
-          )
-        )
 
 object ShelleyLedgerPredFailure:
   given [E <: EraTag]: CanEqual[ShelleyLedgerPredFailure[E], ShelleyLedgerPredFailure[E]] =

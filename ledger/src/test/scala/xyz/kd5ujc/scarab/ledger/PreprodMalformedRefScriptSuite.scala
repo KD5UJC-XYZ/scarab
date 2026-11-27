@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
 import xyz.kd5ujc.scarab.plutus.*
 import xyz.kd5ujc.scarab.uplc.flat.ScriptDecodeError
 import munit.FunSuite
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
 import xyz.kd5ujc.scarab.ledger.rules.NativeRules
 import xyz.kd5ujc.scarab.ledger.state.{Build, Coin, Conway, ConwayNewEpochState, NewEpochState}
 import xyz.kd5ujc.scarab.protocol.Era
@@ -54,13 +55,16 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
     val reserves = Coin(Supply - nes.es.ls.utxo.utxo.utxo.coin)
     ConwayNewEpochState.reserves.replace(reserves)(nes)
 
+  // preprod: the Shelley era starts at slot 86400, 1 s slots, at POSIX time 1655769600
   private def env = TxEnv(
     slot = c.slot,
     epoch = 248,
     network = 0,
     firstSlotNextEpoch = c.slot + 100,
     stabilityWindow = 129600,
-    clock = None,
+    clock = Some(
+      xyz.kd5ujc.scarab.ledger.PosixClock.Total(slot => (BigInt(1655769600) + slot - 86400) * 1000)
+    ),
     evaluator = ScarabEvaluator.default,
     decoder = decoder
   )
@@ -109,8 +113,10 @@ class PreprodMalformedRefScriptSuite extends FunSuite:
 
   test("the Conway rules accept the transaction") {
     assert(c.tx.isValid)
-    val after = NativeRules.txIn[Conway](world, c.tx, env).fold(f => fail(f.message), identity)
-    assertEquals(after.state.es.ls.utxo.fees.value, c.tx.body.fee)
+    val after = ConwayTestKit
+      .ledger(world, ConwayTestKit.built(c.tx), env)
+      .fold(f => fail(s"refused: $f"), identity)
+    assertEquals(after.es.ls.utxo.fees.value, c.tx.body.fee)
   }
 
   test("with the output's script as V3 bytes plus remainder the rules reject it") {

@@ -18,7 +18,6 @@ import xyz.kd5ujc.scarab.ledger.{
   PoolParams,
   PreprodDeepTx,
   Proposal,
-  Purpose,
   RewardAccount,
   TestLedger,
   TranslationError,
@@ -103,7 +102,6 @@ class ConwayFailureCborSuite extends FunSuite:
   private def flatOut(coin: BigInt) = TestLedger.out(address, coin)
   private def out(coin: BigInt): TxOut[Conway] =
     right("output")(ConwayTxOut.fromStored(flatOut(coin)))
-  private val utxo = UTxO[Conway](Map(txIn(1) -> out(5_000_000)))
   private val value: Value[Conway] =
     MultiAssetValue.of(
       xyz.kd5ujc.scarab.ledger.Value(7, Map(h28(4) -> Map(Bytes.empty -> 3, bytes(1, 4) -> 9)))
@@ -164,7 +162,6 @@ class ConwayFailureCborSuite extends FunSuite:
     )
   private val proposals = flatActions.zipWithIndex.map(proposalOf)
   private val actions = proposals.map(_.pProcGovAction)
-  private val read = ConwayGovPredFailure.readOf(proposals)
 
   // ---- certificates
 
@@ -255,9 +252,6 @@ class ConwayFailureCborSuite extends FunSuite:
       [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
     )(p)
   private val items = purposes.map(asItem)
-  private val flatPurpose: ConwayPlutusPurpose[AsItem] => Option[Purpose] =
-    val byItem = purposes.map(p => asItem(p) -> p).toMap
-    p => byItem.get(p).flatMap(ConwayPlutusPurpose.toStored(_, utxo))
 
   // ---- the comparison
 
@@ -910,7 +904,7 @@ class ConwayFailureCborSuite extends FunSuite:
     assert(direct(f).endsWith("8269" + "68747470733a2f2f70" + "5a00100001" + long.hex))
   }
 
-  // ---- what the flat form cannot hold without the transaction: the era form has bytes for it
+  // ---- what the node's flat form could not hold without the transaction: the era form has bytes
 
   private lazy val unreadActionCases: Vector[Case] =
     group("unread-action/malformed")(
@@ -920,13 +914,6 @@ class ConwayFailureCborSuite extends FunSuite:
     )
 
   test("an action no proposal reads: GOV's failures of it have bytes") {
-    actions.foreach { a =>
-      val f = gov(ConwayGovPredFailure.MalformedProposal(a))
-      assert(ConwayLedgerPredFailure.toStored(f, flatPurpose, _ => None) match {
-        case Left(LedgerUnprojected.Gov(_)) => true
-        case _                              => false
-      })
-    }
     unreadActionCases.foreach(encodes)
   }
 
@@ -942,15 +929,6 @@ class ConwayFailureCborSuite extends FunSuite:
     )
 
   test("a purpose no needed script names: the failures of it have bytes") {
-    val (f, g) = (unnamedPurposeCases(0)._2.head, unnamedPurposeCases(1)._2.head)
-    assert(ConwayLedgerPredFailure.toStored(f, _ => None, read) match {
-      case Left(LedgerUnprojected.Utxow(_)) => true
-      case _                                => false
-    })
-    assert(ConwayLedgerPredFailure.toStored(g, _ => None, read) match {
-      case Left(LedgerUnprojected.Utxow(UtxowUnprojected.CollectErrors(_))) => true
-      case _                                                                => false
-    })
     unnamedPurposeCases.foreach(encodes)
   }
 
@@ -1003,15 +981,6 @@ class ConwayFailureCborSuite extends FunSuite:
     )
 
   test("a context's errors: each has bytes under its LEDGER tag") {
-    contextCases.foreach { (id, fs) =>
-      assert(
-        ConwayLedgerPredFailure.toStored(fs.head, flatPurpose, read) match {
-          case Left(LedgerUnprojected.Utxow(UtxowUnprojected.CollectErrors(_))) => true
-          case _                                                                => false
-        },
-        id
-      )
-    }
     contextCases.foreach(encodes)
   }
 

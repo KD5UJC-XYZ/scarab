@@ -7,6 +7,8 @@ import cats.Id
 import java.nio.file.Path
 import xyz.kd5ujc.scarab.plutus.*
 import munit.FunSuite
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
+import xyz.kd5ujc.scarab.ledger.era.rules.{ConwayUtxosPredFailure, TagMismatchDescription}
 import xyz.kd5ujc.scarab.ledger.rules.NativeRules
 import xyz.kd5ujc.scarab.ledger.state.{Build, Coin, Conway, ConwayNewEpochState, NewEpochState}
 import xyz.kd5ujc.scarab.protocol.Era
@@ -68,12 +70,12 @@ class PreprodConwayRulesSuite extends FunSuite:
   test(
     "the Conway rules accept it: the fanout script hashes outputs whose datums carry a constructor index of 2^64 - 1"
   ) {
-    val after = NativeRules
-      .txIn[Conway](world, c.tx, env(ScarabEvaluator.default))
-      .fold(f => fail(f.message), identity)
-    assertEquals(after.plutus.succeeded, 1L)
-    assertEquals(after.plutus.scripts, 2L)
-    assertEquals(after.state.es.ls.utxo.fees.value, c.tx.body.fee)
+    val after = ConwayTestKit
+      .judge(world, ConwayTestKit.built(c.tx), env(ScarabEvaluator.default))
+      .fold(f => fail(s"refused: $f"), identity)
+    assertEquals(after.succeeded, 1L)
+    assertEquals(after.scripts, 2L)
+    assertEquals(after.nes.es.ls.utxo.fees.value, c.tx.body.fee)
   }
 
   test("both scripts run within the units the redeemers declare") {
@@ -83,7 +85,10 @@ class PreprodConwayRulesSuite extends FunSuite:
         val res = ScarabEvaluator.default.evaluate(r)
         seen += r.budget -> res
         res
-    NativeRules.txIn[Conway](world, c.tx, env(recording)).fold(f => fail(f.message), identity)
+    // the era LEDGER alone, so that each script is evaluated once
+    ConwayTestKit
+      .eraVerdict(world, ConwayTestKit.built(c.tx).typed, env(recording))
+      .fold(f => fail(s"refused: $f"), identity)
     assertEquals(seen.size, 2)
     seen.foreach { (budget, res) =>
       assert(res.isSuccess, res)
@@ -93,17 +98,19 @@ class PreprodConwayRulesSuite extends FunSuite:
 
   test("the same transaction marked invalid is refused: its scripts succeed") {
     val invalid = c.tx.copy(isValid = false)
-    NativeRules.txIn[Conway](world, invalid, env(ScarabEvaluator.default)) match
-      case Left(
-            LedgerFailure.Rejected.Single(
-              _,
-              PredicateFailure.Utxow(
-                UtxowFailure.Utxo(
-                  UtxoFailure.Utxos(UtxosFailure.ValidationTagMismatch(false, _))
-                )
-              )
+    // `ValidationTagMismatch` with `PassedUnexpectedly` (`Alonzo/Rules/Utxos.hs:236-238`,
+    // cardano-ledger f649f975)
+    assertEquals(
+      ConwayTestKit.ledger(world, ConwayTestKit.built(invalid), env(ScarabEvaluator.default)),
+      Left(
+        Vector(
+          ConwayTestKit.Fails.utxos(
+            ConwayUtxosPredFailure.ValidationTagMismatch(
+              era.IsPhase2Valid.Phase2Invalid,
+              TagMismatchDescription.PassedUnexpectedly
             )
-          ) =>
-        ()
-      case other => fail(s"$other")
+          )
+        )
+      )
+    )
   }

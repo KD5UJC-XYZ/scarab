@@ -9,7 +9,19 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.node.mempool.MempoolState
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.ledger.rules.NativeRules
+import cats.data.NonEmptyList
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
+import xyz.kd5ujc.scarab.ledger.era.rules.{
+  ConwayCertPredFailure,
+  ConwayCertsPredFailure,
+  ConwayGovPredFailure,
+  ConwayLedgerPredFailure,
+  ConwayUtxoPredFailure,
+  ConwayUtxowPredFailure,
+  LedgerPredFailure,
+  ShelleyPoolPredFailure
+}
+import xyz.kd5ujc.scarab.ledger.rules.{NativeRules, RuleT}
 import xyz.kd5ujc.scarab.ledger.state.{Build, Coin, Conway, ConwayNewEpochState, NewEpochState}
 
 import TestLedger.*
@@ -69,37 +81,82 @@ class DevnetRefusedTxSuite extends FunSuite:
       NativeRules.stateIn[Conway](major, Vector.empty)
     )
 
-  /** The LEDGER rules of Conway on `tx`. */
-  private def run(s: NewEpochState[Conway], tx: Tx): Either[LedgerFailure, NewEpochState[Conway]] =
-    NativeRules.txIn[Conway](s, tx, env).map(_.state)
+  private type Failure = LedgerPredFailure[Conway]
 
-  private def rule(r: Either[LedgerFailure, ?]): String = r match
-    case Left(LedgerFailure.Rejected.Single(_, f)) => f.ruleName
-    case Left(other)                               => other.message
-    case Right(_)                                  => "accepted"
+  /** Conway's LEDGER on the era types on `tx`, read from its bytes, to its first failure
+    * ([[ConwayTestKit.ledger]]): the state models only the facts that decide the rule, so a later
+    * check may fail on what it leaves out (a committee voter it does not hold).
+    */
+  private def run(
+      s: NewEpochState[Conway],
+      tx: Tx
+  ): Either[Vector[Failure], NewEpochState[Conway]] =
+    ConwayTestKit.ledger(s, ConwayTestKit.built(tx), env, RuleT.Policy.FirstFailure)
+
+  /** The failure of a refusal; any other verdict fails the test. */
+  private def refusal(what: String)(r: Either[Vector[Failure], ?]): Failure = r match
+    case Left(Vector(f)) => f
+    case other           => fail(s"$what: not a refusal for one failure: $other")
+
+  /** The rules this fixture's refusals name, each by the failure's constructor. */
+  private enum Named:
+    case VRFKeyHashAlreadyRegistered, BabbageNonDisjointRefInputs, UnelectedCommitteeVoters
+
+  private def named(f: Failure): Option[Named] = f match
+    case ConwayLedgerPredFailure.ConwayCertsFailure(
+          ConwayCertsPredFailure.CertFailure(
+            ConwayCertPredFailure.PoolFailure(
+              ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(_, _)
+            )
+          )
+        ) =>
+      Some(Named.VRFKeyHashAlreadyRegistered)
+    case ConwayLedgerPredFailure.ConwayUtxowFailure(
+          ConwayUtxowPredFailure.UtxoFailure(ConwayUtxoPredFailure.BabbageNonDisjointRefInputs(_))
+        ) =>
+      Some(Named.BabbageNonDisjointRefInputs)
+    case ConwayLedgerPredFailure.ConwayGovFailure(
+          ConwayGovPredFailure.UnelectedCommitteeVoters(_)
+        ) =>
+      Some(Named.UnelectedCommitteeVoters)
+    case _ => None
 
   /** The failure as `cardano-cli` prints it (Haskell `Show`), for the constructors of this fixture.
     */
-  private def shown(r: Either[LedgerFailure, ?]): String = r match
-    case Left(LedgerFailure.Rejected.Single(_, f)) =>
-      def key(h: Bytes) = s"""KeyHash {unKeyHash = "${h.hex}"}"""
-      f match
-        case PredicateFailure.Certs(
-              CertsFailure.Cert(
-                CertFailure.Pool(PoolFailure.VRFKeyHashAlreadyRegistered(pool, vrf))
+  private def shown(f: Failure): String =
+    def key(h: Bytes) = s"""KeyHash {unKeyHash = "${h.hex}"}"""
+    f match
+      case ConwayLedgerPredFailure.ConwayCertsFailure(
+            ConwayCertsPredFailure.CertFailure(
+              ConwayCertPredFailure.PoolFailure(
+                ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(pool, vrf)
               )
-            ) =>
-          s"""ConwayCertsFailure (CertFailure (PoolFailure (VRFKeyHashAlreadyRegistered (${key(
-              pool
-            )}) (VRFVerKeyHash {unVRFVerKeyHash = "${vrf.hex}"}))))"""
-        case PredicateFailure.Utxow(
-              UtxowFailure.Utxo(UtxoFailure.BabbageNonDisjointRefInputs(Vector(in)))
-            ) =>
-          s"""ConwayUtxowFailure (UtxoFailure (BabbageNonDisjointRefInputs (TxIn (TxId {unTxId = SafeHash "${in.id.hex}"}) (TxIx {unTxIx = ${in.index}}) :| [])))"""
-        case PredicateFailure.Gov(GovFailure.UnelectedCommitteeVoters(Vector(Credential.Key(h)))) =>
-          s"""ConwayGovFailure (UnelectedCommitteeVoters (KeyHashObj (${key(h)}) :| []))"""
-        case other => s"unrendered $other"
-    case other => other.toString
+            )
+          ) =>
+        s"""ConwayCertsFailure (CertFailure (PoolFailure (VRFKeyHashAlreadyRegistered (${key(
+            pool.bytes
+          )}) (VRFVerKeyHash {unVRFVerKeyHash = "${vrf.bytes.hex}"}))))"""
+      case ConwayLedgerPredFailure.ConwayUtxowFailure(
+            ConwayUtxowPredFailure.UtxoFailure(
+              ConwayUtxoPredFailure.BabbageNonDisjointRefInputs(NonEmptyList(in, Nil))
+            )
+          ) =>
+        s"""ConwayUtxowFailure (UtxoFailure (BabbageNonDisjointRefInputs (TxIn (TxId {unTxId = SafeHash "${in.id.hex}"}) (TxIx {unTxIx = ${in.index}}) :| [])))"""
+      case ConwayLedgerPredFailure.ConwayGovFailure(
+            ConwayGovPredFailure.UnelectedCommitteeVoters(NonEmptyList(Credential.Key(h), Nil))
+          ) =>
+        s"""ConwayGovFailure (UnelectedCommitteeVoters (KeyHashObj (${key(h)}) :| []))"""
+      case other => s"unrendered $other"
+
+  /** `result` is a refusal for the rule `rule` alone, the one the reference printed in `error`,
+    * payload included.
+    */
+  private def refusedAs(what: String, rule: Named, error: String)(
+      result: Either[Vector[Failure], ?]
+  ): Unit =
+    val f = refusal(what)(result)
+    assertEquals(named(f), Some(rule), what)
+    assert(error.contains(shown(f)), s"$what: ${shown(f)} not in $error")
 
   test("the fixture has refusals of every kind and the accepted neighbours of the VRF sequence") {
     assertEquals(
@@ -140,14 +197,9 @@ class DevnetRefusedTxSuite extends FunSuite:
       val result = run(funded(s, tx), tx)
       step.str("outcome") match
         case "accepted" =>
-          result.fold(f => fail(s"${step.str("label")}: ${f.message}"), identity)
+          result.fold(f => fail(s"${step.str("label")}: refused $f"), identity)
         case _ =>
-          assertEquals(rule(result), "VRFKeyHashAlreadyRegistered", step.str("label"))
-          // the failure is the one the reference printed, payload included
-          assert(
-            step.str("error").contains(shown(result)),
-            s"${step.str("label")}: ${shown(result)} not in ${step.str("error")}"
-          )
+          refusedAs(step.str("label"), Named.VRFKeyHashAlreadyRegistered, step.str("error"))(result)
           s
     }
   }
@@ -158,8 +210,7 @@ class DevnetRefusedTxSuite extends FunSuite:
     scenario("unelected").foreach { e =>
       val (_, tx) = e.tx
       val result = run(funded(state(11), tx), tx)
-      assertEquals(rule(result), "UnelectedCommitteeVoters", e.str("label"))
-      assert(e.str("error").contains(shown(result)), s"${shown(result)} not in ${e.str("error")}")
+      refusedAs(e.str("label"), Named.UnelectedCommitteeVoters, e.str("error"))(result)
     }
   }
 
@@ -169,8 +220,7 @@ class DevnetRefusedTxSuite extends FunSuite:
     scenario("refoverlap").foreach { e =>
       val (_, tx) = e.tx
       val result = run(funded(state(10), tx), tx)
-      assertEquals(rule(result), "BabbageNonDisjointRefInputs", e.str("label"))
-      assert(e.str("error").contains(shown(result)), s"${shown(result)} not in ${e.str("error")}")
-      assertEquals(rule(run(funded(state(11), tx), tx)), "accepted", e.str("label"))
+      refusedAs(e.str("label"), Named.BabbageNonDisjointRefInputs, e.str("error"))(result)
+      assert(run(funded(state(11), tx), tx).isRight, s"${e.str("label")}: refused at 11")
     }
   }

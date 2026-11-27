@@ -174,14 +174,42 @@ class EraNotVersionUtxowSuite extends FunSuite:
   }
 
   test("Conway at version 8 hashes absent redeemers as Conway's empty map (TxWits.hs:157-162)") {
-    val tx = withDatum(Vector(locked), fromConway)
-    assertEquals(ledger[Conway](8, tx), Right(()))
-    val list = withDatum(Vector(locked), beforeConway)
+    // Conway's LEDGER on the era types, to its first failure, on the transaction's true bytes
+    // ([[era.conway.ConwayTestKit.encode]]), which pay the fee of the largest transaction
+    import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
+    val pp = TestLedger.params(8)
+    val paid = ConwayTestKit.maxFee(pp)
+    val state = NativeRules.stateIn[Conway](8, Vector(input -> ConwayTestKit.stored(out(funds))))
+    def conway(hash: Bytes) =
+      val body = TestLedger.body(
+        "era-not-version-utxow",
+        Vector(input),
+        Vector(ConwayTestKit.stored(locked.copy(value = Value.coin(funds - paid)))),
+        paid,
+        scriptDataHash = Some(hash)
+      )
+      val t = TestLedger.tx(
+        body,
+        Vector.empty,
+        Witnesses.empty.copy(datums = Vector(datum), datumsRaw = Some(datums))
+      )
+      ConwayTestKit.ledger(
+        state,
+        ConwayTestKit.encode(t, Vector(alice)),
+        TestLedger.env,
+        RuleT.Policy.FirstFailure
+      )
+    assert(conway(fromConway).isRight, s"${conway(fromConway)}")
     assertEquals(
-      ledger[Conway](8, list),
-      utxow(
-        list,
-        UtxowFailure.PPViewHashesDontMatch(Mismatch(Some(beforeConway), Some(fromConway)))
+      conway(beforeConway),
+      Left(
+        Vector(
+          ConwayTestKit.Fails.utxow(
+            era.rules.ConwayUtxowPredFailure.PPViewHashesDontMatch(
+              era.Mismatch(Some(beforeConway), Some(fromConway))
+            )
+          )
+        )
       )
     )
   }
