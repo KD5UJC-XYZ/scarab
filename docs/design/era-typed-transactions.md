@@ -26,9 +26,9 @@ union of every era's certificates. Which fields an era may carry is decided at r
 The consequences:
 - **Dijkstra's rules decoded a Dijkstra transaction a second time, as a Conway one**, and checked that (the
   flat Dijkstra rules, which stage 3 deleted once the era rules judged every case).
-- **A field's era is checked only at run time.** A Shelley-only certificate in a Conway transaction is
-  refused by the decoder and again by the CERTS rule (`rules/Certs.scala`, `TxDefect.PreConwayCertificate`),
-  but nothing in the types prevents it. Nothing stops a rule from reading a field its era does not have.
+- **A field's era is checked only at run time.** A Shelley-only certificate in a Conway transaction was
+  refused by the decoder and again by the flat CERTS rule (`TxDefect.PreConwayCertificate`; stage 3 deleted
+  that rule), but nothing in the types prevented it. Nothing stops a rule from reading a field its era does not have.
 - **The candidate-nonce window is chosen by comparing eras** (`HeaderValidation`, `h.era.ordinal >=
   Era.Conway.ordinal`). That kind of choice goes wrong silently when an era is added.
 
@@ -1732,8 +1732,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     the failures below CERT and CERTS), and a sub-rule's failures and events are embedded as the reference's
     `Embed` instances do (`EmbedInCert`, `EmbedCertInCerts`). POOL tells `RegisterPool` and `ReregisterPool`
     where the reference does. A value outside the state's vocabulary, and a pool's parameters of another layout,
-    stay raised defects (`LedgerDefect`). `ConwayCertsPredFailure.toStored` gives a failure's flat form, one-way
-    glue the comparisons read. At 29a7d656 and 9df9f98c `StakeKeyRegisteredDELEG` is
+    stay raised defects (`LedgerDefect`). At 29a7d656 and 9df9f98c `StakeKeyRegisteredDELEG` is
     `DelegAccountAlreadyRegistered`, a newtype of the same credential with the same tag and bytes, so one
     constructor serves both.
   - Which rule checks a transaction's withdrawals, and updates its DReps' expiries, depends on the build
@@ -1755,26 +1754,33 @@ Conway's rules on the classes follow as the rest of stage 2.
     refusal byte for byte, the order of failures across the recursion's depths among them
     (`ConwayCertsChecksSuite`). A crafted registration and re-registration of one pool tell `RegisterPool` and
     `ReregisterPool` in order, embedded in CERT's and CERTS's events.
-  - Not yet (#85): the flat rules gate the withdrawals at version 11 under every build, so under the 11.2 and
-    Leios builds at versions 9 and 10 they refuse a withdrawal that does not drain its account with
+  - The flat rules gated the withdrawals at version 11 under every build, so under the 11.2 and Leios builds at
+    versions 9 and 10 they refused a withdrawal that does not drain its account with
     `WithdrawalsNotInRewardsCERTS` in CERTS, where the reference refuses it with
     `ConwayWithdrawalsMissingAccounts` or `ConwayIncompleteWithdrawals` in LEDGER: the same verdict and state,
-    other refusal bytes ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484); a test
-    shows the flat rule's form). None of the 19 certificate-only refusals above was recorded by 11.2.1 or the
-    Leios build; the one Leios recording is a refusal of UTXO's. LEDGER's embedding of CERTS comes with
-    LEDGER.
+    other refusal bytes. The difference went with the flat CERTS in stage 3
+    ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484), closed). None of the 19
+    certificate-only refusals above was recorded by 11.2.1 or the Leios build; the one Leios recording is a
+    refusal of UTXO's.
   - From the same ticked state they judge every transaction of the recorded Conway refusal corpora, at its
-    protocol version and at 9, 10 and 11, as the flat rules do: the failures in order, or the certificate
-    state (`ConwayCertsChecksSuite`); so do the transactions of the recorded Preview Conway blocks, judged
-    against a recorded state at 9, 10 and 11. A refusal carries no state, so crafted sequences the rules accept
-    compare the states of delegations moved, pools re-registered and retired, and committee members.
+    protocol version and at 9, 10 and 11: the failures in order, or the certificate state
+    (`ConwayCertsChecksSuite`); so do the transactions of the recorded Preview Conway blocks, judged against a
+    recorded state at 9, 10 and 11. A refusal carries no state, so crafted sequences the rules accept compare
+    the states of delegations moved, pools re-registered and retired, and committee members. Until stage 3
+    the flat CERTS was these judgments' oracle; it gave the same failures in the same order, or the same
+    state, on all 467 compared, which were recorded before it was deleted
+    (`fixtures/conway-flat-refusals/certs-judgments.jsonl`) and hold the era rules now: a refusal by its
+    failures' bytes, an admission by the certificate state's encoding, checked to read back as the state, and
+    by the relays and metadata it keeps as the certificates gave them, which the encoding writes anew.
   - The corpus records most of their failures; a pool's wrong network, oversized metadata hash, low cost
     and repeated VRF key, and a resigned committee member, only crafted certificates reach. A test fails if
     any failure of the rules is reached by neither.
   - The epoch sums (a DRep's expiry, the dormant shift, the retirement limit) wrap in `Word64` as the
-    reference's `addEpochInterval` and `binOpEpochNo` do (`CertsEpochWrapSuite`). The flat rules sum them
-    as integers, refusing an expiry outside `EpochNo` and comparing a retirement with an unbounded limit, so
-    the two paths differ only past epoch 2^64; that gap is the flat rules' (#85), which stage 3 deletes.
+    reference's `addEpochInterval` and `binOpEpochNo` do (`CertsEpochWrapSuite`). The flat CERTS and GOVCERT
+    summed the expiries as integers, refusing one outside `EpochNo`; they went in stage 3, and with them that
+    part of the gap ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923332031)). The
+    flat POOL, which the eras before Conway still run, compares a retirement with an unbounded limit, so it
+    differs from the reference past epoch 2^64; that part of the item stays open.
   - `EraCertState` landed without the deposit and refund totals of a body, which the value conserved
     adds (above). One more gap is on #85: the committee and its proposals as the node's records in the
     environments.
@@ -3274,7 +3280,8 @@ Conway's rules on the classes follow as the rest of stage 2.
       build on the annotation of its validation) give the flat MEMPOOL's (`MempoolLedger`'s `submit` and `reapply`)
       failures in the same order, through the flat projection, or the same ledger state; where the 11.2 and Leios builds
       refuse a withdrawal in LEDGER below version 11, the three cases of the moved withdrawals (the named difference
-      of [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484)), the complete ordered list is
+      of [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484), which went with the flat
+      CERTS), the complete ordered list is
       the flat one with CERTS's refusal replaced, in its place, by the reference's LEDGER failure with its account,
       amount and balance (`MovedWithdrawals.expected`, which `ConwayLedgerChecksSuite` also reads);
     - at the root, as the mempool runs it, `applyTx`'s refusal of 81 of the corpus's 84 Conway cases, each under its

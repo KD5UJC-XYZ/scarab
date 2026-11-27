@@ -124,8 +124,10 @@ digits of the SHA-256 of the bytes it names.
     expiries) from it and from each corpus case with proposals or votes, with the dormant epochs counted and
     without (252), and a funded account unregistered at 10 and 11 (2) (34 refusals and 259 admissions).
 
-  Recorded at Scarab commit `78ad579a9`, the head of the pull request that deleted the flat GOV (#1487). The
-  comparisons that had other oracles are not here: the refusals only the certificate rules give, held to the
+  Recorded at Scarab commit `78ad579a9`, the head of the pull request that deleted the flat GOV (#1487). The flat
+  CERTS's deletion's parent, `cc3fa6ca3`, adds this recording and the suite that reads it; the suite of
+  `78ad579a9` was run again there with the flat CERTS beside the era one: every comparison agreed, and the
+  recording it wrote was this one, byte for byte. The comparisons that had other oracles are not here: the refusals only the certificate rules give, held to the
   reference's bytes; the base case's withdrawals under each build, held to the reference's gate
   (`hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule`); and POOL's events. The flat CERTS checked and
   drained the withdrawals and moved the DReps' expiries in its base case below version 11 under every build, where
