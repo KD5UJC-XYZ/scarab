@@ -107,7 +107,8 @@ An entry may also have `evidence` (suite names) and `record` (a link).
 - `upstream`: one or more counterparts. Each names a revision pinned in `docs/data/reference-pins.json`, and
   `lines` cover the counterpart at that revision.
 - `class`: Mirror, Improvement, Deviation or Gap ([REF-4](../design-rules.md#ref-4)). An Improvement or a Deviation
-  links its record. A Gap links its issue.
+  links its record. A Gap links its issue. An Optimisation ([REF-6](../design-rules.md#ref-6)) is not a class: the
+  definition it changes keeps its class, with structure `differs` and the equivalence suite in `evidence`.
 - `structure`: `same` when the definition has its counterpart's shape:
   - a data type has the same constructors and fields;
   - a state machine has the same states and transitions;
