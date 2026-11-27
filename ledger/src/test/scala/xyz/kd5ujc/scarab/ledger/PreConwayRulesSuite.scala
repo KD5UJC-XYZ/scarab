@@ -936,6 +936,16 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
   }
 
   test(
+    "an enacted Babbage update naming only PlutusV2's cost model, over PlutusV1's alone, is V2's"
+  ) {
+    val pp = params(7).copy(costModels = Map(0 -> Vector(1, 2, 3)))
+    val after = proposedIn[Babbage](pp, costModelsUpdate("01", "af", 175))
+    assertEquals(predicted(after).costModels, Map(1 -> Vector.fill(175)(BigInt(100))))
+    val adopted = paramsOf(as[Babbage](afterLastBlock(after, boundaryGlobals)))
+    assertEquals(adopted.costModels, Map(1 -> Vector.fill(175)(BigInt(100))))
+  }
+
+  test(
     "the boundary that adopts protocol version 9 is a Conway transition and counts a dormant epoch"
   ) {
     val (s0, _) = fundedIn[Babbage](8)

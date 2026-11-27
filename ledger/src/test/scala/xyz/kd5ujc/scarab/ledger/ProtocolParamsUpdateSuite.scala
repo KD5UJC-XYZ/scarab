@@ -67,6 +67,16 @@ class ProtocolParamsUpdateSuite extends FunSuite:
     assertEquals(applied[Babbage](babbage, 18 -> onlyV1).costModels, Map(0 -> v1))
   }
 
+  test("in Alonzo and Babbage an empty key 18 clears the cost models, and no key 18 keeps them") {
+    // `SJust x -> x` and `SNothing -> x'` of the generic update (`Core/PParams.hs:340-343`,
+    // cardano-ledger f649f975)
+    val none = hex("a0")
+    assertEquals(applied[Alonzo](alonzo, 18 -> none).costModels, Map.empty)
+    assertEquals(applied[Babbage](babbage, 18 -> none).costModels, Map.empty)
+    assertEquals(applied[Alonzo](alonzo, 0 -> hex("01")).costModels, alonzo.costModels)
+    assertEquals(applied[Babbage](babbage, 0 -> hex("01")).costModels, babbage.costModels)
+  }
+
   test("in Conway and Dijkstra key 18 merges into the cost models in force") {
     // `updateCostModels` in `conwayApplyPPUpdates` (`Conway/PParams.hs:830-831, 1209`, cardano-ledger
     // f649f975) and `dijkstraApplyPPUpdates` (`Dijkstra/PParams.hs:340-343, 711-712`,
