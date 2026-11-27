@@ -121,16 +121,18 @@ final class ScriptsAhead[F[_]: Async] private (
           case None               => held
       )
 
-  /** The worker took the block `hash` from the queue and passes it by, unprepared: its results are
-    * dropped, and no evaluation of it not yet started is started.
+  /** The worker took the block `hash` from the queue and passes it by, unprepared: its results and
+    * those of the block before it, which the worker is done with, are dropped, and no evaluation of
+    * it not yet started is started.
     */
   def passed(hash: Bytes): F[Unit] =
-    slots.update(held =>
-      held.get(hash) match
-        case Some(Slot.Running) => held.updated(hash, Slot.Passed)
-        case Some(_)            => held - hash
-        case None               => held
-    ) *> dropped(hash)
+    current.getAndSet(None).flatMap(_.filterNot(_ == hash).traverse_(done)) *>
+      slots.update(held =>
+        held.get(hash) match
+          case Some(Slot.Running) => held.updated(hash, Slot.Passed)
+          case Some(_)            => held - hash
+          case None               => held
+      ) *> dropped(hash)
 
   private def dropped(hash: Bytes): F[Unit] = F.delay(results.drop(hash))
 
@@ -207,15 +209,21 @@ final class ScriptsAhead[F[_]: Async] private (
     tip.outputs(scripts.reads -- local.keySet).flatMap { read =>
       val outputs = local ++ read
       val collected = scripts.collect(outputs.get)
-      tallies.update(_.skip(collected.skipped)) *>
-        collected.requests
-          .parTraverseN(speculator.parallelism) { request =>
-            wanted(hash).ifM(
-              speculator.evaluate(request).flatMap(kept(hash, request, _)),
-              tallies.update(_ |+| Tallies.abandoned)
-            )
-          }
-          .void
+      // what is evaluated is what the requests budget, which can exceed what the redeemers declare
+      // (a redeemer of a repeated certificate is collected once for each): none is evaluated
+      // beyond the block's limit
+      val budgeted = collected.requests.foldLeft(ExUnits.zero)(_ + _.budget)
+      if !budgeted.fits(scripts.limit) then tallies.update(_.skip(scripts.transactions))
+      else
+        tallies.update(_.skip(collected.skipped)) *>
+          collected.requests
+            .parTraverseN(speculator.parallelism) { request =>
+              wanted(hash).ifM(
+                speculator.evaluate(request).flatMap(kept(hash, request, _)),
+                tallies.update(_ |+| Tallies.abandoned)
+              )
+            }
+            .void
     }
 
   /** Whether the block `hash` 's evaluations still go on: neither reached nor passed by. */
@@ -336,6 +344,7 @@ object ScriptsAhead:
       transactions: Int,
       created: Map[TxIn, TxOut],
       reads: Set[TxIn],
+      limit: ExUnits,
       collect: (TxIn => Option[TxOut]) => Collected
   )
 
@@ -532,16 +541,22 @@ object ScriptsAhead:
   object Results:
     def create(limits: Limits): Results = new Results(limits, new AtomicReference(Held.empty))
 
-    /** The estimated heap of a kept result: its request's script and arguments, its cost model, and
-      * the result's logs, with a fixed charge per object.
+    /** The estimated heap of a kept result: its request's script and arguments, its cost model, the
+      * result's logs, and for a failure what its cause can keep, with a fixed charge per object.
       */
     def weight(request: EvalRequest, result: EvalResult): Long =
       val logs = (result match
         case EvalResult.Success(_, logs)    => logs
         case EvalResult.Failure(_, _, logs) => logs
       ).iterator.map(_.length.toLong * 2 + 48).sum
+      // a failure keeps the term it is about (`Cause`), which can reach any value the machine made:
+      // charged as the machine's memory budget in 8-byte words, which bounds what it allocated
+      val cause = result match
+        case EvalResult.Success(_, _) => 0L
+        case EvalResult.Failure(_, _, _) =>
+          (request.budget.mem.max(0) * 8).min(BigInt(Long.MaxValue)).toLong
       256L + request.script.size + request.costModel.size * 24L +
-        request.args.iterator.map(data).sum + logs
+        request.args.iterator.map(data).sum + logs + cause
 
     /** The estimated heap of `root`, walked with a stack of its own (STK-1). */
     private def data(root: PlutusData): Long =

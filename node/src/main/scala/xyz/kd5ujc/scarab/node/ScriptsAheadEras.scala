@@ -55,6 +55,7 @@ private[node] object ScriptsAheadEras:
                       scripted.size,
                       txs.foldLeft(Map.empty[TxIn, FlatTxOut])(_ ++ ScriptsAhead.created(_)),
                       reads(scripted),
+                      pp.maxBlockExUnits,
                       outputs =>
                         ScriptsAhead.flat[e](scripted, pp, slot => clock.posix(slot), outputs)
                     )
@@ -114,6 +115,7 @@ private[node] object ScriptsAheadEras:
         scripted.size,
         created,
         reads(scripted.map(_._1)),
+        stored.maxBlockExUnits,
         outputs =>
           scripted.foldLeft(ScriptsAhead.Collected(Vector.empty, 0)) { case (acc, (f, e)) =>
             (f.body.inputs ++ f.body.referenceInputs)

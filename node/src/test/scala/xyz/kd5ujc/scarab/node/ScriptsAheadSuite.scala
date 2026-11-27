@@ -174,17 +174,12 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               .compile
               .drain
               .start
-            gone <- ahead.held.discrete
-              .dropWhile(!_.contains(block(1)))
-              .find(!_.contains(block(1)))
-              .compile
-              .drain
-              .start
             _ <- ahead.ahead(header(1, 0), Bytes.empty)
             _ <- running.joinWithNever
             _ <- ahead.reached(block(1))
             _ <- gate.complete(())
-            _ <- gone.joinWithNever
+            // the slot stays until the speculation of the block ends, the gate holding it before
+            _ <- ahead.held.discrete.find(!_.contains(block(1))).compile.drain
             tallies <- ahead.tallied
           yield
             assertEquals(calls.get, 0)
@@ -194,7 +189,7 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     yield ()
   }
 
-  test("a block passed by has its results dropped, and the block before the reached one too") {
+  test("a block passed by has its results dropped, and the block before the next one taken too") {
     withSpeculator(
       Map(block(1) -> Vector(request), block(2) -> Vector(request.copy(budget = ExUnits(1, 2))))
     ) { (ahead, _, _) =>
@@ -209,8 +204,8 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         _ <- IO(assertEquals(ahead.results.held._1, 1))
         _ <- ahead.reached(block(2))
         _ <- IO(assertEquals(ahead.results.held._1, 1))
-        // the worker is done with block 2 once it reaches the next
-        _ <- ahead.reached(block(3))
+        // the worker is done with block 2 once it takes the next, here one it passes by
+        _ <- ahead.passed(block(3))
       yield assertEquals(ahead.results.held._1, 0)
     }
   }
@@ -247,6 +242,34 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         assertEquals(tallies.evaluated, 1L)
         assertEquals(ahead.results.lookup(request).isDefined, true)
     }
+  }
+
+  test("a block whose requests budget more than the block's limit is not evaluated ahead") {
+    // a redeemer collected for two scripts budgets twice: here the requests' budgets exceed the limit
+    val over = Vector(
+      request.copy(budget = ExUnits(BigInt(1) << 39, 1)),
+      request.copy(budget = ExUnits(BigInt(1) << 39, 2)),
+      request.copy(budget = ExUnits(BigInt(1) << 39, 3))
+    )
+    withSpeculator(Map(block(1) -> over)) { (ahead, calls, _) =>
+      for
+        done <- settled(ahead, block(1))
+        _ <- ahead.ahead(header(1, 0), Bytes.empty)
+        _ <- done
+        tallies <- ahead.tallied
+      yield
+        assertEquals(calls.get, 0)
+        assertEquals(tallies.skipped, 1L)
+    }
+  }
+
+  test("a failure is charged what its cause can keep") {
+    val failure = deterministic(_ => true).evaluate(request)
+    val success = deterministic(_ => false).evaluate(request)
+    assert(
+      ScriptsAhead.Results.weight(request, failure) >=
+        ScriptsAhead.Results.weight(request, success) + request.budget.mem.toLong * 8
+    )
   }
 
   test("an answer that is no verdict is not kept") {
@@ -601,6 +624,7 @@ object ScriptsAheadSuite:
             1,
             created.getOrElse(header.hash, Map.empty),
             needs.get(header.hash).toSet,
+            ExUnits(BigInt(1) << 40, BigInt(1) << 40),
             outputs =>
               if needs.get(header.hash).forall(outputs(_).isDefined) then
                 ScriptsAhead.Collected(requests, 0)
