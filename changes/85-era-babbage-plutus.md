@@ -1,0 +1,3 @@
+### Added (era types, #85)
+
+- Babbage's Plutus side has era types of its own: the script class builds and reads Babbage's purposes as the reference's does, and Babbage has its UTxO classes (the scripts needed and provided, the keys that must sign, the datums and the annotated transaction) and its Plutus V1 and V2 script contexts. On every Babbage transaction the repository records, they give what the node's current path gives, and every Babbage script context the reference recorded or refused, byte for byte. Nothing in the node uses these types yet, so behaviour and the persisted format do not change.

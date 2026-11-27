@@ -414,7 +414,7 @@ Conway's rules on the classes follow as the rest of stage 2.
   2026-11-15, #990; implemented with Babbage's certificates in stage 4), whose
   instances are exactly Shelley's to Babbage's.
 - Conway's script class is `ConwayEraScript`, which builds and reads the voting and proposing purposes, and
-  `ConwayEraTxBody` names it. `AlonzoEraScript`'s own purpose builders and readers wait for Babbage's
+  `ConwayEraTxBody` names it. `AlonzoEraScript`'s own purpose builders and readers came with Babbage's
   purposes and certificates (stage 4), as Babbage's script instance is an `AlonzoEraScript`.
 - Conway's witness set has the reference's `AlonzoTxWitsRaw` fields: key witnesses as a set under the
   reference's `Ord WitVKey`, bootstrap witnesses, Conway scripts by hash, the datums by hash and the
@@ -888,8 +888,8 @@ Conway's rules on the classes follow as the rest of stage 2.
   `EraPlutusContext#mkSupportedPlutusRunnable` with Conway's instance, `CostModel`, `PlutusWithContext`, the
   era's `CollectError`, and Alonzo's `resolveNeededPlutusScriptsWithPurpose`, `mkPlutusWithContext`,
   `scriptsWithContextFromLedgerTxInfo` (with its `merge`, the successes and the failures each in reverse order)
-  and `collectPlutusScriptsWithContext`. `hoistPlutusPurpose` is a member of `ConwayEraScript`, as Babbage's
-  purposes are not among the era types.
+  and `collectPlutusScriptsWithContext`. `hoistPlutusPurpose` is a member of `AlonzoEraScript` since Babbage's
+  Plutus side (stage 4).
   - A runnable script is its binary and its hash, the hash computed from the binary when first asked for, as
     the reference's lazy field, or installed by the resolver from the key of the provided script: the reference also holds it decoded for the protocol version,
     but decoding is the `plutus` module's capability (`ScriptDecoder`), whose `Unavailable` is a defect rather
@@ -1896,9 +1896,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     Mary's and Shelley's of the UTxO set, are the same at f649f975 and 9df9f98c, where Dijkstra's instance calls them.
   - Each purpose is built and read through the script class: Alonzo's builders and readers of the spending,
     minting, certifying and withdrawing purposes (`mkSpendingPurpose` to `toWithdrawingPurpose`,
-    `Alonzo/Scripts.hs:205-219` at f649f975, `:207-221` at 9df9f98c) are members of `ConwayEraScript`, where
-    `hoistPlutusPurpose` is: the reference has them on `AlonzoEraScript`, whose Babbage instance waits for Babbage's
-    purposes ([#85's item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792)). Conway's and
+    `Alonzo/Scripts.hs:205-219` at f649f975, `:207-221` at 9df9f98c) are members of `AlonzoEraScript`, where
+    `hoistPlutusPurpose` is, as the reference has them, since Babbage's Plutus side (stage 4). Conway's and
     Dijkstra's instances are the reference's. Two items differ in representation, as the purposes they build hold
     them: a minting purpose's policy is its script hash's `Bytes` where the reference's is a `PolicyID`, and a
     withdrawing purpose's account the node's `RewardAccount` where the reference's is an `AccountAddress`
@@ -3372,7 +3371,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     `ShelleyEraTxBody.update` gives the typed `Update`. The witness set and auxiliary data are the shared
     representations with Babbage's scripts, and the redeemers are keyed by Alonzo's purpose
     (`AlonzoPlutusPurpose`, the reference's `AlonzoPlutusPurpose f era`), which is all of the purpose this part
-    brings: its builders and readers come with Babbage's Plutus side. The families `ScriptsNeeded`, `StAnnTx` and
+    brings: its builders and readers came with Babbage's Plutus side (below). The families `ScriptsNeeded`, `StAnnTx` and
     `StAnnTxCache` have Babbage's cases, because `EraTx` and the auxiliary data's instance name them.
   - The decoders read a map's keys as the reference's `decodeSparse` reads them: as written, a repeated key and then
     an unknown one refused at its turn, and the required keys checked after the last. That holds for the body, an
@@ -3424,6 +3423,57 @@ Conway's rules on the classes follow as the rest of stage 2.
     does and the flat reader as an unknown key (`BabbageTxSuite`), as are the written orders no recording holds: an
     output map's value refused before a later address, and a PlutusV3 list refused at its first item.
     `fixtures/haskell-immutable/preview` holds Alonzo blocks only. Nothing in the node reads these types yet.
+- **Babbage's Plutus side** (stage 4, third part; `era/EraScript.scala`, `era/AlonzoPlutusPurpose.scala`,
+  `era/EraUTxO.scala`, `era/babbage/BabbageEraUTxO.scala`, `era/BabbageTxInfo.scala`, `era/AlonzoTxInfo.scala`;
+  cardano-ledger f649f975 `Alonzo/Scripts.hs:200-219`, `Babbage/Scripts.hs:74-98`, `Babbage/UTxO.hs:43-72`,
+  `Alonzo/UTxO.hs:313-429`, `Shelley/UTxO.hs:181-263`, `Babbage.hs:65`; cardano-ledger 9df9f98c
+  `Babbage/TxInfo.hs:112-435`, `Alonzo/Plutus/TxInfo.hs:319-472`):
+  - `hoistPlutusPurpose` and the builders and readers of the spending, minting, certifying and withdrawing
+    purposes are `AlonzoEraScript`'s members, as the reference's are, and Babbage's instance gives them over
+    Alonzo's purpose. The functions that read only them (the transaction's information, the scripts needed, the
+    spending datum, `transPlutusPurpose`, the V1 and V2 arguments, `mkAlonzoStAnnTx`, the collection and
+    `hasExactSetOfRedeemers`) ask for `AlonzoEraScript`, so Babbage's and Conway's V1 and V2 purposes share
+    `transPlutusPurpose`, as 9df9f98c shares it.
+  - Babbage's `EraUTxO` and `AlonzoEraUTxO`: Mary's values, `getBabbageScriptsProvided`, Alonzo's
+    `getAlonzoScriptsNeeded`, which gives a certificate a script witnesses that occurs again the index of its
+    first occurrence, `getAlonzoWitsVKeyNeeded` (Shelley's keys, the genesis delegates of the body's update and the
+    required signers), Shelley's minimum fee, the supplemental datums, the spending datum and the annotated
+    transaction's four members, with `mkStAnnTx`. The genesis delegations are read from Babbage's certificate
+    state by the instance, as `EraCertState` has no Babbage instance yet; Shelley's and Alonzo's functions take
+    them as an argument.
+  - Babbage's contexts for Plutus V1 and V2 and its `EraPlutusContext`, through the generic Babbage translations,
+    with what Babbage does not share with Conway: its own V1 output, which refuses a reference script before an
+    inline datum and a Byron address; reference inputs refused for V1 before anything else; Alonzo's
+    `transValidityInterval`, an end alone closed at its end; and Alonzo's `transTxCert`, a genesis delegation and
+    a move of instantaneous rewards as `DCertGenesis` and `DCertMir`, of the eras up to Babbage
+    (`ShelleyEraTxCertToBabbage`). `ContextError` and `TxInfoResult` have Babbage's cases.
+  - Against the flat path at Babbage (`BabbagePlutusContextSuite`, `BabbagePlutusContextRefusalsSuite`):
+    - the 80 Babbage rows of the recorded contexts (26) and of the context matrix (54, whose 22 retained rows are
+      the v1-context corpus's Babbage transactions), with the outputs each spends and references, and the 77
+      Babbage transactions of the recorded blocks (13), the refusal corpora (32) and the Plutus admission corpora
+      (32), each input and reference input given one stand-in output (a key's), so these show no spending script
+      or datum of their own. On all 157, at each case's version and at 7 and 8, the V1 and V2 `TxInfo`s are the
+      flat ones as data, or both refuse with the same typed cause (reference inputs, a reference script, an inline
+      datum, a Byron output); the scripts with their contexts are the flat path's requests in order, or the same
+      failures (a translation's cause, a missing cost model); and the scripts needed with each purpose's index,
+      the scripts provided, the supplemental datums, every spent input's datum and the keys that must sign are
+      the flat `StAnnTx`'s and `TxChecks`'.
+    - The 32 Babbage cases of the refusal corpora again, with the UTxO set and the state each was refused on, its
+      parameters' version and cost models and the state's genesis delegations, one of them proposing an update.
+    - The reference's own bytes: every Babbage request it collected (191 of the recorded contexts, 158 of them as
+      digests, and 46 of the matrix) is the era's, and each of the matrix's 20 refused collections is the era's,
+      its typed causes encoded as the reference's `CollectError` list.
+    - Crafted cases for what the corpora do not reach: a redeemer that names nothing, a clock that cannot
+      translate a slot, a missing input, an end alone, a genesis delegation and a move of rewards, a repeated
+      script certificate, an update whose genesis delegates must sign, and a Plutus script needed with no
+      redeemer.
+
+    The era path and the flat path agree everywhere, and both agree with the reference where it recorded a
+    context. Not yet: Alonzo's own contexts and `PlutusTxInInfo`'s Alonzo case (`Maybe PV1.TxInInfo`), which come
+    with Alonzo's slices; the genesis delegations read through `EraCertState`, with Babbage's state classes; the
+    flat purpose of a Babbage purpose (`toStored`, for `MissingRedeemers`), with Babbage's UTXOW; and
+    `mkRewardingPurpose`, `toRewardingPurpose` and `upgradePlutusPurposeAsIx`, which nothing reads yet. Nothing in
+    the node reads these types yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
