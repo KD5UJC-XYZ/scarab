@@ -184,6 +184,7 @@ class BabbageStakeSuite extends FunSuite:
             c.collateral.toVector
           )
         case Submission.Phase2Valid =>
+          assertEquals(c.spent.keySet, body.inputs.toSet, what)
           (body.outputs.zipWithIndex.map((o, i) => TxIn(body.id, i) -> o), c.spent.toVector)
       // the stake of the outputs the transaction may spend, which a deletion takes out
       val held = flat(
