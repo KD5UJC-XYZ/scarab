@@ -184,6 +184,7 @@ class ForgeLimitOnEagernessSuite extends FailsOnUncaught with ForgeFixture:
           @scala.annotation.unused header: Header,
           @scala.annotation.unused raw: Bytes
       ): IO[Unit] = IO.unit
+      def passed(@scala.annotation.unused header: Header): IO[Unit] = IO.unit
     TestControl
       .executeEmbed(withHandle {
         for

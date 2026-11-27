@@ -433,6 +433,7 @@ object UpstreamGenesisReplay extends munit.Assertions:
                                   @scala.annotation.unused header: Header,
                                   @scala.annotation.unused raw: Bytes
                               ) = IO.unit
+                              def passed(@scala.annotation.unused header: Header) = IO.unit
                             // Reference start order at 82ecba329: ChainDB and its AddBlockRunner
                             // (NodeLifecycle.hs:174–180), then the peers (Run.hs:441–474), the
                             // BlockFetch logic (Run.hs:478) and the GDD watcher (Run.hs:488–500). A

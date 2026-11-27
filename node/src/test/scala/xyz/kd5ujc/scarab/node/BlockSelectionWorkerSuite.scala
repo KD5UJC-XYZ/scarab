@@ -626,6 +626,50 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
     yield ()
   }
 
+  // #1499: a block the worker takes from the queue and does not prepare, as older than the
+  // immutable tip, is passed by, so that its checks made ahead are dropped; a block it prepares is
+  // not
+  test("a queued block older than the immutable tip is passed by, not prepared") {
+    for
+      forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
+      (early, late) = forks
+      chain <- checked(late, 10)
+      old <- checked(early, 1)
+      prepared <- Ref.of[IO, Vector[Bytes]](Vector.empty)
+      passedBy <- Ref.of[IO, Vector[Bytes]](Vector.empty)
+      preparation = new BlockSelection.Before[IO]:
+        def prepare(header: Header, @scala.annotation.unused raw: Bytes)(using
+            Raise[IO, NodeError]
+        ): IO[Unit] = prepared.update(_ :+ header.hash)
+        def store(@scala.annotation.unused header: Header, @scala.annotation.unused raw: Bytes)(
+            using Raise[IO, NodeError]
+        ): IO[Unit] = IO.unit
+        def ahead(
+            @scala.annotation.unused header: Header,
+            @scala.annotation.unused raw: Bytes
+        ): IO[Unit] = IO.unit
+        def passed(header: Header): IO[Unit] = passedBy.update(_ :+ header.hash)
+      _ <- node(Set.empty, preparation = preparation) { n =>
+        n.pool.session.use { sender =>
+          for
+            _ <- add(sender, chain) *> n.pool.admissions.reprocess
+            anchor <- n.state.get.map(_.anchor.block.map(_.blockNo))
+            _ <- add(sender, old) *> n.pool.admissions.reprocess
+            preparedAll <- prepared.get
+            passedAll <- passedBy.get
+            tip <- n.state.get.map(_.tip)
+            _ <- IO {
+              assert(anchor.exists(_ >= old.head.header.blockNo), anchor.toString)
+              assertEquals(preparedAll, chain.map(_.header.hash))
+              assertEquals(passedAll, Vector(old.head.header.hash))
+              assertEquals(tip, late.headers(9).point)
+            }
+          yield ()
+        }
+      }
+    yield ()
+  }
+
   test("node-owned preparation resolves its own typed storage capability") {
     val failure = StorageError.Io("worker-receipt", new java.io.IOException("receipt test fault"))
     val preparation = new BlockSelection.Before[IO]:
@@ -639,6 +683,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
           @scala.annotation.unused header: Header,
           @scala.annotation.unused raw: Bytes
       ): IO[Unit] = IO.unit
+      def passed(@scala.annotation.unused header: Header): IO[Unit] = IO.unit
     for
       chain <- ForgedChain.forge(5000 until 5060)
       bodies <- checked(chain, 1)

@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.consensus.{SchedulingStats, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.network.{ConnectionManager, InboundGovernorCounters}
 import xyz.kd5ujc.scarab.network.selection.PeerMetrics
-import xyz.kd5ujc.scarab.node.{BlockPool, OutboundPeers, ReadAheadStore, WarmUtxoStore}
+import xyz.kd5ujc.scarab.node.{BlockPool, OutboundPeers, ReadAheadStore, VerifyAhead, WarmUtxoStore}
 import xyz.kd5ujc.scarab.node.forge.{ForgeStats, Forger}
 import xyz.kd5ujc.scarab.node.mempool.Mempool
 import xyz.kd5ujc.scarab.storage.ReceivedBlocks
@@ -110,6 +110,18 @@ object Collectors:
         metrics.advance(utxoWarmEvictions, WarmPopulationLabel.Read, s.evictedRead.toDouble) *>
         metrics.advance(utxoWarmRefused, s.refused.toDouble)
     })
+
+  /** How the selection worker found the signature checks of the blocks it prepared: made ahead of
+    * it, being made, or not; and of how many it asked for none, the cache holding them (#1499).
+    */
+  def verifyAhead[F[_]: Monad](ahead: VerifyAhead[F])(using metrics: Metrics[F]): F[Unit] =
+    import Catalogue.*
+    ahead.counts.flatMap(c =>
+      metrics.advance(preverifyAheadHit, c.hit.toDouble) *>
+        metrics.advance(preverifyAheadJoined, c.joined.toDouble) *>
+        metrics.advance(preverifyAheadMiss, c.miss.toDouble) *>
+        metrics.advance(preverifySkipped, c.skipped.toDouble)
+    )
 
   /** The bodies the block pool holds in memory. */
   def pool[F[_]: Monad](pool: BlockPool[F])(using metrics: Metrics[F]): F[Unit] =
