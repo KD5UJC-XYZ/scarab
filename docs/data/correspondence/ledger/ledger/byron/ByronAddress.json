@@ -1,0 +1,53 @@
+{
+ "baseline": {
+  "class ledger.byron.ByronAddress": null,
+  "def ledger.byron.ByronAddress#attributesSize": null,
+  "def ledger.byron.ByronAddress#checks": null,
+  "def ledger.byron.ByronAddress#isRedeem": null,
+  "def ledger.byron.ByronAddress#network": null,
+  "def ledger.byron.ByronAddress#rootFor": null,
+  "def ledger.byron.ByronAddress.attributesLength": null,
+  "def ledger.byron.ByronAddress.decode": null,
+  "def ledger.byron.ByronAddress.make": null,
+  "def ledger.byron.ByronAddress.redeem": null,
+  "def ledger.byron.ByronAddress.reencoded": null,
+  "def ledger.byron.ByronAddress.rootOf": null,
+  "def ledger.byron.ByronCbor.addressHash": null,
+  "def ledger.byron.ByronCbor.bytes": null,
+  "def ledger.byron.ByronCbor.concat": null,
+  "def ledger.byron.ByronCbor.crc32": null,
+  "def ledger.byron.ByronCbor.keyHash": null,
+  "def ledger.byron.ByronCbor.mapHead": null,
+  "def ledger.byron.ByronCbor.of": null,
+  "def ledger.byron.ByronCbor.sha3": null,
+  "def ledger.byron.ByronCbor.uint": null,
+  "object ledger.byron.ByronAddress": null,
+  "object ledger.byron.ByronCbor": null,
+  "val ledger.byron.ByronAddress.Redeem": null,
+  "val ledger.byron.ByronAddress.VerKey": null,
+  "val ledger.byron.ByronCbor.BodyLimits": null
+ },
+ "entries": {
+  "given ledger.byron.ByronAddress.given_Ordering_ByronAddress": {
+   "class": "Mirror",
+   "digest": "4a90a69f3e16a9c9",
+   "evidence": [
+    "LedgerConfigInputsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/byron/ledger/impl/src/Cardano/Chain/Common/Address.hs",
+     "lines": [
+      141,
+      151
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Address"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronAddress.scala"
+}

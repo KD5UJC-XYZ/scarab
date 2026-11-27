@@ -1,0 +1,30 @@
+{
+ "baseline": {
+  "class plutus.EvalRequest": null,
+  "class plutus.ScriptFailure.Uplc": null,
+  "def plutus.BackendFailure#message": null,
+  "def plutus.EvalFailure#message": null,
+  "def plutus.EvalResult#isSuccess": null,
+  "def plutus.EvalResult#spent": null,
+  "def plutus.ScriptDecodeFailure#message": null,
+  "def plutus.ScriptDecoder#validate": null,
+  "def plutus.ScriptDecoder.lenient": null,
+  "def plutus.ScriptEvaluator#evaluate": null,
+  "def plutus.ScriptFailure#logs": null,
+  "def plutus.ScriptFailure#message": null,
+  "def plutus.ScriptFailure.Uplc#message": null,
+  "def plutus.ScriptFailure.Uplc#toString": null,
+  "def plutus.ScriptProblem#message": null,
+  "enum plutus.BackendFailure": null,
+  "enum plutus.EvalFailure": null,
+  "enum plutus.EvalResult": null,
+  "enum plutus.ScriptDecodeFailure": null,
+  "enum plutus.ScriptProblem": null,
+  "object plutus.ScriptDecoder": null,
+  "object plutus.ScriptFailure": null,
+  "trait plutus.ScriptDecoder": null,
+  "trait plutus.ScriptEvaluator": null,
+  "trait plutus.ScriptFailure": null
+ },
+ "source": "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScriptEvaluator.scala"
+}

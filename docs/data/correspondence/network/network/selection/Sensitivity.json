@@ -1,0 +1,49 @@
+{
+ "baseline": {
+  "class network.selection.Sensitivity": null,
+  "def network.selection.AssociationMode.of": null,
+  "def network.selection.Sensitivity#ableToMakeProgress": null,
+  "def network.selection.Sensitivity#sensitive": null,
+  "def network.selection.Sensitivity#syncingGenesis": null,
+  "def network.selection.Sensitivity.initial": null,
+  "enum network.selection.AssociationMode": null,
+  "enum network.selection.ConsensusMode": null,
+  "enum network.selection.LedgerStateJudgement": null,
+  "enum network.selection.OutboundConnectionsState": null,
+  "object network.selection.AssociationMode": null,
+  "object network.selection.Sensitivity": null,
+  "val network.selection.Sensitivity.CleanStateTimeout": null
+ },
+ "entries": {
+  "enum network.selection.BootstrapPeers": {
+   "class": "Mirror",
+   "digest": "4fefaa688dfd5a49",
+   "note": "DontUseBootstrapPeers and UseBootstrapPeers; Use holds the node's identity of the configured relay list (BootstrapSources, one per list, in its order) where the reference holds the list, so the two values compare equal exactly when the reference's do (monitorBootstrapPeersFlag, cardano-diffusion Governor/Monitor.hs 429; issue 810)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "cardano-diffusion/api/lib/Cardano/Network/PeerSelection/Bootstrap.hs",
+     "lines": [
+      20,
+      22
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "UseBootstrapPeers"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def network.selection.BootstrapSources.apply",
+    "def network.selection.Sensitivity#useBootstrapPeers",
+    "object network.selection.BootstrapSources",
+    "type network.selection.BootstrapSources"
+   ],
+   "reason": "the node's identity of a configured list of bootstrap relays, which BootstrapPeers.Use holds in place of the reference's [RelayAccessPoint], and the flag the decisions read from the value (issue 810)"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/Sensitivity.scala"
+}

@@ -1,0 +1,32 @@
+{
+ "baseline": {
+  "class storage.UtxoBacking": null,
+  "def storage.StateBacking#admit": null,
+  "def storage.StateBacking#advance": null,
+  "def storage.StateBacking#checkpoint": null,
+  "def storage.StateBacking#reset": null,
+  "def storage.StateBacking#restore": null,
+  "def storage.StateBacking#retain": null,
+  "def storage.StateBacking#settled": null,
+  "def storage.StateBacking#trim": null,
+  "def storage.StateBacking.isStem": null,
+  "def storage.StateBacking.none": null,
+  "def storage.StateBacking.stem": null,
+  "def storage.UtxoBacking#admit": null,
+  "def storage.UtxoBacking#advance": null,
+  "def storage.UtxoBacking#checkpoint": null,
+  "def storage.UtxoBacking#reset": null,
+  "def storage.UtxoBacking#restore": null,
+  "def storage.UtxoBacking#retain": null,
+  "def storage.UtxoBacking#settled": null,
+  "def storage.UtxoBacking#trim": null,
+  "def storage.UtxoHandle#get": null,
+  "def storage.UtxoHandle#modify": null,
+  "given storage.UtxoHandle.given_UtxoHandle_MirrorState": null,
+  "object storage.StateBacking": null,
+  "object storage.UtxoHandle": null,
+  "trait storage.StateBacking": null,
+  "trait storage.UtxoHandle": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/StateBacking.scala"
+}

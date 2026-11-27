@@ -1,0 +1,13 @@
+{
+ "baseline": {
+  "class ledger.byron.ByronOut": null,
+  "class ledger.byron.ByronTx": null,
+  "class ledger.byron.ByronTxAux": null,
+  "def ledger.byron.ByronTx.decodeAux": null,
+  "def ledger.byron.ByronTx.decodeTx": null,
+  "def ledger.byron.ByronTx.merkleRoot": null,
+  "enum ledger.byron.ByronWitness": null,
+  "object ledger.byron.ByronTx": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronTx.scala"
+}

@@ -1,0 +1,29 @@
+{
+ "baseline": {
+  "class plutus.BoundedCache": null,
+  "def plutus.BoundedCache#get": null,
+  "def plutus.BoundedCache#getOrElseUpdate": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class plutus.Limits",
+    "class plutus.Lru",
+    "class plutus.Lru.Entry",
+    "def plutus.BoundedCache#snapshot",
+    "def plutus.BoundedCache.apply",
+    "def plutus.BoundedCache.counted",
+    "def plutus.Lru#keys",
+    "def plutus.Lru#peek",
+    "def plutus.Lru#put",
+    "def plutus.Lru#size",
+    "def plutus.Lru#touched",
+    "def plutus.Lru.empty",
+    "object plutus.BoundedCache",
+    "object plutus.Lru"
+   ],
+   "reason": "Scarab's memoisation of the programs its own evaluator decodes, bounded by their number and by an estimate of the heap they hold: the least-recently-used map and its bounds, the weight of a decoded program, and the interpreter that holds the cache; internal to Scarab, it changes no result"
+  }
+ ],
+ "source": "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/BoundedCache.scala"
+}

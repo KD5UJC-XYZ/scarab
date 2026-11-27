@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "def storage.NetworkIdentityFile.admit": null,
+  "def storage.NetworkIdentityFile.adoptDijkstra": null,
+  "def storage.NetworkIdentityFile.migrate": null,
+  "def storage.NetworkIdentityFile.migration": null,
+  "def storage.NetworkIdentityFile.preflight": null,
+  "def storage.NetworkIdentityFile.read": null,
+  "def storage.NetworkIdentityFile.verify": null,
+  "def storage.NetworkIdentityFile.write": null,
+  "enum storage.NetworkIdentityFile.Admission": null,
+  "object storage.NetworkIdentityFile": null,
+  "val storage.NetworkIdentityFile.FileName": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NetworkIdentityFile.scala"
+}

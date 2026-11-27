@@ -1,0 +1,146 @@
+{
+ "baseline": {
+  "class ledger.era.conway.ConwayTx": null,
+  "def ledger.era.conway.ConwayTx#equals": null,
+  "def ledger.era.conway.ConwayTx#hashCode": null,
+  "def ledger.era.conway.ConwayTx#sizeTxForFeeCalculation": null,
+  "def ledger.era.conway.ConwayTx#toString": null,
+  "given ledger.era.conway.ConwayTx.given_CanEqual_ConwayTx_ConwayTx": null,
+  "object ledger.era.conway.ConwayTx": null,
+  "val ledger.era.conway.ConwayTx#auxData": null,
+  "val ledger.era.conway.ConwayTx#body": null,
+  "val ledger.era.conway.ConwayTx#isValid": null,
+  "val ledger.era.conway.ConwayTx#wits": null,
+  "val ledger.era.conway.ConwayTx.instance": null
+ },
+ "entries": {
+  "def ledger.era.conway.ConwayTx#withIsValid": {
+   "class": "Mirror",
+   "digest": "3ef986c86255a587",
+   "evidence": [
+    "ConwayHeldSuite"
+   ],
+   "note": "the lens's setter on a top-level transaction; the era's transaction keeps no bytes of the whole, so its parts' memoised bytes, its size and its id are unchanged",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Tx.hs",
+     "lines": [
+      145,
+      146
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "isPhase2ValidTxL"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      334,
+      339
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "isPhase2ValidAlonzoTxL"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTx.decode": {
+   "class": "Mirror",
+   "digest": "51fd7e5f542dbdba",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "a transaction of a block body (alonzoSegwitTx of its segments), its parts each read in one pass, the body, the witness set and the auxiliary data in that order, the flag the block's; the node's pool reads a submitted transaction's parts with it too. Held to the reference's verdicts, refusals, ids and relayed bytes on every Conway case of the recorded reference corpora (ConwayEraReferenceSuite), and to the two passes it replaced on every recorded transaction, on mutants and on written cases (ConwayOnePassSuite); the first refusal is the two passes', which reads the keys in the flat decoder's order where the reference reads them as written (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs",
+     "lines": [
+      212,
+      256
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoBlockBody era))"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTx.fromEnvelope": {
+   "class": "Mirror",
+   "digest": "170226aecfd4c300",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "a whole transaction as submitted (decodeRecordNamed \"AlonzoTx\"), split as the flat decoder splits it, a boolean third item the flag; its parts read from its tree when its bytes hold no 9f ff, and otherwise split into bytes and each read with the records its own walk finds. Held to the reference's verdicts, refusals, ids and relayed bytes on every Conway case of the recorded reference corpora (ConwayEraReferenceSuite), and to the two passes it replaced on every recorded transaction, on mutants and on written cases (ConwayOnePassSuite); the first refusal is the two passes', which reads the keys in the flat decoder's order where the reference reads them as written (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      526,
+      554
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoTx l era))"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTx.getConwayMinFeeTx": {
+   "class": "Mirror",
+   "digest": "d212d2e18a9c7bda",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Tx.hs",
+     "lines": [
+      100,
+      118
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getConwayMinFeeTx"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTx.tierRefScriptFee": {
+   "class": "Mirror",
+   "digest": "f5414e342c5dee09",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the multiplier a `PositiveInterval` and the increment a `NonZero` word, the parameters' own types, so the reference's error on a value that is not positive has no input that reaches it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Tx.hs",
+     "lines": [
+      122,
+      142
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "tierRefScriptFee"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.conway.ConwayTx.decodeByFlat",
+    "def ledger.era.conway.ConwayTx.fromEnvelopeByFlat"
+   ],
+   "reason": "Conway's one-pass decoders (#85): the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses), the output the first phase read with the flat output beside it and its second phase (ConwayTxOut.Read, ConwayTxOut.checked); the two passes they replaced, kept for the differential and the bench until the flat decoder goes at stage 6a (decodeByFlat, fromEnvelopeByFlat); and three readers of the flat decoder made visible to them, unchanged (TxBody.known, TxBody.networkId, Witnesses.exUnits). Scala containers and helpers of the decoders, with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayTx.scala"
+}

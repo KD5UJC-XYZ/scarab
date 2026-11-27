@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "class protocol.SystemCallError": null,
+  "def protocol.Errno.of": null,
+  "def protocol.Errno.ofNumber": null,
+  "def protocol.ErrnoCause#errorType": null,
+  "def protocol.SystemCallError#doesNotExist": null,
+  "def protocol.SystemCallError#errno": null,
+  "def protocol.SystemCallError.of": null,
+  "enum protocol.Errno": null,
+  "enum protocol.ErrnoCause": null,
+  "enum protocol.IoErrorType": null,
+  "enum protocol.SystemCall": null,
+  "given protocol.ErrnoCause.given_Show_A": null,
+  "given protocol.IoErrorType.given_Show_A": null,
+  "given protocol.SystemCallError.given_Show_SystemCallError": null,
+  "object protocol.Errno": null,
+  "object protocol.ErrnoCause": null,
+  "object protocol.IoErrorType": null,
+  "object protocol.SystemCallError": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/SystemError.scala"
+}

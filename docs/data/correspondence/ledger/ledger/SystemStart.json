@@ -1,0 +1,64 @@
+{
+ "entries": {
+  "class ledger.SystemStart": {
+   "class": "Gap",
+   "digest": "341bb69a19a29c50",
+   "note": "the ledger's SystemStart, the systemStart of Globals that mkShelleyGlobals takes from sgSystemStart, a java.time.Instant; the hard-fork combinator's start is EpochGeometry.systemStart. The genesis's text is read with Instant.parse (Genesis.shelley, and again by the node-to-client GenesisConfig.fields), not with aeson's UTCTime reader: a leap second (23:59:60Z) is 23:59:59 here and the next midnight in the reference's POSIX conversion, 1000 ms apart, and a fraction of more than nine digits, which the reference reads to twelve, is refused here",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1233#issuecomment-7081078289",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "cardano-slotting/src/Cardano/Slotting/Time.hs",
+     "lines": [
+      61,
+      64
+     ],
+     "repository": "IntersectMBO/cardano-base",
+     "revision": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+     "symbol": "SystemStart"
+    }
+   ]
+  },
+  "def ledger.SystemStart#posixMillis": {
+   "class": "Mirror",
+   "digest": "5778bb98168621be",
+   "evidence": [
+    "LedgerSystemStartSuite",
+    "SystemStartSuite"
+   ],
+   "note": "slotToPOSIXTime over a relative time already taken from the epoch info (epochInfoSlotToUTCTime, fromRelativeTime): the start plus the offset in picoseconds, truncate . (* 1000) of the sum, toward zero",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/TxInfo.hs",
+     "lines": [
+      165,
+      172
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "slotToPOSIXTime"
+    }
+   ]
+  },
+  "object ledger.SystemStart": {
+   "class": "Mirror",
+   "digest": "f25f214b92e80ed0",
+   "note": "the picosecond constants of SystemStart.posixMillis",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "cardano-slotting/src/Cardano/Slotting/Time.hs",
+     "lines": [
+      61,
+      64
+     ],
+     "repository": "IntersectMBO/cardano-base",
+     "revision": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+     "symbol": "SystemStart"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/SystemStart.scala"
+}

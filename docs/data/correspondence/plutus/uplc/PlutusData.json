@@ -1,0 +1,21 @@
+{
+ "baseline": {
+  "def uplc.PlutusData#equals": null,
+  "def uplc.PlutusData#hashCode": null,
+  "def uplc.PlutusData#toString": null,
+  "def uplc.PlutusData.bool": null,
+  "def uplc.PlutusData.bytes": null,
+  "def uplc.PlutusData.constr": null,
+  "def uplc.PlutusData.decode": null,
+  "def uplc.PlutusData.decodePrefix": null,
+  "def uplc.PlutusData.fromNode": null,
+  "def uplc.PlutusData.int": null,
+  "def uplc.PlutusData.maybe": null,
+  "enum uplc.PlutusData": null,
+  "enum uplc.PlutusData.DecodeError": null,
+  "given uplc.PlutusData.given_Tree_PlutusData": null,
+  "object uplc.PlutusData": null,
+  "val uplc.PlutusData.unit": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/PlutusData.scala"
+}

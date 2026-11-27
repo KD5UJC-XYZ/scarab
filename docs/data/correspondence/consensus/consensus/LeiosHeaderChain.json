@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "class consensus.LeiosHeaderChain.Leadership": null,
+  "class consensus.LeiosHeaderChain.StakePolicy": null,
+  "class consensus.LeiosHeaderChain.State": null,
+  "class consensus.LeiosHeaderChain.Tip": null,
+  "def consensus.LeiosHeaderChain.State#length": null,
+  "def consensus.LeiosHeaderChain.initial": null,
+  "def consensus.LeiosHeaderChain.step": null,
+  "enum consensus.LeiosHeaderChain.Fault": null,
+  "object consensus.LeiosHeaderChain": null,
+  "val consensus.LeiosHeaderChain.GenesisEpochs": null
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/LeiosHeaderChain.scala"
+}

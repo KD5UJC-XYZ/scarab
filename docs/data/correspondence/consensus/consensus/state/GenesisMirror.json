@@ -1,0 +1,51 @@
+{
+ "baseline": {
+  "def consensus.state.GenesisMirror.of": null,
+  "object consensus.state.GenesisMirror": null
+ },
+ "entries": {
+  "def consensus.state.GenesisMirror.originExt": {
+   "class": "Mirror",
+   "digest": "160be73f5489882b",
+   "evidence": [
+    "LeiosBoundsEvidenceSuite",
+    "LeiosLayoutSuite"
+   ],
+   "note": "the extended state's layout part at the chain's origin: the Leios build's Peras state of no epoch context and no certificate, which the captured Leios states hold (82 83 01 80 80 80); the 11.1 layout has none",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/Embed/Nary.hs",
+     "lines": [
+      347,
+      357
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "targetEraPerasState"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Ledger/Peras.hs",
+     "lines": [
+      56,
+      71
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "initPerasState"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Peras/Context.hs",
+     "lines": [
+      686,
+      698
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "initPerasEpochContextResolver"
+    }
+   ]
+  }
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/GenesisMirror.scala"
+}

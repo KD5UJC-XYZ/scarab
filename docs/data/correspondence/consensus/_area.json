@@ -1,0 +1,7 @@
+{
+ "_comment": "Consensus: Praos, TPraos and PBFT, chain selection, the hard-fork combinator's state and history, header rules (module consensus). Its reference is ouroboros-consensus, and cardano-ledger for the protocol rules (cardano-protocol-tpraos). docs/design/correspondence-map.md says what an entry holds; scripts/check_correspondence.py checks it.",
+ "area": "consensus",
+ "roots": [
+  "consensus/src/main/scala"
+ ]
+}

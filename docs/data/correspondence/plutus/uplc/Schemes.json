@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "class uplc.Fix": null,
+  "def uplc.Fix#equals": null,
+  "def uplc.Fix#hashCode": null,
+  "def uplc.Fix#toString": null,
+  "def uplc.Schemes.ana": null,
+  "def uplc.Schemes.anaM": null,
+  "def uplc.Schemes.cata": null,
+  "def uplc.Schemes.cataM": null,
+  "def uplc.Schemes.hylo": null,
+  "def uplc.Schemes.hyloM": null,
+  "given uplc.Fix.tree": null,
+  "object uplc.Fix": null,
+  "object uplc.Schemes": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/Schemes.scala"
+}

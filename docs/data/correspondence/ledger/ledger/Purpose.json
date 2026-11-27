@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "def ledger.Purpose#index": null,
+  "def ledger.Purpose#scriptHash": null,
+  "def ledger.Purpose.all": null,
+  "def ledger.Purpose.certificateScript": null,
+  "def ledger.Purpose.collection": null,
+  "def ledger.Purpose.resolve": null,
+  "def ledger.Purpose.sortedVoters": null,
+  "def ledger.Purpose.sortedWithdrawals": null,
+  "enum ledger.Purpose": null,
+  "object ledger.Purpose": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Purpose.scala"
+}

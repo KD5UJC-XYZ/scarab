@@ -1,0 +1,79 @@
+{
+ "baseline": {
+  "class storage.haskell.state.Params.Captured": null,
+  "class storage.haskell.state.Params.ConwayPParams": null,
+  "class storage.haskell.state.Params.Param": null,
+  "def storage.haskell.state.Params.Captured#overlay": null,
+  "def storage.haskell.state.Params.Captured#write": null,
+  "def storage.haskell.state.Params.ConwayPParams#equals": null,
+  "def storage.haskell.state.Params.ConwayPParams#hashCode": null,
+  "def storage.haskell.state.Params.Param#canonical": null,
+  "def storage.haskell.state.Params.Param#capture": null,
+  "def storage.haskell.state.Params.Param#captureFrom": null,
+  "def storage.haskell.state.Params.Param#copyValue": null,
+  "def storage.haskell.state.Params.Param#install": null,
+  "def storage.haskell.state.Params.Param#read": null,
+  "def storage.haskell.state.Params.Param#refuses": null,
+  "def storage.haskell.state.Params.Param#write": null,
+  "def storage.haskell.state.Params.Param#writeCaptured": null,
+  "def storage.haskell.state.Params.canonicalConwayUpdate": null,
+  "def storage.haskell.state.Params.codec": null,
+  "def storage.haskell.state.Params.complete": null,
+  "def storage.haskell.state.Params.overlayConway": null,
+  "def storage.haskell.state.Params.projectConway": null,
+  "object storage.haskell.state.Params": null,
+  "val storage.haskell.state.Params.ConwayPParams#fields": null,
+  "val storage.haskell.state.Params.Param#name": null,
+  "val storage.haskell.state.Params.conwayCodec": null,
+  "val storage.haskell.state.Params.conwayPParamsCodec": null,
+  "val storage.haskell.state.Params.costModels": null,
+  "val storage.haskell.state.Params.drepThresholds": null,
+  "val storage.haskell.state.Params.empty": null,
+  "val storage.haskell.state.Params.exUnits": null,
+  "val storage.haskell.state.Params.poolThresholds": null,
+  "val storage.haskell.state.Params.prices": null
+ },
+ "entries": {
+  "def storage.haskell.state.Params.codecIn": {
+   "class": "Gap",
+   "digest": "16ffb98647e36c5e",
+   "evidence": [
+    "DijkstraPParamsStateSuite"
+   ],
+   "note": "the 11.1 layout's Dijkstra parameters (35 items, cardano-ledger f649f975 eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs:423-459) are refused (DijkstraNotYet.LedgerState), which the reference decodes; 11.x never enters Dijkstra, its major-version cap being 11. The Leios build's 54 are read and written byte for byte, every era's parameters held in one flat ProtocolParams, each field at the range of the reference's field type",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      204,
+      209
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EncCBOR (PParams era)"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "lines": [
+      741,
+      796
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "eraPParams"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def storage.haskell.state.Params.completeIn"
+   ],
+   "reason": "fills the parameters an era does not have from genesis, so that the node's one flat ProtocolParams is complete after an import; the reference holds each era's own record and has no such step (#826)"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Params.scala"
+}

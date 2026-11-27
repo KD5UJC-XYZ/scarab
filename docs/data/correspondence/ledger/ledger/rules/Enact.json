@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "class ledger.rules.EnactRuleEnv": null,
+  "class ledger.rules.EnactSignal": null,
+  "def ledger.rules.Enact.transition": null,
+  "object ledger.rules.Enact": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Enact.scala"
+}

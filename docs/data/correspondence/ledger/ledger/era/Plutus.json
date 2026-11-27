@@ -1,0 +1,66 @@
+{
+ "baseline": {
+  "class ledger.era.Language.PlutusV1": null,
+  "class ledger.era.Language.PlutusV2": null,
+  "class ledger.era.Language.PlutusV3": null,
+  "class ledger.era.Language.PlutusV4": null,
+  "class ledger.era.Plutus": null,
+  "def ledger.era.PlutusLanguage#language": null,
+  "def ledger.era.PlutusLanguage#tag": null,
+  "given ledger.era.Plutus.given_CanEqual_Plutus_L_Plutus_L": null,
+  "given ledger.era.PlutusLanguage.v1": null,
+  "given ledger.era.PlutusLanguage.v2": null,
+  "given ledger.era.PlutusLanguage.v3": null,
+  "given ledger.era.PlutusLanguage.v4": null,
+  "object ledger.era.Language": null,
+  "object ledger.era.Plutus": null,
+  "object ledger.era.PlutusLanguage": null,
+  "trait ledger.era.Language": null,
+  "trait ledger.era.PlutusLanguage": null
+ },
+ "entries": {
+  "def ledger.era.PlutusLanguage#plutusArgsToData": {
+   "class": "Mirror",
+   "digest": "a2b6a7d8893918cd",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "PlutusLedgerApiV4Suite"
+   ],
+   "note": "the data each instance's `evaluatePlutusRunnable` applies its script to (`legacyPlutusArgsToData`, the V3 context alone, or Plutus V4's V4 context alone, 9df9f98c and 29a7d656), the evaluation itself the `plutus` module's capability",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "lines": [
+      524,
+      596
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "evaluatePlutusRunnable"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "lines": [
+      582,
+      601
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "PlutusLanguage 'PlutusV4"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs",
+     "lines": [
+      582,
+      601
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "PlutusLanguage 'PlutusV4"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/Plutus.scala"
+}

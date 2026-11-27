@@ -1,0 +1,38 @@
+{
+ "baseline": {
+  "class ledger.ConwayParams": null,
+  "class ledger.LedgerGlobals": null
+ },
+ "entries": {
+  "class ledger.KesParameters": {
+   "class": "Mirror",
+   "digest": "60fcc796a39a89ae",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      768,
+      782
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Globals"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.KesParameters",
+    "val ledger.KesParameters.Mainnet"
+   ],
+   "reason": "mainnet's KES constants for tests and tools whose state comes from no genesis file, and the genesis's KES constants as numbers for their existing readers; the reference reads them from the genesis record and has no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LedgerGlobals.scala"
+}

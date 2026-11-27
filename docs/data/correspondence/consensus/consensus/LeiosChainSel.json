@@ -1,0 +1,248 @@
+{
+ "entries": {
+  "class consensus.AcquiredLeiosEbs": {
+   "class": "Mirror",
+   "digest": "eff201233a2d7b30",
+   "evidence": [
+    "LeiosChainSelSuite"
+   ],
+   "note": "the youngest announcement slot of each acquired endorser block and its reverse index by slot; slots held as BigInt (the store's Word64 widened)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      213,
+      225
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "AcquiredLeiosEbs"
+    }
+   ]
+  },
+  "class consensus.LeiosBlockInfo": {
+   "class": "Mirror",
+   "digest": "77c5b00f297f0d34",
+   "evidence": [
+    "LeiosChainSelSuite",
+    "LeiosEbGateSuite"
+   ],
+   "note": "the two Leios fields of BlockInfo, biHasLeiosCert as LeiosCert and biLeiosAnnouncedEb as the announced endorser block's hash (the announcer's ElId and the size, which the gate does not read, are not kept); the node's processed forest keeps them in each block's DeliveredHeader beside its header, where the reference's VolatileDB keeps BlockInfo",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/API.hs",
+     "lines": [
+      189,
+      215
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "BlockInfo"
+    }
+   ]
+  },
+  "def consensus.AcquiredLeiosEbs#contains": {
+   "class": "Mirror",
+   "digest": "516b6cf0b2d2cfde",
+   "evidence": [
+    "LeiosChainSelSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      237,
+      238
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "acquiredLeiosEbsSetMember"
+    }
+   ]
+  },
+  "def consensus.AcquiredLeiosEbs#inserted": {
+   "class": "Mirror",
+   "digest": "67f6638b6eb4803c",
+   "evidence": [
+    "LeiosChainSelSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      245,
+      266
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "insertAcquiredLeiosEb"
+    }
+   ]
+  },
+  "def consensus.AcquiredLeiosEbs#pruned": {
+   "class": "Mirror",
+   "digest": "0963df7798e38d47",
+   "evidence": [
+    "LeiosChainSelSuite",
+    "LeiosEbGateSuite"
+   ],
+   "note": "the immutable tip as an Option for WithOrigin",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      272,
+      286
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "pruneAcquiredLeiosEbs"
+    }
+   ]
+  },
+  "def consensus.AcquiredLeiosEbs.of": {
+   "class": "Mirror",
+   "digest": "c736cfc9155bf970",
+   "evidence": [
+    "LeiosChainSelSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      268,
+      270
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "acquiredLeiosEbsFromList"
+    }
+   ]
+  },
+  "def consensus.LeiosBlockInfo.of": {
+   "class": "Mirror",
+   "digest": "df513cf81abebfcd",
+   "evidence": [
+    "LeiosChainSelSuite"
+   ],
+   "note": "the body's certificate (blockLeiosCert) and the header's announcement (headerLeiosAnnouncement) of a Dijkstra block, none for another era (Cardano/Block.hs:1605-1615); read from the block the fetched-block check decodes",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
+     "lines": [
+      119,
+      140
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "extractBlockInfo"
+    }
+   ]
+  },
+  "def consensus.LeiosCertGate.hidden": {
+   "class": "Mirror",
+   "digest": "a49b478ab7dbf987",
+   "evidence": [
+    "LeiosChainSelSuite",
+    "LeiosEbGateSuite"
+   ],
+   "note": "the blocks ignoreUnacquiredCertRB and ignoreUnacquiredCertRBSuc hide, as a set of the whole forest; the node's candidate construction asks unacquired of each block its walks reach instead, with the invalid ones (AvailableBlocks.candidates), as the reference wraps the forest's lookup and successor functions; both hide a block as a tip and as a successor",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/ChainSel.hs",
+     "lines": [
+      1828,
+      1844
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ignoreUnacquiredCertRB"
+    }
+   ]
+  },
+  "def consensus.LeiosCertGate.parkedOn": {
+   "class": "Mirror",
+   "digest": "e639bae34b13fa6e",
+   "evidence": [
+    "LeiosChainSelSuite",
+    "LeiosEbGateSuite"
+   ],
+   "note": "the certifying, not invalid, successors of the blocks announcing the endorser block, found by a pass over the forest where the reference reads its VolatileDB's announcer index (getLeiosAnnouncers)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/ChainSel.hs",
+     "lines": [
+      654,
+      673
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "reprocessPoints"
+    }
+   ]
+  },
+  "def consensus.LeiosCertGate.unacquired": {
+   "class": "Mirror",
+   "digest": "6128ad3dfaec59d0",
+   "evidence": [
+    "LeiosChainSelSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/ChainSel.hs",
+     "lines": [
+      1796,
+      1821
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "isUnacquiredCertRB"
+    }
+   ]
+  },
+  "val consensus.AcquiredLeiosEbs.empty": {
+   "class": "Mirror",
+   "digest": "ad51cb4dcba8f42e",
+   "evidence": [
+    "LeiosChainSelSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoTypes.hs",
+     "lines": [
+      227,
+      228
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "emptyAcquiredLeiosEbs"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class consensus.LeiosForestBlock",
+    "enum consensus.LeiosCert",
+    "object consensus.AcquiredLeiosEbs",
+    "object consensus.LeiosBlockInfo",
+    "object consensus.LeiosCertGate",
+    "val consensus.LeiosBlockInfo.Absent"
+   ],
+   "reason": "the acquired-endorser-block gate's Scala plumbing with no counterpart of its own: the companions, the certificate's presence as an enum (biHasLeiosCert) and a block of the forest as the gate reads it (#54)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/LeiosChainSel.scala"
+}

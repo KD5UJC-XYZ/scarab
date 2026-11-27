@@ -1,0 +1,143 @@
+{
+ "entries": {
+  "class ledger.era.conway.DRepVotingThresholds": {
+   "class": "Mirror",
+   "digest": "5b91acb2b52a0cc5",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      394,
+      406
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DRepVotingThresholds"
+    }
+   ]
+  },
+  "class ledger.era.conway.PoolVotingThresholds": {
+   "class": "Mirror",
+   "digest": "7d040c1e231b0339",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      304,
+      311
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PoolVotingThresholds"
+    }
+   ]
+  },
+  "given ledger.era.conway.DRepVotingThresholds.plutusData": {
+   "class": "Mirror",
+   "digest": "f7bdb12636399ec6",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      447,
+      459
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ToPlutusData DRepVotingThresholds"
+    }
+   ]
+  },
+  "given ledger.era.conway.PoolVotingThresholds.plutusData": {
+   "class": "Mirror",
+   "digest": "d3c74a067764ea69",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      376,
+      384
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ToPlutusData PoolVotingThresholds"
+    }
+   ]
+  },
+  "val ledger.era.conway.DRepVotingThresholds.zero": {
+   "class": "Mirror",
+   "digest": "b00f4a8e0e4b28c9",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      413,
+      414
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DRepVotingThresholds"
+    }
+   ]
+  },
+  "val ledger.era.conway.PoolVotingThresholds.zero": {
+   "class": "Mirror",
+   "digest": "309f6382153bbca6",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      333,
+      334
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PoolVotingThresholds"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.conway.DRepVotingThresholds",
+    "object ledger.era.conway.PoolVotingThresholds"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "def ledger.era.conway.DRepVotingThresholds#toStored",
+    "def ledger.era.conway.DRepVotingThresholds.fromStored",
+    "def ledger.era.conway.PoolVotingThresholds#toStored",
+    "def ledger.era.conway.PoolVotingThresholds.fromStored",
+    "def ledger.era.conway.VotingThresholds.unit",
+    "object ledger.era.conway.VotingThresholds"
+   ],
+   "reason": "the conversions between the parameters the node keeps (the flat `ProtocolParams`, the decoded `ConwayParamUpdate` and the flat voting thresholds) and the era's record; the reference keeps the record itself and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/VotingThresholds.scala"
+}

@@ -1,0 +1,25 @@
+{
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.dijkstra.DijkstraOrder.action",
+    "given ledger.dijkstra.DijkstraOrder.actionId",
+    "given ledger.dijkstra.DijkstraOrder.anchor",
+    "given ledger.dijkstra.DijkstraOrder.blsKey",
+    "given ledger.dijkstra.DijkstraOrder.certificate",
+    "given ledger.dijkstra.DijkstraOrder.delegatee",
+    "given ledger.dijkstra.DijkstraOrder.paramUpdate",
+    "given ledger.dijkstra.DijkstraOrder.paramValue",
+    "given ledger.dijkstra.DijkstraOrder.poolMetadata",
+    "given ledger.dijkstra.DijkstraOrder.poolParams",
+    "given ledger.dijkstra.DijkstraOrder.proposal",
+    "given ledger.dijkstra.DijkstraOrder.relay",
+    "given ledger.dijkstra.DijkstraOrder.txIn",
+    "given ledger.dijkstra.DijkstraOrder.voter",
+    "object ledger.dijkstra.DijkstraOrder"
+   ],
+   "reason": "the orders the Dijkstra decoders sort a set's elements, a map's keys or an ordered set's elements with to find repeats, so that the check costs a sort whatever their hash codes; the reference finds them through `Data.Set`, `Data.Map` and `OSet` with each type's derived `Ord` (`decodeListLikeEnforceNoDuplicates`, `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs:1033-1053`, cardano-ledger 29a7d656), and only its equality decides, so these orders, which agree with Scarab's equality of each type and order nothing else, have no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraOrder.scala"
+}

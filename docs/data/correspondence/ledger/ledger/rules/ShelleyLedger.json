@@ -1,0 +1,41 @@
+{
+ "baseline": {
+  "class ledger.rules.BbodySignal": null,
+  "class ledger.rules.BodyCommitment": null,
+  "class ledger.rules.ShelleyBbodyEnv": null,
+  "class ledger.rules.ShelleyBbodyState": null,
+  "class ledger.rules.ShelleyLedgerEnv": null,
+  "def ledger.rules.ShelleyBbody.isOverlaySlot": null,
+  "def ledger.rules.ShelleyBbody.sts": null,
+  "def ledger.rules.ShelleyLedger.sts": null,
+  "def ledger.rules.ShelleyLedgers.sts": null,
+  "object ledger.rules.ShelleyBbody": null,
+  "object ledger.rules.ShelleyLedger": null,
+  "object ledger.rules.ShelleyLedgers": null
+ },
+ "entries": {
+  "def ledger.rules.ShelleyBbody.exUnitsExceeded": {
+   "class": "Mirror",
+   "digest": "452a612c2ef1a0a9",
+   "evidence": [
+    "ShelleyBbodySuite",
+    "PreparedBlockSuite"
+   ],
+   "note": "the whole block's foldMap totExUnits compared point-wise with maxBlockExUnits, as validateExUnits; the units past the limit or none in place of a predicate failure, which the flat BBODY raises as BlockExUnitsTooBig; the era chosen by the PreConway evidence (the eras before Conway, which the flat BBODY keeps): from Alonzo, where the reference's BBODY instances call validateExUnits (Alonzo/Rules/Bbody.hs:212), and none in Shelley, Allegra and Mary, whose BBODY has no such check; the flat body's preparation reads it too (EraBlock.Body, #85)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Bbody.hs",
+     "lines": [
+      147,
+      167
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateExUnits"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyLedger.scala"
+}

@@ -1,0 +1,54 @@
+{
+ "baseline": {
+  "def consensus.state.MirrorClock.of": null,
+  "def consensus.state.MirrorClock.summary": [
+   {
+    "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/State/Infra.hs",
+    "lines": [
+     194,
+     304
+    ],
+    "repository": "IntersectMBO/ouroboros-consensus",
+    "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+    "symbol": "reconstructSummary"
+   }
+  ],
+  "object consensus.state.MirrorClock": null
+ },
+ "entries": {
+  "def consensus.state.MirrorClock.interpreter": {
+   "class": "Gap",
+   "digest": "ab26ee182095d8d8",
+   "note": "reconstructSummary with the bounds of the state's layout: the past bounds and the current start from the telescope, the current era's end at the known transition or its safe zone, and the next era where the transition is known and the code has one, each computed by upperBound and safeZoneEnd with the reference's Word64 arithmetic; non-empty by construction (NonEmptyVector); no GetInterpreter answer of the Leios build has been captured, so its bytes are hand-derived (LeiosBoundsEvidenceSuite), and this node does not enter Dijkstra yet (#54)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/826#issuecomment-6961010398",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/HardFork/Combinator/State/Infra.hs",
+     "lines": [
+      194,
+      304
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "reconstructSummary"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def consensus.state.MirrorClock.conway"
+   ],
+   "reason": "The Conway switch (#85): the no verdict a Conway block's defect is (BlockNoVerdict.ofConway, issue 567's routing, which the reference has no counterpart of), and the one value Conway's era rules read their system start, epoch information and slot to time translation from (MirrorClock.conway, the era history of MirrorClock.of for a Conway block, not extended)."
+  },
+  {
+   "definitions": [
+    "def consensus.state.MirrorClock.horizon"
+   ],
+   "reason": "the mirror's plumbing for a Dijkstra block on the era types, which holds no flat block: the step of MirrorStep.block with the transaction bytes given, and the era history's horizon at the tip that the era rules' UTxO context reads as its EpochInfo (#54)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/MirrorClock.scala"
+}

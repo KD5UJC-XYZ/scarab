@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "def ledger.BlockTransport.check": null,
+  "def ledger.BlockTransportError#message": null,
+  "enum ledger.BlockTransportError": null,
+  "object ledger.BlockTransport": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.BlockTransport.matches"
+   ],
+   "reason": "the ranking block's transactions whose one-pass reading met a value the decoder's own bounds rule out, kept apart by whose the failure is: the node's defect, typed as one of the era errors that are defects only (LeiosBlock.Unread, LeiosBlock.Defect), or a field Dijkstra does not have, the bytes' fault (LeiosBlock.OutsideEra), the first of them the failure of the block's application (LeiosBlock#firstUnheld, LeiosBlock#transactionCount), so that the block decodes, passes the fetch checks (BlockTransport.matches, the checks of a decoded block split from its decoding) and is withheld by its application, as the flat decoder and its projection routed it; and the decoders taking the transaction reader (LeiosBlock.decodeWith, DijkstraBlock.decodeWith), so that a test forces that path, which the decoder's bounds make unreachable (#85); the reference's decoder has no such value and no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/BlockTransport.scala"
+}

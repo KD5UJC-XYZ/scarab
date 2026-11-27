@@ -1,0 +1,7 @@
+{
+ "_comment": "Storage: the immutable, volatile, UTxO and ledger snapshot stores, the Haskell database and snapshot import, SCLS and Mithril (module storage). Its reference is ouroboros-consensus's storage layer and cardano-ledger's state encoders. Mapping it adds entries only: its code is under the format freeze (FMT-1). docs/design/correspondence-map.md says what an entry holds; scripts/check_correspondence.py checks it.",
+ "area": "storage",
+ "roots": [
+  "storage/src/main/scala"
+ ]
+}

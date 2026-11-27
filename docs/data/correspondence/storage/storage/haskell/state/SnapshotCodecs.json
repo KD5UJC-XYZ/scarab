@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "class storage.haskell.state.IndividualPoolStake11": null,
+  "class storage.haskell.state.SnapShots11": null,
+  "class storage.haskell.state.StakePoolSnapShot11": null,
+  "given storage.haskell.state.SnapshotCodecs#activeStake": null,
+  "given storage.haskell.state.SnapshotCodecs#individualPoolStake": null,
+  "given storage.haskell.state.SnapshotCodecs#leiosCommittee": null,
+  "given storage.haskell.state.SnapshotCodecs#leiosSeat": null,
+  "given storage.haskell.state.SnapshotCodecs#poolDistr": null,
+  "given storage.haskell.state.SnapshotCodecs#snapShot": null,
+  "given storage.haskell.state.SnapshotCodecs#snapShots": null,
+  "given storage.haskell.state.SnapshotCodecs#stakePoolSnapShot": null,
+  "given storage.haskell.state.SnapshotCodecs#stakeWithDelegation": null,
+  "trait storage.haskell.state.SnapshotCodecs": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/SnapshotCodecs.scala"
+}

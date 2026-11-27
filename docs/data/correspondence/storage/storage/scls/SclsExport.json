@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "class storage.scls.SclsExport.Config": null,
+  "def storage.scls.SclsExport.write": null,
+  "enum storage.scls.SclsExport.Error": null,
+  "object storage.scls.SclsExport": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsExport.scala"
+}

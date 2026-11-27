@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "def ledger.rules.Tick.adoptGenesisDelegs": null,
+  "def ledger.rules.Tick.sts": null,
+  "object ledger.rules.Tick": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Tick.scala"
+}

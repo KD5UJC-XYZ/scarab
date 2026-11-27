@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "class storage.mithril.MithrilBootstrap.Config": null,
+  "class storage.mithril.MithrilBootstrap.Report": null,
+  "def storage.mithril.MithrilBootstrap.DirectorySync#apply": null,
+  "def storage.mithril.MithrilBootstrap.DirectorySync.native": null,
+  "def storage.mithril.MithrilBootstrap.Error#message": null,
+  "def storage.mithril.MithrilBootstrap.provenance": null,
+  "def storage.mithril.MithrilBootstrap.publish": null,
+  "def storage.mithril.MithrilBootstrap.run": null,
+  "enum storage.mithril.MithrilBootstrap.Error": null,
+  "object storage.mithril.MithrilBootstrap": null,
+  "object storage.mithril.MithrilBootstrap.DirectorySync": null,
+  "trait storage.mithril.MithrilBootstrap.DirectorySync": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/mithril/MithrilBootstrap.scala"
+}

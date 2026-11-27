@@ -1,0 +1,28 @@
+{
+ "baseline": {
+  "def ledger.Verdicts#keyHash": null,
+  "def ledger.Verdicts#opCert": null,
+  "def ledger.Verdicts#praosVrf": null,
+  "def ledger.Verdicts#takePrepared": null,
+  "def ledger.Verdicts#tpraosVrf": null,
+  "def ledger.Verdicts#witness": null,
+  "def ledger.Verdicts.Direct.keyHash": null,
+  "def ledger.Verdicts.Direct.opCert": null,
+  "def ledger.Verdicts.Direct.praosVrf": null,
+  "def ledger.Verdicts.Direct.takePrepared": null,
+  "def ledger.Verdicts.Direct.tpraosVrf": null,
+  "def ledger.Verdicts.Direct.witness": null,
+  "object ledger.Verdicts": null,
+  "object ledger.Verdicts.Direct": null,
+  "trait ledger.Verdicts": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.WitnessCheck"
+   ],
+   "reason": "the witness signature checks validateVerifiedWits asks Verdicts for, listed as values (WitnessCheck, ShelleyUtxow.verifiedWitsAsked), so that the node's VerificationCache verifies exactly those ahead of the rules in the Leios closure check (#79); the reference has no such list, it verifies each signature when its predicate reaches it"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Verdicts.scala"
+}

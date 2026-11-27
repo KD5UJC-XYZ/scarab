@@ -1,0 +1,261 @@
+{
+ "entries": {
+  "def ledger.era.rules.InjectGov#injectEvent": {
+   "class": "Mirror",
+   "digest": "c8f54924816b7975",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      132,
+      132
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "injectEvent"
+    }
+   ]
+  },
+  "def ledger.era.rules.InjectGov#injectFailure": {
+   "class": "Mirror",
+   "digest": "ad79d757528a0261",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      124,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "injectFailure"
+    }
+   ]
+  },
+  "enum ledger.era.rules.ConwayGovEvent": {
+   "class": "Mirror",
+   "digest": "7804570622bfb807",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs",
+     "lines": [
+      300,
+      308
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayGovEvent"
+    }
+   ]
+  },
+  "enum ledger.era.rules.ConwayGovPredFailure": {
+   "class": "Gap",
+   "digest": "88d3eb6385686016",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "note": "a voter and a voter's hot credential are the flat voter's until the votes carry the reference's typed voter; an account is AccountAddress; a mismatch carries the reference's relation (Mismatch r a); constructors in tag order (237-255)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023870",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs",
+     "lines": [
+      177,
+      218
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayGovPredFailure"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectGov.conway": {
+   "class": "Mirror",
+   "digest": "6809b2d326868388",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs",
+     "lines": [
+      229,
+      231
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"GOV\" ConwayGovPredFailure ConwayEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectGov.dijkstra": {
+   "class": "Mirror",
+   "digest": "72defcfaa7b32c9f",
+   "evidence": [
+    "DijkstraGovSuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "Dijkstra's own failure's identity instance (:125) is its rule's; the transition reports Conway's and never injects it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Gov.hs",
+     "lines": [
+      127,
+      128
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"GOV\" Conway.ConwayGovPredFailure DijkstraEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Gov.hs",
+     "lines": [
+      130,
+      130
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleEvent \"GOV\" Conway.ConwayGovEvent DijkstraEra"
+    }
+   ]
+  },
+  "object ledger.era.rules.InjectGov": {
+   "class": "Mirror",
+   "digest": "f914bdba546de793",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs",
+     "lines": [
+      229,
+      231
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"GOV\" ConwayGovPredFailure ConwayEra"
+    }
+   ]
+  },
+  "trait ledger.era.rules.InjectGov": {
+   "class": "Mirror",
+   "digest": "a7c243bf1741400f",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite"
+   ],
+   "note": "InjectRuleFailure and InjectRuleEvent at the rule GOV for Conway's failure and event, one class with both",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      120,
+      134
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure"
+    }
+   ]
+  },
+  "type ledger.era.rules.GovEvent": {
+   "class": "Mirror",
+   "digest": "40f0e9bfd2236d0b",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs",
+     "lines": [
+      227,
+      227
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleEvent \"GOV\" ConwayEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Gov.hs",
+     "lines": [
+      123,
+      123
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleEvent \"GOV\" DijkstraEra"
+    }
+   ]
+  },
+  "type ledger.era.rules.GovPredFailure": {
+   "class": "Mirror",
+   "digest": "740851457fd76a7b",
+   "evidence": [
+    "ConwayGovChecksSuite",
+    "UpstreamGovernanceFunctionalSuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Gov.hs",
+     "lines": [
+      225,
+      225
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure \"GOV\" ConwayEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Gov.hs",
+     "lines": [
+      121,
+      121
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleFailure \"GOV\" DijkstraEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.rules.coldCommitteeOrdering",
+    "given ledger.era.rules.drepCredentialOrdering",
+    "given ledger.era.rules.voterVoteOrdering"
+   ],
+   "reason": "the reference's derived Ord instances of the sets and maps GOV's failures and events hold"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/GovFailures.scala"
+}

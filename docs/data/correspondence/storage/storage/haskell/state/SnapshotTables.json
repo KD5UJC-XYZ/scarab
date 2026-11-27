@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "class storage.haskell.state.SnapshotTables.Decoder": null,
+  "class storage.haskell.state.SnapshotTables.Entry": null,
+  "class storage.haskell.state.SnapshotTables.Summary": null,
+  "def storage.haskell.state.SnapshotTables.Decoder#feed": null,
+  "def storage.haskell.state.SnapshotTables.Decoder#finish": null,
+  "def storage.haskell.state.SnapshotTables.decode": null,
+  "def storage.haskell.state.SnapshotTables.decoder": null,
+  "def storage.haskell.state.SnapshotTables.encodeEntry": null,
+  "def storage.haskell.state.SnapshotTables.prefix": null,
+  "def storage.haskell.state.SnapshotTables.suffix": null,
+  "enum storage.haskell.state.SnapshotTables.Error": null,
+  "enum storage.haskell.state.SnapshotTables.Field": null,
+  "object storage.haskell.state.SnapshotTables": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/SnapshotTables.scala"
+}

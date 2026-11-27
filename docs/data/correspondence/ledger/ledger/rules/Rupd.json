@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "class ledger.rules.RupdEnv": null,
+  "def ledger.rules.Rupd.sts": null,
+  "object ledger.rules.Rupd": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Rupd.scala"
+}

@@ -1,0 +1,39 @@
+{
+ "baseline": {
+  "def uplc.cost.Costs#first": null,
+  "def uplc.cost.Costs#map": null,
+  "def uplc.cost.Costs#sum": null,
+  "def uplc.cost.Costs#take": null,
+  "def uplc.cost.Costs#toVector": null,
+  "def uplc.cost.Costs.add": null,
+  "def uplc.cost.Costs.min": null,
+  "def uplc.cost.Costs.of": null,
+  "def uplc.cost.Costs.scaleLinearly": null,
+  "def uplc.cost.Costs.scaleLinearlyTwoVariables": null,
+  "def uplc.cost.Costs.scaleQuadratically": null,
+  "def uplc.cost.Costs.single": null,
+  "def uplc.cost.Costs.zip": null,
+  "enum uplc.cost.Costs": [
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/CostStream.hs",
+    "lines": [
+     39,
+     45
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "CostStream"
+   }
+  ],
+  "object uplc.cost.Costs": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def uplc.cost.Costs.quadraticTerm"
+   ],
+   "reason": "The cost of a builtin application whose measures are each one cost for the values given, computed as longs and spent with no stream made (#1411), where the reference spends a one-element `ExBudgetStream` (`ExBudgetStream.hs:15-29`, plutus 1.70.0.0): the shapes' `run` and the measures' streams stay the mirror, the spender is the machine's (`ExBudgetMode.hs:55-57,146-165`), and CekApplicationSuite compares the two"
+  }
+ ],
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cost/Costs.scala"
+}

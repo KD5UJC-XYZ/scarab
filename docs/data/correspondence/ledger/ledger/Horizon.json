@@ -1,0 +1,25 @@
+{
+ "baseline": {
+  "class ledger.Horizon": null,
+  "class ledger.Horizon.Edge": null,
+  "class ledger.Horizon.Era": null,
+  "class ledger.Horizon.History": null,
+  "class ledger.Horizon.Params": null,
+  "def ledger.Horizon#pastHorizonText": null,
+  "def ledger.Horizon#slotLengthPs": null,
+  "def ledger.Horizon#timePs": null,
+  "def ledger.Horizon.Edge#show": null,
+  "def ledger.Horizon.Era#covers": null,
+  "def ledger.Horizon.Era#show": null,
+  "def ledger.Horizon.History#at": null,
+  "def ledger.Horizon.Params#boundAt": null,
+  "def ledger.Horizon.Params#safeEnd": null,
+  "def ledger.Horizon.Params#show": null,
+  "def ledger.Horizon.Params#slotLengthPs": null,
+  "def ledger.Horizon.showSeconds": null,
+  "def ledger.Horizon.single": null,
+  "enum ledger.Horizon.Transition": null,
+  "object ledger.Horizon": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Horizon.scala"
+}

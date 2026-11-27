@@ -1,0 +1,27 @@
+{
+ "baseline": {
+  "class ledger.rules.DelegsEnv": null,
+  "class ledger.rules.ShelleyDelegEnv": null,
+  "def ledger.rules.ShelleyCertOps.delegate": null,
+  "def ledger.rules.ShelleyCertOps.drain": null,
+  "def ledger.rules.ShelleyCertOps.register": null,
+  "def ledger.rules.ShelleyCertOps.unregister": null,
+  "def ledger.rules.ShelleyDeleg.transition": null,
+  "def ledger.rules.ShelleyDelegs.transition": null,
+  "def ledger.rules.ShelleyDelpl.transition": null,
+  "given ledger.rules.ShelleyDelpl.poolEmbed": null,
+  "object ledger.rules.ShelleyCertLens": null,
+  "object ledger.rules.ShelleyCertOps": null,
+  "object ledger.rules.ShelleyDeleg": null,
+  "object ledger.rules.ShelleyDelegs": null,
+  "object ledger.rules.ShelleyDelpl": null,
+  "val ledger.rules.ShelleyCertLens.accounts": null,
+  "val ledger.rules.ShelleyCertLens.futureGenDelegs": null,
+  "val ledger.rules.ShelleyCertLens.genDelegs": null,
+  "val ledger.rules.ShelleyCertLens.iRewards": null,
+  "val ledger.rules.ShelleyCertLens.pools": null,
+  "val ledger.rules.ShelleyCertLens.ptrs": null,
+  "val ledger.rules.ShelleyCertLens.states": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/ShelleyCerts.scala"
+}

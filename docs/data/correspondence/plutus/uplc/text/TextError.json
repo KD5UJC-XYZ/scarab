@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "def uplc.text.Kinded#apply": null,
+  "enum uplc.text.Kinded": null,
+  "enum uplc.text.PointProblem": null,
+  "enum uplc.text.ProgramError": null,
+  "enum uplc.text.TextError": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/text/TextError.scala"
+}

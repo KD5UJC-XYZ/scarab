@@ -1,0 +1,57 @@
+{
+ "baseline": {
+  "class ledger.rules.Embed": null,
+  "def ledger.rules.JudgedSts#transition": null,
+  "def ledger.rules.JudgedSts.apply": null,
+  "def ledger.rules.JudgedSts.trans": null,
+  "def ledger.rules.Sts#transition": null,
+  "def ledger.rules.Sts.apply": null,
+  "def ledger.rules.Sts.check": null,
+  "def ledger.rules.Sts.failBecause": null,
+  "def ledger.rules.Sts.failOnJust": null,
+  "def ledger.rules.Sts.failOnNonEmpty": null,
+  "def ledger.rules.Sts.globals": null,
+  "def ledger.rules.Sts.ifFailureFree": null,
+  "def ledger.rules.Sts.lift": null,
+  "def ledger.rules.Sts.modifyE": null,
+  "def ledger.rules.Sts.predicate": null,
+  "def ledger.rules.Sts.require": null,
+  "def ledger.rules.Sts.runTest": null,
+  "def ledger.rules.Sts.trans": null,
+  "def ledger.rules.Sts.whenFailureFree": null,
+  "def ledger.rules.Sts.whenFailureFreeDefault": null,
+  "def ledger.rules.contramap": null,
+  "def ledger.rules.focus": null,
+  "given ledger.rules.Embed.refl": null,
+  "object ledger.rules.Embed": null,
+  "object ledger.rules.JudgedSts": null,
+  "object ledger.rules.Sts": null,
+  "trait ledger.rules.JudgedSts": null,
+  "trait ledger.rules.Sts": null
+ },
+ "entries": {
+  "def ledger.rules.Sts.validating": {
+   "class": "Mirror",
+   "digest": "a68b39693f60af45",
+   "evidence": [
+    "DijkstraClosureSuite",
+    "DijkstraLedgerSuite"
+   ],
+   "note": "runClause's Predicate case: under ValidateNone the condition is not evaluated; a check by name here, which every recording helper of Sts goes through",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
+     "lines": [
+      715,
+      720
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Predicate"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Sts.scala"
+}

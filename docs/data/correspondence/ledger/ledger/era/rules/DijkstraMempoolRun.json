@@ -1,0 +1,66 @@
+{
+ "entries": {
+  "def ledger.era.rules.DijkstraMempoolRun.annotate": {
+   "class": "Mirror",
+   "digest": "16cbd7a22e7ae94f",
+   "evidence": [
+    "DijkstraMempoolSuite"
+   ],
+   "note": "mkStAnnTx with an empty cache, as the default application annotates a submitted transaction",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      283,
+      296
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "defaultApplyTxWithValidation"
+    }
+   ]
+  },
+  "def ledger.era.rules.DijkstraMempoolRun.mempool": {
+   "class": "Mirror",
+   "digest": "9aaaa00bef9c644c",
+   "evidence": [
+    "DijkstraMempoolSuite"
+   ],
+   "note": "MEMPOOL on the fused interpreter, every failure accumulated, the events discarded (EPDiscard), the validation policy the UTXO context's (All for applyTx, NonStatic for reapplyTx); the proposals are their own state beside the ledger's, as DijkstraBlockRun keeps them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/API/Mempool.hs",
+     "lines": [
+      230,
+      262
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ruleApplyTxValidation"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra.hs",
+     "lines": [
+      87,
+      96
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "internalApplyTxWithValidation"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.rules.DijkstraMempoolRun.utxoOf",
+    "object ledger.era.rules.DijkstraMempoolRun"
+   ],
+   "reason": "the run of Dijkstra's MEMPOOL as the node's pool applies a transaction, on the fused interpreter, and the read of the stored outputs of a transaction's inputs at every level into the era, which the reference's mempool takes from its ledger tables (getTransactionKeySets, ouroboros-consensus 2416493b Shelley/Ledger/Mempool.hs:226-230) (#54)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/DijkstraMempoolRun.scala"
+}

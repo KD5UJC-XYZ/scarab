@@ -1,0 +1,354 @@
+{
+ "entries": {
+  "class ledger.era.rules.LedgerEnv": {
+   "class": "Mirror",
+   "digest": "8fa5eb9d9f4f3aea",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "the slot as the node's BigInt, as UTXO's environment holds it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Ledger.hs",
+     "lines": [
+      97,
+      104
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "LedgerEnv"
+    }
+   ]
+  },
+  "class ledger.era.rules.LedgersEnv": {
+   "class": "Mirror",
+   "digest": "1a17017e9ba33363",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "the slot as the node's BigInt, as UTXO's environment holds it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Ledgers.hs",
+     "lines": [
+      65,
+      70
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ShelleyLedgersEnv"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayLedger.conwayLedgerTransition": {
+   "class": "Mirror",
+   "digest": "13baa8765f836733",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "the reference's transition generic in its era over the reference's classes, the sub-rules UTXOW, CERTS and GOV called as UTXOW calls UTXO, each a sub-rule (Judge.nest) whose failures and events are embedded (EmbedInLedger); the withdrawals' move by the build the judgment's Globals name (WithdrawalsRule); GOV's state the era's proposals in their own capability beside the ledger state, as DijkstraLedger's, held by the caller (ConwayBlockRun reads the node's record once a block and writes it back once; ProposalsRecord.stateful on every read and write); the committee's actions CERTS reads are those of the proposals before the transaction (proposalsWithPurpose grCommitteeL, :367-370), each as the node records it (ProposalsRecord.storedAction); the UTxO set the reference-script size reads is the stored outputs of the body's inputs, collateral and reference inputs; the defects of the sub-rules stay their own raises; the epoch, where the environment has none, is the total epochOf of Globals' geometry, where the reference's epochFromSlot (Slot.hs:66-69) reads its Globals' epoch information and fails outside a bounded history: the suites show the result within the history only (CNF-2)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ledger.hs",
+     "lines": [
+      320,
+      440
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "conwayLedgerTransitionTRC"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayLedger.shelleyToConwayLedgerPredFailure": {
+   "class": "Mirror",
+   "digest": "dc786bbf75727302",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "DELEGS's failure, which the reference calls impossible in Conway (error), has no value at Conway (DelegsPredFailure)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ledger.hs",
+     "lines": [
+      189,
+      196
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "shelleyToConwayLedgerPredFailure"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayLedger.validateRefScriptSize": {
+   "class": "Mirror",
+   "digest": "b4686174ffdb17b4",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ledger.hs",
+     "lines": [
+      456,
+      471
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateRefScriptSize"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayLedger.validateTreasuryValue": {
+   "class": "Mirror",
+   "digest": "b598521f3235e578",
+   "evidence": [
+    "ConwayLedgerChecksSuite",
+    "DijkstraSubLedgerSuite"
+   ],
+   "note": "of a body of either level, as SUBLEDGER runs it (Dijkstra/Rules/SubLedger.hs:260, cardano-ledger 9df9f98c); its failure the constructor it reports, declared as its result type, so that SUBLEDGER's injection over the constructors it reaches serves it (#85)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ledger.hs",
+     "lines": [
+      442,
+      454
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateTreasuryValue"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayLedger.validateWithdrawalsDelegated": {
+   "class": "Mirror",
+   "digest": "eb8f6107d3b49ffb",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "the withdrawals in the order of their AccountAddress keys, as Map.toList gives them",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ledger.hs",
+     "lines": [
+      473,
+      488
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateWithdrawalsDelegated"
+    }
+   ]
+  },
+  "def ledger.era.rules.ProposalsRecord#read": {
+   "class": "Mirror",
+   "digest": "b48b433b9ca28bdd",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "the record read into the era's Proposals, a typed ProposalsReadError where it cannot be",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "lines": [
+      424,
+      424
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "proposalsGovStateL"
+    }
+   ]
+  },
+  "def ledger.era.rules.ProposalsRecord#storedAction": {
+   "class": "Mirror",
+   "digest": "0cf324dd407d07d9",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "an era's action state as the node records it, the form of the committee's actions CertsEnv holds (proposalsWithPurpose grCommitteeL in Conway's LEDGER)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "lines": [
+      424,
+      424
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "proposalsGovStateL"
+    }
+   ]
+  },
+  "def ledger.era.rules.ProposalsRecord#write": {
+   "class": "Mirror",
+   "digest": "8c37c3696c61be85",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "the era's Proposals written back as the node's record, which holds every Conway action",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "lines": [
+      424,
+      424
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "proposalsGovStateL"
+    }
+   ]
+  },
+  "def ledger.era.rules.ProposalsRecord.stateful": {
+   "class": "Mirror",
+   "digest": "298ffa5a211a53c3",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "the proposals of the ledger state's record as a capability, read on get and written on set, the record's read refusals raised",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "lines": [
+      424,
+      424
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "proposalsGovStateL"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyLedger.testIncompleteAndMissingWithdrawals": {
+   "class": "Mirror",
+   "digest": "84fa77bf4f21905d",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Ledger.hs",
+     "lines": [
+      341,
+      359
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "testIncompleteAndMissingWithdrawals"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyLedgers.ledgersFold": {
+   "class": "Mirror",
+   "digest": "0e31fdd29b0913f5",
+   "evidence": [
+    "DijkstraLedgerSuite",
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "the fold of Babbage's ledgersTransition, its era's mkStAnnTx and LEDGER given, which Conway's and Dijkstra's LEDGERS share; the UTxO set the stored outputs of the transaction's inputs; the cache each annotation leaves handed to the next, the first given the empty one (mempty); the index by TxIx.enumerate, zip [minBound ..]",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Ledgers.hs",
+     "lines": [
+      124,
+      142
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ledgersTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyLedgers.ledgersTransition": {
+   "class": "Mirror",
+   "digest": "b6a8aa9100ef6f18",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "Conway's LEDGERS, Babbage's (Conway/Era.hs:244), through the fold it shares with Dijkstra's (ledgersFold); mkStAnnTx is Alonzo's mkAlonzoStAnnTx given the cache the annotation before left, its epoch information and system start one function, the UTxO set the stored outputs of the transaction's inputs; the index by TxIx.enumerate, zip [minBound ..]; the proposals the caller's capability, which each transaction's LEDGER judges",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Ledgers.hs",
+     "lines": [
+      124,
+      142
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ledgersTransition"
+    }
+   ]
+  },
+  "given ledger.era.rules.ProposalsRecord.conway": {
+   "class": "Mirror",
+   "digest": "62936f473832ced2",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "Conway's, over ConwayProposals.fromStored, toStored and storedAction",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "lines": [
+      430,
+      430
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "proposalsGovStateL"
+    }
+   ]
+  },
+  "trait ledger.era.rules.ProposalsRecord": {
+   "class": "Mirror",
+   "digest": "e8e559e248ed7dcb",
+   "evidence": [
+    "ConwayLedgerChecksSuite"
+   ],
+   "note": "the reference's proposalsGovStateL over the node's record of the proposals, read into the era's Proposals and written back, until the governance state holds the reference's Proposals era (#85)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Governance.hs",
+     "lines": [
+      424,
+      424
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "proposalsGovStateL"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.rules.toldIn",
+    "def ledger.era.rules.vocabDefect",
+    "object ledger.era.rules.ConwayLedger",
+    "object ledger.era.rules.ProposalsRecord",
+    "object ledger.era.rules.ShelleyLedger",
+    "object ledger.era.rules.ShelleyLedgers"
+   ],
+   "reason": "the companions of LEDGER's and LEDGERS's failures, injection, embeddings and proposals record, with each failure's equality with itself only; the objects that stand for the reference's Rules/Ledger and Rules/Ledgers modules; and a sub-rule's events wrapped into the rule's (toldIn) and a vocabulary refusal raised as a defect (vocabDefect), which the reference's trans and its total types do"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/Ledger.scala"
+}

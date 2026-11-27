@@ -1,0 +1,38 @@
+{
+ "baseline": {
+  "def storage.haskell.state.UtxoCodecs.OutputForm#holds": null,
+  "def storage.haskell.state.UtxoCodecs.OutputForm.of": null,
+  "def storage.haskell.state.UtxoCodecs.txOutIn": null,
+  "def storage.haskell.state.UtxoCodecs.utxoIn": null,
+  "enum storage.haskell.state.UtxoCodecs.OutputForm": null,
+  "given storage.haskell.state.UtxoCodecs.txIn": null,
+  "given storage.haskell.state.UtxoCodecs.txOut": null,
+  "given storage.haskell.state.UtxoCodecs.utxo": null,
+  "given storage.haskell.state.UtxoCodecs.value": null,
+  "object storage.haskell.state.UtxoCodecs": null,
+  "object storage.haskell.state.UtxoCodecs.OutputForm": null
+ },
+ "entries": {
+  "val storage.haskell.state.UtxoCodecs.multiasset": {
+   "class": "Mirror",
+   "digest": "2c6f65524d451b42",
+   "evidence": [
+    "CborDatasetSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      154,
+      156
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "MultiAsset"
+    }
+   ]
+  }
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/UtxoCodecs.scala"
+}

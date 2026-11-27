@@ -1,0 +1,28 @@
+{
+ "baseline": {
+  "class uplc.Text": [
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/ExMemoryUsage.hs",
+    "lines": [
+     336,
+     336
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "TextCostedByByteLength"
+   }
+  ],
+  "def uplc.Text#equals": null,
+  "def uplc.Text#hashCode": null,
+  "def uplc.Text#toString": null,
+  "def uplc.Text#utf8": null,
+  "def uplc.Text.fromCodePoints": null,
+  "def uplc.Text.fromString": null,
+  "def uplc.Text.fromUtf8": null,
+  "enum uplc.Text.Invalid": null,
+  "object uplc.Text": null,
+  "val uplc.Text.Replacement": null,
+  "val uplc.Text.empty": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/Text.scala"
+}

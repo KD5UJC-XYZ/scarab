@@ -1,0 +1,254 @@
+{
+ "baseline": {
+  "class protocol.PeerSharing.Limits": null,
+  "def protocol.PeerSharing.Address#toBytes": null,
+  "def protocol.PeerSharing.Values.Amount.saturating": null,
+  "def protocol.PeerSharing.decode": null,
+  "def protocol.PeerSharing.decodePrefix": null,
+  "def protocol.PeerSharing.direction": null,
+  "def protocol.PeerSharing.encode": null,
+  "def protocol.PeerSharing.transition": null,
+  "enum protocol.PeerSharing.Address": null,
+  "enum protocol.PeerSharing.Decoding": null,
+  "enum protocol.PeerSharing.Error": null,
+  "enum protocol.PeerSharing.Expectation": null,
+  "enum protocol.PeerSharing.Field": null,
+  "enum protocol.PeerSharing.Role": null,
+  "given protocol.PeerSharing.Address.given_Ordering_Address": null,
+  "object protocol.PeerSharing.Address": null,
+  "object protocol.PeerSharing.UpstreamTimeLimits": null,
+  "object protocol.PeerSharing.Values": null
+ },
+ "entries": {
+  "enum protocol.PeerSharing.Message": {
+   "class": "Mirror",
+   "digest": "bc24fd8d595a796a",
+   "note": "MsgShareRequest, MsgSharePeers and MsgDone; the reference's peerAddress parameter is fixed to Address, the wire form of the RemoteAddress cardano-diffusion instantiates it with",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Type.hs",
+     "lines": [
+      75,
+      89
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "Message"
+    }
+   ]
+  },
+  "enum protocol.PeerSharing.State": {
+   "class": "Mirror",
+   "digest": "a1b47262619687ed",
+   "note": "StIdle, StBusy, StDone",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Type.hs",
+     "lines": [
+      45,
+      58
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "PeerSharing"
+    }
+   ]
+  },
+  "enum protocol.PeerSharing.Violation": {
+   "class": "Mirror",
+   "digest": "ed0450f8068c3c02",
+   "note": "PeerSharingProtocolViolation PeerSharingAmount Int; the reference throws it from peerSharingClient (PeerSharing.hs:128-130), here it is a typed value",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/lib/Ouroboros/Network/PeerSharing.hs",
+     "lines": [
+      96,
+      100
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "PeerSharingError"
+    }
+   ]
+  },
+  "object protocol.PeerSharing": {
+   "class": "Mirror",
+   "digest": "a5ff280aecb871e4",
+   "note": "its private address reader is decodeRemoteAddress: the address's length is read and ignored, then its tag as a word (0 or 1, any other refused), then one or four Word32 and the port as a Word16; its private writer is encodeRemoteAddress, [0, word32, port] and [1, word32 x 4, port]. The rest converts between the facade's messages and PeerSharingEngine's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/PeerSelection/PeerSharing/Codec.hs",
+     "lines": [
+      29,
+      42
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "encodeRemoteAddress"
+    },
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/PeerSelection/PeerSharing/Codec.hs",
+     "lines": [
+      49,
+      65
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "decodeRemoteAddress"
+    }
+   ]
+  },
+  "type protocol.PeerSharing.Values.Amount": {
+   "class": "Mirror",
+   "digest": "1e21a33f472c5222",
+   "note": "a newtype of Word8; the opaque type holds an Int that its constructors keep in 0..255",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Type.hs",
+     "lines": [
+      29,
+      31
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "PeerSharingAmount"
+    }
+   ]
+  },
+  "val protocol.PeerSharing.MiniProtocolId": {
+   "class": "Mirror",
+   "digest": "bbe8bfb6978bfff8",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "cardano-diffusion/lib/Cardano/Network/NodeToNode.hs",
+     "lines": [
+      487,
+      488
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c5117705f6d5f8ea57ce3e772b6f9c35bfdb9167",
+     "symbol": "peerSharingMiniProtocolNum"
+    }
+   ]
+  },
+  "val protocol.PeerSharing.UpstreamMessageBytes": {
+   "class": "Mirror",
+   "digest": "d772e74dd046abad",
+   "note": "both active states take maxTransmissionUnit, 4 * 1440 = 5760 bytes",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
+     "lines": [
+      130,
+      140
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "byteLimitsPeerSharing"
+    },
+    {
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
+     "lines": [
+      127,
+      128
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "maxTransmissionUnit"
+    }
+   ]
+  },
+  "val protocol.PeerSharing.UpstreamTimeLimits.busy": {
+   "class": "Mirror",
+   "digest": "61552a11253566a9",
+   "note": "StBusy: longWait, 60 seconds",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
+     "lines": [
+      161,
+      161
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "timeLimitForState"
+    },
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/Protocol/Limits.hs",
+     "lines": [
+      114,
+      115
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "longWait"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given protocol.PeerSharing.Values.Amount.given_Ordering_Amount"
+   ],
+   "reason": "Scala ordering of an Amount; the reference's PeerSharingAmount derives Ord"
+  },
+  {
+   "definitions": [
+    "def protocol.PeerSharing.Values.Amount.from",
+    "def protocol.PeerSharing.Values.Amount.trusted",
+    "def protocol.PeerSharing.Values.Amount.value",
+    "object protocol.PeerSharing.Values.Amount",
+    "val protocol.PeerSharing.Values.Amount.Max",
+    "val protocol.PeerSharing.Values.Amount.Zero"
+   ],
+   "reason": "construction of an Amount inside Word8's range, the range of the reference's PeerSharingAmount, and its getAmount accessor; trusted narrows a value the decoder has already checked against Max"
+  },
+  {
+   "definitions": [
+    "def protocol.PeerSharing.decoder"
+   ],
+   "reason": "conversion between Scarab's own types: decodePrefix's Decoding as the multiplexer's ChainSync.DecodeResult"
+  },
+  {
+   "definitions": [
+    "def protocol.PeerSharing.incremental"
+   ],
+   "reason": "how a decoder keeps its progress on a message not all of which has arrived, so that a longer prefix is read on from where it stopped and nothing read whole is read again: the reference keeps that progress in its decoder's continuation (cborg 0.2.10.0 deserialiseIncremental, src/Codec/CBOR/Read.hs:169-172 and 1254-1260; typed-protocols 1.2.2.0 convertCborDecoderLBS, cborg/Network/TypedProtocol/Codec/CBOR.hs:136-164), fed a chunk at a time by runDecoderWithLimit (ouroboros-network framework/lib/Ouroboros/Network/Driver/Limits.hs:281-331 at c45735a5 and 4646039f); here a decoder's cursor holds it as a value. What each codec accepts and refuses, and where, is the codec's as before; each codec's incremental is its decodePrefix as the multiplexer takes it (decodePrefix is it started afresh), the reading itself in the codec's own definitions as before"
+  },
+  {
+   "definitions": [
+    "def protocol.PeerSharing.Error#message",
+    "def protocol.PeerSharing.Violation#message"
+   ],
+   "reason": "text of typed errors for logs, never sent on the wire; the reference's PeerSharingError derives Show"
+  },
+  {
+   "definitions": [
+    "def protocol.PeerSharing.Values.Port.from",
+    "def protocol.PeerSharing.Values.Port.trusted",
+    "def protocol.PeerSharing.Values.Port.value",
+    "def protocol.PeerSharing.Values.Word32.from",
+    "def protocol.PeerSharing.Values.Word32.ofBits",
+    "def protocol.PeerSharing.Values.Word32.trusted",
+    "def protocol.PeerSharing.Values.Word32.value",
+    "object protocol.PeerSharing.Values.Port",
+    "object protocol.PeerSharing.Values.Word32",
+    "type protocol.PeerSharing.Values.Port",
+    "type protocol.PeerSharing.Values.Word32",
+    "val protocol.PeerSharing.Values.Port.Max",
+    "val protocol.PeerSharing.Values.Word32.Max"
+   ],
+   "reason": "the unsigned words of an address on the wire: the reference takes Word32 from base and PortNumber (a Word16 on the wire, PeerSelection/PeerSharing/Codec.hs:15-19) from the network package, neither defined in ouroboros-network; these opaque types and their constructors only hold those ranges and convert from JVM integers"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/PeerSharing.scala"
+}

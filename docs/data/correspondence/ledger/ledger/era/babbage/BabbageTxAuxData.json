@@ -1,0 +1,92 @@
+{
+ "entries": {
+  "def ledger.era.babbage.BabbageTxAuxData.decode": {
+   "class": "Mirror",
+   "digest": "9a4bbadd7be6c3cb",
+   "evidence": [
+    "BabbageTxDifferentialSuite",
+    "BabbageTxSuite"
+   ],
+   "note": "auxiliary data in any of its three forms, the tagged map read in one pass at Babbage's decoder version, 7, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 7; PlutusV4's key 5 is refused as the reference refuses it (`guardPlutus`), where the flat reader refuses it as unknown; held to the flat decoder's verdicts on every Babbage transaction the repository holds (the recorded blocks, the reference's refusal, v1-context and Plutus admission corpora) and on byte mutants of them, and on 576 Babbage rows of the reference's decoder corpora (three of them witness sets at protocol version 8, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (BabbageTxDifferentialSuite), and to its written order on crafted cases (BabbageTxSuite); and to the reference's 140 recorded verdicts on Babbage auxiliary data, each read at its version (decodeAt)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "lines": [
+      210,
+      312
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoTxAuxDataRaw era))"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageTxAuxData.decodeAt": {
+   "class": "Mirror",
+   "digest": "fd605e998047eb80",
+   "evidence": [
+    "BabbageTxDifferentialSuite"
+   ],
+   "note": "the auxiliary data's decoder at a version of Babbage's, 7 or 8, as `decodeFull'` reads at any version: the reference's verdicts at protocol version 8 are read at it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "lines": [
+      210,
+      312
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoTxAuxDataRaw era))"
+    }
+   ]
+  },
+  "type ledger.era.babbage.BabbageTxAuxData": {
+   "class": "Mirror",
+   "digest": "b72b073c4a3368a1",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxAuxData.hs",
+     "lines": [
+      24,
+      24
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoTxAuxData BabbageEra"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxAuxData.instance": {
+   "class": "Mirror",
+   "digest": "e790409d1ef9a75f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxAuxData.hs",
+     "lines": [
+      20,
+      41
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxAuxData BabbageEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.babbage.BabbageTxAuxData.fromItem",
+    "given ledger.era.babbage.BabbageTxAuxData.given_CanEqual_BabbageTxAuxData_BabbageTxAuxData",
+    "object ledger.era.babbage.BabbageTxAuxData"
+   ],
+   "reason": "Babbage's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives, and the index of a purpose; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Babbage's (fromFlat), and the certificate's representation read only in Babbage's files. Scala containers and helpers with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbageTxAuxData.scala"
+}

@@ -1,0 +1,44 @@
+{
+ "entries": {
+  "enum ledger.era.dijkstra.DijkstraTxPart": {
+   "class": "Mirror",
+   "digest": "ca0e6950437742ba",
+   "note": "the labels the translation gives each part's read",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Translation.hs",
+     "lines": [
+      60,
+      62
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "translateEraThroughCBOR \"TxBody\""
+    }
+   ]
+  },
+  "enum ledger.era.dijkstra.DijkstraTxTranslationError": {
+   "class": "Mirror",
+   "digest": "7219268031a1bd9a",
+   "evidence": [
+    "DijkstraTxTranslationSuite"
+   ],
+   "note": "the DecoderError labelled with its part; the cause is the era decoder's typed refusal, not the reference's text",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Translation.hs",
+     "lines": [
+      54,
+      54
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecoderError"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraTxTranslationError.scala"
+}

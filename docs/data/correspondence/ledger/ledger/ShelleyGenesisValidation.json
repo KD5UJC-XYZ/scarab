@@ -1,0 +1,14 @@
+{
+ "baseline": {
+  "class ledger.ShelleyGenesisValidation.Input": null,
+  "def ledger.ShelleyGenesisValidation.ValidationErr#description": null,
+  "def ledger.ShelleyGenesisValidation.ceilingWord64": null,
+  "def ledger.ShelleyGenesisValidation.rationalToDouble": null,
+  "def ledger.ShelleyGenesisValidation.unsignedToDouble": null,
+  "def ledger.ShelleyGenesisValidation.validate": null,
+  "enum ledger.ShelleyGenesisValidation.ValidationErr": null,
+  "object ledger.ShelleyGenesisValidation": null,
+  "val ledger.ShelleyGenesisValidation.KesPeriods": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ShelleyGenesisValidation.scala"
+}

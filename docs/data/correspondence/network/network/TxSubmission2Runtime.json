@@ -1,0 +1,37 @@
+{
+ "baseline": {
+  "class network.TxSubmission2Runtime.Held": null,
+  "class network.TxSubmission2Runtime.ServerSettings": null,
+  "def network.TxSubmission2Runtime.Rules#acknowledge": null,
+  "def network.TxSubmission2Runtime.Rules#bodies": null,
+  "def network.TxSubmission2Runtime.Rules#offers": null,
+  "def network.TxSubmission2Runtime.Sink#known": null,
+  "def network.TxSubmission2Runtime.Sink#submit": null,
+  "def network.TxSubmission2Runtime.Source#after": null,
+  "def network.TxSubmission2Runtime.Source#awaitAfter": null,
+  "def network.TxSubmission2Runtime.Source#body": null,
+  "def network.TxSubmission2Runtime.client": null,
+  "def network.TxSubmission2Runtime.server": null,
+  "def network.TxSubmission2Runtime.validateServerSettings": null,
+  "object network.TxSubmission2Runtime": null,
+  "trait network.TxSubmission2Runtime.Rules": null,
+  "trait network.TxSubmission2Runtime.Sink": null,
+  "trait network.TxSubmission2Runtime.Source": null,
+  "type network.TxSubmission2Runtime.Advertised": null,
+  "type network.TxSubmission2Runtime.Codec": null,
+  "type network.TxSubmission2Runtime.Message": null,
+  "type network.TxSubmission2Runtime.RuleError": null,
+  "type network.TxSubmission2Runtime.State": null,
+  "val network.TxSubmission2Runtime.State": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def network.TxSubmission2Runtime.Rules#requested",
+    "val network.TxSubmission2Runtime.eraRules"
+   ],
+   "reason": "the reference's credit and request rules (TxSubmissionPolicy) over era-tagged ids, comparing them by their hash as OneEraGenTxId's Eq and Ord do, a received transaction answering the request when its id is one asked for"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/TxSubmission2Runtime.scala"
+}

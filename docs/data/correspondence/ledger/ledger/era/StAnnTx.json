@@ -1,0 +1,147 @@
+{
+ "entries": {
+  "class ledger.era.AlonzoStAnnTx": {
+   "class": "Mirror",
+   "digest": "a5b9696b16630f22",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "its level is the family's (`StAnnTx`), which has Conway's at the top level alone, as the reference's GADT has its one constructor",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      556,
+      565
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoStAnnTx"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoStAnnTx.mkAlonzoStAnnTx": {
+   "class": "Mirror",
+   "digest": "56f0b1088423fc43",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the epoch information and the system start as the one clock function of `LedgerTxInfo` (#85's item on its two fields); a function, which `ApplyTx`'s member `mkStAnnTx` is for Conway when the mempool comes",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo.hs",
+     "lines": [
+      125,
+      166
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkAlonzoStAnnTx"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo.hs",
+     "lines": [
+      127,
+      169
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "mkAlonzoStAnnTx"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoStAnnTx.plutusLanguagesUsedAlonzoStAnnTx": {
+   "class": "Mirror",
+   "digest": "f72287041514d928",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      206,
+      214
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "plutusLanguagesUsedAlonzoStAnnTx"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoStAnnTx.plutusScriptsWithContextAlonzoStAnnTx": {
+   "class": "Mirror",
+   "digest": "c5b5fa61269143a6",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      195,
+      204
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "plutusScriptsWithContextAlonzoStAnnTx"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoStAnnTx.scriptsNeededAlonzoStAnnTx": {
+   "class": "Mirror",
+   "digest": "4ee7ea010d279d57",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      186,
+      193
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "scriptsNeededAlonzoStAnnTx"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoStAnnTx.scriptsProvidedAlonzoStAnnTx": {
+   "class": "Mirror",
+   "digest": "bc74d30cb216cba1",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      177,
+      184
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "scriptsProvidedAlonzoStAnnTx"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.AlonzoStAnnTx"
+   ],
+   "reason": "the annotated transaction's and Alonzo's auxiliary data's companions, holding their functions, and the defect of a script the `plutus` module's decoder gives no verdict for, with the flat checks' form of it"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/StAnnTx.scala"
+}

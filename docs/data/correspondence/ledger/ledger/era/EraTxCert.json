@@ -1,0 +1,346 @@
+{
+ "baseline": {
+  "def ledger.era.ConwayEraTxCert#getAuthCommitteeHotKeyTxCert": null,
+  "def ledger.era.ConwayEraTxCert#getDelegTxCert": null,
+  "def ledger.era.ConwayEraTxCert#getRegDRepTxCert": null,
+  "def ledger.era.ConwayEraTxCert#getRegDepositDelegTxCert": null,
+  "def ledger.era.ConwayEraTxCert#getRegDepositTxCert": null,
+  "def ledger.era.ConwayEraTxCert#getResignCommitteeColdTxCert": null,
+  "def ledger.era.ConwayEraTxCert#getUnRegDRepTxCert": null,
+  "def ledger.era.ConwayEraTxCert#getUnRegDepositTxCert": null,
+  "def ledger.era.ConwayEraTxCert#getUpdateDRepTxCert": null,
+  "def ledger.era.ConwayEraTxCert#mkAuthCommitteeHotKeyTxCert": null,
+  "def ledger.era.ConwayEraTxCert#mkDelegTxCert": null,
+  "def ledger.era.ConwayEraTxCert#mkRegDRepTxCert": null,
+  "def ledger.era.ConwayEraTxCert#mkRegDepositDelegTxCert": null,
+  "def ledger.era.ConwayEraTxCert#mkRegDepositTxCert": null,
+  "def ledger.era.ConwayEraTxCert#mkResignCommitteeColdTxCert": null,
+  "def ledger.era.ConwayEraTxCert#mkUnRegDRepTxCert": null,
+  "def ledger.era.ConwayEraTxCert#mkUnRegDepositTxCert": null,
+  "def ledger.era.ConwayEraTxCert#mkUpdateDRepTxCert": null,
+  "def ledger.era.EraTxCert#getRegPoolTxCert": null,
+  "def ledger.era.EraTxCert#getRetirePoolTxCert": null,
+  "def ledger.era.EraTxCert#getScriptWitnessTxCert": null,
+  "def ledger.era.EraTxCert#getVKeyWitnessTxCert": null,
+  "def ledger.era.EraTxCert#lookupRegStakeTxCert": null,
+  "def ledger.era.EraTxCert#lookupUnRegStakeTxCert": null,
+  "def ledger.era.EraTxCert#mkRegPoolTxCert": null,
+  "def ledger.era.EraTxCert#mkRetirePoolTxCert": null,
+  "def ledger.era.ShelleyEraTxCert#getDelegStakeTxCert": null,
+  "def ledger.era.ShelleyEraTxCert#getRegTxCert": null,
+  "def ledger.era.ShelleyEraTxCert#getUnRegTxCert": null,
+  "def ledger.era.ShelleyEraTxCert#mkDelegStakeTxCert": null,
+  "def ledger.era.ShelleyEraTxCert#mkRegTxCert": null,
+  "def ledger.era.ShelleyEraTxCert#mkUnRegTxCert": null,
+  "given ledger.era.EraTxCert.conway": null,
+  "object ledger.era.EraTxCert": null,
+  "trait ledger.era.ConwayEraTxCert": null,
+  "trait ledger.era.EraTxCert": null,
+  "trait ledger.era.ShelleyEraTxCert": null
+ },
+ "entries": {
+  "def ledger.era.ConwayEraTxCert#conwayDRepDepositsTxCerts": {
+   "class": "Mirror",
+   "digest": "f066e90d957a632f",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+     "lines": [
+      828,
+      836
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "conwayDRepDepositsTxCerts"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraTxCert#conwayDRepRefundsTxCerts": {
+   "class": "Mirror",
+   "digest": "197725423e4134af",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+     "lines": [
+      852,
+      858
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "conwayDRepRefundsTxCerts"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraTxCert#conwayTotalDepositsTxCerts": {
+   "class": "Mirror",
+   "digest": "2b223419a43e8264",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+     "lines": [
+      817,
+      826
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "conwayTotalDepositsTxCerts"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraTxCert#conwayTotalRefundsTxCerts": {
+   "class": "Mirror",
+   "digest": "d886ba1047f50a01",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+     "lines": [
+      839,
+      848
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "conwayTotalRefundsTxCerts"
+    }
+   ]
+  },
+  "def ledger.era.EraTxCert#getTotalDepositsTxCerts": {
+   "class": "Mirror",
+   "digest": "563df22e6731a662",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the certificates as an `Iterable`, Scala's form of the reference's `Foldable f`",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxCert.hs",
+     "lines": [
+      91,
+      97
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getTotalDepositsTxCerts"
+    }
+   ]
+  },
+  "def ledger.era.EraTxCert#getTotalRefundsTxCerts": {
+   "class": "Mirror",
+   "digest": "a522e6485b9360d2",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the certificates as an `Iterable`, Scala's form of the reference's `Foldable f`",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxCert.hs",
+     "lines": [
+      100,
+      106
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getTotalRefundsTxCerts"
+    }
+   ]
+  },
+  "def ledger.era.EraTxCert#shelleyTotalDepositsTxCerts": {
+   "class": "Mirror",
+   "digest": "d70bdc269fd9eb18",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      611,
+      630
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "shelleyTotalDepositsTxCerts"
+    }
+   ]
+  },
+  "def ledger.era.EraTxCert#shelleyTotalRefundsTxCerts": {
+   "class": "Mirror",
+   "digest": "186187ab26ee314a",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a protected method of the class, as Scala writes a function over its instance's members",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      633,
+      660
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "shelleyTotalRefundsTxCerts"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyEraTxCertToBabbage#getGenesisDelegTxCert": {
+   "class": "Mirror",
+   "digest": "1116d8cd3b460198",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      165,
+      165
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getGenesisDelegTxCert"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyEraTxCertToBabbage#getMirTxCert": {
+   "class": "Mirror",
+   "digest": "b3ee8557175123d5",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      168,
+      168
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getMirTxCert"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyEraTxCertToBabbage#mkGenesisDelegTxCert": {
+   "class": "Mirror",
+   "digest": "1d042f4caa12bb3e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      164,
+      164
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkGenesisDelegTxCert"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyEraTxCertToBabbage#mkMirTxCert": {
+   "class": "Mirror",
+   "digest": "13eba9b0d5c66ea0",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      167,
+      167
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkMirTxCert"
+    }
+   ]
+  },
+  "given ledger.era.EraTxCert.babbage": {
+   "class": "Mirror",
+   "digest": "5eec85e5f374e6c2",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxCert.hs",
+     "lines": [
+      11,
+      11
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxCert BabbageEra"
+    }
+   ]
+  },
+  "given ledger.era.EraTxCert.dijkstra": {
+   "class": "Mirror",
+   "digest": "4f8f6fb751e0fb8d",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+     "lines": [
+      274,
+      274
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraTxCert DijkstraEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+     "lines": [
+      353,
+      353
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ConwayEraTxCert DijkstraEra"
+    }
+   ]
+  },
+  "trait ledger.era.ShelleyEraTxCertToBabbage": {
+   "class": "Deviation",
+   "digest": "9842099c8f5a1f71",
+   "evidence": [
+    "BabbageTxSuite"
+   ],
+   "note": "the reference's members of `ShelleyEraTxCert` with `AtMostEra \"Babbage\"`, a class of their own whose instances are exactly the eras up to Babbage (approved 2026-11-15, #85)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6895880261",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+     "lines": [
+      154,
+      168
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ShelleyEraTxCert"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/EraTxCert.scala"
+}

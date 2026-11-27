@@ -1,0 +1,63 @@
+{
+ "baseline": {
+  "given ledger.era.conway.ConwayTxAuxData.given_CanEqual_ConwayTxAuxData_ConwayTxAuxData": null,
+  "object ledger.era.conway.ConwayTxAuxData": null,
+  "val ledger.era.conway.ConwayTxAuxData.instance": null
+ },
+ "entries": {
+  "def ledger.era.conway.ConwayTxAuxData.decode": {
+   "class": "Mirror",
+   "digest": "ceaa91bf4076c2b9",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "auxiliary data read in one pass at version 9 in the form its token chooses (decodeTxAuxDataByTokenType): a metadata map, the RecD record, or the map tagged 259, its keys read and refused when repeated before its values are read as written; key 5 is refused as an unknown key where the reference refuses PlutusV4 by guardPlutus, a difference of the diagnostic only. Held to the reference's verdicts, refusals, ids and relayed bytes on every Conway case of the recorded reference corpora (ConwayEraReferenceSuite), and to the two passes it replaced on every recorded transaction, on mutants and on written cases (ConwayOnePassSuite); the first refusal is the two passes', which reads the keys in the flat decoder's order where the reference reads them as written (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "lines": [
+      211,
+      312
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoTxAuxDataRaw era))"
+    }
+   ]
+  },
+  "type ledger.era.conway.ConwayTxAuxData": {
+   "class": "Mirror",
+   "digest": "e1c3b0ce275a8ac6",
+   "evidence": [
+    "EraConwaySuite",
+    "EraCoreSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxAuxData.hs",
+     "lines": [
+      24,
+      24
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoTxAuxData ConwayEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.conway.ConwayTxAuxData.decodeByFlat",
+    "def ledger.era.conway.ConwayTxAuxData.fromItem"
+   ],
+   "reason": "Conway's one-pass decoders (#85): the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses), the output the first phase read with the flat output beside it and its second phase (ConwayTxOut.Read, ConwayTxOut.checked); the two passes they replaced, kept for the differential and the bench until the flat decoder goes at stage 6a (decodeByFlat, fromEnvelopeByFlat); and three readers of the flat decoder made visible to them, unchanged (TxBody.known, TxBody.networkId, Witnesses.exUnits). Scala containers and helpers of the decoders, with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayTxAuxData.scala"
+}

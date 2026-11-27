@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def ledger.ByteStrings.of": null,
+  "def ledger.ByteStrings.reads": null,
+  "enum ledger.ByteStrings": null,
+  "object ledger.ByteStrings": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ByteStrings.scala"
+}

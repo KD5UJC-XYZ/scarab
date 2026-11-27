@@ -1,0 +1,26 @@
+{
+ "baseline": {
+  "class ledger.injection.InjectionLexer.State": null,
+  "class ledger.injection.InjectionLexer.Text": null,
+  "def ledger.injection.InjectionLexer.State#feed": null,
+  "def ledger.injection.InjectionLexer.State#remaining": null,
+  "def ledger.injection.InjectionLexer.Text#feed": null,
+  "def ledger.injection.InjectionLexer.Text#pull": null,
+  "def ledger.injection.InjectionLexer.Text#remaining": null,
+  "def ledger.injection.InjectionLexer.generalNumber": null,
+  "def ledger.injection.InjectionLexer.pull": null,
+  "enum ledger.injection.InjectionLexer.Step": null,
+  "enum ledger.injection.InjectionLexer.TextStep": null,
+  "enum ledger.injection.InjectionLexer.Token": null,
+  "object ledger.injection.InjectionLexer": null,
+  "val ledger.injection.InjectionLexer.State#at": null,
+  "val ledger.injection.InjectionLexer.State#input": null,
+  "val ledger.injection.InjectionLexer.State#mode": null,
+  "val ledger.injection.InjectionLexer.Text#at": null,
+  "val ledger.injection.InjectionLexer.Text#closed": null,
+  "val ledger.injection.InjectionLexer.Text#escaped": null,
+  "val ledger.injection.InjectionLexer.Text#input": null,
+  "val ledger.injection.InjectionLexer.initial": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/injection/InjectionLexer.scala"
+}

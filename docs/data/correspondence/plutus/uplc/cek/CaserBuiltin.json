@@ -1,0 +1,21 @@
+{
+ "baseline": {
+  "def uplc.cek.CaserBuiltin#select": null,
+  "def uplc.cek.CaserBuiltin.forProtocol": null,
+  "enum uplc.cek.CaserBuiltin": [
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Builtin/Case.hs",
+    "lines": [
+     45,
+     50
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "CaserBuiltin"
+   }
+  ],
+  "enum uplc.cek.CaserBuiltin.Selection": null,
+  "object uplc.cek.CaserBuiltin": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cek/CaserBuiltin.scala"
+}

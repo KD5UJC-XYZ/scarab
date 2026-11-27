@@ -1,0 +1,38 @@
+{
+ "baseline": {
+  "class ledger.GovActionId": null,
+  "class ledger.Proposal": null,
+  "class ledger.ProposalIdentity": null,
+  "class ledger.VotingProcedure": null,
+  "def ledger.GovActionId.decode": null,
+  "def ledger.GovActionId.optional": null,
+  "def ledger.Proposal.decode": null,
+  "def ledger.Proposal.identity": null,
+  "def ledger.Voter.decode": null,
+  "def ledger.VotingProcedures.DecodeError#message": null,
+  "def ledger.VotingProcedures.decode": null,
+  "def ledger.VotingProcedures.requireBodyDecodable": null,
+  "enum ledger.ActionIdentity": null,
+  "enum ledger.GovAction": null,
+  "enum ledger.Vote": null,
+  "enum ledger.Voter": null,
+  "enum ledger.VotingProcedures.DecodeError": null,
+  "given ledger.GovActionId.ordering": null,
+  "given ledger.Voter.order": null,
+  "given ledger.Voter.ordering": null,
+  "object ledger.GovActionId": null,
+  "object ledger.Proposal": null,
+  "object ledger.Voter": null,
+  "object ledger.VotingProcedures": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.ProposalIdentity.given_Ordering_ProposalIdentity",
+    "object ledger.ProposalIdentity"
+   ],
+   "reason": "the orders an ordered set of certificates or proposals sorts its elements' identities with to find repeats, so that the check costs a sort whatever their hash codes; the reference finds them with the derived `Ord` (`decodeOSet`, `libs/cardano-data/src/Data/OSet/Strict.hs:109-116`, cardano-ledger 29a7d656) and only its equality decides, so these orders, which agree with Scarab's equality of each type and order nothing else, have no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Governance.scala"
+}

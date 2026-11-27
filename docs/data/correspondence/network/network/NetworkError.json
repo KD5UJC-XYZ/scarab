@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "type network.NetworkError": null,
+  "val network.NetworkError": null,
+  "val network.Protocols": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/NetworkError.scala"
+}

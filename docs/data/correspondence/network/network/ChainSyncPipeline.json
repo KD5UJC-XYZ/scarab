@@ -1,0 +1,7 @@
+{
+ "baseline": {
+  "def network.ChainSyncPipeline.resource": null,
+  "object network.ChainSyncPipeline": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/ChainSyncPipeline.scala"
+}

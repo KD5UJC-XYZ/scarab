@@ -1,0 +1,130 @@
+{
+ "entries": {
+  "def ledger.era.rules.ConwayEpoch.applyEnactedWithdrawals": {
+   "class": "Mirror",
+   "digest": "24ec4ac0339749b0",
+   "evidence": [
+    "EraEpochGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs",
+     "lines": [
+      213,
+      246
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "applyEnactedWithdrawals"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayEpoch.returnProposalDeposits": {
+   "class": "Mirror",
+   "digest": "1dd3a43a6b59ebce",
+   "evidence": [
+    "EraEpochGovSuite",
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs",
+     "lines": [
+      183,
+      197
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "returnProposalDeposits"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayEpoch.updateCommitteeState": {
+   "class": "Mirror",
+   "digest": "019bf179864f71b4",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs",
+     "lines": [
+      423,
+      427
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "updateCommitteeState"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayEpoch.updateNumDormantEpochs": {
+   "class": "Mirror",
+   "digest": "536e6a1e682eed11",
+   "evidence": [
+    "EraEpochGovSuite",
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Epoch.hs",
+     "lines": [
+      201,
+      205
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "updateNumDormantEpochs"
+    }
+   ]
+  },
+  "val ledger.era.rules.DijkstraEpoch.sts": {
+   "class": "Mirror",
+   "digest": "8a554935a825845d",
+   "evidence": [
+    "DijkstraEpochReferenceSuite",
+    "DijkstraEraEpochGovSuite"
+   ],
+   "note": "the state is the node's epoch state with the era's governance state beside it (EpochGovState), until the ledger state holds the era's record (#85); POOLREAP, HARDFORK and SNAP are the node's rules, SNAP given the era's current parameters as SnapEnv holds them; no event is kept, as the node's EPOCH keeps none; a succ or compactCoinOrError the reference calls error on is a VocabError",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Epoch.hs",
+     "lines": [
+      128,
+      244
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "epochTransition"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.era.rules.EpochGovState",
+    "def ledger.era.rules.EpochGovState.es",
+    "object ledger.era.rules.ConwayEpoch",
+    "object ledger.era.rules.DijkstraEpoch",
+    "object ledger.era.rules.EpochGovState"
+   ],
+   "reason": "Dijkstra's EPOCH on the era types (#85): the epoch state it works on, the node's epoch state with the era's governance state beside it until the ledger state holds the era's record, its lens, and the module objects of EPOCH and of the DRep pulser, whose functions are each mapped by themselves"
+  },
+  {
+   "definitions": [
+    "val ledger.era.rules.DijkstraEpoch.onRecord"
+   ],
+   "reason": "Dijkstra's tick on the node's path (#85, #826): the governance state of a Dijkstra state, the era's record the ledger state holds, taken out before the era's rules and put back after them (StoredGov.onRecord, recordOf), written into the epoch state the node's reward update and RUPD read (synced), the error of the one reading of Conway's flat record into Dijkstra's (StoredGovError, at the translation), the new-epoch state with the era's governance state beside it and its lenses, the module objects of TICK and NEWEPOCH, whose rules are each mapped by themselves, and the node's layout fields of the new-epoch state that NEWEPOCH sets"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/Epoch.scala"
+}

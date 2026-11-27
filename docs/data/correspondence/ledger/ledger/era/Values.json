@@ -1,0 +1,420 @@
+{
+ "baseline": {
+  "def ledger.era.AdaValue.apply": null,
+  "def ledger.era.AdaValue.lovelace": null,
+  "def ledger.era.AdaValue.toMultiAsset": null,
+  "def ledger.era.MultiAssetValue.assets": null,
+  "def ledger.era.MultiAssetValue.lovelace": null,
+  "def ledger.era.MultiAssetValue.of": null,
+  "def ledger.era.MultiAssetValue.ofAda": null,
+  "def ledger.era.MultiAssetValue.stored": null,
+  "def ledger.era.Val#coin": null,
+  "def ledger.era.Val#isAdaOnly": null,
+  "def ledger.era.Val#isZero": null,
+  "def ledger.era.Val#minus": null,
+  "def ledger.era.Val#modifyCoin": null,
+  "def ledger.era.Val#plus": null,
+  "def ledger.era.Val#scale": null,
+  "def ledger.era.Val#zero": null,
+  "given ledger.era.AdaValue.given_Val_AdaValue": null,
+  "given ledger.era.MultiAssetValue.given_Val_MultiAssetValue": null,
+  "object ledger.era.AdaValue": null,
+  "object ledger.era.MultiAssetValue": null,
+  "trait ledger.era.Val": null,
+  "type ledger.era.AdaValue": null,
+  "type ledger.era.MultiAssetValue": null
+ },
+ "entries": {
+  "class ledger.era.CompactValue.AdaOnly": {
+   "class": "Mirror",
+   "digest": "89c8616f1e3a6fff",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      421,
+      421
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CompactValueAdaOnly"
+    }
+   ]
+  },
+  "class ledger.era.CompactValue.MultiAsset": {
+   "class": "Mirror",
+   "digest": "9a3c9fdb4783f15e",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "note": "the count a `Word32` there and an `Int` here, below 1,490 by `isMultiAssetSmallEnough`; the constructor is private to the companion, so that only `to` builds one and `modifyCoin` changes only its lovelace",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      422,
+      425
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CompactValueMultiAsset"
+    }
+   ]
+  },
+  "def ledger.era.CompactValue.from": {
+   "class": "Mirror",
+   "digest": "d417746b8c2f68b2",
+   "evidence": [
+    "TxOutMemPackSuite",
+    "EraValueSuite"
+   ],
+   "note": "the representation is read by `MultiAssetRep.read`, which TxOutMemPackSuite runs on outputs the Haskell node wrote; its refusals of a malformed representation never come, since only `to` builds one and `modifyCoin` keeps it (an ERR-5 kept site)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      730,
+      785
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "from"
+    }
+   ]
+  },
+  "def ledger.era.CompactValue.modifyCoin": {
+   "class": "Mirror",
+   "digest": "2b023f8b1a2105b7",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "note": "MaryValue's `modifyCompactCoin`, which its `Val` instance calls",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      258,
+      262
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "modifyCompactCoin"
+    }
+   ]
+  },
+  "def ledger.era.CompactValue.to": {
+   "class": "Mirror",
+   "digest": "317b3b003b424309",
+   "evidence": [
+    "TxOutMemPackSuite",
+    "EraValueSuite"
+   ],
+   "note": "the representation is written by `MultiAssetRep.build`, whose bytes TxOutMemPackSuite compares with outputs the Haskell node wrote. Three branches no decoded value reaches have no compact form here: assets too many to compact, which the reference only asserts against (588; the assertion is off in the node's build, cardano-ledger-mary's `asserts` flag defaulting to False) and its decoder refuses (329); a representation too long for its Word16 offsets, which only asset names longer than the 32 bytes the reference's decoder allows can make; and a policy id that is not 28 bytes, which the reference's `PolicyID` cannot hold",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      580,
+      700
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "to"
+    }
+   ]
+  },
+  "def ledger.era.Val#coinCompact": {
+   "class": "Mirror",
+   "digest": "5889570122304069",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Val.hs",
+     "lines": [
+      84,
+      84
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "coinCompact"
+    }
+   ]
+  },
+  "def ledger.era.Val#eqv": {
+   "class": "Mirror",
+   "digest": "267af820df5f4ce5",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the superclass `Eq t` of `Val` (`Val.hs:42`) as a member; MaryValue's `pointwise (==)` (`Mary/Value.hs:185-186`) is the equality of two canonical values' coins and maps, and every MultiAssetValue is canonical",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Val.hs",
+     "lines": [
+      30,
+      44
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Val"
+    }
+   ]
+  },
+  "def ledger.era.Val#fromCompact": {
+   "class": "Mirror",
+   "digest": "f46ea63ddf262d90",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "note": "the superclass `Compactible t` of `Val` (`Val.hs:31`) as a member; Coin's is `word64ToCoin` (`Coin.hs:154`), MaryValue's `from`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Compactible.hs",
+     "lines": [
+      37,
+      37
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "fromCompact"
+    }
+   ]
+  },
+  "def ledger.era.Val#inject": {
+   "class": "Mirror",
+   "digest": "d1e795b1abb9e3ae",
+   "note": "the superclass `Inject Coin t` of `Val` (`Val.hs:32`) as a member",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      1032,
+      1033
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "inject"
+    }
+   ]
+  },
+  "def ledger.era.Val#injectCompact": {
+   "class": "Mirror",
+   "digest": "da388108ca746d03",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Val.hs",
+     "lines": [
+      86,
+      86
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "injectCompact"
+    }
+   ]
+  },
+  "def ledger.era.Val#isAdaOnlyCompact": {
+   "class": "Mirror",
+   "digest": "9fe8e304b11ac6a4",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Val.hs",
+     "lines": [
+      82,
+      82
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "isAdaOnlyCompact"
+    }
+   ]
+  },
+  "def ledger.era.Val#modifyCompactCoin": {
+   "class": "Mirror",
+   "digest": "e64bb925ad336abc",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Val.hs",
+     "lines": [
+      88,
+      88
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "modifyCompactCoin"
+    }
+   ]
+  },
+  "def ledger.era.Val#size": {
+   "class": "Mirror",
+   "digest": "186bfe1bd23d8901",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "note": "Coin's is 1 (`Val.hs:112`); MaryValue's (`Mary/Value.hs:226-244`) is `TxChecks.valueWords`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Val.hs",
+     "lines": [
+      71,
+      71
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "size"
+    }
+   ]
+  },
+  "def ledger.era.Val#sumAll": {
+   "class": "Mirror",
+   "digest": "edaec20b042db601",
+   "evidence": [
+    "SharedHashCodeSuite",
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "`mconcat` of the monoid of the superclass `Abelian t` as a member, the fold of `plus` by default; MaryValue's sums its maps as `canonicalMapUnion` does, in sorted maps (`Value.sum`), so a sum of keys sharing a hash code costs their comparisons",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Val.hs",
+     "lines": [
+      30,
+      44
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Val"
+    },
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      165,
+      198
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Monoid MaryValue"
+    },
+    {
+     "file": "libs/cardano-data/src/Data/CanonicalMaps.hs",
+     "lines": [
+      41,
+      66
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "canonicalMapUnion"
+    }
+   ]
+  },
+  "def ledger.era.Val#toCompact": {
+   "class": "Mirror",
+   "digest": "b61d94083ca33801",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "note": "the superclass `Compactible t` of `Val` (`Val.hs:31`) as a member; Coin's is `integerToWord64` (`Coin.hs:153`), MaryValue's `to`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Compactible.hs",
+     "lines": [
+      36,
+      36
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toCompact"
+    }
+   ]
+  },
+  "trait ledger.era.CompactValue": {
+   "class": "Mirror",
+   "digest": "3d3da7cedeef680f",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "note": "the newtype `CompactForm MaryValue` over `CompactValue` is the type itself here (`type Compact = CompactValue` in MultiAssetValue's Val)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      420,
+      426
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CompactValue"
+    },
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      403,
+      404
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CompactForm"
+    }
+   ]
+  },
+  "type ledger.era.Val#Compact": {
+   "class": "Mirror",
+   "digest": "a4c5e1165ec7a1ee",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "note": "the data family `CompactForm t` of the superclass `Compactible t` of `Val` (`Val.hs:31`) as a type member; `CompactCoin` for AdaValue, `CompactValue` for MultiAssetValue",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Compactible.hs",
+     "lines": [
+      35,
+      35
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CompactForm"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.CompactValue"
+   ],
+   "reason": "the companion of the compact multi-asset value, which holds its two constructors and the reference's `to`, `from` and MaryValue's `modifyCompactCoin`, each mapped by itself (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/Values.scala"
+}

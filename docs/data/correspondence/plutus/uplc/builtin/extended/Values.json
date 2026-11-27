@@ -1,0 +1,39 @@
+{
+ "baseline": {
+  "def uplc.builtin.extended.Values.dropPolicies": null,
+  "def uplc.builtin.extended.Values.insertCoin": null,
+  "def uplc.builtin.extended.Values.keepPolicies": null,
+  "def uplc.builtin.extended.Values.lookupCoin": null,
+  "def uplc.builtin.extended.Values.policies": null,
+  "def uplc.builtin.extended.Values.scaleValue": null,
+  "def uplc.builtin.extended.Values.unValueData": null,
+  "def uplc.builtin.extended.Values.unionValue": null,
+  "def uplc.builtin.extended.Values.valueContains": null,
+  "def uplc.builtin.extended.Values.valueData": null,
+  "object uplc.builtin.extended.Values": null,
+  "val uplc.builtin.extended.Values.ValueDataMaxSize": null
+ },
+ "entries": {
+  "val uplc.builtin.extended.Values.PolicyFilterMaxSize": {
+   "class": "Mirror",
+   "digest": "57083b824a44384f",
+   "evidence": [
+    "ValuesSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-core/plutus-core/src/PlutusCore/Value.hs",
+     "lines": [
+      466,
+      469
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "policyFilterMaxSize"
+    }
+   ]
+  }
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/builtin/extended/Values.scala"
+}

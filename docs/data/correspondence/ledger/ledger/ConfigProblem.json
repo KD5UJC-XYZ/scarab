@@ -1,0 +1,24 @@
+{
+ "baseline": {
+  "def ledger.ConfigNumberField#key": null,
+  "def ledger.ConfigProblem#message": null,
+  "def ledger.GenesisFieldError#message": null,
+  "def ledger.GenesisFile#label": null,
+  "def ledger.GenesisNumberField#key": null,
+  "enum ledger.AvvmKeyError": null,
+  "enum ledger.ConfigNumberField": null,
+  "enum ledger.ConfigProblem": null,
+  "enum ledger.GenesisFieldError": null,
+  "enum ledger.GenesisFile": null,
+  "enum ledger.GenesisNumberField": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "enum ledger.LeiosStoreMissing"
+   ],
+   "reason": "why the Leios build's follow has no endorser-block store to open, which the configuration's refusal names (ConfigProblem.LeiosStoreRequired, #54): the reference has an in-memory LeiosDB this build does not, so it has no such refusal"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ConfigProblem.scala"
+}

@@ -1,0 +1,19 @@
+{
+ "baseline": {
+  "def uplc.builtin.extended.Bitwise.byteStringToInteger": null,
+  "def uplc.builtin.extended.Bitwise.combine": null,
+  "def uplc.builtin.extended.Bitwise.complement": null,
+  "def uplc.builtin.extended.Bitwise.countSetBits": null,
+  "def uplc.builtin.extended.Bitwise.findFirstSetBit": null,
+  "def uplc.builtin.extended.Bitwise.integerToByteString": null,
+  "def uplc.builtin.extended.Bitwise.readBit": null,
+  "def uplc.builtin.extended.Bitwise.replicateByte": null,
+  "def uplc.builtin.extended.Bitwise.rotate": null,
+  "def uplc.builtin.extended.Bitwise.shift": null,
+  "def uplc.builtin.extended.Bitwise.writeBits": null,
+  "object uplc.builtin.extended.Bitwise": null,
+  "val uplc.builtin.extended.Bitwise.MaximumInputLength": null,
+  "val uplc.builtin.extended.Bitwise.MaximumOutputLength": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/builtin/extended/Bitwise.scala"
+}

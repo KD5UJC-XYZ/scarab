@@ -30,7 +30,9 @@ commit with its changes, and your branch still holds the original commits. This 
    `python3 scripts/check_test_coverage.py --refresh-fixtures`, a fixture an oracle recorded with its recorder
    (for example `scripts/oracle/genesis-fields/run.py --record`, then `--replay`), and a rendered page with its
    renderer. A JSON register both sides added entries to is joined as JSON: the base's entries plus the ones
-   your commit added, never a line-by-line merge of the two.
+   your commit added, never a line-by-line merge of the two. A correspondence map file is joined the same way,
+   then `python3 scripts/check_correspondence.py --tidy` writes it in its one form
+   ([correspondence map](../design/correspondence-map.md#the-files)).
 6. Check that `git log origin/main..HEAD` lists only the commits of this change, then push with
    `git push --force-with-lease=<your-branch>:<old-head>`.
 7. Run the gates again from step 2 of [run-the-gates-to-ready.md](run-the-gates-to-ready.md) (the level's

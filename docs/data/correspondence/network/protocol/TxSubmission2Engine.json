@@ -1,0 +1,45 @@
+{
+ "baseline": {
+  "class protocol.TxSubmission2Engine.Offer": null,
+  "def protocol.TxSubmission2Engine.Codec#advertisedSize": null,
+  "def protocol.TxSubmission2Engine.Codec#bodyId": null,
+  "def protocol.TxSubmission2Engine.Codec#bodySize": null,
+  "def protocol.TxSubmission2Engine.Codec#decodePrefix": null,
+  "def protocol.TxSubmission2Engine.Codec#encode": null,
+  "def protocol.TxSubmission2Engine.Codec#maxAdvertisedSize": null,
+  "def protocol.TxSubmission2Engine.Codec#maxBatch": null,
+  "def protocol.TxSubmission2Engine.Codec#maxMessageBytes": null,
+  "def protocol.TxSubmission2Engine.Codec#maxOriginalBytes": null,
+  "def protocol.TxSubmission2Engine.Profile#maxAdvertisedSize": null,
+  "def protocol.TxSubmission2Engine.Profile#maxBatch": null,
+  "def protocol.TxSubmission2Engine.Profile#maxMessageBytes": null,
+  "def protocol.TxSubmission2Engine.Profile#maxOriginalBytes": null,
+  "def protocol.TxSubmission2Engine.Profile#readBody": null,
+  "def protocol.TxSubmission2Engine.Profile#readId": null,
+  "def protocol.TxSubmission2Engine.Profile#validateOffer": null,
+  "def protocol.TxSubmission2Engine.Profile#writeBody": null,
+  "def protocol.TxSubmission2Engine.Profile#writeId": null,
+  "def protocol.TxSubmission2Engine.codec": null,
+  "def protocol.TxSubmission2Engine.decode": null,
+  "def protocol.TxSubmission2Engine.decodePrefix": null,
+  "def protocol.TxSubmission2Engine.encode": null,
+  "def protocol.TxSubmission2Engine.fromCodecs": null,
+  "def protocol.TxSubmission2Engine.transition": null,
+  "enum protocol.TxSubmission2Engine.Message": null,
+  "enum protocol.TxSubmission2Engine.State": null,
+  "object protocol.TxSubmission2Engine": null,
+  "trait protocol.TxSubmission2Engine.Codec": null,
+  "trait protocol.TxSubmission2Engine.Profile": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.TxSubmission2Engine.Codec#incremental",
+    "def protocol.TxSubmission2Engine.incremental",
+    "enum protocol.TxSubmission2Engine.Kept"
+   ],
+   "reason": "how a decoder keeps its progress on a message not all of which has arrived, so that a longer prefix is read on from where it stopped and nothing read whole is read again: the reference keeps that progress in its decoder's continuation (cborg 0.2.10.0 deserialiseIncremental, src/Codec/CBOR/Read.hs:169-172 and 1254-1260; typed-protocols 1.2.2.0 convertCborDecoderLBS, cborg/Network/TypedProtocol/Codec/CBOR.hs:136-164), fed a chunk at a time by runDecoderWithLimit (ouroboros-network framework/lib/Ouroboros/Network/Driver/Limits.hs:281-331 at c45735a5 and 4646039f); here a decoder's cursor holds it as a value. What each codec accepts and refuses, and where, is the codec's as before; each codec's incremental is its decodePrefix as the multiplexer takes it (decodePrefix is it started afresh), the reading itself in the codec's own definitions as before"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/TxSubmission2Engine.scala"
+}

@@ -1,0 +1,584 @@
+{
+ "baseline": {
+  "class ledger.era.TimelockScripts": null,
+  "def ledger.era.AllegraEraScript#getTimeExpire": null,
+  "def ledger.era.AllegraEraScript#getTimeStart": null,
+  "def ledger.era.AlonzoEraScript#eraMaxLanguage": null,
+  "def ledger.era.AlonzoEraScript#fromPlutusScript": null,
+  "def ledger.era.AlonzoEraScript#toPlutusScript": null,
+  "def ledger.era.ConwayEraScript#mkProposingPurpose": null,
+  "def ledger.era.ConwayEraScript#mkVotingPurpose": null,
+  "def ledger.era.ConwayEraScript#toProposingPurpose": null,
+  "def ledger.era.ConwayEraScript#toVotingPurpose": null,
+  "def ledger.era.EraScript#fromNativeScript": null,
+  "def ledger.era.EraScript#getNativeScript": null,
+  "def ledger.era.EraScript#hashScript": null,
+  "def ledger.era.EraScript#originalBytes": null,
+  "def ledger.era.EraScript#scriptPrefixTag": null,
+  "def ledger.era.ShelleyEraScript#getRequireAllOf": null,
+  "def ledger.era.ShelleyEraScript#getRequireAnyOf": null,
+  "def ledger.era.ShelleyEraScript#getRequireMOf": null,
+  "def ledger.era.ShelleyEraScript#getRequireSignature": null,
+  "def ledger.era.TimelockScripts#getRequireAllOf": null,
+  "def ledger.era.TimelockScripts#getRequireAnyOf": null,
+  "def ledger.era.TimelockScripts#getRequireMOf": null,
+  "def ledger.era.TimelockScripts#getRequireSignature": null,
+  "def ledger.era.TimelockScripts#getTimeExpire": null,
+  "def ledger.era.TimelockScripts#getTimeStart": null,
+  "def ledger.era.TimelockScripts#ofTimelock": null,
+  "def ledger.era.TimelockScripts#timelock": null,
+  "given ledger.era.EraScript.allegra": null,
+  "given ledger.era.EraScript.babbage": null,
+  "given ledger.era.EraScript.conway": null,
+  "given ledger.era.EraScript.dijkstra": null,
+  "given ledger.era.EraScript.mary": null,
+  "object ledger.era.EraScript": null,
+  "trait ledger.era.AllegraEraScript": null,
+  "trait ledger.era.AlonzoEraScript": null,
+  "trait ledger.era.ConwayEraScript": null,
+  "trait ledger.era.EraScript": null,
+  "trait ledger.era.ShelleyEraScript": null
+ },
+ "entries": {
+  "def ledger.era.AlonzoEraScript#hoistPlutusPurpose": {
+   "class": "Mirror",
+   "digest": "6ed9feb6cbac2fce",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayUtxowChecksSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      200,
+      203
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hoistPlutusPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraScript#mkCertifyingPurpose": {
+   "class": "Mirror",
+   "digest": "7815b889f7b40c16",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      213,
+      213
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkCertifyingPurpose"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      215,
+      215
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkCertifyingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraScript#mkMintingPurpose": {
+   "class": "Mirror",
+   "digest": "a6e1d243eea75034",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      209,
+      209
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkMintingPurpose"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      211,
+      211
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkMintingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraScript#mkRewardingPurpose": {
+   "class": "Mirror",
+   "digest": "35f56a02a550d84b",
+   "evidence": [
+    "BabbagePlutusContextSuite"
+   ],
+   "note": "the class's default, the withdrawing purpose's under its earlier name, which the reference deprecates in its favour; final, as no instance overrides it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      221,
+      222
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkRewardingPurpose"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      223,
+      224
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkRewardingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraScript#mkSpendingPurpose": {
+   "class": "Mirror",
+   "digest": "7c3b6d98680a53d5",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      205,
+      205
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkSpendingPurpose"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      207,
+      207
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkSpendingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraScript#mkWithdrawingPurpose": {
+   "class": "Mirror",
+   "digest": "1c599dfc447360dc",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      217,
+      217
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkWithdrawingPurpose"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      219,
+      219
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkWithdrawingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraScript#toCertifyingPurpose": {
+   "class": "Mirror",
+   "digest": "5cc70afb32f03680",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      215,
+      215
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toCertifyingPurpose"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      217,
+      217
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "toCertifyingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraScript#toMintingPurpose": {
+   "class": "Mirror",
+   "digest": "efc1b3cfa2af2ffc",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      211,
+      211
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toMintingPurpose"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      213,
+      213
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "toMintingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraScript#toRewardingPurpose": {
+   "class": "Mirror",
+   "digest": "e9ac9d9ce799fb4f",
+   "evidence": [
+    "BabbagePlutusContextSuite"
+   ],
+   "note": "the class's default, the withdrawing purpose's under its earlier name, which the reference deprecates in its favour; final, as no instance overrides it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      224,
+      225
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toRewardingPurpose"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      226,
+      227
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "toRewardingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraScript#toSpendingPurpose": {
+   "class": "Mirror",
+   "digest": "a194635483800660",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      207,
+      207
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toSpendingPurpose"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      209,
+      209
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "toSpendingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraScript#toWithdrawingPurpose": {
+   "class": "Mirror",
+   "digest": "802cfd177073160f",
+   "evidence": [
+    "EraConwaySuite",
+    "DijkstraPlutusPurposeSuite",
+    "DijkstraTxSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the reference's `AlonzoEraScript` member; Babbage's instance is Alonzo's purpose (`Babbage/Scripts.hs:74-98` at f649f975), Conway's and Dijkstra's are the reference's (`Conway/Scripts.hs:111-137` at f649f975, `Dijkstra/Scripts.hs:499-526` at 9df9f98c)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      219,
+      219
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toWithdrawingPurpose"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      221,
+      221
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "toWithdrawingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraScript#withPlutusScript": {
+   "class": "Mirror",
+   "digest": "f155bf252d05705a",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "the rank-2 function is a polymorphic function given the language's class (PlutusLanguage l) as an argument",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      195,
+      198
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "withPlutusScript"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoScripts.lookupPlutusScript": {
+   "class": "Mirror",
+   "digest": "8da0de4cf05b774b",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      745,
+      750
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "lookupPlutusScript"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoScripts.plutusScriptLanguage": {
+   "class": "Mirror",
+   "digest": "8d948dc7eda4f606",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      267,
+      268
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "plutusScriptLanguage"
+    }
+   ]
+  },
+  "def ledger.era.DijkstraEraScript#getRequireGuard": {
+   "class": "Gap",
+   "digest": "781ca37aa88255d1",
+   "evidence": [
+    "DijkstraPlutusPurposeSuite"
+   ],
+   "note": "the node's credential, as the native script reads it, where the reference's is a Credential Guard",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "lines": [
+      572,
+      572
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "getRequireGuard"
+    }
+   ]
+  },
+  "def ledger.era.DijkstraEraScript#mkGuardingPurpose": {
+   "class": "Mirror",
+   "digest": "5a6d52691f178c73",
+   "evidence": [
+    "DijkstraPlutusPurposeSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "lines": [
+      568,
+      568
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkGuardingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.DijkstraEraScript#toGuardingPurpose": {
+   "class": "Mirror",
+   "digest": "6a941b501b835a96",
+   "evidence": [
+    "DijkstraPlutusPurposeSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "lines": [
+      569,
+      569
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "toGuardingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.EraScript.isNativeScript": {
+   "class": "Mirror",
+   "digest": "fe570a46b956c810",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      599,
+      600
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "isNativeScript"
+    }
+   ]
+  },
+  "trait ledger.era.DijkstraEraScript": {
+   "class": "Gap",
+   "digest": "9deb25aac7613ce5",
+   "evidence": [
+    "DijkstraPlutusPurposeSuite"
+   ],
+   "note": "mkRequireGuard is not here, as no native-script builder is",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888255792",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "lines": [
+      567,
+      572
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraEraScript"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.AlonzoScripts"
+   ],
+   "reason": "objects that stand for the reference's modules of functions (`Alonzo/Scripts.hs`, `State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`, the `TxInfo.hs` and `Context.hs` of the script context, the `Indexable` instances of `Alonzo/TxBody.hs`, plutus-ledger-api's `V1` to `V4`, plutus-tx's `Ratio`), which Scala needs to hold top-level functions under a name"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/EraScript.scala"
+}

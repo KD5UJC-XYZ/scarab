@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "def ledger.ProviderDefect#cause": null,
+  "def ledger.ProviderDefect#message": null,
+  "def ledger.ProviderDefect.kes": null,
+  "def ledger.ProviderDefect.ofVrf": null,
+  "def ledger.ProviderDefect.opCert": null,
+  "def ledger.ProviderDefect.vrf": null,
+  "def ledger.ProviderDefect.vrfInput": null,
+  "def ledger.ProviderDefect.witness": null,
+  "enum ledger.ProviderDefect": null,
+  "object ledger.ProviderDefect": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ProviderDefect.scala"
+}

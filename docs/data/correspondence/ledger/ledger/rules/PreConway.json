@@ -1,0 +1,26 @@
+{
+ "baseline": {
+  "def ledger.rules.PreConway#atLeast": null,
+  "def ledger.rules.PreConway#cert": null,
+  "def ledger.rules.PreConway#certIs": null,
+  "def ledger.rules.PreConway#curPParams": null,
+  "def ledger.rules.PreConway#dState": null,
+  "def ledger.rules.PreConway#era": null,
+  "def ledger.rules.PreConway#gov": null,
+  "def ledger.rules.PreConway#govIs": null,
+  "def ledger.rules.PreConway#instantStake": null,
+  "def ledger.rules.PreConway#pState": null,
+  "def ledger.rules.PreConway#stakeIs": null,
+  "def ledger.rules.PreConway.apply": null,
+  "def ledger.rules.PreConway.genDelegs": null,
+  "def ledger.rules.PreConway.of": null,
+  "given ledger.rules.PreConway.given_PreConway_Allegra": null,
+  "given ledger.rules.PreConway.given_PreConway_Alonzo": null,
+  "given ledger.rules.PreConway.given_PreConway_Babbage": null,
+  "given ledger.rules.PreConway.given_PreConway_Mary": null,
+  "given ledger.rules.PreConway.given_PreConway_Shelley": null,
+  "object ledger.rules.PreConway": null,
+  "trait ledger.rules.PreConway": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/PreConway.scala"
+}

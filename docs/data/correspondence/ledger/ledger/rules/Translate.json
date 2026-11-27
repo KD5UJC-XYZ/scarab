@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "def ledger.rules.EraNes.epoch": null,
+  "def ledger.rules.EraNes.eraOf": null,
+  "def ledger.rules.EraNes.mapUtxo": null,
+  "def ledger.rules.EraNes.toEra": null,
+  "def ledger.rules.Translate.allegraToMary": null,
+  "def ledger.rules.Translate.alonzoToBabbage": null,
+  "def ledger.rules.Translate.babbageToConway": null,
+  "def ledger.rules.Translate.conwayToDijkstra": null,
+  "def ledger.rules.Translate.maryToAlonzo": null,
+  "def ledger.rules.Translate.next": null,
+  "def ledger.rules.Translate.populateVRFKeyHashes": null,
+  "def ledger.rules.Translate.reencodedInDijkstra": null,
+  "def ledger.rules.Translate.shelleyToAllegra": null,
+  "def ledger.rules.Translate.upgradeTxOut": null,
+  "def ledger.rules.Translate.upgradeUtxo": null,
+  "enum ledger.rules.EraNes": null,
+  "object ledger.rules.EraNes": null,
+  "object ledger.rules.Translate": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Translate.scala"
+}

@@ -1,0 +1,73 @@
+{
+ "baseline": {
+  "def ledger.GenesisSchema.alonzo": null,
+  "def ledger.GenesisSchema.conway": null,
+  "def ledger.GenesisSchema.ratio": null,
+  "def ledger.GenesisSchema.shelley": null,
+  "def ledger.GenesisSchema.unit": null,
+  "def ledger.GenesisSchema.updateQuorum": null,
+  "object ledger.GenesisSchema": null
+ },
+ "entries": {
+  "def ledger.GenesisSchema.networkMagic": {
+   "class": "Mirror",
+   "digest": "75b728dedfdb68d6",
+   "note": "the genesis's networkMagic read as FromJSON ShelleyGenesis reads it, a Word32 (FromJSON Word32, parseBoundedIntegral), refused as GenesisSchema.shelley refuses the field, so Genesis.shelley refuses it before networkId (#1334)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "lines": [
+      309,
+      309
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "sgNetworkMagic"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "lines": [
+      494,
+      518
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "parseJSON"
+    }
+   ]
+  },
+  "def ledger.GenesisSchema.systemStart": {
+   "class": "Mirror",
+   "digest": "28fe885cb5de0ff9",
+   "evidence": [
+    "SystemStartSuite"
+   ],
+   "note": "the Shelley genesis's systemStart read first, as parseJSON reads it, after the root is checked to be an object (withObject), refused as GenesisSchema.shelley refuses the root and the field (missing, or not a string); its reading as a UTCTime is Genesis.shelley's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "lines": [
+      308,
+      308
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "sgSystemStart"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Genesis.hs",
+     "lines": [
+      494,
+      518
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "parseJSON"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/GenesisSchema.scala"
+}

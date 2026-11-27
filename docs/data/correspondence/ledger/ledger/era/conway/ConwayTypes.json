@@ -1,0 +1,151 @@
+{
+ "baseline": {
+  "class ledger.era.conway.ConwayTxBody": null,
+  "def ledger.era.conway.ConwayPlutusScript#binary": null,
+  "def ledger.era.conway.ConwayPlutusScript#kind": null,
+  "def ledger.era.conway.ConwayPlutusScript.of": null,
+  "def ledger.era.conway.ConwayPlutusScript.translate": null,
+  "def ledger.era.conway.ConwayScript.decode": null,
+  "def ledger.era.conway.ConwayScript.native": null,
+  "def ledger.era.conway.ConwayScript.plutus": null,
+  "def ledger.era.conway.ConwayScript.read": null,
+  "def ledger.era.conway.ConwayScript.rep": null,
+  "def ledger.era.conway.ConwayScript.translate": null,
+  "def ledger.era.conway.ConwayTimelock.decode": null,
+  "def ledger.era.conway.ConwayTimelock.read": null,
+  "def ledger.era.conway.ConwayTimelock.rep": null,
+  "def ledger.era.conway.ConwayTimelock.translate": null,
+  "def ledger.era.conway.ConwayTxBody#equals": null,
+  "def ledger.era.conway.ConwayTxBody#hashCode": null,
+  "def ledger.era.conway.ConwayTxBody#toString": null,
+  "def ledger.era.conway.ConwayTxOut.fromStored": null,
+  "def ledger.era.conway.ConwayTxOut.rep": null,
+  "def ledger.era.conway.ConwayTxOut.toStored": null,
+  "def ledger.era.conway.ConwayTxOut.translate": null,
+  "enum ledger.era.conway.ConwayPlutusScript": null,
+  "given ledger.era.conway.ConwayPlutusScript.given_CanEqual_ConwayPlutusScript_ConwayPlutusScript": null,
+  "given ledger.era.conway.ConwayScript.given_CanEqual_ConwayScript_ConwayScript": null,
+  "given ledger.era.conway.ConwayTimelock.given_CanEqual_ConwayTimelock_ConwayTimelock": null,
+  "given ledger.era.conway.ConwayTxBody.given_CanEqual_ConwayTxBody_ConwayTxBody": null,
+  "given ledger.era.conway.ConwayTxOut.given_CanEqual_ConwayTxOut_ConwayTxOut": null,
+  "object ledger.era.conway.ConwayPlutusScript": null,
+  "object ledger.era.conway.ConwayScript": null,
+  "object ledger.era.conway.ConwayTimelock": null,
+  "object ledger.era.conway.ConwayTxBody": null,
+  "object ledger.era.conway.ConwayTxOut": null,
+  "type ledger.era.conway.ConwayScript": null,
+  "type ledger.era.conway.ConwayTimelock": null,
+  "type ledger.era.conway.ConwayTxOut": null,
+  "val ledger.era.conway.ConwayScript.instance": null,
+  "val ledger.era.conway.ConwayTxBody#auxDataHash": null,
+  "val ledger.era.conway.ConwayTxBody#certs": null,
+  "val ledger.era.conway.ConwayTxBody#collateralInputs": null,
+  "val ledger.era.conway.ConwayTxBody#collateralReturn": null,
+  "val ledger.era.conway.ConwayTxBody#currentTreasuryValue": null,
+  "val ledger.era.conway.ConwayTxBody#fee": null,
+  "val ledger.era.conway.ConwayTxBody#id": null,
+  "val ledger.era.conway.ConwayTxBody#mint": null,
+  "val ledger.era.conway.ConwayTxBody#networkId": null,
+  "val ledger.era.conway.ConwayTxBody#outputs": null,
+  "val ledger.era.conway.ConwayTxBody#proposalProcedures": null,
+  "val ledger.era.conway.ConwayTxBody#raw": null,
+  "val ledger.era.conway.ConwayTxBody#referenceInputs": null,
+  "val ledger.era.conway.ConwayTxBody#reqSignerHashes": null,
+  "val ledger.era.conway.ConwayTxBody#scriptIntegrityHash": null,
+  "val ledger.era.conway.ConwayTxBody#spendInputs": null,
+  "val ledger.era.conway.ConwayTxBody#totalCollateral": null,
+  "val ledger.era.conway.ConwayTxBody#treasuryDonation": null,
+  "val ledger.era.conway.ConwayTxBody#validity": null,
+  "val ledger.era.conway.ConwayTxBody#votingProcedures": null,
+  "val ledger.era.conway.ConwayTxBody#withdrawals": null,
+  "val ledger.era.conway.ConwayTxBody.instance": null,
+  "val ledger.era.conway.ConwayTxOut.instance": null
+ },
+ "entries": {
+  "def ledger.era.conway.ConwayTxBody.conwayRedeemerPointerInverse": {
+   "class": "Mirror",
+   "digest": "ecc1fa6a98f6d4e2",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the policies minted read in their order, as the set `mintedTxBodyF` is",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs",
+     "lines": [
+      662,
+      679
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "conwayRedeemerPointerInverse"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxBody.decode": {
+   "class": "Mirror",
+   "digest": "0bb72b852857d871",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "a body read in one pass at decoder version 9: the bytes parsed once (again with the detached records a walk finds, where the plain parse is refused), the flat decoder's keys, leaf readers and refusals in its order, each output by ConwayTxOut.read, then the era's values in the projection's order (outputs held to their stored form, certificates, withdrawals, proposals, network). Held to the reference's verdicts, refusals, ids and relayed bytes on every Conway case of the recorded reference corpora (ConwayEraReferenceSuite), and to the two passes it replaced on every recorded transaction, on mutants and on written cases (ConwayOnePassSuite); the first refusal is the two passes', which reads the keys in the flat decoder's order where the reference reads them as written (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7162357644)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs",
+     "lines": [
+      180,
+      265
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (ConwayTxBodyRaw l ConwayEra)"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayTxOut.read": {
+   "class": "Mirror",
+   "digest": "06469d6c1a5f5151",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite",
+    "EraConwaySuite"
+   ],
+   "note": "an output of a Conway body read from its item in one pass, with the forms, keys and refusals and their order of the flat output decoder at Conway (TxOut.decode of PairDatumHashOrMap): the map form unless its length is written in eight bytes, the list of two or three; its inline datum read as data once (makeBinaryData, the flat decoder's Data.readBytes with its error) and its reference script once by Conway's script reader, whose refusals at Conway are the flat script reader's; the flat output read from the same item is kept beside it, and the body's second phase holds the output's stored form to it (ConwayTxOut.checked, StoredOutputDiffers) as the projection did. Held to the reference's verdicts and refusals on every Conway case of the recorded reference corpora (ConwayEraReferenceSuite: era-forms, map-heads, conway-decoding and the other output forms and keys), and to the two passes on every recorded transaction, on mutants of them and on written cases (ConwayOnePassSuite)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+     "lines": [
+      542,
+      579
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "decodeBabbageTxOut"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.era.conway.ConwayTxOut.Read",
+    "def ledger.era.conway.ConwayTxBody.decodeByFlat",
+    "def ledger.era.conway.ConwayTxBody.fromItem",
+    "def ledger.era.conway.ConwayTxOut.checked"
+   ],
+   "reason": "Conway's one-pass decoders (#85): the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses), the output the first phase read with the flat output beside it and its second phase (ConwayTxOut.Read, ConwayTxOut.checked); the two passes they replaced, kept for the differential and the bench until the flat decoder goes at stage 6a (decodeByFlat, fromEnvelopeByFlat); and three readers of the flat decoder made visible to them, unchanged (TxBody.known, TxBody.networkId, Witnesses.exUnits). Scala containers and helpers of the decoders, with no counterpart of their own"
+  },
+  {
+   "definitions": [
+    "def ledger.era.conway.ConwayTxOut.fromDecoded"
+   ],
+   "reason": "the reading of an output as an era's from the output the node's decoder read from a block or a transaction (its inline datum read as data, as the reference's `DecCBOR` of `BinaryData` reads it) and from the output the store keeps (taken unread, as its `MemPack`, through the unchecked constructors that ask for the evidence `StoreRead`, which `BabbageTxOutRep.fromStored` alone makes; its callers, each era's `fromStored`, are trusted to pass an output read from the store, as the reference trusts its `MemPack`, until a store that reads the era's outputs itself makes that a type, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6989194084), and the conversions between the era's datum and the stored output's; the reference decodes its output at its era's type and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayTypes.scala"
+}

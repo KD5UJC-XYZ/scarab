@@ -1,0 +1,22 @@
+{
+ "baseline": {
+  "def ledger.era.dijkstra.DijkstraTxOut.decode": null,
+  "def ledger.era.dijkstra.DijkstraTxOut.read": null,
+  "def ledger.era.dijkstra.DijkstraTxOut.rep": null,
+  "def ledger.era.dijkstra.DijkstraTxOut.translate": null,
+  "given ledger.era.dijkstra.DijkstraTxOut.given_CanEqual_DijkstraTxOut_DijkstraTxOut": null,
+  "object ledger.era.dijkstra.DijkstraTxOut": null,
+  "type ledger.era.dijkstra.DijkstraTxOut": null,
+  "val ledger.era.dijkstra.DijkstraTxOut.instance": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraTxOut.fromStored",
+    "def ledger.era.dijkstra.DijkstraTxOut.toStored"
+   ],
+   "reason": "the conversions between Dijkstra's output and the output the store keeps, and the flat time-lock tree of a native reference script that holds no guard, which the stored output keeps beside its bytes; the reference keeps the era's output itself, its script as its bytes (`MemoBytes`), and has no counterpart (#85, #54)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraTxOut.scala"
+}

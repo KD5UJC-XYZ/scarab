@@ -1,0 +1,39 @@
+{
+ "baseline": {
+  "class network.ProtocolResults": null,
+  "class network.ProtocolResults.Entry": null,
+  "class network.ProtocolResults.Hot": null,
+  "class network.ProtocolResults.MiniProtocolFailure": null,
+  "class network.ProtocolResults.Snapshot": null,
+  "def network.ProtocolResults#abortRunning": null,
+  "def network.ProtocolResults#activateHot": null,
+  "def network.ProtocolResults#awaitAll": null,
+  "def network.ProtocolResults#awaitTermination": null,
+  "def network.ProtocolResults#control": null,
+  "def network.ProtocolResults#notifyChange": null,
+  "def network.ProtocolResults#retireHot": null,
+  "def network.ProtocolResults#snapshot": null,
+  "def network.ProtocolResults#start": null,
+  "def network.ProtocolResults#startHot": null,
+  "def network.ProtocolResults#terminateAll": null,
+  "def network.ProtocolResults#terminateHot": null,
+  "def network.ProtocolResults.Run#complete": null,
+  "def network.ProtocolResults.Snapshot#first": null,
+  "def network.ProtocolResults.create": null,
+  "enum network.ProtocolResults.Control": null,
+  "enum network.ProtocolResults.LastToFinish": null,
+  "enum network.ProtocolResults.Result": null,
+  "enum network.ProtocolResults.Temperature": null,
+  "object network.ProtocolResults": null,
+  "trait network.ProtocolResults.Run": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def network.ProtocolResults#onHotStop"
+   ],
+   "reason": "the Leios answers' Scala plumbing with no counterpart of its own: the fault's rendering and companion, the total constructors of the wire's words, a Word32 by fromIntegral and a slot bounded into a Word64, and the hot stop a client registers so that it reads the governor's Terminate first, which the reference's client reads from controlMessageSTM in the same transaction as its next request (#54)"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/ProtocolResults.scala"
+}

@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def uplc.SemanticsVariant.of": null,
+  "def uplc.SemanticsVariant.ofContext": null,
+  "enum uplc.SemanticsVariant": null,
+  "object uplc.SemanticsVariant": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/SemanticsVariant.scala"
+}

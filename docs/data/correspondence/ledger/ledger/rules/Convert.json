@@ -1,0 +1,24 @@
+{
+ "baseline": {
+  "def ledger.rules.Convert.back": null,
+  "def ledger.rules.Convert.credential": null,
+  "def ledger.rules.Convert.drep": null,
+  "def ledger.rules.Convert.drepBack": null,
+  "def ledger.rules.Convert.keyHash": null,
+  "def ledger.rules.Convert.poolState": null,
+  "object ledger.rules.Convert": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.rules.Convert.accountAddress",
+    "def ledger.rules.Convert.poolParamsBack",
+    "def ledger.rules.Convert.rewardAccountBack",
+    "def ledger.rules.Convert.stakePoolParams",
+    "def ledger.rules.Convert.withdrawals"
+   ],
+   "reason": "the conversions between the node's flat pool parameters, reward accounts and withdrawals and the state's (the flat rules and decoders read the node's, and the state holds the reference's types), each refusal the vocabulary's; and the instances and rendering that hold the state's pool parameters', metadata's and withdrawals' equality, the reference's derived Eq; the metadata of a term a decoder already read, as POOL reads its hash again (held); the decoder version of a stored record's ProtVer; and POOL's refusal of parameters of another layout than the state they go into, a defect the reference, one build, never meets"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Convert.scala"
+}

@@ -1,0 +1,19 @@
+{
+ "baseline": {
+  "def network.DiffTime.-": null,
+  "def network.DiffTime.dividedBy": null,
+  "def network.DiffTime.of": null,
+  "def network.DiffTime.picoseconds": null,
+  "def network.DiffTime.times": null,
+  "def network.DiffTime.toPicoseconds": null,
+  "def network.Word32.fromLong": null,
+  "def network.Word32.fromUnsigned": null,
+  "def network.Word32.toLong": null,
+  "object network.DiffTime": null,
+  "object network.Word32": null,
+  "type network.DiffTime": null,
+  "type network.Word32": null,
+  "val network.DiffTime.Zero": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/DiffTime.scala"
+}

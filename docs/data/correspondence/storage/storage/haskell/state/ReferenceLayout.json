@@ -1,0 +1,13 @@
+{
+ "baseline": {
+  "class storage.haskell.state.ReferenceLayout": null,
+  "def storage.haskell.state.ReferenceLayout#decode": null,
+  "def storage.haskell.state.ReferenceLayout#decodeNative": null,
+  "def storage.haskell.state.ReferenceLayout#encode": null,
+  "def storage.haskell.state.ReferenceLayout#reads": null,
+  "def storage.haskell.state.ReferenceLayout.of": null,
+  "object storage.haskell.state.ReferenceLayout": null,
+  "val storage.haskell.state.ReferenceLayout.Release11_1": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ReferenceLayout.scala"
+}

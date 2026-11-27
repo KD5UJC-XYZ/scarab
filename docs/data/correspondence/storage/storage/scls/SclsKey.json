@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "def storage.scls.SclsKey.decode": null,
+  "def storage.scls.SclsKey.encode": null,
+  "enum storage.scls.SclsKey.Error": null,
+  "enum storage.scls.SclsKey.Key": null,
+  "enum storage.scls.SclsKey.Parameters": null,
+  "enum storage.scls.SclsKey.Purpose": null,
+  "object storage.scls.SclsKey": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsKey.scala"
+}

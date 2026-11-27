@@ -1,0 +1,28 @@
+{
+ "baseline": {
+  "class network.selection.LocalRoots": null,
+  "class network.selection.RootConfig": null,
+  "class network.selection.RootGroup": null,
+  "class network.selection.RootGroupSpec": null,
+  "def network.selection.HotValency.of": null,
+  "def network.selection.HotValency.value": null,
+  "def network.selection.LocalRoots#contains": null,
+  "def network.selection.LocalRoots#isEmpty": null,
+  "def network.selection.LocalRoots#keys": null,
+  "def network.selection.LocalRoots#size": null,
+  "def network.selection.LocalRoots#trustable": null,
+  "def network.selection.LocalRoots.clampToLimit": null,
+  "def network.selection.LocalRoots.clampToTrustable": null,
+  "def network.selection.LocalRoots.empty": null,
+  "def network.selection.LocalRoots.fromGroups": null,
+  "def network.selection.WarmValency.of": null,
+  "def network.selection.WarmValency.value": null,
+  "enum network.selection.DiffusionMode": null,
+  "object network.selection.HotValency": null,
+  "object network.selection.LocalRoots": null,
+  "object network.selection.WarmValency": null,
+  "type network.selection.HotValency": null,
+  "type network.selection.WarmValency": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/LocalRoots.scala"
+}

@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "class ledger.rules.GenesisInjections": null,
+  "class ledger.rules.GenesisPool": null,
+  "def ledger.rules.GenesisInjections.read": null,
+  "def ledger.rules.GenesisStart.alonzoInjectCostModels": null,
+  "def ledger.rules.GenesisStart.inject": null,
+  "def ledger.rules.GenesisStart.ledger": null,
+  "def ledger.rules.GenesisStart.registerInitialFunds": null,
+  "def ledger.rules.GenesisStart.resetStakeDistribution": null,
+  "def ledger.rules.GenesisStart.translateTo": null,
+  "enum ledger.rules.GenesisStartError": null,
+  "object ledger.rules.GenesisInjections": null,
+  "object ledger.rules.GenesisStart": null,
+  "object ledger.rules.GenesisStartError": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/GenesisStart.scala"
+}

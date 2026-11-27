@@ -1,0 +1,13 @@
+{
+ "baseline": {
+  "def ledger.rules.Test.all": null,
+  "def ledger.rules.Test.failureOnJust": null,
+  "def ledger.rules.Test.failureOnNonEmpty": null,
+  "def ledger.rules.Test.failureUnless": null,
+  "def ledger.rules.Test.failures": null,
+  "def ledger.rules.Test.pass": null,
+  "object ledger.rules.Test": null,
+  "type ledger.rules.Test": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Test.scala"
+}

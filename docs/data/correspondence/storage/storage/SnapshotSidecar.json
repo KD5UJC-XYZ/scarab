@@ -1,0 +1,11 @@
+{
+ "baseline": {
+  "class storage.SnapshotSidecar": null,
+  "def storage.SnapshotSidecar.fingerprint": null,
+  "enum storage.SnapshotSidecar.Chain": null,
+  "given storage.SnapshotSidecar.codec": null,
+  "object storage.SnapshotSidecar": null,
+  "val storage.SnapshotSidecar.FingerprintSize": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecar.scala"
+}

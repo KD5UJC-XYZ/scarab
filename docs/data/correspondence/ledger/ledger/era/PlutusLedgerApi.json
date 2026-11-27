@@ -1,0 +1,2795 @@
+{
+ "entries": {
+  "class ledger.era.AssocMap": {
+   "class": "Mirror",
+   "digest": "ca732514f03b4e15",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/AssocMap.hs",
+     "lines": [
+      87,
+      89
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Map"
+    }
+   ]
+  },
+  "class ledger.era.PV1.Address": {
+   "class": "Mirror",
+   "digest": "c2c605a59e905e38",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Address.hs",
+     "lines": [
+      34,
+      38
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Address"
+    }
+   ]
+  },
+  "class ledger.era.PV1.CurrencySymbol": {
+   "class": "Mirror",
+   "digest": "48a750d7b21bb37c",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Value.hs",
+     "lines": [
+      114,
+      117
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "CurrencySymbol"
+    }
+   ]
+  },
+  "class ledger.era.PV1.Datum": {
+   "class": "Mirror",
+   "digest": "9edbd28e4ac7b108",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Scripts.hs",
+     "lines": [
+      64,
+      66
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Datum"
+    }
+   ]
+  },
+  "class ledger.era.PV1.DatumHash": {
+   "class": "Mirror",
+   "digest": "4a0d7be22a628a1a",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Scripts.hs",
+     "lines": [
+      118,
+      129
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "DatumHash"
+    }
+   ]
+  },
+  "class ledger.era.PV1.Interval": {
+   "class": "Mirror",
+   "digest": "7c146f672af5a696",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      82,
+      82
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Interval"
+    }
+   ]
+  },
+  "class ledger.era.PV1.Lovelace": {
+   "class": "Mirror",
+   "digest": "246415ae93d45121",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Value.hs",
+     "lines": [
+      621,
+      625
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Lovelace"
+    }
+   ]
+  },
+  "class ledger.era.PV1.LowerBound": {
+   "class": "Mirror",
+   "digest": "11ca474df5d2c7e8",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      192,
+      192
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "LowerBound"
+    }
+   ]
+  },
+  "class ledger.era.PV1.POSIXTime": {
+   "class": "Mirror",
+   "digest": "e190b3de2ebf6cbc",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Time.hs",
+     "lines": [
+      62,
+      65
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "POSIXTime"
+    }
+   ]
+  },
+  "class ledger.era.PV1.PubKeyHash": {
+   "class": "Mirror",
+   "digest": "2283cd8cd2e68c00",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Crypto.hs",
+     "lines": [
+      36,
+      39
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "PubKeyHash"
+    }
+   ]
+  },
+  "class ledger.era.PV1.Redeemer": {
+   "class": "Mirror",
+   "digest": "f52dc96bb23baa11",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Scripts.hs",
+     "lines": [
+      78,
+      80
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Redeemer"
+    }
+   ]
+  },
+  "class ledger.era.PV1.ScriptContext": {
+   "class": "Mirror",
+   "digest": "4c3d3c5168844fdc",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "lines": [
+      154,
+      159
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ScriptContext"
+    }
+   ]
+  },
+  "class ledger.era.PV1.ScriptHash": {
+   "class": "Mirror",
+   "digest": "80e96f27e8962c14",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Scripts.hs",
+     "lines": [
+      96,
+      107
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ScriptHash"
+    }
+   ]
+  },
+  "class ledger.era.PV1.TokenName": {
+   "class": "Mirror",
+   "digest": "c9962e33b6b1dc91",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Value.hs",
+     "lines": [
+      154,
+      156
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TokenName"
+    }
+   ]
+  },
+  "class ledger.era.PV1.TxId": {
+   "class": "Mirror",
+   "digest": "264c489e73601b94",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Tx.hs",
+     "lines": [
+      62,
+      65
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxId"
+    }
+   ]
+  },
+  "class ledger.era.PV1.TxInInfo": {
+   "class": "Mirror",
+   "digest": "1094ad2cc60c7d14",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "lines": [
+      74,
+      77
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxInInfo"
+    }
+   ]
+  },
+  "class ledger.era.PV1.TxInfo": {
+   "class": "Mirror",
+   "digest": "992402b47098baf2",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "lines": [
+      100,
+      121
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxInfo"
+    }
+   ]
+  },
+  "class ledger.era.PV1.TxOut": {
+   "class": "Mirror",
+   "digest": "34a83c740e1c672a",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Tx.hs",
+     "lines": [
+      111,
+      115
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxOut"
+    }
+   ]
+  },
+  "class ledger.era.PV1.TxOutRef": {
+   "class": "Mirror",
+   "digest": "24c49f2d986cf73f",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Tx.hs",
+     "lines": [
+      95,
+      99
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxOutRef"
+    }
+   ]
+  },
+  "class ledger.era.PV1.UpperBound": {
+   "class": "Mirror",
+   "digest": "59b98dd576668884",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      140,
+      140
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "UpperBound"
+    }
+   ]
+  },
+  "class ledger.era.PV1.Value": {
+   "class": "Mirror",
+   "digest": "345d058ad6e51707",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Value.hs",
+     "lines": [
+      275,
+      278
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Value"
+    }
+   ]
+  },
+  "class ledger.era.PV2.ScriptContext": {
+   "class": "Mirror",
+   "digest": "1598e4c08d6deb65",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Contexts.hs",
+     "lines": [
+      155,
+      160
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ScriptContext"
+    }
+   ]
+  },
+  "class ledger.era.PV2.TxInInfo": {
+   "class": "Mirror",
+   "digest": "d8a1aa7ed65ffb7d",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Contexts.hs",
+     "lines": [
+      66,
+      69
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxInInfo"
+    }
+   ]
+  },
+  "class ledger.era.PV2.TxInfo": {
+   "class": "Mirror",
+   "digest": "9ff348a27fd77042",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Contexts.hs",
+     "lines": [
+      80,
+      107
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxInfo"
+    }
+   ]
+  },
+  "class ledger.era.PV2.TxOut": {
+   "class": "Mirror",
+   "digest": "275e82cdfe2231e8",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Tx.hs",
+     "lines": [
+      79,
+      85
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxOut"
+    }
+   ]
+  },
+  "class ledger.era.PV3.ChangedParameters": {
+   "class": "Mirror",
+   "digest": "2eba050bdb393aad",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      321,
+      321
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ChangedParameters"
+    }
+   ]
+  },
+  "class ledger.era.PV3.ColdCommitteeCredential": {
+   "class": "Mirror",
+   "digest": "53cc9671454d33ba",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      86,
+      86
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ColdCommitteeCredential"
+    }
+   ]
+  },
+  "class ledger.era.PV3.Constitution": {
+   "class": "Mirror",
+   "digest": "72dc49df7171e6bf",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      266,
+      268
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Constitution"
+    }
+   ]
+  },
+  "class ledger.era.PV3.DRepCredential": {
+   "class": "Mirror",
+   "digest": "3780e3eb98e24fbc",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      134,
+      134
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "DRepCredential"
+    }
+   ]
+  },
+  "class ledger.era.PV3.GovernanceActionId": {
+   "class": "Mirror",
+   "digest": "4df4e66f91dcd4d2",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      233,
+      236
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "GovernanceActionId"
+    }
+   ]
+  },
+  "class ledger.era.PV3.HotCommitteeCredential": {
+   "class": "Mirror",
+   "digest": "2f6bdcabc0286da6",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      110,
+      110
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "HotCommitteeCredential"
+    }
+   ]
+  },
+  "class ledger.era.PV3.MintValue": {
+   "class": "Mirror",
+   "digest": "59d858912c76971e",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/MintValue.hs",
+     "lines": [
+      64,
+      67
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "MintValue"
+    }
+   ]
+  },
+  "class ledger.era.PV3.ProposalProcedure": {
+   "class": "Mirror",
+   "digest": "0a32ce3fecc1a2cd",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      367,
+      371
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ProposalProcedure"
+    }
+   ]
+  },
+  "class ledger.era.PV3.ProtocolVersion": {
+   "class": "Mirror",
+   "digest": "a3b285544e7bbae2",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      278,
+      281
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ProtocolVersion"
+    }
+   ]
+  },
+  "class ledger.era.PV3.Rational": {
+   "class": "Mirror",
+   "digest": "048a254ffbad416e",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "PlutusLedgerApiV4Suite"
+   ],
+   "note": "a final class with a private constructor and no product mirror, so a ratio is made only by `ratio` and `fromHaskellRatio`, which keep the reference's invariants: coprime, the denominator positive (TYP-1); equal as the pair is",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/Ratio.hs",
+     "lines": [
+      74,
+      74
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Rational"
+    },
+    {
+     "file": "plutus-tx/src/PlutusTx/Ratio.hs",
+     "lines": [
+      68,
+      74
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "Rational"
+    }
+   ]
+  },
+  "class ledger.era.PV3.ScriptContext": {
+   "class": "Mirror",
+   "digest": "a80532bc9b38353a",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      485,
+      491
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ScriptContext"
+    }
+   ]
+  },
+  "class ledger.era.PV3.TxId": {
+   "class": "Mirror",
+   "digest": "264c489e73601b94",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Tx.hs",
+     "lines": [
+      40,
+      43
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxId"
+    }
+   ]
+  },
+  "class ledger.era.PV3.TxInInfo": {
+   "class": "Mirror",
+   "digest": "9fac0871a4b620c9",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      422,
+      425
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxInInfo"
+    }
+   ]
+  },
+  "class ledger.era.PV3.TxInfo": {
+   "class": "Mirror",
+   "digest": "fdc5f17d72209eb3",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      436,
+      457
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxInfo"
+    }
+   ]
+  },
+  "class ledger.era.PV3.TxOutRef": {
+   "class": "Mirror",
+   "digest": "24c49f2d986cf73f",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Tx.hs",
+     "lines": [
+      63,
+      67
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxOutRef"
+    }
+   ]
+  },
+  "def ledger.era.AssocMap.unionWith": {
+   "class": "Mirror",
+   "digest": "62deca126b920335",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/AssocMap.hs",
+     "lines": [
+      313,
+      328
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "unionWith"
+    }
+   ]
+  },
+  "def ledger.era.PV1.Interval.always": {
+   "class": "Mirror",
+   "digest": "3c75fd00306a964d",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      366,
+      367
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "always"
+    }
+   ]
+  },
+  "def ledger.era.PV1.Interval.from": {
+   "class": "Mirror",
+   "digest": "fea541b300e128a0",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      355,
+      356
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "from"
+    }
+   ]
+  },
+  "def ledger.era.PV1.Interval.to": {
+   "class": "Mirror",
+   "digest": "eee651c46d20fa5d",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      361,
+      362
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "to"
+    }
+   ]
+  },
+  "def ledger.era.PV1.Value#<>": {
+   "class": "Mirror",
+   "digest": "ff8358b96d8a1add",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "`(<>) = unionWith (+)` (`V1/Value.hs:316`)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Value.hs",
+     "lines": [
+      434,
+      444
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "unionWith"
+    }
+   ]
+  },
+  "def ledger.era.PV1.Value.singleton": {
+   "class": "Mirror",
+   "digest": "8341869eea1deef0",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Value.hs",
+     "lines": [
+      386,
+      387
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "singleton"
+    }
+   ]
+  },
+  "def ledger.era.PV1.lowerBound": {
+   "class": "Mirror",
+   "digest": "058b5b22c81a1fc4",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      298,
+      299
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "lowerBound"
+    }
+   ]
+  },
+  "def ledger.era.PV1.strictUpperBound": {
+   "class": "Mirror",
+   "digest": "6965239850d45579",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      286,
+      287
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "strictUpperBound"
+    }
+   ]
+  },
+  "def ledger.era.PV1.upperBound": {
+   "class": "Mirror",
+   "digest": "5fd39086cd1c9363",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      304,
+      305
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "upperBound"
+    }
+   ]
+  },
+  "def ledger.era.PV3.Rational#equals": {
+   "class": "Mirror",
+   "digest": "3c6f86eabadcb1ca",
+   "evidence": [
+    "PlutusLedgerApiV4Suite"
+   ],
+   "note": "the derived `Eq`: by the numerator and the denominator",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/Ratio.hs",
+     "lines": [
+      74,
+      75
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "Rational"
+    }
+   ]
+  },
+  "def ledger.era.PV3.Rational.fromHaskellRatio": {
+   "class": "Mirror",
+   "digest": "ac5bda96253ffcec",
+   "evidence": [
+    "PlutusLedgerApiV4Suite"
+   ],
+   "note": "of the node's exact ratio, which is reduced with a positive denominator, as `unsafeRatio` leaves it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/Ratio.hs",
+     "lines": [
+      389,
+      390
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "fromHaskellRatio"
+    }
+   ]
+  },
+  "def ledger.era.PV3.Rational.ratio": {
+   "class": "Mirror",
+   "digest": "7d19c91f6c682f17",
+   "evidence": [
+    "PlutusLedgerApiV4Suite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/Ratio.hs",
+     "lines": [
+      216,
+      225
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "ratio"
+    }
+   ]
+  },
+  "def ledger.era.ToData#toBuiltinData": {
+   "class": "Mirror",
+   "digest": "9644252c6a88da68",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/IsData/Class.hs",
+     "lines": [
+      45,
+      45
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "toBuiltinData"
+    }
+   ]
+  },
+  "enum ledger.era.PV1.Credential": {
+   "class": "Mirror",
+   "digest": "ce089954c7d42489",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Credential.hs",
+     "lines": [
+      30,
+      37
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Credential"
+    }
+   ]
+  },
+  "enum ledger.era.PV1.DCert": {
+   "class": "Mirror",
+   "digest": "f8d1111234d2d4f1",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/DCert.hs",
+     "lines": [
+      53,
+      73
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "DCert"
+    }
+   ]
+  },
+  "enum ledger.era.PV1.Extended": {
+   "class": "Mirror",
+   "digest": "61d3456075117713",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      117,
+      117
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Extended"
+    }
+   ]
+  },
+  "enum ledger.era.PV1.ScriptPurpose": {
+   "class": "Mirror",
+   "digest": "4d27f9bc55b23826",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "lines": [
+      88,
+      94
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ScriptPurpose"
+    }
+   ]
+  },
+  "enum ledger.era.PV1.StakingCredential": {
+   "class": "Mirror",
+   "digest": "95464e65c64567be",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Credential.hs",
+     "lines": [
+      43,
+      54
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "StakingCredential"
+    }
+   ]
+  },
+  "enum ledger.era.PV2.OutputDatum": {
+   "class": "Mirror",
+   "digest": "77f8b5e48296fb53",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Tx.hs",
+     "lines": [
+      66,
+      66
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "OutputDatum"
+    }
+   ]
+  },
+  "enum ledger.era.PV3.DRep": {
+   "class": "Mirror",
+   "digest": "ee7fc6aa2fb9a668",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      158,
+      161
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "DRep"
+    }
+   ]
+  },
+  "enum ledger.era.PV3.Delegatee": {
+   "class": "Mirror",
+   "digest": "d023d19008c8d712",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      168,
+      171
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Delegatee"
+    }
+   ]
+  },
+  "enum ledger.era.PV3.GovernanceAction": {
+   "class": "Mirror",
+   "digest": "5fd4bd29243cd69e",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      337,
+      360
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "GovernanceAction"
+    }
+   ]
+  },
+  "enum ledger.era.PV3.ScriptInfo": {
+   "class": "Mirror",
+   "digest": "c14f1da579d1d2b3",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      404,
+      418
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ScriptInfo"
+    }
+   ]
+  },
+  "enum ledger.era.PV3.ScriptPurpose": {
+   "class": "Mirror",
+   "digest": "7cd40b7710ceee3c",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      386,
+      400
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ScriptPurpose"
+    }
+   ]
+  },
+  "enum ledger.era.PV3.TxCert": {
+   "class": "Mirror",
+   "digest": "7f456de3d1769b5d",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      178,
+      205
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "TxCert"
+    }
+   ]
+  },
+  "enum ledger.era.PV3.Vote": {
+   "class": "Mirror",
+   "digest": "65973acf2a37911f",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      222,
+      225
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Vote"
+    }
+   ]
+  },
+  "enum ledger.era.PV3.Voter": {
+   "class": "Mirror",
+   "digest": "48ed62ff0ef27afc",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      211,
+      214
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "Voter"
+    }
+   ]
+  },
+  "given ledger.era.AssocMap.toData": {
+   "class": "Mirror",
+   "digest": "7d573af7aea536e1",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/AssocMap.hs",
+     "lines": [
+      101,
+      110
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ToData (Map k v)"
+    }
+   ]
+  },
+  "given ledger.era.PV1.address": {
+   "class": "Mirror",
+   "digest": "5bcaf5e1789bb9ca",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` or `makeIsDataIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Address.hs",
+     "lines": [
+      87,
+      87
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.credential": {
+   "class": "Mirror",
+   "digest": "308c12388fd8c14c",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` or `makeIsDataIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Credential.hs",
+     "lines": [
+      75,
+      75
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.currencySymbol": {
+   "class": "Mirror",
+   "digest": "383e8dd707501e57",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Value.hs",
+     "lines": [
+      114,
+      117
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "deriving newtype"
+    }
+   ]
+  },
+  "given ledger.era.PV1.dCert": {
+   "class": "Mirror",
+   "digest": "d552253d26ce47a2",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/DCert.hs",
+     "lines": [
+      83,
+      93
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.datum": {
+   "class": "Mirror",
+   "digest": "5386727b1eb2fb0a",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Scripts.hs",
+     "lines": [
+      64,
+      66
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "deriving newtype"
+    }
+   ]
+  },
+  "given ledger.era.PV1.datumHash": {
+   "class": "Mirror",
+   "digest": "62683c7bd862eef6",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Scripts.hs",
+     "lines": [
+      118,
+      129
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "deriving newtype"
+    }
+   ]
+  },
+  "given ledger.era.PV1.extended": {
+   "class": "Mirror",
+   "digest": "b4d0c2d39d66606c",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` or `makeIsDataIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      460,
+      460
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.interval": {
+   "class": "Mirror",
+   "digest": "4ef5c74b7cba5d7b",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` or `makeIsDataIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      463,
+      463
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.lovelace": {
+   "class": "Mirror",
+   "digest": "3b42b1a3d8de054c",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Value.hs",
+     "lines": [
+      621,
+      625
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "deriving newtype"
+    }
+   ]
+  },
+  "given ledger.era.PV1.lowerBoundData": {
+   "class": "Mirror",
+   "digest": "2c65821d1cc79469",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` or `makeIsDataIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      462,
+      462
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.posixTime": {
+   "class": "Mirror",
+   "digest": "40f242cc8de77591",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Time.hs",
+     "lines": [
+      62,
+      65
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "deriving newtype"
+    }
+   ]
+  },
+  "given ledger.era.PV1.pubKeyHash": {
+   "class": "Mirror",
+   "digest": "d42c7353e0b2daa2",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Crypto.hs",
+     "lines": [
+      36,
+      39
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "deriving newtype"
+    }
+   ]
+  },
+  "given ledger.era.PV1.redeemer": {
+   "class": "Mirror",
+   "digest": "335db9ea359263c1",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Scripts.hs",
+     "lines": [
+      78,
+      80
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "deriving newtype"
+    }
+   ]
+  },
+  "given ledger.era.PV1.scriptContext": {
+   "class": "Mirror",
+   "digest": "342a08619d609346",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "lines": [
+      314,
+      314
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.scriptHash": {
+   "class": "Mirror",
+   "digest": "968b075fc4fcabdb",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Scripts.hs",
+     "lines": [
+      96,
+      107
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "deriving newtype"
+    }
+   ]
+  },
+  "given ledger.era.PV1.scriptPurpose": {
+   "class": "Mirror",
+   "digest": "ec0f2cb096525332",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "lines": [
+      306,
+      313
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.stakingCredential": {
+   "class": "Mirror",
+   "digest": "bd1ddb920045aac9",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` or `makeIsDataIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Credential.hs",
+     "lines": [
+      76,
+      76
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.stakingCredentialOrdering": {
+   "class": "Mirror",
+   "digest": "843d1965aeade970",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the derived `Ord`, which the V1 and V2 withdrawals are ordered by",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Credential.hs",
+     "lines": [
+      43,
+      54
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "StakingCredential"
+    }
+   ]
+  },
+  "given ledger.era.PV1.tokenName": {
+   "class": "Mirror",
+   "digest": "31e9cdde4035fc7f",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Value.hs",
+     "lines": [
+      154,
+      156
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "deriving newtype"
+    }
+   ]
+  },
+  "given ledger.era.PV1.txId": {
+   "class": "Mirror",
+   "digest": "e5abb1b428d889e3",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` or `makeIsDataIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Tx.hs",
+     "lines": [
+      169,
+      169
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.txInInfo": {
+   "class": "Mirror",
+   "digest": "f85cc33cfa79304b",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "lines": [
+      304,
+      304
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.txInfo": {
+   "class": "Mirror",
+   "digest": "7c974fd03bb61e0b",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Contexts.hs",
+     "lines": [
+      305,
+      305
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.txOut": {
+   "class": "Mirror",
+   "digest": "68fd283e309c0eb6",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Tx.hs",
+     "lines": [
+      170,
+      170
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.txOutRef": {
+   "class": "Mirror",
+   "digest": "5e321a9705fab67d",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` or `makeIsDataIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Tx.hs",
+     "lines": [
+      171,
+      171
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.upperBoundData": {
+   "class": "Mirror",
+   "digest": "c7517dbc76df8a1f",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` or `makeIsDataIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Interval.hs",
+     "lines": [
+      461,
+      461
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV1.value": {
+   "class": "Mirror",
+   "digest": "3a5979a4c22db970",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Value.hs",
+     "lines": [
+      275,
+      278
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "deriving newtype"
+    }
+   ]
+  },
+  "given ledger.era.PV2.outputDatum": {
+   "class": "Mirror",
+   "digest": "4875f17f5036661a",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Tx.hs",
+     "lines": [
+      155,
+      161
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV2.scriptContext": {
+   "class": "Mirror",
+   "digest": "342a08619d609346",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Contexts.hs",
+     "lines": [
+      281,
+      281
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV2.txInInfo": {
+   "class": "Mirror",
+   "digest": "f85cc33cfa79304b",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Contexts.hs",
+     "lines": [
+      279,
+      279
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV2.txInfo": {
+   "class": "Mirror",
+   "digest": "59c995c456a0618d",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Contexts.hs",
+     "lines": [
+      280,
+      280
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV2.txOut": {
+   "class": "Mirror",
+   "digest": "922fd32b1dca4ce9",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V2/Tx.hs",
+     "lines": [
+      162,
+      162
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.changedParameters": {
+   "class": "Mirror",
+   "digest": "c9e748cce3db0dea",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      321,
+      321
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ChangedParameters"
+    }
+   ]
+  },
+  "given ledger.era.PV3.coldCommitteeCredential": {
+   "class": "Mirror",
+   "digest": "106670bebbae1f59",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      86,
+      86
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ColdCommitteeCredential"
+    }
+   ]
+  },
+  "given ledger.era.PV3.constitution": {
+   "class": "Mirror",
+   "digest": "9715cb2d916d4dca",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      692,
+      692
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.dRep": {
+   "class": "Mirror",
+   "digest": "5e0668a705864e37",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      633,
+      639
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.dRepCredential": {
+   "class": "Mirror",
+   "digest": "4460f24772a55ac1",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      134,
+      134
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "DRepCredential"
+    }
+   ]
+  },
+  "given ledger.era.PV3.delegatee": {
+   "class": "Mirror",
+   "digest": "5e9f84944edd96a1",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      642,
+      648
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.governanceAction": {
+   "class": "Mirror",
+   "digest": "b4a0fae0cfbccb53",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      699,
+      709
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.governanceActionId": {
+   "class": "Mirror",
+   "digest": "e53cd00e3f97f852",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      686,
+      686
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.hotCommitteeCredential": {
+   "class": "Mirror",
+   "digest": "ed5fdc3274ee5de2",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      110,
+      110
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "HotCommitteeCredential"
+    }
+   ]
+  },
+  "given ledger.era.PV3.mintValue": {
+   "class": "Mirror",
+   "digest": "0773f1abbb27e163",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/MintValue.hs",
+     "lines": [
+      67,
+      67
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "deriving newtype"
+    }
+   ]
+  },
+  "given ledger.era.PV3.proposalProcedure": {
+   "class": "Mirror",
+   "digest": "17837bc826db0480",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      712,
+      712
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.protocolVersion": {
+   "class": "Mirror",
+   "digest": "5aad229a81f3cb35",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      695,
+      695
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.rational": {
+   "class": "Mirror",
+   "digest": "ffc27f2984d2d149",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the pair's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/Ratio.hs",
+     "lines": [
+      156,
+      158
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ToData Rational"
+    }
+   ]
+  },
+  "given ledger.era.PV3.scriptContext": {
+   "class": "Mirror",
+   "digest": "5817cc005060fd6c",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      748,
+      748
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.scriptInfo": {
+   "class": "Mirror",
+   "digest": "d0c5fc461fd5fd43",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      727,
+      736
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.scriptPurpose": {
+   "class": "Mirror",
+   "digest": "0af9a830d721ebea",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      715,
+      724
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.txCert": {
+   "class": "Mirror",
+   "digest": "3308634e1ade2301",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      651,
+      665
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.txId": {
+   "class": "Mirror",
+   "digest": "46098d99d983ceed",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the newtype's derived instance, its field's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Tx.hs",
+     "lines": [
+      43,
+      43
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "deriving newtype"
+    }
+   ]
+  },
+  "given ledger.era.PV3.txInInfo": {
+   "class": "Mirror",
+   "digest": "f85cc33cfa79304b",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      742,
+      742
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.txInfo": {
+   "class": "Mirror",
+   "digest": "16ef96ab91dc0bdc",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      745,
+      745
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.txOutRef": {
+   "class": "Mirror",
+   "digest": "5e321a9705fab67d",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Tx.hs",
+     "lines": [
+      81,
+      81
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.vote": {
+   "class": "Mirror",
+   "digest": "d0c34620680d29d1",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      677,
+      683
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.PV3.voter": {
+   "class": "Mirror",
+   "digest": "b6a530289acadefb",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "note": "the instance `makeIsDataSchemaIndexed` derives",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V3/Contexts.hs",
+     "lines": [
+      668,
+      674
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.ToData.bool": {
+   "class": "Mirror",
+   "digest": "46c5f12716bc1a05",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/IsData/Instances.hs",
+     "lines": [
+      23,
+      23
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.ToData.builtinByteString": {
+   "class": "Mirror",
+   "digest": "136969332f70640a",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/IsData/Class.hs",
+     "lines": [
+      100,
+      102
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ToData Builtins.BuiltinByteString"
+    }
+   ]
+  },
+  "given ledger.era.ToData.builtinData": {
+   "class": "Mirror",
+   "digest": "9c4a753279686002",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/IsData/Class.hs",
+     "lines": [
+      63,
+      65
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ToData BuiltinData"
+    }
+   ]
+  },
+  "given ledger.era.ToData.integer": {
+   "class": "Mirror",
+   "digest": "8590fa3c0bd58565",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/IsData/Class.hs",
+     "lines": [
+      89,
+      91
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ToData Integer"
+    }
+   ]
+  },
+  "given ledger.era.ToData.list": {
+   "class": "Mirror",
+   "digest": "7e9c3483ed41a708",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/IsData/Class.hs",
+     "lines": [
+      111,
+      121
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ToData [a]"
+    }
+   ]
+  },
+  "given ledger.era.ToData.maybe": {
+   "class": "Mirror",
+   "digest": "7bbd7bf6631454f2",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/IsData/Instances.hs",
+     "lines": [
+      24,
+      24
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "makeIsDataSchemaIndexed"
+    }
+   ]
+  },
+  "given ledger.era.ToData.pair": {
+   "class": "Mirror",
+   "digest": "0dfa7a16a5ff4fea",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/IsData/Instances.hs",
+     "lines": [
+      30,
+      30
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "unstableMakeIsDataSchema"
+    }
+   ]
+  },
+  "trait ledger.era.ToData": {
+   "class": "Mirror",
+   "digest": "73b499b9e989ef52",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-tx/src/PlutusTx/IsData/Class.hs",
+     "lines": [
+      43,
+      45
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "ToData"
+    }
+   ]
+  },
+  "type ledger.era.PV1.POSIXTimeRange": {
+   "class": "Mirror",
+   "digest": "1f92d8a4bea9a62a",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Time.hs",
+     "lines": [
+      88,
+      88
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "POSIXTimeRange"
+    }
+   ]
+  },
+  "val ledger.era.PV1.adaSymbol": {
+   "class": "Mirror",
+   "digest": "604def0bd03c8042",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Value.hs",
+     "lines": [
+      197,
+      198
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "adaSymbol"
+    }
+   ]
+  },
+  "val ledger.era.PV1.adaToken": {
+   "class": "Mirror",
+   "digest": "880a6a079bfbf9e1",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-ledger-api/src/PlutusLedgerApi/V1/Value.hs",
+     "lines": [
+      202,
+      203
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+     "symbol": "adaToken"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.PV3.Rational#hashCode",
+    "def ledger.era.PV3.Rational#toString"
+   ],
+   "reason": "Scala runtime support with no counterpart: a hashCode consistent with the equality the reference derives, and a toString, which the reference's derived Show renders differently"
+  },
+  {
+   "definitions": [
+    "object ledger.era.AssocMap",
+    "object ledger.era.PV1.Interval",
+    "object ledger.era.PV1.Value",
+    "object ledger.era.ToData"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "object ledger.era.PV1",
+    "object ledger.era.PV2",
+    "object ledger.era.PV3",
+    "object ledger.era.PV3.Rational"
+   ],
+   "reason": "objects that stand for the reference's modules of functions (`Alonzo/Scripts.hs`, `State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`, the `TxInfo.hs` and `Context.hs` of the script context, the `Indexable` instances of `Alonzo/TxBody.hs`, plutus-ledger-api's `V1` to `V4`, plutus-tx's `Ratio`), which Scala needs to hold top-level functions under a name"
+  },
+  {
+   "definitions": [
+    "def ledger.era.ToData.apply",
+    "def ledger.era.ToData.toData"
+   ],
+   "reason": "the summoners of the classes `ToPlutusData` and plutus-tx's `ToData`, and their syntax as a method, which Haskell needs none of: `toPlutusData x` and `toBuiltinData x` are the classes' own functions (#85)"
+  },
+  {
+   "definitions": [
+    "val ledger.era.PV1.TxInfo#data",
+    "val ledger.era.PV2.TxInfo#data",
+    "val ledger.era.PV3.TxInfo#data"
+   ],
+   "reason": "values the reference computes lazily or shares, made once here (#85): the scripts of getReferenceScriptsNonDistinct without their hashes, which txNonDistinctRefScriptsSize reads without forcing the lazy hashes; and each script context's info as data (TxInfo's toData), made once for the scripts of a transaction that hold its one info; each language's view of one set of parameters, encoded once for the rules of a block (LanguageViews, mkScriptIntegrity with them, which getLanguageView's are by default); and each language's cost model read once for a transaction's scripts (lookupCostModel in a reading of the models)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/PlutusLedgerApi.scala"
+}

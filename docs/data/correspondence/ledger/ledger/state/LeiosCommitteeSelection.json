@@ -1,0 +1,57 @@
+{
+ "baseline": {
+  "def ledger.state.EpochInterval.fromBigInt": null,
+  "def ledger.state.EpochInterval.ofKes": null,
+  "def ledger.state.EpochInterval.toLong": null,
+  "def ledger.state.LeiosCommitteeSelection.ofMark": null,
+  "def ledger.state.LeiosCommitteeSelection.rotate": null,
+  "def ledger.state.LeiosCommitteeSelection.select": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/LeiosCommittee.hs",
+    "lines": [
+     65,
+     95
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "selectLeiosCommittee"
+   }
+  ],
+  "def ledger.state.LeiosCommitteeSize.fromBigInt": null,
+  "def ledger.state.LeiosCommitteeSize.toInt": null,
+  "def ledger.state.addInterval": null,
+  "enum ledger.state.LeiosCommitteeError": null,
+  "enum ledger.state.LeiosCommitteeError.Parameter": null,
+  "object ledger.state.EpochInterval": null,
+  "object ledger.state.LeiosCommitteeError": null,
+  "object ledger.state.LeiosCommitteeSelection": null,
+  "object ledger.state.LeiosCommitteeSize": null,
+  "type ledger.state.EpochInterval": [
+   {
+    "file": "cardano-slotting/src/Cardano/Slotting/Slot.hs",
+    "lines": [
+     145,
+     152
+    ],
+    "repository": "IntersectMBO/cardano-base",
+    "revision": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+    "symbol": "EpochInterval"
+   }
+  ],
+  "type ledger.state.LeiosCommitteeSize": null,
+  "val ledger.state.EpochInterval.Max": null,
+  "val ledger.state.EpochInterval.one": null,
+  "val ledger.state.EpochInterval.zero": null,
+  "val ledger.state.LeiosCommitteeSize.Max": null,
+  "val ledger.state.LeiosCommitteeSize.zero": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.state.EpochInterval.fromWord32"
+   ],
+   "reason": "Scala machinery with no counterpart: the probe and invariant wrapper that let a match type tell `Identity` from `StrictMaybe`, the names of the parameter groups' singleton types, constants checked when compiled, accessors of opaque types, and the checked constructors' typed refusals"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/LeiosCommitteeSelection.scala"
+}

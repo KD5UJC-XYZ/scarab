@@ -1,0 +1,498 @@
+{
+ "baseline": {
+  "class ledger.era.ValidityInterval": null,
+  "def ledger.era.AllegraEraTxBody#vldt": null,
+  "def ledger.era.AlonzoEraTxBody#collateralInputs": null,
+  "def ledger.era.AlonzoEraTxBody#networkId": null,
+  "def ledger.era.AlonzoEraTxBody#outputsOf": null,
+  "def ledger.era.AlonzoEraTxBody#reqSignerHashes": null,
+  "def ledger.era.AlonzoEraTxBody#scriptIntegrityHash": null,
+  "def ledger.era.BabbageEraTxBody#allSizedOutputs": null,
+  "def ledger.era.BabbageEraTxBody#allSizedOutputsBabbage": null,
+  "def ledger.era.BabbageEraTxBody#collateralReturn": null,
+  "def ledger.era.BabbageEraTxBody#outputsOf": null,
+  "def ledger.era.BabbageEraTxBody#referenceInputs": null,
+  "def ledger.era.BabbageEraTxBody#sizedCollateralReturn": null,
+  "def ledger.era.BabbageEraTxBody#sizedOutputs": null,
+  "def ledger.era.BabbageEraTxBody#totalCollateral": null,
+  "def ledger.era.ConwayEraTxBody#certsOf": null,
+  "def ledger.era.ConwayEraTxBody#currentTreasuryValue": null,
+  "def ledger.era.ConwayEraTxBody#proposalProcedures": null,
+  "def ledger.era.ConwayEraTxBody#scriptsOf": null,
+  "def ledger.era.ConwayEraTxBody#treasuryDonation": null,
+  "def ledger.era.ConwayEraTxBody#votingProcedures": null,
+  "def ledger.era.EraTxBody#auxDataHash": null,
+  "def ledger.era.EraTxBody#certs": null,
+  "def ledger.era.EraTxBody#certsOf": null,
+  "def ledger.era.EraTxBody#fee": null,
+  "def ledger.era.EraTxBody#id": null,
+  "def ledger.era.EraTxBody#inputs": null,
+  "def ledger.era.EraTxBody#outputs": null,
+  "def ledger.era.EraTxBody#outputsOf": null,
+  "def ledger.era.EraTxBody#top": null,
+  "def ledger.era.EraTxBody#withdrawals": null,
+  "def ledger.era.MaryEraTxBody#mint": null,
+  "def ledger.era.MaryEraTxBody#minted": null,
+  "def ledger.era.ShelleyEraTxBody#certsOf": null,
+  "def ledger.era.ShelleyEraTxBody#update": null,
+  "enum ledger.era.EraField": null,
+  "enum ledger.era.EraTxError": null,
+  "given ledger.era.EraTxBody.conway": null,
+  "object ledger.era.EraTxBody": null,
+  "trait ledger.era.AllegraEraTxBody": null,
+  "trait ledger.era.AlonzoEraTxBody": null,
+  "trait ledger.era.BabbageEraTxBody": null,
+  "trait ledger.era.ConwayEraTxBody": null,
+  "trait ledger.era.EraTxBody": null,
+  "trait ledger.era.MaryEraTxBody": null,
+  "trait ledger.era.ShelleyEraTxBody": null,
+  "type ledger.era.EraTxBody#Level": null
+ },
+ "entries": {
+  "def ledger.era.AlonzoEraTxBody#redeemerPointerInverse": {
+   "class": "Mirror",
+   "digest": "3bf795d99dd245f6",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      151,
+      154
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "redeemerPointerInverse"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraTxBodyToConway#reqSignerHashes": {
+   "class": "Mirror",
+   "digest": "5aa3731d47a81b2a",
+   "evidence": [
+    "EraTxSuite",
+    "EraConwaySuite"
+   ],
+   "note": "the default of `reqSignerHashesTxBodyG` for the eras up to Conway, the body's field",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      132,
+      136
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "reqSignerHashesTxBodyG"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraTxBodyToConway#reqSignerHashesField": {
+   "class": "Mirror",
+   "digest": "6f05cf52c076c8e8",
+   "evidence": [
+    "EraTxSuite",
+    "EraConwaySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      130,
+      130
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "reqSignerHashesTxBodyL"
+    }
+   ]
+  },
+  "def ledger.era.BabbageEraTxBody#allInputsBabbage": {
+   "class": "Mirror",
+   "digest": "f29e67b2e5fc4a09",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      231,
+      238
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "babbageAllInputsTxBodyF"
+    }
+   ]
+  },
+  "def ledger.era.BabbageEraTxBody#spendableInputsBabbage": {
+   "class": "Mirror",
+   "digest": "c09e70cb3d8273d6",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      223,
+      229
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "babbageSpendableInputsTxBodyF"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraTxBody#conwayProposalsDeposits": {
+   "class": "Mirror",
+   "digest": "41490f16275fe472",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a method of the class, as Scala writes a function over its instance's members; Dijkstra's produced value calls it, as the reference's `localProducedValue` does",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxBody.hs",
+     "lines": [
+      383,
+      391
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "conwayProposalsDeposits"
+    }
+   ]
+  },
+  "def ledger.era.DijkstraEraTxBody#accountBalanceIntervals": {
+   "class": "Mirror",
+   "digest": "e2ec188f3f2fb125",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1597,
+      1597
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "accountBalanceIntervalsTxBodyL"
+    }
+   ]
+  },
+  "def ledger.era.DijkstraEraTxBody#directDeposits": {
+   "class": "Mirror",
+   "digest": "b306b47b72f3820b",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1595,
+      1595
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "directDepositsTxBodyL"
+    }
+   ]
+  },
+  "def ledger.era.DijkstraEraTxBody#guards": {
+   "class": "Mirror",
+   "digest": "8ec9845ae0fe817d",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1588,
+      1588
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "guardsTxBodyL"
+    }
+   ]
+  },
+  "def ledger.era.DijkstraEraTxBody#requiredTopLevelGuards": {
+   "class": "Mirror",
+   "digest": "4b82aa190d65bed6",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1592,
+      1593
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "requiredTopLevelGuardsTxBodyL"
+    }
+   ]
+  },
+  "def ledger.era.DijkstraEraTxBody#startingAccountBalanceIntervals": {
+   "class": "Mirror",
+   "digest": "6571c90b6dcb63d8",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1599,
+      1599
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "startingAccountBalanceIntervalsTxBodyL"
+    }
+   ]
+  },
+  "def ledger.era.DijkstraEraTxBody#subTransactions": {
+   "class": "Mirror",
+   "digest": "2adabb4bd867fcd7",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1590,
+      1590
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "subTransactionsTxBodyL"
+    }
+   ]
+  },
+  "def ledger.era.EraTxBody#allInputs": {
+   "class": "Mirror",
+   "digest": "19b86fc3f375de5e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      263,
+      263
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "allInputsTxBodyF"
+    }
+   ]
+  },
+  "def ledger.era.EraTxBody#getTotalDepositsTxBody": {
+   "class": "Mirror",
+   "digest": "342d65335253af7b",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      267,
+      277
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getTotalDepositsTxBody"
+    }
+   ]
+  },
+  "def ledger.era.EraTxBody#getTotalRefundsTxBody": {
+   "class": "Mirror",
+   "digest": "49228a73375d0ef5",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      279,
+      289
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getTotalRefundsTxBody"
+    }
+   ]
+  },
+  "def ledger.era.EraTxBody#levelOf": {
+   "class": "Mirror",
+   "digest": "7c313c98d9b23c39",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the era's evidence of the level of a transaction's information, read from the level's information, where the reference's `toSTxLevel . ltiTx` reads the transaction's level. Dijkstra's script contexts read it at both levels (`DijkstraPlutusContextSuite`: the 273 contexts recorded on the testnet's chain, 18 of them in sub-transactions, and the refusals, against the reference's).",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "lines": [
+      130,
+      131
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "HasEraTxLevel LedgerTxInfo"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "lines": [
+      130,
+      131
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "HasEraTxLevel LedgerTxInfo"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxLevel.hs",
+     "lines": [
+      72,
+      73
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "toSTxLevel"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxLevel.hs",
+     "lines": [
+      72,
+      73
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "toSTxLevel"
+    }
+   ]
+  },
+  "def ledger.era.EraTxBody#spendableInputs": {
+   "class": "Mirror",
+   "digest": "69a5aec03184aefd",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      255,
+      258
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "spendableInputsTxBodyF"
+    }
+   ]
+  },
+  "given ledger.era.EraTxBody.babbage": {
+   "class": "Mirror",
+   "digest": "0f242dc5f0a0c213",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      261,
+      261
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxBody BabbageEra"
+    }
+   ]
+  },
+  "trait ledger.era.AlonzoEraTxBodyToConway": {
+   "class": "Deviation",
+   "digest": "1dd21f303b866b5d",
+   "evidence": [
+    "EraTxSuite"
+   ],
+   "note": "the reference's `reqSignerHashesTxBodyL`, a member of `AlonzoEraTxBody` constrained by `AtMostEra \"Conway\"` and filled with `notSupportedInThisEraL` in Dijkstra (`Dijkstra/TxBody.hs:1416`, 9df9f98c), is a class of its own with instances at the eras up to Conway (Conway's alone among the era types), so Dijkstra's body has none; the getter of every era stays on `AlonzoEraTxBody`",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6895880261",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      130,
+      130
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "reqSignerHashesTxBodyL"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      134,
+      134
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "reqSignerHashesTxBodyL"
+    }
+   ]
+  },
+  "trait ledger.era.DijkstraEraTxBody": {
+   "class": "Mirror",
+   "digest": "61f41afc39d97ed0",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxBody.hs",
+     "lines": [
+      1581,
+      1599
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraEraTxBody"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.EraTxBody.dijkstra"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/EraTxBody.scala"
+}

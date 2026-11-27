@@ -1,0 +1,64 @@
+{
+ "baseline": {
+  "def ledger.era.conway.ConwayPlutusPurpose#tag": null,
+  "def ledger.era.conway.ConwayPlutusPurpose.asIx": null,
+  "def ledger.era.conway.ConwayPlutusPurpose.ix": null,
+  "enum ledger.era.conway.ConwayPlutusPurpose": null,
+  "given ledger.era.conway.ConwayPlutusPurpose.ordering": null,
+  "object ledger.era.conway.ConwayPlutusPurpose": null
+ },
+ "entries": {
+  "def ledger.era.conway.ConwayPlutusPurpose.hoistPlutusPurpose": {
+   "class": "Mirror",
+   "digest": "0b79b04b0c98c138",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "Conway's instance of the class member (`AlonzoEraScript`)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs",
+     "lines": [
+      111,
+      117
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hoistPlutusPurpose"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayPlutusPurpose.ofTag": {
+   "class": "Mirror",
+   "digest": "3cfce91f2397f461",
+   "evidence": [
+    "ConwayEraReferenceSuite",
+    "ConwayOnePassSuite"
+   ],
+   "note": "the purpose a redeemer key's tag names, a function of its index, so that the tag is checked before the index is read, as decCBORGroup's decodeWord8 case does; a tag past 5 none, which the witness reader refuses as UnknownTag",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs",
+     "lines": [
+      280,
+      296
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBORGroup (ConwayPlutusPurpose f era)"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.conway.ConwayPlutusPurpose.toStored"
+   ],
+   "reason": "the flat purposes and certificates the case files of --plutus-cases name (ConwayPlutusPurpose.toStored, ConwayTxCert.toStored, read by ConwayPhase2.storedPurposes and storedErrors); a non-empty set of hashes and its order, the bytes', as the reference's derived `Ord` of a hash; and the objects that stand for the reference's Rules/Utxow modules"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayPurpose.scala"
+}

@@ -1,0 +1,13 @@
+{
+ "baseline": {
+  "class storage.SnapshotPolicy.Facts": null,
+  "def storage.SnapshotPolicy.due": null,
+  "def storage.SnapshotPolicy.reference": null,
+  "enum storage.SnapshotPolicy": null,
+  "object storage.SnapshotPolicy": null,
+  "val storage.SnapshotPolicy.ReferenceIntervalPerK": null,
+  "val storage.SnapshotPolicy.ReferenceKeep": null,
+  "val storage.SnapshotPolicy.ReferenceRateLimit": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotPolicy.scala"
+}

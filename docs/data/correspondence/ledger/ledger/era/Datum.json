@@ -1,0 +1,135 @@
+{
+ "entries": {
+  "def ledger.era.BinaryData.binaryDataToData": {
+   "class": "Mirror",
+   "digest": "8f00bc6dafa91349",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "its failure returned where the reference raises `error`: only an inline datum taken unread (`BabbageTxOutRep.fromStored`, through `BinaryData.stored`) can reach it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "lines": [
+      244,
+      249
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "binaryDataToData"
+    }
+   ]
+  },
+  "def ledger.era.BinaryData.bytes": {
+   "class": "Mirror",
+   "digest": "4917a179980546a1",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "`originalBytes` of the newtype's `SafeToHash`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "lines": [
+      211,
+      212
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "SafeToHash"
+    }
+   ]
+  },
+  "def ledger.era.BinaryData.makeBinaryData": {
+   "class": "Mirror",
+   "digest": "ca2f25e5ab4c0be9",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "the bytes read as one item of data (`decodeBinaryData`, lines 235-240, as `Data.decode` reads it), the failure typed where the reference's is a String",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "lines": [
+      227,
+      233
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "makeBinaryData"
+    }
+   ]
+  },
+  "enum ledger.era.Datum": {
+   "class": "Mirror",
+   "digest": "8b1535d68c3e3665",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "not indexed by the era, as the era types' outputs that hold it name their era by their own type",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "lines": [
+      272,
+      275
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Datum"
+    }
+   ]
+  },
+  "type ledger.era.BinaryData": {
+   "class": "Mirror",
+   "digest": "3644778bfda9d808",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "the bytes of an inline datum, its constructor hidden (an opaque type); not indexed by the era, as the era's `Datum` that holds it is not",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "lines": [
+      211,
+      212
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "BinaryData"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.BinaryData.given_CanEqual_BinaryData_BinaryData",
+    "given ledger.era.Datum.given_CanEqual_Era_Era",
+    "object ledger.era.BinaryData",
+    "object ledger.era.Datum"
+   ],
+   "reason": "objects that hold an era's instances of the accounts and certificate-state classes, the reference's functions over those classes (each mapped by itself), or CanEqual; Scala containers with no counterpart (#85)"
+  },
+  {
+   "definitions": [
+    "def ledger.era.BinaryData.stored",
+    "def ledger.era.Datum.decoded",
+    "def ledger.era.Datum.stored",
+    "def ledger.era.Datum.toStored"
+   ],
+   "reason": "the reading of an output as an era's from the output the node's decoder read from a block or a transaction (its inline datum read as data, as the reference's `DecCBOR` of `BinaryData` reads it) and from the output the store keeps (taken unread, as its `MemPack`, through the unchecked constructors that ask for the evidence `StoreRead`, which `BabbageTxOutRep.fromStored` alone makes; its callers, each era's `fromStored`, are trusted to pass an output read from the store, as the reference trusts its `MemPack`, until a store that reads the era's outputs itself makes that a type, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6989194084), and the conversions between the era's datum and the stored output's; the reference decodes its output at its era's type and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/Datum.scala"
+}

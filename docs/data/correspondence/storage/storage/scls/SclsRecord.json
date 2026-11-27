@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "class storage.scls.SclsRecord.Entry": null,
+  "class storage.scls.SclsRecord.NamespaceInfo": null,
+  "class storage.scls.SclsRecord.Summary": null,
+  "def storage.scls.SclsRecord.Namespace#bytes": null,
+  "def storage.scls.SclsRecord.decode": null,
+  "def storage.scls.SclsRecord.encode": null,
+  "def storage.scls.SclsRecord.entries": null,
+  "def storage.scls.SclsRecord.foldEntries": null,
+  "def storage.scls.SclsRecord.foldEntriesM": null,
+  "enum storage.scls.SclsRecord.Error": null,
+  "enum storage.scls.SclsRecord.Namespace": null,
+  "enum storage.scls.SclsRecord.Record": null,
+  "object storage.scls.SclsRecord": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsRecord.scala"
+}

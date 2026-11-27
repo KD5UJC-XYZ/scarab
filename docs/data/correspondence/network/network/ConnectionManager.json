@@ -1,0 +1,68 @@
+{
+ "baseline": {
+  "class network.ConnectionManager.Limits": null,
+  "class network.ConnectionManager.Listed": null,
+  "class network.ConnectionManager.Live": null,
+  "class network.ConnectionManager.Snapshot": null,
+  "class network.Negotiated": null,
+  "def network.Connection#awaitOutboundDemotion": null,
+  "def network.Connection#close": null,
+  "def network.Connection#closed": null,
+  "def network.Connection#connected": null,
+  "def network.Connection#demotedToColdRemote": null,
+  "def network.Connection#handshakeFailed": null,
+  "def network.Connection#id": null,
+  "def network.Connection#negotiated": null,
+  "def network.Connection#promotedToWarmRemote": null,
+  "def network.Connection#provenance": null,
+  "def network.Connection#releaseInbound": null,
+  "def network.Connection#releaseOutbound": null,
+  "def network.Connection#remote": null,
+  "def network.Connection#state": null,
+  "def network.Connection#stopped": null,
+  "def network.Connection#unregisterRemote": null,
+  "def network.Connection#updateRemoteState": null,
+  "def network.ConnectionEvents#emit": null,
+  "def network.ConnectionManager#acquire": null,
+  "def network.ConnectionManager#awaitInboundBelow": null,
+  "def network.ConnectionManager#awaitRemoteStates": null,
+  "def network.ConnectionManager#inboundCount": null,
+  "def network.ConnectionManager#include": null,
+  "def network.ConnectionManager#lookup": null,
+  "def network.ConnectionManager#remoteStates": null,
+  "def network.ConnectionManager#snapshot": null,
+  "def network.ConnectionManager.Snapshot#connections": null,
+  "def network.ConnectionManager.create": null,
+  "def network.ConnectionManager.recordingRefusal": null,
+  "def network.ConnectionManager.resolve": null,
+  "def network.Negotiated#dataFlow": null,
+  "def network.Negotiated#identity": null,
+  "def network.Negotiated#peerSharing": null,
+  "def network.Negotiated#version": null,
+  "enum network.Acquired": null,
+  "enum network.ConnectionEvent": null,
+  "enum network.ConnectionManager.LocalAddress": null,
+  "enum network.OperationResult": null,
+  "enum network.RemoteRelease": null,
+  "object network.ConnectionManager": null,
+  "trait network.Connection": null,
+  "trait network.ConnectionEvents": null,
+  "trait network.ConnectionManager": null,
+  "type network.ConnectionManager.Key": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def network.Connection#exempt"
+   ],
+   "reason": "the governor's classification of a peer for the opt-in outbound limit, read by a dial when it reserves its connection, and the step by which a connection of a peer that became a local root is left out of the limit, a Deviation the owner approved (docs/decisions.md, networking, 2026-11-18): the reference has no outbound limit, so it classifies no dial for one and a connection holds no place there to give back"
+  },
+  {
+   "definitions": [
+    "enum network.Announcement"
+   ],
+   "reason": "the typed outcome of Connection#negotiated: whether the side that negotiated a connection announces it to the inbound governor, which the reference decides inline (ConnectionManager/Core.hs 982-989 and 1622-1630) in the code Connection#negotiated mirrors"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/ConnectionManager.scala"
+}

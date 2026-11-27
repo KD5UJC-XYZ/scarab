@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "class network.AcceptedConnectionsLimit": [
+   {
+    "file": "ouroboros-network/framework/lib/Ouroboros/Network/Server/RateLimiting.hs",
+    "lines": [
+     26,
+     47
+    ],
+    "repository": "IntersectMBO/ouroboros-network",
+    "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+    "symbol": "AcceptedConnectionsLimit"
+   }
+  ],
+  "def network.AcceptedConnectionsLimit.decision": null,
+  "def network.AcceptedConnectionsLimit.rateLimit": null,
+  "def network.AcceptedConnectionsLimit.threadDelay": null,
+  "enum network.AcceptedConnectionsLimit.RateLimitDelay": null,
+  "object network.AcceptedConnectionsLimit": null,
+  "val network.AcceptedConnectionsLimit.default": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/AcceptedConnectionsLimit.scala"
+}

@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "class ledger.ByronGenesisRead.Fields": null,
+  "def ledger.ByronFieldError#message": null,
+  "def ledger.ByronGenesisRead.entries": null,
+  "def ledger.ByronGenesisRead.fields": null,
+  "enum ledger.ByronFieldError": null,
+  "enum ledger.ByronGenesisField": null,
+  "object ledger.ByronGenesisRead": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ByronGenesisRead.scala"
+}

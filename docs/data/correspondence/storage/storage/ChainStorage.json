@@ -1,0 +1,90 @@
+{
+ "baseline": {
+  "class storage.ChainStorage.Config": null,
+  "class storage.ChainStorage.Recovered": null,
+  "class storage.ChainStorage.Resumed": null,
+  "def storage.ChainPersistence#extended": null,
+  "def storage.ChainPersistence#rolledBack": null,
+  "def storage.ChainPersistence.backingOnly": null,
+  "def storage.ChainPersistence.none": null,
+  "def storage.ChainStorage.Reopen#apply": null,
+  "def storage.ChainStorage.open": null,
+  "def storage.ChainStorage.preflight": null,
+  "def storage.ChainStorage.resume": null,
+  "def storage.StorageEvents#emit": null,
+  "enum storage.StorageEvent": null,
+  "object storage.ChainPersistence": null,
+  "object storage.ChainStorage": null,
+  "trait storage.ChainPersistence": null,
+  "trait storage.ChainStorage.Reopen": null,
+  "trait storage.StorageEvents": null
+ },
+ "entries": {
+  "def storage.ChainPersistence#published": {
+   "class": "Mirror",
+   "digest": "44bfd6a58d48d346",
+   "evidence": [
+    "ChainStorageSuite",
+    "ReceivedCollectionSuite",
+    "LeiosBackgroundSuite",
+    "ChainServerSuite"
+   ],
+   "note": "the copy runner's wake-up: the reference's runner waits until the chain its chain selection writes (cdbChain) is longer than its volatile suffix; here the follower, once it has published a chain, hands the runner the blocks that chain aged past k, and the runner waits for them (#1499). Either way nothing is copied before the chain that aged it is the one readers see",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/Impl/Background.hs",
+     "lines": [
+      266,
+      284
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "copyToImmutableDBRunner"
+    }
+   ]
+  },
+  "def storage.ChainStorage.predecessorOf": {
+   "class": "Mirror",
+   "digest": "a129a34ba71d7e98",
+   "evidence": [
+    "ReceivedBlocksSuite",
+    "ChainServerSuite"
+   ],
+   "note": "biPrevHash: the header's predecessor as headerPrevHash reads it, genesis for a Byron boundary block that names the genesis (#1505)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/VolatileDB/Impl/Parser.hs",
+     "lines": [
+      113,
+      128
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "extractBlockInfo"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class storage.ChainStorage.Aged",
+    "class storage.ChainStorage.Copier",
+    "def storage.ChainStorage.Copier#idle",
+    "def storage.ChainStorage.Copier.idle",
+    "enum storage.ChainStorage.CopyStep",
+    "object storage.ChainStorage.Copier"
+   ],
+   "reason": "the hand-over from the block-selection worker to the copy runner (#1499): the blocks one extension aged past k with the chain's new immutable boundary and its state, staged until the chain is published, and the runner's queue of them with whether it is copying. The reference's copy runner reads the blocks to copy from the chain its chain selection writes, cdbChain, which holds them until each is appended (copyToImmutableDB and copyToImmutableDBRunner, Storage/ChainDB/Impl/Background.hs 160-209 and 257-296 at ouroboros-consensus 82ecba329), and its LedgerDB holds the states (getVolatileSuffix, Storage/LedgerDB/V2.hs); the steps of a round are named for the suites that stand in for a kill before each"
+  },
+  {
+   "definitions": [
+    "enum storage.ChainStorage.BackgroundStopped"
+   ],
+   "reason": "why the copy runner or the received log's collections stopped, carried as a value across the runner fibers' boundary (ADR 0017) for the node to stop on; the reference's runners throw in threads linked to the ChainDB's (launch, Storage/ChainDB/Impl/Background.hs 116-125 and 140-142 at ouroboros-consensus 82ecba329)"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/ChainStorage.scala"
+}

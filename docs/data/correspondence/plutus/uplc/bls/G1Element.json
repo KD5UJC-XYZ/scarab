@@ -1,0 +1,76 @@
+{
+ "baseline": {
+  "def uplc.bls.G1Element.fromCompressed": null,
+  "object uplc.bls.G1Element": null
+ },
+ "entries": {
+  "class uplc.bls.G1Element": {
+   "class": "Mirror",
+   "digest": "57b8facf098a3fdd",
+   "evidence": [
+    "PointsSuite",
+    "Bls12_381Suite"
+   ],
+   "note": "blst's projective point, as the reference's Element holds it, with its compressed encoding made from it once when it is first asked for (or the point from an encoding, once)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/G1.hs",
+     "lines": [
+      69,
+      70
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "Element"
+    },
+    {
+     "file": "cardano-crypto-class/src/Cardano/Crypto/EllipticCurve/BLS12_381/Internal.hs",
+     "lines": [
+      297,
+      298
+     ],
+     "repository": "IntersectMBO/cardano-base",
+     "revision": "12168e4b32b44d30dd401010ccd969accaf2add7",
+     "symbol": "Point"
+    }
+   ]
+  },
+  "val uplc.bls.G1Element#compressed": {
+   "class": "Mirror",
+   "digest": "ee6a41222184d93c",
+   "evidence": [
+    "PointsSuite",
+    "Bls12_381Suite"
+   ],
+   "note": "blsCompress of the point, kept once made",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/G1.hs",
+     "lines": [
+      136,
+      138
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "compress"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def uplc.bls.G1Element#equals",
+    "def uplc.bls.G1Element#hashCode",
+    "def uplc.bls.G1Element#toString",
+    "def uplc.bls.G1Element.of",
+    "def uplc.bls.G1Element.ofPoint",
+    "val uplc.bls.G1Element#point"
+   ],
+   "reason": "JVM plumbing of a BLS12-381 element: its constructors from jblst's point, alone or with its encoding, the point it keeps for jblst, and equality, hash and rendering through its encoding, the relation the reference's Eq gives through blst_p_is_equal (Bls12_381.G1.equal)"
+  }
+ ],
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/bls/G1Element.scala"
+}

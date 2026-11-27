@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "class ledger.era.ShelleyTxOutRep": null,
+  "def ledger.era.ShelleyTxOutRep#equals": null,
+  "def ledger.era.ShelleyTxOutRep#hashCode": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/ShelleyTxOutRep.scala"
+}

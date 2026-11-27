@@ -1,0 +1,21 @@
+{
+ "baseline": {
+  "class ledger.PtrMap": null,
+  "def ledger.PtrMap#equals": null,
+  "def ledger.PtrMap#get": null,
+  "def ledger.PtrMap#hashCode": null,
+  "def ledger.PtrMap#isEmpty": null,
+  "def ledger.PtrMap#iterator": null,
+  "def ledger.PtrMap#nonEmpty": null,
+  "def ledger.PtrMap#removedCredential": null,
+  "def ledger.PtrMap#size": null,
+  "def ledger.PtrMap#toString": null,
+  "def ledger.PtrMap#toVector": null,
+  "def ledger.PtrMap#updated": null,
+  "def ledger.PtrMap.apply": null,
+  "object ledger.PtrMap": null,
+  "val ledger.PtrMap#toMap": null,
+  "val ledger.PtrMap.empty": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PtrMap.scala"
+}

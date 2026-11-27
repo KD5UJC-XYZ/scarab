@@ -1,0 +1,42 @@
+{
+ "baseline": {
+  "class protocol.ConnectionState.Counters": null,
+  "class protocol.ConnectionState.Illegal": null,
+  "def protocol.ConnectionState#abstractName": null,
+  "def protocol.ConnectionState#isLive": null,
+  "def protocol.ConnectionState.ConnectionType#upstream": null,
+  "def protocol.ConnectionState.ConnectionType.of": null,
+  "def protocol.ConnectionState.Counters#+": null,
+  "def protocol.ConnectionState.Counters.of": null,
+  "def protocol.ConnectionState.Counters.ofState": null,
+  "def protocol.ConnectionState.Illegal#message": null,
+  "def protocol.ConnectionState.initial": null,
+  "def protocol.ConnectionState.isInboundConn": null,
+  "def protocol.ConnectionState.through": null,
+  "def protocol.ConnectionState.transition": null,
+  "def protocol.ConnectionState.valid": null,
+  "enum protocol.ConnectionState": [
+   {
+    "file": "ouroboros-network/framework/lib/Ouroboros/Network/ConnectionManager/State.hs",
+    "lines": [
+     191,
+     217
+    ],
+    "repository": "IntersectMBO/ouroboros-network",
+    "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+    "symbol": "ConnectionState"
+   }
+  ],
+  "enum protocol.ConnectionState.ConnectionType": null,
+  "enum protocol.ConnectionState.DataFlow": null,
+  "enum protocol.ConnectionState.Event": null,
+  "enum protocol.ConnectionState.Provenance": null,
+  "enum protocol.ConnectionState.TimeoutExpired": null,
+  "given protocol.ConnectionState.ConnectionType.given_Ordering_ConnectionType": null,
+  "object protocol.ConnectionState": null,
+  "object protocol.ConnectionState.ConnectionType": null,
+  "object protocol.ConnectionState.Counters": null,
+  "val protocol.ConnectionState.Counters.zero": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ConnectionState.scala"
+}

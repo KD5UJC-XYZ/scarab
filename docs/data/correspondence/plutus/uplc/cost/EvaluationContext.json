@@ -1,0 +1,28 @@
+{
+ "baseline": {
+  "class uplc.cost.CostModel": null,
+  "class uplc.cost.EvaluationContext": null,
+  "class uplc.cost.VariantCosts": null,
+  "def uplc.cost.EvaluationContext#at": null,
+  "def uplc.cost.EvaluationContext.build": null,
+  "def uplc.cost.EvaluationContext.costsOf": null,
+  "def uplc.cost.EvaluationContext.make": null,
+  "def uplc.cost.EvaluationContext.parameterNames": null,
+  "def uplc.cost.EvaluationContext.tagWithParamNames": null,
+  "enum uplc.cost.CostModelApplyError": null,
+  "enum uplc.cost.CostModelApplyWarn": [
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/CostModelInterface.hs",
+    "lines": [
+     255,
+     259
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "CostModelApplyWarn"
+   }
+  ],
+  "object uplc.cost.EvaluationContext": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cost/EvaluationContext.scala"
+}

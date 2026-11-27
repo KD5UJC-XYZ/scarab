@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "def network.HandlerFailure.capture": null,
+  "enum network.HandlerFailure": null,
+  "object network.HandlerFailure": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/HandlerFailure.scala"
+}

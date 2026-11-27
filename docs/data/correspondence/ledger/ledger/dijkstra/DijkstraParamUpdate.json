@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "class ledger.dijkstra.DijkstraParamUpdate": null,
+  "def ledger.dijkstra.DijkstraParamUpdate.decode": null,
+  "enum ledger.dijkstra.DijkstraParamValue": null,
+  "object ledger.dijkstra.DijkstraParamUpdate": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraParamUpdate.scala"
+}

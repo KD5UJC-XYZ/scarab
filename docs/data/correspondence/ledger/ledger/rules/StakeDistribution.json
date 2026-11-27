@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def ledger.rules.StakeDistribution.poolSnapshot": null,
+  "def ledger.rules.StakeDistribution.resolve": null,
+  "def ledger.rules.StakeDistribution.snapshot": null,
+  "object ledger.rules.StakeDistribution": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/StakeDistribution.scala"
+}

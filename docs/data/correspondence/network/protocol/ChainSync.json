@@ -1,0 +1,120 @@
+{
+ "baseline": {
+  "class protocol.ChainSync.Tip": null,
+  "class protocol.ChainSync.UInt64": null,
+  "def protocol.ChainSync.Limits#valid": null,
+  "def protocol.ChainSync.PayloadCodec#decode": null,
+  "def protocol.ChainSync.PayloadCodec#encode": null,
+  "def protocol.ChainSync.Tip.apply": null,
+  "def protocol.ChainSync.UInt64.saturating": null,
+  "def protocol.ChainSync.decodePoint": null,
+  "def protocol.ChainSync.decodePrefix": null,
+  "def protocol.ChainSync.decodeTip": null,
+  "def protocol.ChainSync.encode": null,
+  "def protocol.ChainSync.encodePoint": null,
+  "def protocol.ChainSync.encodeTip": null,
+  "def protocol.ChainSync.transition": null,
+  "def protocol.ChainSync.validateItem": null,
+  "enum protocol.ChainSync.DecodeResult": null,
+  "enum protocol.ChainSync.Point": null,
+  "enum protocol.ChainSync.Role": null,
+  "enum protocol.ChainSync.State": null,
+  "object protocol.ChainSync": null,
+  "object protocol.ChainSync.Limits": null,
+  "object protocol.ChainSync.Tip": null,
+  "trait protocol.ChainSync.PayloadCodec": null,
+  "val protocol.ChainSync.Limits.NodeToClient": null,
+  "val protocol.ChainSync.Tip.Origin": null
+ },
+ "entries": {
+  "class protocol.ChainSync.Limits": {
+   "class": "Gap",
+   "digest": "78c83781c25d3af2",
+   "note": "the defaults refuse a MsgFindIntersect of more than 64 points or 8192 items; the reference reads any number of points within smallByteLimit",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/755",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs",
+     "lines": [
+      40,
+      51
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "byteLimitsChainSync"
+    },
+    {
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Codec.hs",
+     "lines": [
+      209,
+      214
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "decodeList"
+    }
+   ]
+  },
+  "enum protocol.ChainSync.Message": {
+   "class": "Mirror",
+   "digest": "4c443497afd434f7",
+   "note": "the eight messages in the reference's order, with the same fields; the header is the type parameter P, and the states they go between are checked by ChainSyncEngine.transition",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/ChainSync/Type.hs",
+     "lines": [
+      107,
+      169
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "Message"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.ChainSync.Tip#equals",
+    "def protocol.ChainSync.Tip#hashCode"
+   ],
+   "reason": "Scala value equality and hashing of a class with a private constructor; the reference's Tip derives Eq"
+  },
+  {
+   "definitions": [
+    "def protocol.ChainSync.UInt64#equals",
+    "def protocol.ChainSync.UInt64#hashCode",
+    "def protocol.ChainSync.UInt64#toString"
+   ],
+   "reason": "Scala value equality, hashing and rendering of a class with a private constructor"
+  },
+  {
+   "definitions": [
+    "def protocol.ChainSync.enginePayloadCodec",
+    "val protocol.ChainSync.enginePointCodec",
+    "val protocol.ChainSync.engineTipCodec"
+   ],
+   "reason": "adapters from this facade's point, tip and payload codecs to ChainSyncEngine's codec interfaces"
+  },
+  {
+   "definitions": [
+    "def protocol.ChainSync.UInt64.from",
+    "object protocol.ChainSync.UInt64",
+    "val protocol.ChainSync.UInt64.Max",
+    "val protocol.ChainSync.UInt64.Zero"
+   ],
+   "reason": "construction of a UInt64 inside the unsigned 64-bit range"
+  },
+  {
+   "definitions": [
+    "def protocol.ChainSync.bad",
+    "def protocol.ChainSync.get"
+   ],
+   "reason": "the boundary scope's short-circuit, forwarded to ProtocolWire.bad and ProtocolWire.get"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ChainSync.scala"
+}

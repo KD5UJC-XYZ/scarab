@@ -1,0 +1,24 @@
+{
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.era.rules.DijkstraPhase2.Evaluation",
+    "class ledger.era.rules.DijkstraPhase2.Observation",
+    "def ledger.era.rules.DijkstraPhase2.counted",
+    "def ledger.era.rules.DijkstraPhase2.footprint",
+    "def ledger.era.rules.DijkstraPhase2.located",
+    "def ledger.era.rules.DijkstraPhase2.named",
+    "def ledger.era.rules.DijkstraPhase2.observation",
+    "def ledger.era.rules.DijkstraPhase2.outcome",
+    "def ledger.era.rules.DijkstraPhase2.places",
+    "def ledger.era.rules.DijkstraPhase2.redeeming",
+    "def ledger.era.rules.DijkstraPhase2.told",
+    "def ledger.era.rules.DijkstraPhase2.txId",
+    "enum ledger.era.rules.DijkstraPhase2.Outcome",
+    "object ledger.era.rules.DijkstraPhase2"
+   ],
+   "reason": "the node's phase-2 observations (Scarab's own, which the reference has none of) of a Dijkstra block the era rules judge (#85), as Conway's (ConwayPhase2): the phase-2 counters (PlutusStats) of a block the rules admitted, from what of BBODY's events they read (told: UTXOS's passed and failed scripts and UTXO's change of the deposits a valid transaction tells after them, none of SUBLEDGERS, whose sub-transactions run no script of their own) counted by batch as Conway's are (ScriptsTold.counted), integrityChecked the bodies of every level that declare a script integrity hash, which UTXOW and SUBUTXOW recompute; and a script with no verdict named by its batch's id, its level (ScriptLocation.Phase2 for the top level, SubPhase2 with the sub-transaction's id) and its redeemer (located, named, txId): each level's scripts as it collected them (dsattPlutusScriptsWithContext, dsastPlutusScriptsWithContext) with the purposes it resolved (resolveNeededPlutusScriptsWithPurpose, Alonzo/UTxO.hs:431-460, cardano-ledger 9df9f98c), the batch's in the order plutusScriptsWithContextDijkstraStAnnTx concatenates them (Dijkstra/UTxO.hs:258-276), so that the node withholds the block as it does the other eras'; and, for the node's prepared block (ADR 0018, #85), a batch's place among the block's by its id (places), whether any of its levels holds a redeemer (redeeming), and what it does to the UTxO set at every level as the dependency graph reads it (footprint, TxDependencies.Footprint as Conway's: allInputs read, every level's inputs consumed and outputs created flagged valid, the top level's collateral and collateral return flagged invalid, from mkDijkstraStAnnTopTx and mkDijkstraStAnnSubTx building every level's context from the set before the batch, Dijkstra.hs:111-219, and updateUTxOState and SubUtxo.hs:255-261, cardano-ledger 9df9f98c), which orders the evaluation only; and the observation of a batch the node's phase-2 observer (--plutus-cases) is told, as the other eras' Phase2.Observation, which holds a flat transaction a Dijkstra batch has no form of: the batch's id and bytes, the block's slot, and what its scripts came to (Outcome: every script run, one with no verdict after those before it, as evalPlutusScripts stops, Alonzo/Plutus/Evaluate.hs:184-203, or the batch's scripts not collected, with the era's CollectErrors), each script by its location and the request it was evaluated with (Evaluation), made from the results in order (outcome, observation)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/DijkstraPhase2.scala"
+}

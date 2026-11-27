@@ -1,0 +1,24 @@
+{
+ "baseline": {
+  "def ledger.dijkstra.DijkstraScript#hash": null,
+  "def ledger.dijkstra.DijkstraScript.native": null,
+  "def ledger.dijkstra.DijkstraScript.plutus": null,
+  "def ledger.dijkstra.DijkstraScript.script": null,
+  "def ledger.dijkstra.DijkstraScript.upgradeTimelock": [
+   {
+    "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+    "lines": [
+     436,
+     444
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "upgradeTimelock"
+   }
+  ],
+  "enum ledger.dijkstra.DijkstraLanguage": null,
+  "enum ledger.dijkstra.DijkstraScript": null,
+  "object ledger.dijkstra.DijkstraScript": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraScripts.scala"
+}

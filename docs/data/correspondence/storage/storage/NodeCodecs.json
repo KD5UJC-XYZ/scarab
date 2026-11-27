@@ -1,0 +1,63 @@
+{
+ "baseline": {
+  "def storage.NodeCodecs.read": null,
+  "def storage.NodeCodecs.shape": null,
+  "def storage.NodeCodecs.write": null,
+  "given storage.NodeCodecs.address": null,
+  "given storage.NodeCodecs.blockRef": null,
+  "given storage.NodeCodecs.byron": null,
+  "given storage.NodeCodecs.byronVersion": null,
+  "given storage.NodeCodecs.chainDepState": null,
+  "given storage.NodeCodecs.consensusExtras": null,
+  "given storage.NodeCodecs.credential": null,
+  "given storage.NodeCodecs.datum": null,
+  "given storage.NodeCodecs.era": null,
+  "given storage.NodeCodecs.follow": null,
+  "given storage.NodeCodecs.genDelegPair": null,
+  "given storage.NodeCodecs.keyHash": null,
+  "given storage.NodeCodecs.mirrorInShelley": null,
+  "given storage.NodeCodecs.nonce": null,
+  "given storage.NodeCodecs.paramUpdate": null,
+  "given storage.NodeCodecs.pbftSigner": null,
+  "given storage.NodeCodecs.pbftState": null,
+  "given storage.NodeCodecs.poolParams": null,
+  "given storage.NodeCodecs.praosState": null,
+  "given storage.NodeCodecs.protocolExtras": null,
+  "given storage.NodeCodecs.protocolParams": null,
+  "given storage.NodeCodecs.prtclState": null,
+  "given storage.NodeCodecs.ptr": null,
+  "given storage.NodeCodecs.rewardAccount": null,
+  "given storage.NodeCodecs.script": null,
+  "given storage.NodeCodecs.slotNo": null,
+  "given storage.NodeCodecs.sortedMap": null,
+  "given storage.NodeCodecs.ticknState": null,
+  "given storage.NodeCodecs.tpraosLedgerState": null,
+  "given storage.NodeCodecs.tpraosState": null,
+  "given storage.NodeCodecs.txIn": null,
+  "given storage.NodeCodecs.txOut": null,
+  "given storage.NodeCodecs.utxo": null,
+  "given storage.NodeCodecs.utxoChange": null,
+  "given storage.NodeCodecs.value": null,
+  "given storage.NodeCodecs.withOrigin": null,
+  "given storage.NodeCodecs.word64": null,
+  "object storage.NodeCodecs": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given storage.NodeCodecs.announcedBy",
+    "given storage.NodeCodecs.ebAnnouncement",
+    "given storage.NodeCodecs.ebHash",
+    "given storage.NodeCodecs.praos2State"
+   ],
+   "reason": "the frozen chain-dependent states in the sidecar schemas of the snapshot versions before V10, and the native codecs of Praos2's state: Scarab's own persisted format, which keeps the bytes and fingerprints of its previous files; the reference keeps no such files and has no counterpart (#826)"
+  },
+  {
+   "definitions": [
+    "def storage.NodeCodecs.scriptOf"
+   ],
+   "reason": "the frozen kinds of a stored script in the sidecar schemas of the snapshot versions before V10, and the script's codec over a kind's codec: Scarab's own persisted format, which keeps the bytes and fingerprints of its previous files; the reference keeps no such files and has no counterpart (#85, #54)"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/NodeCodecs.scala"
+}

@@ -1,0 +1,239 @@
+{
+ "entries": {
+  "def ledger.era.AlonzoPlutusPurpose#tag": {
+   "class": "Mirror",
+   "digest": "78b3d5410330a637",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      374,
+      381
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EncCBORGroup (AlonzoPlutusPurpose f era)"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoPlutusPurpose.alonzoRedeemerPointerInverse": {
+   "class": "Mirror",
+   "digest": "5e4af29a7d0238b3",
+   "evidence": [
+    "BabbageTxSuite"
+   ],
+   "note": "the policies minted read in their order, as the set `mintedTxBodyF`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      531,
+      544
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "alonzoRedeemerPointerInverse"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoPlutusPurpose.hoistPlutusPurpose": {
+   "class": "Mirror",
+   "digest": "504ab18c21b009cf",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "Babbage's instance's, and Alonzo's, written once over Alonzo's purpose, which both eras' are",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Scripts.hs",
+     "lines": [
+      74,
+      78
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hoistPlutusPurpose"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      580,
+      584
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hoistPlutusPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoPlutusPurpose.ofTag": {
+   "class": "Mirror",
+   "digest": "ae41020bbfd5936d",
+   "evidence": [
+    "BabbageTxDifferentialSuite",
+    "BabbageTxSuite"
+   ],
+   "note": "the purpose a redeemer key's tag names, the index read after it, as the flat decoder reads them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      383,
+      397
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBORGroup (AlonzoPlutusPurpose f era)"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoPlutusPurpose.toCertifying": {
+   "class": "Mirror",
+   "digest": "e52644053c372372",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "Babbage's instance's reader, written once over Alonzo's purpose (Alonzo's the same)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Scripts.hs",
+     "lines": [
+      92,
+      93
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toCertifyingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoPlutusPurpose.toMinting": {
+   "class": "Mirror",
+   "digest": "2a6c3fd826a158bb",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "Babbage's instance's reader, written once over Alonzo's purpose (Alonzo's the same)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Scripts.hs",
+     "lines": [
+      87,
+      88
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toMintingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoPlutusPurpose.toSpending": {
+   "class": "Mirror",
+   "digest": "e6ef37f65f53e4ed",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "Babbage's instance's reader, written once over Alonzo's purpose (Alonzo's the same, `Alonzo/Scripts.hs:588-589`)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Scripts.hs",
+     "lines": [
+      82,
+      83
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toSpendingPurpose"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoPlutusPurpose.toWithdrawing": {
+   "class": "Mirror",
+   "digest": "001b0f5c0ff88034",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "Babbage's instance's reader, written once over Alonzo's purpose (Alonzo's the same)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Scripts.hs",
+     "lines": [
+      97,
+      98
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toWithdrawingPurpose"
+    }
+   ]
+  },
+  "enum ledger.era.AlonzoPlutusPurpose": {
+   "class": "Mirror",
+   "digest": "fecfddff3327d464",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      332,
+      337
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoPlutusPurpose"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Scripts.hs",
+     "lines": [
+      61,
+      61
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PlutusPurpose f BabbageEra"
+    }
+   ]
+  },
+  "given ledger.era.AlonzoPlutusPurpose.ordering": {
+   "class": "Mirror",
+   "digest": "f64993d36dc5da1e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      341,
+      341
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Ord (AlonzoPlutusPurpose AsIx era)"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.AlonzoPlutusPurpose.ix",
+    "given ledger.era.AlonzoPlutusPurpose.given_canEqual_E_EraTag",
+    "object ledger.era.AlonzoPlutusPurpose"
+   ],
+   "reason": "Babbage's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives, and the index of a purpose; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Babbage's (fromFlat), and the certificate's representation read only in Babbage's files. Scala containers and helpers with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/AlonzoPlutusPurpose.scala"
+}

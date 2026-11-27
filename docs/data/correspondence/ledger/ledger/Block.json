@@ -1,0 +1,34 @@
+{
+ "baseline": {
+  "class ledger.Block.Byron": null,
+  "class ledger.Block.Dijkstra": null,
+  "class ledger.Block.SegregatedBody": null,
+  "class ledger.Block.Shelley": null,
+  "class ledger.Block.Transaction": null,
+  "def ledger.Block#era": null,
+  "def ledger.Block#header": null,
+  "def ledger.Block.Byron#era": null,
+  "def ledger.Block.Dijkstra#bodyHash": null,
+  "def ledger.Block.Dijkstra#bodySize": null,
+  "def ledger.Block.Dijkstra#era": null,
+  "def ledger.Block.Dijkstra#header": null,
+  "def ledger.Block.Shelley#addTxBytes": null,
+  "def ledger.Block.decode": null,
+  "def ledger.Block.decodeShelley": null,
+  "def ledger.Block.segregated": null,
+  "object ledger.Block": null,
+  "trait ledger.Block": null,
+  "val ledger.Block.MaxInputBytes": null,
+  "val ledger.Block.Transaction#id": null,
+  "val ledger.Block.Transaction#size": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.Block.decodeHeader"
+   ],
+   "reason": "the header of a whole block read without decoding its body's contents, for the node's ChainSync server, through the envelope and header code Block.decode and LeiosBlock.read use: the reference's ChainSync server reads a stored block's header bytes alone, at the offset and size its storage indexes keep (getBinaryBlockInfo, ouroboros-consensus Cardano/Node.hs getHfcBinaryBlockInfo; readHeader, ImmutableDB/Impl/Iterator.hs), which Scarab's immutable index does not keep"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Block.scala"
+}

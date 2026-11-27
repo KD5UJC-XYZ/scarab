@@ -1,0 +1,46 @@
+{
+ "entries": {
+  "def uplc.bls.G2Cofactor.hashed": {
+   "class": "Mirror",
+   "digest": "9dd8c08fbba095bf",
+   "evidence": [
+    "PointsSuite",
+    "Bls12_381Suite"
+   ],
+   "note": "the end of blst's hash_to_g2, which blsHash calls: the sum of the two mapped points with the cofactor cleared, by RFC 9380 appendix G.3 over Bouncy Castle's Fp2Element",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "cardano-crypto-class/src/Cardano/Crypto/EllipticCurve/BLS12_381/Internal.hs",
+     "lines": [
+      1004,
+      1017
+     ],
+     "repository": "IntersectMBO/cardano-base",
+     "revision": "12168e4b32b44d30dd401010ccd969accaf2add7",
+     "symbol": "blsHash"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class uplc.bls.G2Cofactor.Jacobian",
+    "def uplc.bls.G2Cofactor.Jacobian#isInfinity",
+    "def uplc.bls.G2Cofactor.Jacobian#negate",
+    "def uplc.bls.G2Cofactor.add",
+    "def uplc.bls.G2Cofactor.affine",
+    "def uplc.bls.G2Cofactor.clear",
+    "def uplc.bls.G2Cofactor.double",
+    "def uplc.bls.G2Cofactor.of",
+    "def uplc.bls.G2Cofactor.psi",
+    "def uplc.bls.G2Cofactor.timesX",
+    "object uplc.bls.G2Cofactor",
+    "val uplc.bls.G2Cofactor.Infinity"
+   ],
+   "reason": "the Jacobian arithmetic and the endomorphism psi behind G2Cofactor.hashed: Scarab's JVM arithmetic for what blst computes in C inside hash_to_g2, which the pinned Haskell calls and does not define"
+  }
+ ],
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/bls/G2Cofactor.scala"
+}

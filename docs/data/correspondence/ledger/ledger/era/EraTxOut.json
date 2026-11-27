@@ -1,0 +1,117 @@
+{
+ "baseline": {
+  "def ledger.era.AlonzoEraTxOut#dataHash": null,
+  "def ledger.era.AlonzoEraTxOut#datum": null,
+  "def ledger.era.BabbageEraTxOut#data": null,
+  "def ledger.era.BabbageEraTxOut#referenceScript": null,
+  "def ledger.era.BabbageEraTxOut#scripts": null,
+  "def ledger.era.EraTxOut#address": null,
+  "def ledger.era.EraTxOut#raw": null,
+  "def ledger.era.EraTxOut#value": null,
+  "def ledger.era.EraTxOut#valueOps": null,
+  "given ledger.era.EraTxOut.allegra": null,
+  "given ledger.era.EraTxOut.babbage": null,
+  "given ledger.era.EraTxOut.conway": null,
+  "given ledger.era.EraTxOut.dijkstra": null,
+  "given ledger.era.EraTxOut.mary": null,
+  "object ledger.era.EraTxOut": null,
+  "trait ledger.era.AlonzoEraTxOut": null,
+  "trait ledger.era.BabbageEraTxOut": null,
+  "trait ledger.era.EraTxOut": null
+ },
+ "entries": {
+  "def ledger.era.BabbageTxOuts.babbageMinUTxOValue": {
+   "class": "Mirror",
+   "digest": "a0188335e532a3f2",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a function where the reference reaches it through EraTxOut's getMinCoinSizedTxOut (Core.hs:391-392), which waits for the parameter records of the eras before Babbage (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6926143354)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+     "lines": [
+      665,
+      688
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "babbageMinUTxOValue"
+    }
+   ]
+  },
+  "def ledger.era.BabbageTxOuts.data": {
+   "class": "Mirror",
+   "digest": "40b37721c56dbec0",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "over the output's datum where the reference's matches the compact output's cases, which give the same; `binaryDataToData`'s failure returned where the reference raises `error`",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+     "lines": [
+      706,
+      716
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getDataBabbageTxOut"
+    }
+   ]
+  },
+  "def ledger.era.BabbageTxOuts.dataHash": {
+   "class": "Mirror",
+   "digest": "b84b5ee0ca1e75a2",
+   "evidence": [
+    "EraConwaySuite",
+    "EraPlutusContextSuite",
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "over the output's datum, where the reference's takes the output and reads its datum (`getDatumBabbageTxOut`, lines 743-753); the hash of a datum named by its hash, none for an inline datum, as the reference's",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+     "lines": [
+      723,
+      731
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getDataHashBabbageTxOut"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.BabbageTxOuts"
+   ],
+   "reason": "objects that stand for the reference's modules of functions (`Alonzo/Scripts.hs`, `State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`, the `TxInfo.hs` and `Context.hs` of the script context, the `Indexable` instances of `Alonzo/TxBody.hs`, plutus-ledger-api's `V1` to `V4`, plutus-tx's `Ratio`), which Scala needs to hold top-level functions under a name"
+  },
+  {
+   "definitions": [
+    "def ledger.era.StoredTxOut#storedValue",
+    "def ledger.era.StoredTxOut#toStored",
+    "given ledger.era.StoredTxOut.babbage",
+    "given ledger.era.StoredTxOut.conway",
+    "given ledger.era.StoredTxOut.dijkstra",
+    "object ledger.era.StoredTxOut",
+    "trait ledger.era.StoredTxOut"
+   ],
+   "reason": "the era-typed outputs' adapter to the node's stored output (StoredTxOut), and Network as the wire value the failures carry; the injection runTest applies to a test's failures (validateTrans injectFailure), a function here; the orders the failures' non-empty sets are kept in, TxIn's and AccountAddress's the reference's derived ones and an address's by its bytes (the Gap of validateWrongNetwork, #796); and the objects that stand for the reference's Rules/Utxo modules"
+  },
+  {
+   "definitions": [
+    "def ledger.era.StoredTxOut#fromStored"
+   ],
+   "reason": "the reading and writing of the node's stored UTxO set by the era-typed state change: a stored output read into the era (design §3.6 of docs/design/era-typed-transactions.md), extractKeys, restrictKeys and the left-biased union of Data.Map over the stored set, how the rules read stored outputs (StoredOutputs, whose default reads each where asked and whose instance in Conway's block run keeps what the run read, #85), and the defects the reference has no counterpart for (a script the evaluator gives no verdict for, a damaged store, an output outside the state's vocabulary), raised as no verdict; and the companions and module objects of UTXOS, Scala containers with no counterpart (#85); and the companions of UTXO's failure, its injection and its embedding of UTXOS, with the failure's equality with itself only; and the companions of UTXOW's failure, its injection and its embedding of UTXO, with the failure's equality with itself only, and the module objects of Allegra's native-script evaluation (Allegra/Scripts.hs, Allegra/Tx.hs); and the companions of SUBUTXO's and SUBUTXOW's failures and events, their injections and the embedding of SUBUTXO, with each type's equality with itself only"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/EraTxOut.scala"
+}

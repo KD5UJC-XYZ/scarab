@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "def ledger.rules.Snap.sts": null,
+  "object ledger.rules.Snap": [
+   {
+    "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Snap.hs",
+    "lines": [
+     105,
+     156
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "snapTransition"
+   }
+  ]
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Snap.scala"
+}

@@ -1,0 +1,11 @@
+{
+ "baseline": {
+  "def protocol.Era#hasInvalidTransactions": null,
+  "def protocol.Era#usesTPraos": null,
+  "def protocol.Era.fromBlockTag": null,
+  "def protocol.Era.fromIndex": null,
+  "enum protocol.Era": null,
+  "object protocol.Era": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/Era.scala"
+}

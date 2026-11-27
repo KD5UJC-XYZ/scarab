@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "def ledger.UpdateChecks.Refusal#inTx": null,
+  "def ledger.UpdateChecks.canFollow": null,
+  "def ledger.UpdateChecks.voted": null,
+  "enum ledger.UpdateChecks.Refusal": null,
+  "object ledger.UpdateChecks": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/UpdateChecks.scala"
+}

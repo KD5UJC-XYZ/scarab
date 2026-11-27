@@ -1,0 +1,76 @@
+{
+ "baseline": {
+  "def uplc.bls.G2Element.fromCompressed": null,
+  "object uplc.bls.G2Element": null
+ },
+ "entries": {
+  "class uplc.bls.G2Element": {
+   "class": "Mirror",
+   "digest": "6b02f513492e1711",
+   "evidence": [
+    "PointsSuite",
+    "Bls12_381Suite"
+   ],
+   "note": "as G1Element, over G2",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/G2.hs",
+     "lines": [
+      55,
+      56
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "Element"
+    },
+    {
+     "file": "cardano-crypto-class/src/Cardano/Crypto/EllipticCurve/BLS12_381/Internal.hs",
+     "lines": [
+      297,
+      298
+     ],
+     "repository": "IntersectMBO/cardano-base",
+     "revision": "12168e4b32b44d30dd401010ccd969accaf2add7",
+     "symbol": "Point"
+    }
+   ]
+  },
+  "val uplc.bls.G2Element#compressed": {
+   "class": "Mirror",
+   "digest": "86b87416584197d6",
+   "evidence": [
+    "PointsSuite",
+    "Bls12_381Suite"
+   ],
+   "note": "blsCompress of the point, kept once made",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "plutus-core/plutus-core/src/PlutusCore/Crypto/BLS12_381/G2.hs",
+     "lines": [
+      117,
+      119
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "compress"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def uplc.bls.G2Element#equals",
+    "def uplc.bls.G2Element#hashCode",
+    "def uplc.bls.G2Element#toString",
+    "def uplc.bls.G2Element.of",
+    "def uplc.bls.G2Element.ofPoint",
+    "val uplc.bls.G2Element#point"
+   ],
+   "reason": "JVM plumbing of a BLS12-381 element: its constructors from jblst's point, alone or with its encoding, the point it keeps for jblst, and equality, hash and rendering through its encoding, the relation the reference's Eq gives through blst_p_is_equal (Bls12_381.G1.equal)"
+  }
+ ],
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/bls/G2Element.scala"
+}

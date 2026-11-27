@@ -1,0 +1,46 @@
+{
+ "baseline": {
+  "class uplc.ProgramVersion": [
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Version.hs",
+    "lines": [
+     44,
+     47
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "Version"
+   }
+  ],
+  "def uplc.ProgramVersion#allowsConstrAndCase": null,
+  "def uplc.ProgramVersion#show": null,
+  "def uplc.ProgramVersion.of": null,
+  "given uplc.ProgramVersion.given_Ordering_ProgramVersion": null,
+  "object uplc.ProgramVersion": null,
+  "val uplc.ProgramVersion.V1_0_0": null,
+  "val uplc.ProgramVersion.V1_1_0": null
+ },
+ "entries": {
+  "val uplc.ProgramVersion.V1_2_0": {
+   "class": "Mirror",
+   "digest": "77a4805f298098fc",
+   "evidence": [
+    "AvailabilitySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "plutus-core/plutus-core/src/PlutusCore/Version.hs",
+     "lines": [
+      70,
+      72
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "plcVersion120"
+    }
+   ]
+  }
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/ProgramVersion.scala"
+}

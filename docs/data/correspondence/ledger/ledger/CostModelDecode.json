@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "def ledger.CostModelDecode.Format.of": null,
+  "def ledger.CostModelDecode.decode": null,
+  "enum ledger.CostModelDecode.Format": null,
+  "object ledger.CostModelDecode": null,
+  "object ledger.CostModelDecode.Format": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/CostModelDecode.scala"
+}

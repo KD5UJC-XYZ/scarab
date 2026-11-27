@@ -1,0 +1,30 @@
+{
+ "baseline": {
+  "def ledger.byron.ApplicationNameError.check": null,
+  "def ledger.byron.ByronNames.ascii": null,
+  "def ledger.byron.ByronNames.length": null,
+  "def ledger.byron.SoftwareVersionError.check": null,
+  "def ledger.byron.SystemTagError.check": null,
+  "enum ledger.byron.ApplicationNameError": null,
+  "enum ledger.byron.SoftwareVersionError": null,
+  "enum ledger.byron.SystemTagError": [
+   {
+    "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/SystemTag.hs",
+    "lines": [
+     70,
+     73
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "SystemTagError"
+   }
+  ],
+  "object ledger.byron.ApplicationNameError": null,
+  "object ledger.byron.ByronNames": null,
+  "object ledger.byron.SoftwareVersionError": null,
+  "object ledger.byron.SystemTagError": null,
+  "val ledger.byron.ApplicationNameError.MaxLength": null,
+  "val ledger.byron.SystemTagError.MaxLength": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronNames.scala"
+}

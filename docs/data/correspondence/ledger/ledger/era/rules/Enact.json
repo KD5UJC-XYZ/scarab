@@ -1,0 +1,70 @@
+{
+ "entries": {
+  "class ledger.era.rules.EnactSignal": {
+   "class": "Mirror",
+   "digest": "4dc74c6f95d5dadb",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Enact.hs",
+     "lines": [
+      57,
+      61
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EnactSignal"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayEnact.enactmentTransition": {
+   "class": "Mirror",
+   "digest": "fe621606cc21d672",
+   "evidence": [
+    "EraRatifySuite",
+    "EraRatifyConformanceSuite",
+    "EraRatifyStoredSuite"
+   ],
+   "note": "a function of the enact state, the rule having no failure or event; a VocabError where the enact state's committee (the node's record) or a withdrawal's account is outside the reference's types: the committee's no state the node's codec read holds, the account's an imported state can, the node's stored codec of an account taking networks 0 to 15 where the reference takes 0 and 1 (Address.hs:930-946 at 9df9f98c), pinned by EraRatifyStoredSuite; the withdrawals by credential as Map.mapKeys keeps them, the value of the greatest account",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Enact.hs",
+     "lines": [
+      83,
+      110
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "enactmentTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayEnact.updatedCommittee": {
+   "class": "Mirror",
+   "digest": "bd2d43b299bba7e3",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Enact.hs",
+     "lines": [
+      118,
+      133
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "updatedCommittee"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.rules.ConwayEnact"
+   ],
+   "reason": "RATIFY's and ENACT's era types (#85): the companions holding the reference's functions (each mapped by itself), their equality, which the reference derives, and the module objects of the two rules; the node's record of the committee read at the reference's Committee and written back, until the governance state holds the reference's committee"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/Enact.scala"
+}

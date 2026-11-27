@@ -1,0 +1,74 @@
+{
+ "baseline": {
+  "class uplc.Value": null,
+  "def uplc.Value#toList": null,
+  "def uplc.Value.Key.apply": null,
+  "def uplc.Value.Key.bytes": null,
+  "def uplc.Value.Quantity.amount": null,
+  "def uplc.Value.Quantity.apply": null,
+  "def uplc.Value.build": null,
+  "def uplc.Value.buildWith": null,
+  "def uplc.Value.decoded": null,
+  "def uplc.Value.pack": null,
+  "enum uplc.Value.Invalid": null,
+  "given uplc.Value.Key.given_Ordering_Key": null,
+  "given uplc.Value.Quantity.given_Ordering_Quantity": null,
+  "object uplc.Value": null,
+  "object uplc.Value.Key": null,
+  "object uplc.Value.Quantity": null,
+  "type uplc.Value.Key": null,
+  "type uplc.Value.Quantity": null,
+  "val uplc.Value#maxInnerSize": null,
+  "val uplc.Value.Key.MaxLength": null,
+  "val uplc.Value.Quantity.MaxValue": null,
+  "val uplc.Value.Quantity.MinValue": null,
+  "val uplc.Value.empty": null
+ },
+ "entries": {
+  "def uplc.Value#removed": {
+   "class": "Mirror",
+   "digest": "3bad0f0318da0af8",
+   "evidence": [
+    "ValueUpdateSuite",
+    "ValuesSuite"
+   ],
+   "note": "deleteCoin over typed keys, with the figures of Value#updated",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "plutus-core/plutus-core/src/PlutusCore/Value.hs",
+     "lines": [
+      424,
+      450
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "deleteCoin"
+    }
+   ]
+  },
+  "def uplc.Value#updated": {
+   "class": "Mirror",
+   "digest": "b789ae9a09d90081",
+   "evidence": [
+    "ValueUpdateSuite",
+    "ValuesSuite"
+   ],
+   "note": "the update of insertCoin once its keys and amount are typed (Values.insertCoin checks them): the entry set and the size, total and negative-amount figures changed without a recount; the reference also keeps the negative amounts per currency, for keepPolicies and dropPolicies, which here recount",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "plutus-core/plutus-core/src/PlutusCore/Value.hs",
+     "lines": [
+      382,
+      421
+     ],
+     "repository": "IntersectMBO/plutus",
+     "revision": "261766ad1d582bce8c86bad1af7a3b0e5355b21c",
+     "symbol": "insertCoin"
+    }
+   ]
+  }
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/Value.scala"
+}

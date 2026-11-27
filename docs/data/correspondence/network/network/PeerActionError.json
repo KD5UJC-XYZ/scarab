@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def network.PeerActionError#message": null,
+  "enum network.PeerActionError": null,
+  "enum network.PeerOperation": null,
+  "enum network.PeerStatus": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/PeerActionError.scala"
+}

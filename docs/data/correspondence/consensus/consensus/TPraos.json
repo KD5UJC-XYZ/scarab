@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "class consensus.TPraos.Validated": null,
+  "def consensus.TPraos.isOverlaySlot": null,
+  "def consensus.TPraos.nonceValue": null,
+  "def consensus.TPraos.overlayOwner": null,
+  "def consensus.TPraos.seed": null,
+  "def consensus.TPraos.update": null,
+  "def consensus.TPraos.verifyVrf": null,
+  "object consensus.TPraos": null,
+  "val consensus.TPraos.SeedEta": null,
+  "val consensus.TPraos.SeedL": null
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/TPraos.scala"
+}

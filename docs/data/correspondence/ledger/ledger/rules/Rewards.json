@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "def ledger.rules.Rewards.aggregate": null,
+  "def ledger.rules.Rewards.aggregateCompact": null,
+  "def ledger.rules.Rewards.asDouble": null,
+  "def ledger.rules.Rewards.complete": null,
+  "def ledger.rules.Rewards.likelihood": null,
+  "def ledger.rules.Rewards.maxPool": null,
+  "def ledger.rules.Rewards.memberReward": null,
+  "def ledger.rules.Rewards.operatorReward": null,
+  "def ledger.rules.Rewards.pulse": null,
+  "def ledger.rules.Rewards.start": null,
+  "def ledger.rules.Rewards.total": null,
+  "def ledger.rules.Rewards.update": null,
+  "object ledger.rules.Rewards": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Rewards.scala"
+}

@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "class network.selection.PeerMetrics": null,
+  "def network.selection.PeerMetrics#fetchynessBlocks": null,
+  "def network.selection.PeerMetrics#fetchynessBytes": null,
+  "def network.selection.PeerMetrics#joinedAt": null,
+  "def network.selection.PeerMetrics#reportFetch": null,
+  "def network.selection.PeerMetrics#reportFetches": null,
+  "def network.selection.PeerMetrics#reportHeader": null,
+  "def network.selection.PeerMetrics#reportHeaders": null,
+  "def network.selection.PeerMetrics#sizes": null,
+  "def network.selection.PeerMetrics#upstreamness": null,
+  "def network.selection.PeerMetrics.empty": null,
+  "object network.selection.PeerMetrics": null,
+  "val network.selection.PeerMetrics.MaxEntries": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/PeerMetrics.scala"
+}

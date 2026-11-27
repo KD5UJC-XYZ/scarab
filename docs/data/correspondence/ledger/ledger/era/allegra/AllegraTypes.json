@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "def ledger.era.allegra.AllegraTimelock.decode": null,
+  "def ledger.era.allegra.AllegraTimelock.rep": null,
+  "def ledger.era.allegra.AllegraTxOut.fromStored": null,
+  "def ledger.era.allegra.AllegraTxOut.rep": null,
+  "given ledger.era.allegra.AllegraTimelock.given_CanEqual_AllegraTimelock_AllegraTimelock": null,
+  "given ledger.era.allegra.AllegraTxOut.given_CanEqual_AllegraTxOut_AllegraTxOut": null,
+  "object ledger.era.allegra.AllegraTimelock": null,
+  "object ledger.era.allegra.AllegraTxOut": null,
+  "type ledger.era.allegra.AllegraTimelock": null,
+  "type ledger.era.allegra.AllegraTxOut": null,
+  "val ledger.era.allegra.AllegraTimelock.instance": null,
+  "val ledger.era.allegra.AllegraTxOut.instance": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/allegra/AllegraTypes.scala"
+}

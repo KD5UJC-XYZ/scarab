@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "class storage.FrozenProtocolParams.ProtocolParams": null,
+  "def storage.FrozenProtocolParams.live": null,
+  "def storage.FrozenProtocolParams.previous": null,
+  "object storage.FrozenProtocolParams": null,
+  "val storage.FrozenProtocolParams.codec": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenProtocolParams.scala"
+}

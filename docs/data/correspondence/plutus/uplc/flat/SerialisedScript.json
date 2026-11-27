@@ -1,0 +1,21 @@
+{
+ "baseline": {
+  "def uplc.flat.SerialisedScript.byteString": null,
+  "def uplc.flat.SerialisedScript.deserialiseScript": null,
+  "def uplc.flat.SerialisedScript.forEvaluation": null,
+  "enum uplc.flat.ScriptDecodeError": [
+   {
+    "file": "plutus-ledger-api/src/PlutusLedgerApi/Common/SerialisedScript.hs",
+    "lines": [
+     55,
+     79
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "ScriptDecodeError"
+   }
+  ],
+  "object uplc.flat.SerialisedScript": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/flat/SerialisedScript.scala"
+}

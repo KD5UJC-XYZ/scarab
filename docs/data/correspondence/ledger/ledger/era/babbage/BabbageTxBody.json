@@ -1,0 +1,398 @@
+{
+ "entries": {
+  "class ledger.era.babbage.BabbageTxBody": {
+   "class": "Mirror",
+   "digest": "c0b61dbc81595f8f",
+   "evidence": [
+    "BabbageTxDifferentialSuite",
+    "BabbageTxSuite"
+   ],
+   "note": "the raw fields with the bytes they were read from (`MemoBytes`); the update proposal is the typed one with the form the node stores it in (KeptUpdate)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      125,
+      148
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "BabbageTxBodyRaw"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      262,
+      262
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxBody l BabbageEra"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageTxBody.decode": {
+   "class": "Mirror",
+   "digest": "f121c82716c8d727",
+   "evidence": [
+    "BabbageTxDifferentialSuite",
+    "BabbageTxSuite"
+   ],
+   "note": "a body read in one pass at Babbage's decoder version, 7, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 7; its outputs by Babbage's output reader (BabbageTxOut.read); held to the flat decoder's verdicts on every Babbage transaction the repository holds (the recorded blocks, the reference's refusal, v1-context and Plutus admission corpora) and on byte mutants of them, and on 576 Babbage rows of the reference's decoder corpora (three of them witness sets at protocol version 8, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (BabbageTxDifferentialSuite), and to its written order on crafted cases (BabbageTxSuite)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      531,
+      572
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (BabbageTxBodyRaw l BabbageEra)"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#auxDataHash": {
+   "class": "Mirror",
+   "digest": "5a4f0efa6e25cb18",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      145,
+      145
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrAuxDataHash"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#certs": {
+   "class": "Mirror",
+   "digest": "c096db786a665e88",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      133,
+      133
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrCerts"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#collateralInputs": {
+   "class": "Mirror",
+   "digest": "17f9164cdfdc1276",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      128,
+      128
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrCollateralInputs"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#collateralReturn": {
+   "class": "Mirror",
+   "digest": "18a7d1f5cd1a2068",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      131,
+      131
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrCollateralReturn"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#fee": {
+   "class": "Mirror",
+   "digest": "3673d59d76eef239",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      135,
+      135
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrFee"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#id": {
+   "class": "Mirror",
+   "digest": "aa786b5fc73d0215",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      478,
+      479
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hashAnnotated"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#mint": {
+   "class": "Mirror",
+   "digest": "f78375606aa48c07",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      139,
+      139
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrMint"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#networkId": {
+   "class": "Mirror",
+   "digest": "3816324c26f6aa2a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      146,
+      146
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrNetworkId"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#outputs": {
+   "class": "Mirror",
+   "digest": "8111b21b07fe7b3d",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      130,
+      130
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrOutputs"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#raw": {
+   "class": "Mirror",
+   "digest": "820f2db25161a7ca",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      262,
+      262
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxBody l BabbageEra"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#referenceInputs": {
+   "class": "Mirror",
+   "digest": "453a62cff47ad073",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      129,
+      129
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrReferenceInputs"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#reqSignerHashes": {
+   "class": "Mirror",
+   "digest": "8dd9d955282152cc",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      138,
+      138
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrReqSignerHashes"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#scriptIntegrityHash": {
+   "class": "Mirror",
+   "digest": "c0a76a3bea8a6595",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      144,
+      144
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrScriptIntegrityHash"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#spendInputs": {
+   "class": "Mirror",
+   "digest": "d4f34ad55b237904",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      127,
+      127
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrInputs"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#totalCollateral": {
+   "class": "Mirror",
+   "digest": "528dca4c383b2f4c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      132,
+      132
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrTotalCollateral"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#update": {
+   "class": "Mirror",
+   "digest": "3979ff4071159c22",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      137,
+      137
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrUpdate"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#validity": {
+   "class": "Mirror",
+   "digest": "c3b94cb3e3f4381c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      136,
+      136
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrValidityInterval"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody#withdrawals": {
+   "class": "Mirror",
+   "digest": "ff74a43c7a8f3a1e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      134,
+      134
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "btbrWithdrawals"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxBody.instance": {
+   "class": "Mirror",
+   "digest": "f340352bf18d2ee3",
+   "evidence": [
+    "BabbageTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxBody.hs",
+     "lines": [
+      261,
+      373
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxBody BabbageEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.babbage.BabbageTxBody#equals",
+    "def ledger.era.babbage.BabbageTxBody#hashCode",
+    "def ledger.era.babbage.BabbageTxBody#toString",
+    "def ledger.era.babbage.BabbageTxBody.fromItem",
+    "given ledger.era.babbage.BabbageTxBody.given_CanEqual_BabbageTxBody_BabbageTxBody",
+    "object ledger.era.babbage.BabbageTxBody"
+   ],
+   "reason": "Babbage's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives, and the index of a purpose; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Babbage's (fromFlat), and the certificate's representation read only in Babbage's files. Scala containers and helpers with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbageTxBody.scala"
+}

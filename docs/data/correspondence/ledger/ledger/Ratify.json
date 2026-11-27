@@ -1,0 +1,22 @@
+{
+ "baseline": {
+  "class ledger.Ratify.Env": null,
+  "def ledger.Ratify.committeeAccepted": null,
+  "def ledger.Ratify.committeeThreshold": null,
+  "def ledger.Ratify.drepAccepted": null,
+  "def ledger.Ratify.drepThreshold": null,
+  "def ledger.Ratify.enact": null,
+  "def ledger.Ratify.isBootstrap": null,
+  "def ledger.Ratify.isCommitteeVotingAllowed": null,
+  "def ledger.Ratify.isDRepVotingAllowed": null,
+  "def ledger.Ratify.isPoolVotingAllowed": null,
+  "def ledger.Ratify.modifiedGroups": null,
+  "def ledger.Ratify.ratify": null,
+  "def ledger.Ratify.spoAccepted": null,
+  "def ledger.Ratify.spoThreshold": null,
+  "def ledger.Ratify.transition": null,
+  "enum ledger.Ratify.Threshold": null,
+  "object ledger.Ratify": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Ratify.scala"
+}

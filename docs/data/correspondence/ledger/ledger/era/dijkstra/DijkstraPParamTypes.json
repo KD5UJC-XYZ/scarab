@@ -1,0 +1,96 @@
+{
+ "entries": {
+  "class ledger.era.dijkstra.Milliseconds32": {
+   "class": "Mirror",
+   "digest": "4d5c4eab11e0db1f",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      704,
+      708
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Milliseconds32"
+    }
+   ]
+  },
+  "class ledger.era.dijkstra.SlotInterval": {
+   "class": "Mirror",
+   "digest": "7dc9a5af83b5fff6",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "cardano-slotting/src/Cardano/Slotting/Slot.hs",
+     "lines": [
+      56,
+      61
+     ],
+     "repository": "IntersectMBO/cardano-base",
+     "revision": "c1e1ed8d7ae39c111c73fc5f59ac37ce5933b83c",
+     "symbol": "SlotInterval"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.Milliseconds32.zero": {
+   "class": "Mirror",
+   "digest": "44a357d7a9091308",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "minBound, of the derived Bounded",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      706,
+      708
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Milliseconds32"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.SlotInterval.zero": {
+   "class": "Mirror",
+   "digest": "8c0cb1e6f81ac495",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "`SlotInterval 0` of the empty record",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "lines": [
+      1200,
+      1257
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "emptyDijkstraPParams"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.dijkstra.Milliseconds32",
+    "object ledger.era.dijkstra.SlotInterval"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraPParamTypes.scala"
+}

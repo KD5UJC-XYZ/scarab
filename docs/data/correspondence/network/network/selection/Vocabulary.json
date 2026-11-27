@@ -1,0 +1,39 @@
+{
+ "baseline": {
+  "class network.selection.Decision": null,
+  "class network.selection.PublicRoots": null,
+  "class network.selection.SourceRefusal": null,
+  "class network.selection.SourceRefusal.Typed": null,
+  "def network.selection.BigLedgerRoots#offered": null,
+  "def network.selection.BigLedgerRoots#origin": null,
+  "def network.selection.BigLedgerRoots.fromLedger": null,
+  "def network.selection.GovernorError#message": null,
+  "def network.selection.PublicRoots#isEmpty": null,
+  "def network.selection.SourceRefusal#message": null,
+  "def network.selection.SourceRefusal.Typed#message": null,
+  "enum network.selection.BigLedgerRoots": null,
+  "enum network.selection.Event": null,
+  "enum network.selection.FailureClass": null,
+  "enum network.selection.GovernorError": null,
+  "enum network.selection.Job": null,
+  "enum network.selection.Observation": null,
+  "enum network.selection.Outcome": null,
+  "enum network.selection.Step": null,
+  "enum network.selection.Temperature": null,
+  "enum network.selection.Trace": null,
+  "object network.selection.BigLedgerRoots": null,
+  "object network.selection.SourceRefusal": null,
+  "type network.selection.SourceRefusal#Cause": null,
+  "type network.selection.SourceRefusal.Typed#Cause": null,
+  "val network.selection.SourceRefusal#cause": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "enum network.selection.ReturnReason"
+   ],
+   "reason": "Scarab's own typed outcome of a hot peer's ChainSync session, which the node places on the governor's asynchronous demotion for its log line and its Antithesis assertions (#1032); the governor decides nothing on it"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/Vocabulary.scala"
+}

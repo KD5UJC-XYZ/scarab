@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "class storage.scls.SclsInterchange.ExportConfig": null,
+  "class storage.scls.SclsInterchange.ImportConfig": null,
+  "class storage.scls.SclsInterchange.Report": null,
+  "def storage.scls.SclsInterchange.exportFile": null,
+  "def storage.scls.SclsInterchange.importFile": null,
+  "enum storage.scls.SclsInterchange.Error": null,
+  "object storage.scls.SclsInterchange": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsInterchange.scala"
+}

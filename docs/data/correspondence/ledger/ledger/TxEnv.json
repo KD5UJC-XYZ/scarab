@@ -1,0 +1,49 @@
+{
+ "baseline": {
+  "class ledger.LedgerFailure.Rejected": null,
+  "class ledger.LedgerFailure.StateOutOfRange": null,
+  "class ledger.LedgerFailure.Unavailable": null,
+  "class ledger.LedgerFailure.Undecodable": null,
+  "class ledger.LedgerFailure.Unverifiable": null,
+  "class ledger.LedgerFailure.Vocab": null,
+  "class ledger.TxEnv": null,
+  "def ledger.LedgerFailure#message": null,
+  "def ledger.LedgerFailure.Rejected.Single.unapply": null,
+  "def ledger.LedgerFailure.Rejected.apply": null,
+  "def ledger.TxDefect#message": null,
+  "def ledger.TxEnv#static": null,
+  "def ledger.TxEnv#staticOrDefect": null,
+  "enum ledger.ScriptLocation": null,
+  "enum ledger.TxDefect": null,
+  "enum ledger.TxEnv.Validation": null,
+  "object ledger.LedgerFailure": null,
+  "object ledger.LedgerFailure.Rejected": null,
+  "object ledger.LedgerFailure.Rejected.Single": null,
+  "object ledger.TxEnv": null,
+  "trait ledger.LedgerDefect": null,
+  "trait ledger.LedgerFailure": null,
+  "type ledger.TxEnv.Result": null,
+  "val ledger.TxEnv#preparation": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.LedgerFailure.NativeScriptUnread"
+   ],
+   "reason": "a flat native script with no time-lock tree to evaluate (a Dijkstra script with a guard, which only Dijkstra's era UTXOW evaluates) is a defect of the flat UTXOW, never a pass (#1126). The reference holds every script in its era's own form and has no counterpart"
+  },
+  {
+   "definitions": [
+    "class ledger.LedgerFailure.PoolParamsLayout"
+   ],
+   "reason": "the conversions between the node's flat pool parameters, reward accounts and withdrawals and the state's (the flat rules and decoders read the node's, and the state holds the reference's types), each refusal the vocabulary's; and the instances and rendering that hold the state's pool parameters', metadata's and withdrawals' equality, the reference's derived Eq; the metadata of a term a decoder already read, as POOL reads its hash again (held); the decoder version of a stored record's ProtVer; and POOL's refusal of parameters of another layout than the state they go into, a defect the reference, one build, never meets"
+  },
+  {
+   "definitions": [
+    "class ledger.LedgerFailure.LayoutNotYet"
+   ],
+   "reason": "the state layout of each reference build Scarab can follow, and the defect of a build whose layout is not implemented yet, which the node's setup refuses before any rule runs (#1002, stage 0); the reference is one build and has no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/TxEnv.scala"
+}

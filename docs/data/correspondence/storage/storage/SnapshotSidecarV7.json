@@ -1,0 +1,37 @@
+{
+ "baseline": {
+  "class storage.SnapshotSidecarV7.Frozen.AppVersion": null,
+  "class storage.SnapshotSidecarV7.Frozen.UpdateState": null,
+  "def storage.SnapshotSidecarV7.decode": null,
+  "def storage.SnapshotSidecarV7.fingerprint": null,
+  "given storage.SnapshotSidecarV7.bootstrap": null,
+  "given storage.SnapshotSidecarV7.byron": null,
+  "given storage.SnapshotSidecarV7.consensusExtras": null,
+  "given storage.SnapshotSidecarV7.era": null,
+  "given storage.SnapshotSidecarV7.liteLedger": null,
+  "given storage.SnapshotSidecarV7.mirrorInShelley": null,
+  "given storage.SnapshotSidecarV7.protocolParams": null,
+  "given storage.SnapshotSidecarV7.updateState": null,
+  "object storage.SnapshotSidecarV7": null,
+  "object storage.SnapshotSidecarV7.Frozen": null,
+  "val storage.SnapshotSidecarV7.codec": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given storage.SnapshotSidecarV7.chainDepState"
+   ],
+   "reason": "the frozen chain-dependent states in the sidecar schemas of the snapshot versions before V10, and the native codecs of Praos2's state: Scarab's own persisted format, which keeps the bytes and fingerprints of its previous files; the reference keeps no such files and has no counterpart (#826)"
+  },
+  {
+   "definitions": [
+    "given storage.SnapshotSidecarV7.script",
+    "given storage.SnapshotSidecarV7.txOut",
+    "given storage.SnapshotSidecarV7.utxo",
+    "given storage.SnapshotSidecarV7.utxoChange"
+   ],
+   "reason": "the frozen kinds of a stored script in the sidecar schemas of the snapshot versions before V10, and the script's codec over a kind's codec: Scarab's own persisted format, which keeps the bytes and fingerprints of its previous files; the reference keeps no such files and has no counterpart (#85, #54)"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV7.scala"
+}

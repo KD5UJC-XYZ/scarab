@@ -1,0 +1,20 @@
+{
+ "baseline": {
+  "class ledger.era.TxLevel.Sub": null,
+  "class ledger.era.TxLevel.Top": null,
+  "enum ledger.era.BothLevels": null,
+  "enum ledger.era.TopOnly": null,
+  "object ledger.era.TxLevel": null,
+  "trait ledger.era.TxLevel": null,
+  "type ledger.era.AtTop": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "enum ledger.era.SubOnly"
+   ],
+   "reason": "the evidence of the sub-transaction level alone (`SubOnly`), which a member the reference gives at that level only takes, as `TopOnly` gives the top level, so that the family is not named at the sub-transaction level outright, where it is reduced at every era, Conway's included, which has no case there"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/TxLevel.scala"
+}

@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "def storage.scls.SclsDRepMapper.normalizeExpiry": null,
+  "def storage.scls.SclsDRepMapper.overlay": null,
+  "def storage.scls.SclsDRepMapper.project": null,
+  "enum storage.scls.SclsDRepMapper.Error": null,
+  "object storage.scls.SclsDRepMapper": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsDRepMapper.scala"
+}

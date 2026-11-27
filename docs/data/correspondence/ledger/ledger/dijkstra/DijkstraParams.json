@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def ledger.dijkstra.DijkstraParams.update": null,
+  "object ledger.dijkstra.DijkstraParams": null,
+  "val ledger.dijkstra.DijkstraParams.FirstKey": null,
+  "val ledger.dijkstra.DijkstraParams.LastKey": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraParams.scala"
+}

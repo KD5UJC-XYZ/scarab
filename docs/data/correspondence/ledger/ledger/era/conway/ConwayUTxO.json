@@ -1,0 +1,173 @@
+{
+ "entries": {
+  "def ledger.era.conway.ConwayUTxO.conwayProducedValue": {
+   "class": "Mirror",
+   "digest": "f03484cbb41ec15a",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "lines": [
+      107,
+      117
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "conwayProducedValue"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayUTxO.getConwayMinFeeTxUtxo": {
+   "class": "Mirror",
+   "digest": "f75086bb0b5ca56e",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "generic in its era over EraTx and BabbageEraTxBody, as the reference's is; the same at 9df9f98c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "lines": [
+      146,
+      158
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getConwayMinFeeTxUtxo"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayUTxO.getConwayScriptsNeeded": {
+   "class": "Mirror",
+   "digest": "2ddc4fd1577a3d15",
+   "evidence": [
+    "ConwayUtxowChecksSuite",
+    "EraUtxowSuite"
+   ],
+   "note": "Conway's function generic in its era over ConwayEraTxBody and ConwayEraScript, as the reference's is; the same at 9df9f98c, where Dijkstra's instance calls it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "lines": [
+      62,
+      105
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getConwayScriptsNeeded"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayUTxO.getConwayWitsVKeyNeeded": {
+   "class": "Mirror",
+   "digest": "3841d8eda2cdae3b",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "Conway's function generic in its era over ConwayEraTxBody, as the reference's is; the same at 9df9f98c, where Dijkstra's instance calls it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "lines": [
+      172,
+      180
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getConwayWitsVKeyNeeded"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayUTxO.txNonDistinctRefScriptsSize": {
+   "class": "Mirror",
+   "digest": "9f3856900b9b7976",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "generic in its era over EraTx and BabbageEraTxBody, as the reference's is, the two one instance whose levels both evidences name; the same at 9df9f98c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "lines": [
+      165,
+      170
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "txNonDistinctRefScriptsSize"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayUTxO.voterWitnesses": {
+   "class": "Mirror",
+   "digest": "4c94c1cb948c3163",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "generic in its era over ConwayEraTxBody, as the reference's is; the same at 9df9f98c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "lines": [
+      182,
+      194
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "voterWitnesses"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayUTxO.instance": {
+   "class": "Mirror",
+   "digest": "8c16ba26084a77ef",
+   "evidence": [
+    "ConwayUtxoChecksSuite",
+    "ConwayUtxowChecksSuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "every member of the reference's EraUTxO instance, and of its AlonzoEraUTxO instance (getSupplementalDataHashes = getBabbageSupplementalDataHashes, getSpendingDatum = getBabbageSpendingDatum, and the annotated transaction's four as Alonzo's); ScriptsNeeded's Conway case is the family's (Families.scala). Its rules' refusals are the reference's byte for byte where only UTXO, only the missing witness or only the datums failed",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "lines": [
+      119,
+      137
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraUTxO ConwayEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "lines": [
+      136,
+      147
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraUTxO ConwayEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.conway.ConwayUTxO.fromStored",
+    "object ledger.era.conway.ConwayUTxO"
+   ],
+   "reason": "the reading of the outputs the node keeps as an era's UTxO, refused only for an output a damaged store holds; the reference keeps the UTxO at its era's type and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayUTxO.scala"
+}

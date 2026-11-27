@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "class protocol.NtNHeader": null,
+  "class protocol.NtNHeader.ByronInfo": null,
+  "object protocol.NtNHeader": null,
+  "val protocol.NtNHeader.codec": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/NtNHeader.scala"
+}

@@ -133,16 +133,30 @@ def numeric_counts(value) -> int:
     raise EvidenceError("baseline contains an unexpected count")
 
 
+def correspondence_baseline(root: Path) -> dict[str, int]:
+    """The baselined definitions of each area of the correspondence map: the `baseline` of its map files, one per
+    source (scripts/check_correspondence.py)."""
+    directory = root / "docs/data/correspondence"
+    if not (directory / "_baseline.json").is_file():
+        raise ValueError(f"{directory / '_baseline.json'} is missing")
+    parts = {}
+    for area in sorted(p for p in directory.iterdir() if (p / "_area.json").is_file()):
+        parts[area.name] = sum(len(json.loads(f.read_text()).get("baseline", {}))
+                               for f in area.rglob("*.json") if f != area / "_area.json")
+    return parts
+
+
 def baselines(root: Path) -> dict:
     result = {}
     for name in BASELINES:
         path = root / "docs/data" / f"{name}-baseline.json"
         try:
-            data = json.loads(path.read_text())
             if name == "correspondence":
-                parts = {area: len(keys) for area, keys in data["areas"].items()}
+                parts = correspondence_baseline(root)
                 result[name] = {"count": sum(parts.values()), "unit": "definitions pending mapping review", "by_area": parts}
-            elif name == "docs-check":
+                continue
+            data = json.loads(path.read_text())
+            if name == "docs-check":
                 parts = Counter()
                 for entry in data["entries"]:
                     parts[entry["kind"]] += entry["count"]

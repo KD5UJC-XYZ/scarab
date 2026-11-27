@@ -1,0 +1,57 @@
+{
+ "baseline": {
+  "class storage.haskell.state.NewEpochStateLeios": null,
+  "def storage.haskell.state.EpochStateCodecs#certState": null,
+  "def storage.haskell.state.EpochStateCodecs#epochState": null,
+  "def storage.haskell.state.EpochStateCodecs#govState": null,
+  "def storage.haskell.state.EpochStateCodecs#instantStake": null,
+  "def storage.haskell.state.EpochStateCodecs#ledgerState": null,
+  "def storage.haskell.state.EpochStateCodecs#newEpochStateAt": null,
+  "def storage.haskell.state.EpochStateCodecs#storedPoolDistr": null,
+  "def storage.haskell.state.EpochStateCodecs#utxoState": null,
+  "def storage.haskell.state.Versions.eraLow": null,
+  "def storage.haskell.state.Versions.notYet": null,
+  "def storage.haskell.state.Versions.shelleyBased": null,
+  "given storage.haskell.state.EpochStateCodecs#blocksMade": null,
+  "given storage.haskell.state.EpochStateCodecs#chainAccountState": null,
+  "given storage.haskell.state.EpochStateCodecs#newEpochState": null,
+  "object storage.haskell.state.Versions": null,
+  "trait storage.haskell.state.EpochStateCodecs": null
+ },
+ "entries": {
+  "def storage.haskell.state.EpochStateCodecs#stashedAvvm": {
+   "class": "Gap",
+   "digest": "a3c8148f88b748a3",
+   "evidence": [
+    "ShelleyAvvmStashSuite",
+    "AllegraRedeemMirrorSuite"
+   ],
+   "note": "written as the reference writes it and read in its record forms; the reference's DecShareCBOR also reads a MemPack byte string for a stash entry's key and output (TxIn.hs:110-116, Shelley/TxOut.hs:162-174), which Scarab refuses",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/1448",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/LedgerState/Types.hs",
+     "lines": [
+      357,
+      359
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "StashedAVVMAddresses"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      112,
+      112
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EncCBOR (UTxO era)"
+    }
+   ]
+  }
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/EpochStateCodecs.scala"
+}

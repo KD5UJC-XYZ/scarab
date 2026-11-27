@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "def ledger.OCertError#message": null,
+  "def ledger.OCertRules.checkCounter": null,
+  "def ledger.OCertRules.refusedAs": null,
+  "def ledger.OCertRules.verifySignatures": null,
+  "def ledger.OCertRules.verifySignaturesWith": null,
+  "enum ledger.OCertError": null,
+  "object ledger.OCertRules": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/OCertRules.scala"
+}

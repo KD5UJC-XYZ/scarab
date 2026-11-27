@@ -1,0 +1,36 @@
+{
+ "entries": {
+  "def ledger.era.dijkstra.DijkstraProcedures.cert": {
+   "class": "Mirror",
+   "digest": "0627736f68ea7d55",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "note": "the certificate the flat decoder read, at the era's types; a pool registration's parameters at the state's, with the Leios build's voting key (sppBlsKey), its relays and metadata the bytes the body holds them as, read again from the certificate's item",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxCert.hs",
+     "lines": [
+      233,
+      252
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR (DijkstraTxCert era)"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraProcedures.proposal",
+    "def ledger.era.dijkstra.DijkstraProcedures.votes",
+    "object ledger.era.dijkstra.DijkstraProcedures"
+   ],
+   "reason": "Dijkstra's governance procedures read from what the flat decoder read (the flat proposal a proposal keeps, which the node's flat governance record holds, and the votes), as Conway's are, and the era-indexed type of the flat proposal, a step toward #85 item 25 (the proposals of the era types)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraProcedures.scala"
+}

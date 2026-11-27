@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "def network.PeerSharingAddress.socket": null,
+  "def network.PeerSharingAddress.wire": null,
+  "object network.PeerSharingAddress": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/PeerSharingAddress.scala"
+}

@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "def consensus.state.SomeEra.of": null,
+  "enum consensus.state.SomeEra": null,
+  "object consensus.state.SomeEra": null
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/SomeEra.scala"
+}

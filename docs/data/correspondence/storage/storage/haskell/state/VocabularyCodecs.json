@@ -1,0 +1,26 @@
+{
+ "baseline": {
+  "def storage.haskell.state.VocabularyCodecs#ofThisLayout": null,
+  "def storage.haskell.state.VocabularyCodecs#stateLayout": null,
+  "given storage.haskell.state.VocabularyCodecs#anchor": null,
+  "given storage.haskell.state.VocabularyCodecs#blockNo": null,
+  "given storage.haskell.state.VocabularyCodecs#coin": null,
+  "given storage.haskell.state.VocabularyCodecs#compactCoin": null,
+  "given storage.haskell.state.VocabularyCodecs#credential": null,
+  "given storage.haskell.state.VocabularyCodecs#deltaCoin": null,
+  "given storage.haskell.state.VocabularyCodecs#drep": null,
+  "given storage.haskell.state.VocabularyCodecs#epochNo": null,
+  "given storage.haskell.state.VocabularyCodecs#hash32": null,
+  "given storage.haskell.state.VocabularyCodecs#keyHash": null,
+  "given storage.haskell.state.VocabularyCodecs#nonZero": null,
+  "given storage.haskell.state.VocabularyCodecs#nonce": null,
+  "given storage.haskell.state.VocabularyCodecs#protVer": null,
+  "given storage.haskell.state.VocabularyCodecs#ptr": null,
+  "given storage.haskell.state.VocabularyCodecs#scriptHash": null,
+  "given storage.haskell.state.VocabularyCodecs#slotNo": null,
+  "given storage.haskell.state.VocabularyCodecs#vrfVerKeyHash": null,
+  "given storage.haskell.state.VocabularyCodecs#word64Codec": null,
+  "trait storage.haskell.state.VocabularyCodecs": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/VocabularyCodecs.scala"
+}

@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def uplc.flat.FlatEncoder.program": null,
+  "def uplc.flat.FlatEncoder.script": null,
+  "enum uplc.flat.FlatEncodeError": null,
+  "object uplc.flat.FlatEncoder": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/flat/FlatEncoder.scala"
+}

@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "class storage.haskell.state.SnapshotMeta": null,
+  "def storage.haskell.state.SnapshotBackend.named": null,
+  "def storage.haskell.state.SnapshotMeta.encode": null,
+  "def storage.haskell.state.SnapshotMeta.fromCrcs": null,
+  "def storage.haskell.state.SnapshotMeta.parse": null,
+  "def storage.haskell.state.SnapshotMeta.verify": null,
+  "enum storage.haskell.state.MetaError": null,
+  "enum storage.haskell.state.MetaField": null,
+  "enum storage.haskell.state.SnapshotBackend": null,
+  "object storage.haskell.state.MetaError": null,
+  "object storage.haskell.state.SnapshotBackend": null,
+  "object storage.haskell.state.SnapshotMeta": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/SnapshotMeta.scala"
+}

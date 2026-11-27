@@ -1,0 +1,279 @@
+{
+ "entries": {
+  "class ledger.era.dijkstra.DijkstraBlockBody": {
+   "class": "Mirror",
+   "digest": "0ce110bba9526ae4",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "the memoized body as its fields and the size and hash of the bytes it was read from, made only from a body the block decoder read",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      148,
+      148
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraBlockBody"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      100,
+      107
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraBlockBodyRaw"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraBlock.decode": {
+   "class": "Mirror",
+   "digest": "2b67a21b00b194a9",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "a block's bytes as the block decoder reads them, its transactions read in one pass into the era's types (LeiosBlock.decode, DijkstraTx.inBlock), its header and body in the era's types, the body made from the same bytes as its size and hash; a transaction whose reading met a value the decoder's own bounds rule out is accepted by the block decoder and is the node's defect here (LeiosBlock.unread, DijkstraBlockError.Projection), the block withheld and no peer charged, as when the flat decoder read it and its projection failed",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "lines": [
+      51,
+      55
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Block"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      210,
+      219
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR (Annotator (DijkstraBlockBody era))"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraBlockBody.ofDecoded": {
+   "class": "Mirror",
+   "digest": "b51aa8e8908b7e12",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "the body in Dijkstra's types from the body the block decoder read from a block's bytes, its transactions those it read in one pass (DijkstraTx.inBlock), the first it kept apart (LeiosBlock.firstUnheld: a value the decoder's own bounds rule out, the node's defect, or a field Dijkstra does not have, the bytes' fault) its failure, its size and hash those bytes': it takes evidence only DijkstraBlock.decode makes (DijkstraBlock.Decoded), so no body has a commitment its contents do not have, as MemoBytes ties them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      210,
+      219
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR (Annotator (DijkstraBlockBody era))"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraBlockBody#hash": {
+   "class": "Mirror",
+   "digest": "4b38bdf25f8d6f74",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "what the memoized bytes give",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      120,
+      120
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "hashBlockBody"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraBlockBody#leiosCert": {
+   "class": "Mirror",
+   "digest": "da45b1a2de114d34",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "a field of the memoized body",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      102,
+      102
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dbbrLeiosCert"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraBlockBody#perasCert": {
+   "class": "Mirror",
+   "digest": "1f46e63e0b8a0207",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "a field of the memoized body",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      104,
+      104
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dbbrPerasCert"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraBlockBody#size": {
+   "class": "Mirror",
+   "digest": "58deea0c4eb5df25",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "what the memoized bytes give",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      148,
+      148
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraBlockBody"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraBlockBody#txs": {
+   "class": "Mirror",
+   "digest": "e3ef3db20b1fffba",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "a field of the memoized body",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      101,
+      101
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dbbrTxs"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraBlockBody.instance": {
+   "class": "Mirror",
+   "digest": "d73cd65771a7b46f",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "blockBodySize the length of the memoized bytes, which encCBOR writes again at every version",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      115,
+      121
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraBlockBody DijkstraEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      137,
+      140
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraEraBlockBody DijkstraEra"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraBlockHeader.instance": {
+   "class": "Mirror",
+   "digest": "0e48de8f30d6c6b8",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "note": "the two instances of the build's Praos2 header (EraBlockHeader and LeiosEraBlockHeader of Header c), over the header the block decoder read with its fields read once in the classes' types",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
+     "lines": [
+      363,
+      379
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraBlockHeader (Header c) era"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.era.dijkstra.DijkstraBlock.Decoded",
+    "class ledger.era.dijkstra.DijkstraBlockHeader",
+    "def ledger.era.dijkstra.DijkstraBlockBody#toString",
+    "def ledger.era.dijkstra.DijkstraBlockError.of",
+    "def ledger.era.dijkstra.DijkstraBlockHeader#toString",
+    "def ledger.era.dijkstra.DijkstraBlockHeader.fromHeader",
+    "enum ledger.era.dijkstra.DijkstraBlockError",
+    "object ledger.era.dijkstra.DijkstraBlock",
+    "object ledger.era.dijkstra.DijkstraBlockBody",
+    "object ledger.era.dijkstra.DijkstraBlockError",
+    "object ledger.era.dijkstra.DijkstraBlockHeader",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#bodyHash",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#bodySize",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#header",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#issuer",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#slot",
+    "val ledger.era.dijkstra.DijkstraBlockHeader#versionInfo"
+   ],
+   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader, a plain class so that no derived Mirror builds one whose fields are not its header's, and its rendering), the evidence that a block is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types, by whose the failure is (DijkstraBlockError and its total classification DijkstraBlockError.of: the block decoder's refusal, the era types' refusal of what it read, or a value the decoder's own bounds rule out), a body's rendering, and the BBODY state's lens"
+  },
+  {
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraBlock.decodeWith"
+   ],
+   "reason": "the ranking block's transactions whose one-pass reading met a value the decoder's own bounds rule out, kept apart by whose the failure is: the node's defect, typed as one of the era errors that are defects only (LeiosBlock.Unread, LeiosBlock.Defect), or a field Dijkstra does not have, the bytes' fault (LeiosBlock.OutsideEra), the first of them the failure of the block's application (LeiosBlock#firstUnheld, LeiosBlock#transactionCount), so that the block decodes, passes the fetch checks (BlockTransport.matches, the checks of a decoded block split from its decoding) and is withheld by its application, as the flat decoder and its projection routed it; and the decoders taking the transaction reader (LeiosBlock.decodeWith, DijkstraBlock.decodeWith), so that a test forces that path, which the decoder's bounds make unreachable (#85); the reference's decoder has no such value and no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraBlock.scala"
+}

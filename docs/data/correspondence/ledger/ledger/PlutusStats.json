@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "class ledger.PlutusStats": null,
+  "object ledger.PlutusStats": null,
+  "val ledger.PlutusStats.zero": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.PlutusStats.given_cats_Monoid_PlutusStats"
+   ],
+   "reason": "The Conway switch (#85): the node's one reading of a block's bytes for the rules of its era (Prepared, and ConwayBlock.Read, the block decoder's reading beside the era block made from it), why the node reaches no verdict on a Conway block its era rules apply (ConwayBlockDefect), and the node's phase-2 counters added field by field (PlutusStats' Monoid). The reference reads a block once and has no verdict-less outcome or such counters; these are Scarab's own."
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/PlutusStats.scala"
+}

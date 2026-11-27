@@ -1,0 +1,56 @@
+{
+ "baseline": {
+  "class network.BlockFetchServer.Settings": null,
+  "def network.BlockFetchServer.Blocks#range": null,
+  "def network.BlockFetchServer.run": null,
+  "object network.BlockFetchServer": null,
+  "trait network.BlockFetchServer.Blocks": null
+ },
+ "entries": {
+  "enum network.BlockFetchServer.IteratorResult": {
+   "class": "Mirror",
+   "digest": "92f1ddb1ec343c6d",
+   "evidence": [
+    "ChainServerSuite",
+    "ServerSuite"
+   ],
+   "note": "IteratorExhausted, IteratorResult and IteratorBlockGCed as Exhausted, Block and BlockGCed; a range's stream is the results of its iteratorNext calls up to the first Exhausted or BlockGCed",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/API.hs",
+     "lines": [
+      744,
+      783
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "IteratorResult"
+    }
+   ]
+  },
+  "enum network.BlockFetchServer.UnknownRange": {
+   "class": "Mirror",
+   "digest": "5e0720d52273ea1e",
+   "evidence": [
+    "ChainServerSuite",
+    "ServerSuite"
+   ],
+   "note": "MissingBlock and ForkTooOld, each with its point; the server answers either with NoBlocks",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/ChainDB/API.hs",
+     "lines": [
+      793,
+      799
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "UnknownRange"
+    }
+   ]
+  }
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/BlockFetchServer.scala"
+}

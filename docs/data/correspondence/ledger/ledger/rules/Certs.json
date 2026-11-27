@@ -1,0 +1,24 @@
+{
+ "baseline": {
+  "class ledger.rules.CertEnv": null,
+  "class ledger.rules.Withdrawals.View": null,
+  "def ledger.rules.CertOps.dRepCredential": null,
+  "def ledger.rules.CertOps.delegate": null,
+  "def ledger.rules.CertOps.reDelegateDRep": null,
+  "def ledger.rules.CertOps.reDelegatePool": null,
+  "def ledger.rules.CertOps.register": null,
+  "def ledger.rules.CertOps.unregister": null,
+  "def ledger.rules.Delegatee#stakePool": null,
+  "def ledger.rules.Delegatee#votedDRep": null,
+  "def ledger.rules.Pool.transition": null,
+  "def ledger.rules.Withdrawals.View#isEmpty": null,
+  "def ledger.rules.Withdrawals.record": null,
+  "def ledger.rules.Withdrawals.viewOf": null,
+  "enum ledger.rules.Delegatee": null,
+  "enum ledger.rules.PoolCert": null,
+  "object ledger.rules.CertOps": null,
+  "object ledger.rules.Pool": null,
+  "object ledger.rules.Withdrawals": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Certs.scala"
+}

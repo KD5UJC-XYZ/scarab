@@ -1,0 +1,13 @@
+{
+ "baseline": {
+  "def network.LocalTxSubmissionServer.End#message": null,
+  "def network.LocalTxSubmissionServer.Unavailable#message": null,
+  "def network.LocalTxSubmissionServer.accept": null,
+  "def network.LocalTxSubmissionServer.run": null,
+  "enum network.LocalTxSubmissionServer.End": null,
+  "enum network.LocalTxSubmissionServer.Response": null,
+  "enum network.LocalTxSubmissionServer.Unavailable": null,
+  "object network.LocalTxSubmissionServer": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/LocalTxSubmissionServer.scala"
+}

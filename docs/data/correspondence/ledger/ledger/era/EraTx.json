@@ -1,0 +1,270 @@
+{
+ "baseline": {
+  "def ledger.era.AlonzoEraTx#auxDataOf": null,
+  "def ledger.era.AlonzoEraTx#isValid": null,
+  "def ledger.era.AlonzoEraTx#witsOf": null,
+  "def ledger.era.EraTx#auxData": null,
+  "def ledger.era.EraTx#auxDataOf": null,
+  "def ledger.era.EraTx#body": null,
+  "def ledger.era.EraTx#sizeTxForFeeCalculation": null,
+  "def ledger.era.EraTx#wits": null,
+  "def ledger.era.EraTx#witsOf": null,
+  "def ledger.era.IsPhase2Valid.of": null,
+  "enum ledger.era.IsPhase2Valid": null,
+  "given ledger.era.EraTx.conway": null,
+  "given ledger.era.IsPhase2Valid.given_CanEqual_IsPhase2Valid_IsPhase2Valid": null,
+  "object ledger.era.EraTx": null,
+  "object ledger.era.IsPhase2Valid": null,
+  "trait ledger.era.AlonzoEraTx": null,
+  "trait ledger.era.EraTx": null,
+  "val ledger.era.AlonzoEraTx#bodyOf": null,
+  "val ledger.era.EraTx#bodyOf": null
+ },
+ "entries": {
+  "def ledger.era.AlonzoEraTx#getTotalExUnits": {
+   "class": "Mirror",
+   "digest": "e7dee915967384d3",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the 9df9f98c member with its default, the witnesses' redeemers' units added up, which is f649f975's totExUnits, so Conway's fee and unit check are unchanged on every Conway case of the refusal corpora (ConwayUtxoChecksSuite). The reference's Dijkstra instance overrides it to add the sub-transactions' units (`Dijkstra/Tx.hs:417-422`); the typed override comes with Dijkstra's transaction class instance",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      330,
+      331
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "getTotalExUnits"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      460,
+      464
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "totExUnits"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoTx.alonzoMinFeeTx": {
+   "class": "Mirror",
+   "digest": "9f7c5375c5b6395f",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the units are the class member getTotalExUnits, as at 9df9f98c; Conway's are the member's default, f649f975's totExUnits",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      445,
+      458
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "alonzoMinFeeTx"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      498,
+      508
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "alonzoMinFeeTx"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoTx.totExUnits": {
+   "class": "Mirror",
+   "digest": "0618d984ed78cfc5",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the class member getTotalExUnits, as at 9df9f98c, where totExUnits is its deprecated name; f649f975's function is the member's default",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      460,
+      464
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "totExUnits"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      510,
+      514
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "totExUnits"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoTx.txscriptfee": {
+   "class": "Mirror",
+   "digest": "f97fc976e17c58f6",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs",
+     "lines": [
+      185,
+      190
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "txscriptfee"
+    }
+   ]
+  },
+  "def ledger.era.EraTx#cacheStAnnTx": {
+   "class": "Mirror",
+   "digest": "f7cd4363c9866d4c",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      188,
+      188
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "cacheStAnnTxG"
+    }
+   ]
+  },
+  "def ledger.era.EraTx#getMinFeeTx": {
+   "class": "Mirror",
+   "digest": "60e174376525a533",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      215,
+      221
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getMinFeeTx"
+    }
+   ]
+  },
+  "def ledger.era.EraTx#sizeTxF": {
+   "class": "Mirror",
+   "digest": "91afe090e4ddaccd",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "a function of the transaction where the reference has a getter (`SimpleGetter`), and a `Long` where the reference's `Word32` is bounded by `errorFail`, which fails past 2^32-1 bytes; no transaction that large reaches the rules: a transaction is read from one byte string, a block's or a submitted message's, whose length is a JVM `Int` (`Bytes.size`, `Cbor.Limits`), so below 2^31. Conway's counts the list header and the parts' bytes, as `sizeAlonzoTxF` serialises them",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      198,
+      199
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "sizeTxF"
+    }
+   ]
+  },
+  "def ledger.era.EraTx#txStAnnTx": {
+   "class": "Mirror",
+   "digest": "ef81af84f8321f7b",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      185,
+      185
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "txStAnnTxG"
+    }
+   ]
+  },
+  "def ledger.era.EraTx#validateNativeScript": {
+   "class": "Mirror",
+   "digest": "1728eb665dd784c6",
+   "evidence": [
+    "AllegraTimelockSuite",
+    "EraUtxoSuite",
+    "DijkstraNativeScriptEvalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs",
+     "lines": [
+      213,
+      213
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateNativeScript"
+    }
+   ]
+  },
+  "given ledger.era.EraTx.babbage": {
+   "class": "Mirror",
+   "digest": "12968c13ffe522bd",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Tx.hs",
+     "lines": [
+      39,
+      39
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTx BabbageEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.EraTx.dijkstra"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "object ledger.era.AlonzoTx"
+   ],
+   "reason": "objects that stand for the reference's modules of functions (`Alonzo/Scripts.hs`, `State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`, the `TxInfo.hs` and `Context.hs` of the script context, the `Indexable` instances of `Alonzo/TxBody.hs`, plutus-ledger-api's `V1` to `V4`, plutus-tx's `Ratio`), which Scala needs to hold top-level functions under a name"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/EraTx.scala"
+}

@@ -1,0 +1,688 @@
+{
+ "entries": {
+  "def ledger.era.rules.EmbedUtxoInUtxow#wrapEvent": {
+   "class": "Mirror",
+   "digest": "f30c3365ce5b966c",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      213,
+      213
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "wrapEvent"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedUtxoInUtxow#wrapFailed": {
+   "class": "Mirror",
+   "digest": "74a1e6a938729a3f",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      212,
+      212
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "wrapFailed"
+    }
+   ]
+  },
+  "def ledger.era.rules.InjectUtxowFailure#injectFailure": {
+   "class": "Mirror",
+   "digest": "41a2675c02ebea7e",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      124,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "injectFailure"
+    }
+   ]
+  },
+  "def ledger.era.rules.InjectUtxowFailure.conwayShelleyUtxo": {
+   "class": "Mirror",
+   "digest": "bab87d9d0efc2fbb",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "note": "a function of the build's injection of Shelley's UTXO failures (InjectShelleyUtxoFailure), which the reference's one build has as an instance",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      141,
+      142
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXOW\" Shelley.ShelleyUtxoPredFailure ConwayEra"
+    }
+   ]
+  },
+  "def ledger.era.rules.InjectUtxowFailure.injectFailure": {
+   "class": "Mirror",
+   "digest": "5c5bf4bc6d642948",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      129,
+      130
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "injectFailure = UtxoFailure . injectFailure"
+    }
+   ]
+  },
+  "enum ledger.era.rules.AlonzoUtxowEvent": {
+   "class": "Mirror",
+   "digest": "1cd96016ce18afbc",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs",
+     "lines": [
+      178,
+      180
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoUtxowEvent"
+    }
+   ]
+  },
+  "enum ledger.era.rules.AlonzoUtxowPredFailure": {
+   "class": "Mirror",
+   "digest": "db7d83e9e4f2b947",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "its fields at the node's types, as ShelleyUtxowPredFailure's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs",
+     "lines": [
+      89,
+      116
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoUtxowPredFailure"
+    }
+   ]
+  },
+  "enum ledger.era.rules.BabbageUtxowPredFailure": {
+   "class": "Mirror",
+   "digest": "d40cbe0b3e9faa73",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxow.hs",
+     "lines": [
+      80,
+      94
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "BabbageUtxowPredFailure"
+    }
+   ]
+  },
+  "enum ledger.era.rules.ConwayUtxowPredFailure": {
+   "class": "Mirror",
+   "digest": "87b413db2dbd863e",
+   "evidence": [
+    "EraUtxoSuite",
+    "ConwayUtxoChecksSuite",
+    "RedeemerIndexReferenceSuite"
+   ],
+   "note": "its constructors in the reference's order (tags :227-245); no encoder of its own yet: its refusals are compared with the reference's bytes through ConwayUtxowPredFailure.toStored and the node's encoder where only UTXOW and UTXO failed (ConwayUtxoChecksSuite, RedeemerIndexReferenceSuite), a context's translation failure by kind (CNF-2, #796)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      58,
+      112
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayUtxowPredFailure"
+    }
+   ]
+  },
+  "enum ledger.era.rules.ShelleyUtxowEvent": {
+   "class": "Mirror",
+   "digest": "636896cace002d87",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
+     "lines": [
+      144,
+      146
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ShelleyUtxowEvent"
+    }
+   ]
+  },
+  "enum ledger.era.rules.ShelleyUtxowPredFailure": {
+   "class": "Mirror",
+   "digest": "7d740800dc776453",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "its fields at the node's types, the hashes as bytes in cats' NonEmptySet; the MIR quorum's signers are MirSigners, no value at Conway. Its observable behaviour is the reference's: the case is impossible at Conway in both, and the compiler enforces what the reference asserts with `error`, as absurdEraRule does for PPUP.",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
+     "lines": [
+      111,
+      132
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ShelleyUtxowPredFailure"
+    }
+   ]
+  },
+  "given ledger.era.rules.EmbedUtxoInUtxow.conway": {
+   "class": "Mirror",
+   "digest": "a848f2ff75bf0fd4",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      201,
+      213
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Embed (UTXO era) (UTXOW era)"
+    }
+   ]
+  },
+  "given ledger.era.rules.EmbedUtxoInUtxow.dijkstra": {
+   "class": "Mirror",
+   "digest": "a885a1d63b07aee8",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      359,
+      367
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Embed (UTXO era) (UTXOW era)"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxowFailure.conway": {
+   "class": "Mirror",
+   "digest": "ef8a2c89fd60d5d2",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      118,
+      118
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXOW\" ConwayUtxowPredFailure ConwayEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxowFailure.conwayAlonzo": {
+   "class": "Mirror",
+   "digest": "8a59d16fe8a940d1",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      123,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXOW\" Alonzo.AlonzoUtxowPredFailure ConwayEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxowFailure.conwayBabbage": {
+   "class": "Mirror",
+   "digest": "26bd2c3f79a36dc6",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      120,
+      121
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXOW\" Babbage.BabbageUtxowPredFailure ConwayEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxowFailure.conwayShelley": {
+   "class": "Mirror",
+   "digest": "8065e494ea4fb4e6",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      126,
+      127
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXOW\" Shelley.ShelleyUtxowPredFailure ConwayEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxowFailure.conwayUtxo": {
+   "class": "Mirror",
+   "digest": "9116ae8c541a5084",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "note": "the reference's six instances for the failure types Conway's UTXO injects (ConwayUtxoPredFailure, Babbage's, Alonzo's, Alonzo's and Conway's UTXOS, Allegra's), each UtxoFailure . injectFailure, as one instance over the UTXO injection; Shelley's, which differs by build, is conwayShelleyUtxo",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      129,
+      130
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXOW\" ConwayUtxoPredFailure ConwayEra"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      318,
+      319
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXOW\" ConwayUtxosPredFailure ConwayEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxowFailure.dijkstra": {
+   "class": "Mirror",
+   "digest": "1db7603694ff3381",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      149,
+      149
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"UTXOW\" DijkstraUtxowPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxowFailure.dijkstraAlonzo": {
+   "class": "Mirror",
+   "digest": "25cb8d082ad8da29",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      157,
+      158
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"UTXOW\" Alonzo.AlonzoUtxowPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxowFailure.dijkstraBabbage": {
+   "class": "Mirror",
+   "digest": "9d03c8afca2a0af9",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      154,
+      155
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"UTXOW\" Babbage.BabbageUtxowPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxowFailure.dijkstraConway": {
+   "class": "Mirror",
+   "digest": "5c979d75d5359bf8",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      151,
+      152
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"UTXOW\" Conway.ConwayUtxowPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxowFailure.dijkstraShelley": {
+   "class": "Mirror",
+   "digest": "0ad1efe89881f8b8",
+   "note": "through Conway's, whose MIR case has no value at Dijkstra (MirSigners)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      160,
+      161
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"UTXOW\" Shelley.ShelleyUtxowPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxowFailure.given_dijkstraUtxo_F_using": {
+   "class": "Mirror",
+   "digest": "ca9d17c582fc54cb",
+   "note": "the eight UtxoFailure . injectFailure instances as one over UTXO's injections",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      163,
+      185
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "InjectRuleFailure \"UTXOW\" DijkstraUtxoPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "trait ledger.era.rules.EmbedUtxoInUtxow": {
+   "class": "Mirror",
+   "digest": "e2ab2c9af391868c",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "note": "the Embed instance as a class of the era, its wrapFailed and wrapEvent as members",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      201,
+      213
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Embed (UTXO era) (UTXOW era)"
+    }
+   ]
+  },
+  "trait ledger.era.rules.InjectUtxowFailure": {
+   "class": "Mirror",
+   "digest": "33750f243c11edf0",
+   "evidence": [
+    "ConwayUtxowChecksSuite",
+    "DijkstraUtxowSuite",
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the class InjectRuleFailure at the rule UTXOW, one instance per era and failure type; contravariant in the failure type, so that an instance over a failure type serves a predicate declaring one of its constructors (#85)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      122,
+      125
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure"
+    }
+   ]
+  },
+  "type ledger.era.rules.MirSigners": {
+   "class": "Mirror",
+   "digest": "183f3738966539b9",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "the signers of the MIR quorum's failure by era, Nothing at Conway, where the reference's injection calls the failure impossible. Its observable behaviour is the reference's: the case is impossible at Conway in both, and the compiler enforces what the reference asserts with `error`, as absurdEraRule does for PPUP.",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
+     "lines": [
+      121,
+      121
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "MIRInsufficientGenesisSigsUTXOW"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      303,
+      316
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "shelleyToConwayUtxowPredFailure"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Era.hs",
+     "lines": [
+      92,
+      92
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRule \"MIR\" DijkstraEra"
+    }
+   ]
+  },
+  "type ledger.era.rules.UtxoEvent": {
+   "class": "Mirror",
+   "digest": "5bc3ad86d7f4343e",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "note": "the type family EraRuleEvent at the rule UTXO as a match type",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs",
+     "lines": [
+      148,
+      148
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleEvent \"UTXO\" ConwayEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxo.hs",
+     "lines": [
+      175,
+      175
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleEvent \"UTXO\" DijkstraEra"
+    }
+   ]
+  },
+  "type ledger.era.rules.UtxowEvent": {
+   "class": "Mirror",
+   "digest": "0d9b30db7c620f92",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "note": "the type family EraRuleEvent at the rule UTXOW as a match type",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      116,
+      116
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleEvent \"UTXOW\" ConwayEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      147,
+      147
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleEvent \"UTXOW\" DijkstraEra"
+    }
+   ]
+  },
+  "type ledger.era.rules.UtxowPredFailure": {
+   "class": "Mirror",
+   "digest": "ab33e11c62dfb382",
+   "evidence": [
+    "EraUtxoSuite"
+   ],
+   "note": "the type family EraRuleFailure at the rule UTXOW as a match type with the eras whose UTXOW is typed",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      76,
+      76
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxow.hs",
+     "lines": [
+      114,
+      114
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure \"UTXOW\" ConwayEra"
+    },
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Utxow.hs",
+     "lines": [
+      145,
+      145
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraRuleFailure \"UTXOW\" DijkstraEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.rules.hashOrder"
+   ],
+   "reason": "the flat purposes and certificates the case files of --plutus-cases name (ConwayPlutusPurpose.toStored, ConwayTxCert.toStored, read by ConwayPhase2.storedPurposes and storedErrors); a non-empty set of hashes and its order, the bytes', as the reference's derived `Ord` of a hash; and the objects that stand for the reference's Rules/Utxow modules"
+  },
+  {
+   "definitions": [
+    "given ledger.era.rules.ConwayUtxowPredFailure.given_CanEqual_ConwayUtxowPredFailure_E_ConwayUtxowPredFailure_E",
+    "object ledger.era.rules.ConwayUtxowPredFailure",
+    "object ledger.era.rules.EmbedUtxoInUtxow",
+    "object ledger.era.rules.InjectUtxowFailure"
+   ],
+   "reason": "the reading and writing of the node's stored UTxO set by the era-typed state change: a stored output read into the era (design §3.6 of docs/design/era-typed-transactions.md), extractKeys, restrictKeys and the left-biased union of Data.Map over the stored set, how the rules read stored outputs (StoredOutputs, whose default reads each where asked and whose instance in Conway's block run keeps what the run read, #85), and the defects the reference has no counterpart for (a script the evaluator gives no verdict for, a damaged store, an output outside the state's vocabulary), raised as no verdict; and the companions and module objects of UTXOS, Scala containers with no counterpart (#85); and the companions of UTXO's failure, its injection and its embedding of UTXOS, with the failure's equality with itself only; and the companions of UTXOW's failure, its injection and its embedding of UTXO, with the failure's equality with itself only, and the module objects of Allegra's native-script evaluation (Allegra/Scripts.hs, Allegra/Tx.hs); and the companions of SUBUTXO's and SUBUTXOW's failures and events, their injections and the embedding of SUBUTXO, with each type's equality with itself only"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/UtxowFailures.scala"
+}

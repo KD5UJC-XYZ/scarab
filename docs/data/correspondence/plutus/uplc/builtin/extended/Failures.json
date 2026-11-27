@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "def uplc.builtin.extended.ArrayFailure#lines": null,
+  "def uplc.builtin.extended.BitwiseFailure#lines": null,
+  "def uplc.builtin.extended.ExpModFailure#lines": null,
+  "def uplc.builtin.extended.LogLines#lines": null,
+  "def uplc.builtin.extended.SignatureInputFailure#lines": null,
+  "def uplc.builtin.extended.SignatureScheme#location": null,
+  "def uplc.builtin.extended.UnValueDataCause#line": null,
+  "def uplc.builtin.extended.ValueFailure#lines": null,
+  "def uplc.builtin.extended.showWord8s": null,
+  "enum uplc.builtin.extended.ArrayFailure": null,
+  "enum uplc.builtin.extended.BitwiseFailure": null,
+  "enum uplc.builtin.extended.ExpModFailure": null,
+  "enum uplc.builtin.extended.LibraryDefect": null,
+  "enum uplc.builtin.extended.SignatureInputFailure": null,
+  "enum uplc.builtin.extended.SignatureScheme": null,
+  "enum uplc.builtin.extended.UnValueDataCause": null,
+  "enum uplc.builtin.extended.ValueFailure": null,
+  "trait uplc.builtin.extended.LogLines": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/builtin/extended/Failures.scala"
+}

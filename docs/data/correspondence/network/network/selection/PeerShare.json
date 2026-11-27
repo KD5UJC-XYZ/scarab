@@ -1,0 +1,25 @@
+{
+ "baseline": {
+  "class network.selection.PeerShare.Batch": null,
+  "class network.selection.PeerShare.Candidate": null,
+  "class network.selection.PeerShare.Governor": null,
+  "class network.selection.PeerShare.Salting": null,
+  "def network.selection.PeerShare.Governor#inFlight": null,
+  "def network.selection.PeerShare.SaltedHash#apply": null,
+  "def network.selection.PeerShare.Salting#at": null,
+  "def network.selection.PeerShare.Salting.start": null,
+  "def network.selection.PeerShare.answer": null,
+  "def network.selection.PeerShare.belowTarget": null,
+  "def network.selection.PeerShare.completed": null,
+  "def network.selection.PeerShare.shareable": null,
+  "enum network.selection.PeerShare.Result": null,
+  "given network.selection.PeerShare.SaltedHash.given_SaltedHash_PeerSharing_Address": null,
+  "object network.selection.PeerShare": null,
+  "object network.selection.PeerShare.SaltedHash": null,
+  "object network.selection.PeerShare.Salting": null,
+  "trait network.selection.PeerShare.SaltedHash": null,
+  "val network.selection.PeerShare.MaxPeers": null,
+  "val network.selection.PeerShare.StickyTime": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/PeerShare.scala"
+}

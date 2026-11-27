@@ -1,0 +1,36 @@
+{
+ "baseline": {
+  "def ledger.Metadatum#equals": null,
+  "def ledger.Metadatum#hashCode": null,
+  "def ledger.Metadatum#toString": null,
+  "def ledger.Metadatum.decode": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Metadata.hs",
+    "lines": [
+     153,
+     222
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "decodeMetadatum"
+   }
+  ],
+  "def ledger.Metadatum.read": null,
+  "enum ledger.Metadatum": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Metadata.hs",
+    "lines": [
+     60,
+     66
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "Metadatum"
+   }
+  ],
+  "given ledger.Metadatum.given_Tree_Metadatum": null,
+  "object ledger.Metadatum": null,
+  "val ledger.Metadatum.MaxStringBytes": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Metadatum.scala"
+}

@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "class storage.scls.SclsEntrySorter.Config": null,
+  "def storage.scls.SclsEntrySorter#add": null,
+  "def storage.scls.SclsEntrySorter#entries": null,
+  "def storage.scls.SclsEntrySorter.Config.fromInt": null,
+  "def storage.scls.SclsEntrySorter.resource": null,
+  "enum storage.scls.SclsEntrySorter.Error": null,
+  "enum storage.scls.SclsEntrySorter.Operation": null,
+  "object storage.scls.SclsEntrySorter": null,
+  "object storage.scls.SclsEntrySorter.Config": null,
+  "trait storage.scls.SclsEntrySorter": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsEntrySorter.scala"
+}

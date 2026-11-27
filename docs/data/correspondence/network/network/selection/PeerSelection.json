@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "def network.selection.PeerSelection.abort": null,
+  "def network.selection.PeerSelection.apply": null,
+  "def network.selection.PeerSelection.decide": null,
+  "enum network.selection.PeerSelection.Guard": null,
+  "object network.selection.PeerSelection": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/PeerSelection.scala"
+}

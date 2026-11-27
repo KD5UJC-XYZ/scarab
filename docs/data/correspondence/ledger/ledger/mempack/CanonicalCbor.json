@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "def ledger.mempack.CanonicalCbor.output": null,
+  "def ledger.mempack.CanonicalCbor.value": null,
+  "object ledger.mempack.CanonicalCbor": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/mempack/CanonicalCbor.scala"
+}

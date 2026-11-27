@@ -1,0 +1,28 @@
+{
+ "baseline": {
+  "def ledger.era.dijkstra.DijkstraPlutusScript#binary": null,
+  "def ledger.era.dijkstra.DijkstraPlutusScript#language": null,
+  "def ledger.era.dijkstra.DijkstraPlutusScript#tag": null,
+  "def ledger.era.dijkstra.DijkstraPlutusScript.translate": null,
+  "def ledger.era.dijkstra.DijkstraScript.decode": null,
+  "def ledger.era.dijkstra.DijkstraScript.read": null,
+  "def ledger.era.dijkstra.DijkstraScript.rep": null,
+  "def ledger.era.dijkstra.DijkstraScript.translate": null,
+  "enum ledger.era.dijkstra.DijkstraPlutusScript": null,
+  "given ledger.era.dijkstra.DijkstraPlutusScript.given_CanEqual_DijkstraPlutusScript_DijkstraPlutusScript": null,
+  "given ledger.era.dijkstra.DijkstraScript.given_CanEqual_DijkstraScript_DijkstraScript": null,
+  "object ledger.era.dijkstra.DijkstraPlutusScript": null,
+  "object ledger.era.dijkstra.DijkstraScript": null,
+  "type ledger.era.dijkstra.DijkstraScript": null,
+  "val ledger.era.dijkstra.DijkstraScript.instance": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraPlutusScript.ofFlat"
+   ],
+   "reason": "Dijkstra's transactions on the era types (#85): the companions holding their decoders, instances and CanEqual, Scala's equality, hash and rendering of each, which the reference derives, the fields both levels of a body share, held once, with the narrowing of a top-level body to its constructor, which the reference's GADT match does, and an account balance interval from the body reader's; the Plutus scripts made in Dijkstra's types from the language and bytes read; and the bounds' companions; the proof that a value was read from bytes by the decoders (`DijkstraTx.FromBytes`), which only `DijkstraTx` makes and keeps, and the witness set's and auxiliary data's readers from bytes through it"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraScript.scala"
+}

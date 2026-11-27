@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "def storage.haskell.state.SnapshotTableStream.SemanticSink#insert": null,
+  "def storage.haskell.state.SnapshotTableStream.entries": null,
+  "def storage.haskell.state.SnapshotTableStream.events": null,
+  "def storage.haskell.state.SnapshotTableStream.fold": null,
+  "def storage.haskell.state.SnapshotTableStream.readInto": null,
+  "def storage.haskell.state.SnapshotTableStream.write": null,
+  "def storage.haskell.state.SnapshotTableStream.writeOutputs": null,
+  "def storage.haskell.state.SnapshotTableStream.writeStore": null,
+  "enum storage.haskell.state.SnapshotTableStream.Event": null,
+  "object storage.haskell.state.SnapshotTableStream": null,
+  "trait storage.haskell.state.SnapshotTableStream.SemanticSink": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/SnapshotTableStream.scala"
+}

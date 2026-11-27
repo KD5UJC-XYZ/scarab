@@ -1,0 +1,44 @@
+{
+ "entries": {
+  "val ledger.era.babbage.BabbageState.accounts": {
+   "class": "Mirror",
+   "digest": "fc277064b0e703bd",
+   "evidence": [
+    "BabbageStateStoredSuite"
+   ],
+   "note": "Babbage's two accounts instances in one value, given in the root class's companion",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/State/Account.hs",
+     "lines": [
+      11,
+      27
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraAccounts BabbageEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/State/Account.hs",
+     "lines": [
+      29,
+      29
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ShelleyEraAccounts BabbageEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.babbage.BabbageState"
+   ],
+   "reason": "objects that hold an era's instances of the accounts and certificate-state classes, the reference's functions over those classes (each mapped by itself), or CanEqual; Scala containers with no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbageState.scala"
+}

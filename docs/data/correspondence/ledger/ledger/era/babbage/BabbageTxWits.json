@@ -1,0 +1,92 @@
+{
+ "entries": {
+  "def ledger.era.babbage.BabbageTxWits.decode": {
+   "class": "Mirror",
+   "digest": "9ebe4f3abaa3cd00",
+   "evidence": [
+    "BabbageTxDifferentialSuite",
+    "BabbageTxSuite"
+   ],
+   "note": "a witness set read in one pass at Babbage's decoder version, 7, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 7; a list of PlutusV3 scripts refused at its first item; held to the flat decoder's verdicts on every Babbage transaction the repository holds (the recorded blocks, the reference's refusal, v1-context and Plutus admission corpora) and on byte mutants of them, and on 576 Babbage rows of the reference's decoder corpora (three of them witness sets at protocol version 8, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (BabbageTxDifferentialSuite), and to its written order on crafted cases (BabbageTxSuite)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      603,
+      703
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoTxWitsRaw era))"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbageTxWits.decodeAt": {
+   "class": "Mirror",
+   "digest": "1186e8719b1383e4",
+   "evidence": [
+    "BabbageTxDifferentialSuite"
+   ],
+   "note": "the witness set's decoder at a version of Babbage's, 7 or 8, as `decodeFull'` reads at any version: the reference's recordings at protocol version 8 are read at it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      603,
+      703
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoTxWitsRaw era))"
+    }
+   ]
+  },
+  "type ledger.era.babbage.BabbageTxWits": {
+   "class": "Mirror",
+   "digest": "3acc9462f6dfefa0",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxWits.hs",
+     "lines": [
+      27,
+      27
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoTxWits BabbageEra"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageTxWits.instance": {
+   "class": "Mirror",
+   "digest": "bce1afac0490a68f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxWits.hs",
+     "lines": [
+      26,
+      45
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxWits BabbageEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.babbage.BabbageTxWits.fromItem",
+    "given ledger.era.babbage.BabbageTxWits.given_CanEqual_BabbageTxWits_BabbageTxWits",
+    "object ledger.era.babbage.BabbageTxWits"
+   ],
+   "reason": "Babbage's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives, and the index of a purpose; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Babbage's (fromFlat), and the certificate's representation read only in Babbage's files. Scala containers and helpers with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbageTxWits.scala"
+}

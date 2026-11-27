@@ -1,0 +1,26 @@
+{
+ "baseline": {
+  "def protocol.LocalTxSubmission.decodePrefix": null,
+  "def protocol.LocalTxSubmission.encode": null,
+  "def protocol.LocalTxSubmission.incremental": null,
+  "def protocol.LocalTxSubmission.transition": null,
+  "enum protocol.LocalTxSubmission.Message": null,
+  "enum protocol.LocalTxSubmission.State": null,
+  "object protocol.LocalTxSubmission": null,
+  "val protocol.LocalTxSubmission.MaxMessageBytes": null,
+  "val protocol.LocalTxSubmission.MiniProtocolId": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.LocalTxSubmission.TxReader#prefix",
+    "enum protocol.LocalTxSubmission.TxPrefix",
+    "object protocol.LocalTxSubmission.TxReader",
+    "trait protocol.LocalTxSubmission.TxReader",
+    "val protocol.LocalTxSubmission.TxReader.whole"
+   ],
+   "reason": "the hook by which the node's decoder of a GenTx judges a LocalTxSubmission transaction, whole or the part that has arrived: the reference hands the codec the decoder itself (decodeTx, LocalTxSubmission/Codec.hs:148-154 at ouroboros-network c45735a5) and reads the transaction from the stream; Scarab reads the transaction as one item and asks the node's judge of it, which is outside the areas"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/LocalTxSubmission.scala"
+}

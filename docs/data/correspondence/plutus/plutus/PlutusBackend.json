@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "class plutus.PlutusBackend": null,
+  "object plutus.PlutusBackend": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "val plutus.PlutusBackend.default"
+   ],
+   "reason": "Scarab's wiring of its one Plutus backend, the evaluator and the script decoder that the rules, the mempool and the forger each take; plutus has no counterpart"
+  }
+ ],
+ "source": "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/PlutusBackend.scala"
+}

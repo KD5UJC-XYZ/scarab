@@ -1,0 +1,31 @@
+{
+ "baseline": {
+  "class protocol.ReferenceBuild.Pins": null,
+  "class protocol.UnknownReferenceBuild": null,
+  "def protocol.ReferenceBuild#describe": null,
+  "def protocol.ReferenceBuild#wantsExperimentalHardForks": null,
+  "def protocol.ReferenceBuild.Pins#nodeShort": null,
+  "def protocol.ReferenceBuild.Stability#label": null,
+  "def protocol.ReferenceBuild.parse": null,
+  "def protocol.ReferenceBuildNotYet#message": null,
+  "def protocol.UnknownReferenceBuild#message": null,
+  "enum protocol.ReferenceBuild": null,
+  "enum protocol.ReferenceBuild.Stability": null,
+  "enum protocol.ReferenceBuildNotYet": null,
+  "object protocol.ReferenceBuild": null,
+  "val protocol.ReferenceBuild#name": null,
+  "val protocol.ReferenceBuild#pins": null,
+  "val protocol.ReferenceBuild#stability": null,
+  "val protocol.ReferenceBuild.Default": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.ReferenceBuild.recorded",
+    "val protocol.ReferenceBuild.renamed"
+   ],
+   "reason": "the reading of a reference build's former names from recorded files (snapshots, refusal corpora, captures), Scarab's own: the reference names its build by its binary and records no build in its files (#1365, an FMT-1 decision of 2026-11-23)"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ReferenceBuild.scala"
+}

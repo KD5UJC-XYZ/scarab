@@ -1,0 +1,59 @@
+{
+ "baseline": {
+  "def protocol.LeiosFetch.answers": null,
+  "def protocol.LeiosFetch.byteLimit": null,
+  "def protocol.LeiosFetch.decodePrefix": null,
+  "def protocol.LeiosFetch.encode": null,
+  "def protocol.LeiosFetch.next": null,
+  "enum protocol.LeiosFetch.Message": null,
+  "enum protocol.LeiosFetch.State": null,
+  "object protocol.LeiosFetch": [
+   {
+    "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+    "lines": [
+     255,
+     282
+    ],
+    "repository": "IntersectMBO/ouroboros-consensus",
+    "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+    "symbol": "codecLeiosFetch"
+   }
+  ],
+  "val protocol.LeiosFetch.BlockByteLimit": null,
+  "val protocol.LeiosFetch.BlockTxsByteLimit": null,
+  "val protocol.LeiosFetch.MaxBitmapEntries": null,
+  "val protocol.LeiosFetch.MaxTxsPerEb": null,
+  "val protocol.LeiosFetch.MiniProtocolId": null
+ },
+ "entries": {
+  "val protocol.LeiosFetch.MaxEbBytes": {
+   "class": "Mirror",
+   "digest": "aa59d0077029f3ff",
+   "evidence": [
+    "DijkstraSelectionSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "lines": [
+      214,
+      215
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "maxLeiosEbBytesSize"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.LeiosFetch.incremental"
+   ],
+   "reason": "the LeiosFetch runtime's Scala plumbing with no counterpart of its own: the client's settings record and instruction alias, the message tag a refusal names, the companions, the refusal's rendering, and the decoder the multiplexer receives a LeiosFetch message with, the codec resumed on each longer prefix from the step its last prefix stopped in, as the driver feeds cborg's decoder each chunk (#54)"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/LeiosFetch.scala"
+}

@@ -1,0 +1,9 @@
+{
+ "baseline": {
+  "def storage.SnapshotFailure#message": null,
+  "def storage.SnapshotFailure.capture": null,
+  "enum storage.SnapshotFailure": null,
+  "object storage.SnapshotFailure": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotFailure.scala"
+}

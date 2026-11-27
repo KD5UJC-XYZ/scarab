@@ -1,0 +1,36 @@
+{
+ "baseline": {
+  "def protocol.LeiosWord.Word16.from": null,
+  "def protocol.LeiosWord.Word16.toInt": null,
+  "def protocol.LeiosWord.Word32.from": null,
+  "def protocol.LeiosWord.Word32.toLong": null,
+  "def protocol.LeiosWord.Word64.from": null,
+  "def protocol.LeiosWord.Word64.toBigInt": null,
+  "object protocol.LeiosWord": null,
+  "object protocol.LeiosWord.Word16": null,
+  "object protocol.LeiosWord.Word32": null,
+  "object protocol.LeiosWord.Word64": null,
+  "type protocol.LeiosWord.Word16": null,
+  "type protocol.LeiosWord.Word32": null,
+  "type protocol.LeiosWord.Word64": null,
+  "val protocol.LeiosWord.Word16.Max": null,
+  "val protocol.LeiosWord.Word32.Max": null,
+  "val protocol.LeiosWord.Word64.Max": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.LeiosWord.Word64.fromUnsigned"
+   ],
+   "reason": "construction of a Leios wire Word64 from the bits of another Word64, such as a slot; the reference's LeiosPoint holds the SlotNo itself (#73)"
+  },
+  {
+   "definitions": [
+    "def protocol.LeiosWord.Word32.wrap",
+    "def protocol.LeiosWord.Word64.clamped"
+   ],
+   "reason": "the Leios answers' Scala plumbing with no counterpart of its own: the fault's rendering and companion, the total constructors of the wire's words, a Word32 by fromIntegral and a slot bounded into a Word64, and the hot stop a client registers so that it reads the governor's Terminate first, which the reference's client reads from controlMessageSTM in the same transaction as its next request (#54)"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/LeiosWord.scala"
+}

@@ -1,0 +1,7 @@
+{
+ "baseline": {
+  "def ledger.byron.ByronInteger.decode": null,
+  "object ledger.byron.ByronInteger": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronInteger.scala"
+}

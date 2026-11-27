@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "def network.AcceptFailure#diffusion": null,
+  "def network.TcpListener#accept": null,
+  "def network.TcpListener#address": null,
+  "def network.TcpListeners#bind": null,
+  "def network.TcpListeners.configured": null,
+  "enum network.AcceptFailure": null,
+  "given network.AcceptFailure.given_Show_A": null,
+  "object network.AcceptFailure": null,
+  "object network.TcpListeners": null,
+  "trait network.TcpListener": null,
+  "trait network.TcpListeners": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/TcpListeners.scala"
+}

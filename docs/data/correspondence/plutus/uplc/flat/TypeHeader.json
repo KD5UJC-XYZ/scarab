@@ -1,0 +1,11 @@
+{
+ "baseline": {
+  "def uplc.flat.TypeHeader.parse": null,
+  "def uplc.flat.TypeHeader.read": null,
+  "def uplc.flat.TypeHeader.tags": null,
+  "enum uplc.flat.TypeHeader.Failure": null,
+  "enum uplc.flat.TypeHeader.Kinded": null,
+  "object uplc.flat.TypeHeader": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/flat/TypeHeader.scala"
+}

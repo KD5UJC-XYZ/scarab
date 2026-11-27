@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "class storage.scls.SclsStateMapper.Builder": null,
+  "def storage.scls.SclsStateMapper.Builder#finish": null,
+  "def storage.scls.SclsStateMapper.Builder#push": null,
+  "def storage.scls.SclsStateMapper.begin": null,
+  "def storage.scls.SclsStateMapper.overlay": null,
+  "def storage.scls.SclsStateMapper.project": null,
+  "enum storage.scls.SclsStateMapper.Error": null,
+  "object storage.scls.SclsStateMapper": null,
+  "val storage.scls.SclsStateMapper.Builder#acc": null,
+  "val storage.scls.SclsStateMapper.Builder#base": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsStateMapper.scala"
+}

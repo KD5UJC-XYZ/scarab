@@ -1,0 +1,32 @@
+{
+ "baseline": {
+  "class storage.haskell.state.Record.NoFields": null,
+  "class storage.haskell.state.Record.OneField": null,
+  "class storage.haskell.state.Record.TwoFields": null,
+  "def storage.haskell.state.Record.Fields#arity": null,
+  "def storage.haskell.state.Record.Fields#check": null,
+  "def storage.haskell.state.Record.Fields#decode": null,
+  "def storage.haskell.state.Record.Fields#encode": null,
+  "def storage.haskell.state.Record.NoFields#check": null,
+  "def storage.haskell.state.Record.NoFields#decode": null,
+  "def storage.haskell.state.Record.NoFields#encode": null,
+  "def storage.haskell.state.Record.OneField#check": null,
+  "def storage.haskell.state.Record.OneField#decode": null,
+  "def storage.haskell.state.Record.OneField#encode": null,
+  "def storage.haskell.state.Record.TwoFields#check": null,
+  "def storage.haskell.state.Record.TwoFields#decode": null,
+  "def storage.haskell.state.Record.TwoFields#encode": null,
+  "def storage.haskell.state.Record.auto": null,
+  "def storage.haskell.state.Record.of": null,
+  "given storage.haskell.state.Record.given_manyFields": null,
+  "given storage.haskell.state.Record.given_oneField_A_Product_T_L_String": null,
+  "given storage.haskell.state.Record.given_twoFields_A_Product_T_U_L_String_M_String": null,
+  "given storage.haskell.state.Record.noFields": null,
+  "object storage.haskell.state.Record": null,
+  "trait storage.haskell.state.Record.Fields": null,
+  "val storage.haskell.state.Record.NoFields#arity": null,
+  "val storage.haskell.state.Record.OneField#arity": null,
+  "val storage.haskell.state.Record.TwoFields#arity": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Record.scala"
+}

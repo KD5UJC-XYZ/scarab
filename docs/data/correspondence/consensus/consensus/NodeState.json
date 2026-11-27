@@ -1,0 +1,21 @@
+{
+ "baseline": {
+  "class consensus.ByronEpochStats": null,
+  "class consensus.ByronState": null,
+  "class consensus.ConsensusExtras": null,
+  "class consensus.EpochStats": null,
+  "class consensus.FollowState": null,
+  "def consensus.ByronEpochStats#record": null,
+  "def consensus.ByronState#finish": null,
+  "def consensus.ByronState.starting": null,
+  "def consensus.EpochStats#record": null,
+  "def consensus.EpochStats#total": null,
+  "given consensus.ByronState.given_Eq_ByronState": null,
+  "given consensus.ByronState.given_Show_ByronState": null,
+  "object consensus.ByronState": null,
+  "object consensus.FollowState": null,
+  "val consensus.ByronState.initial": null,
+  "val consensus.FollowState.initial": null
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/NodeState.scala"
+}

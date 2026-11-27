@@ -1,0 +1,86 @@
+{
+ "entries": {
+  "class ledger.era.ProposedPPUpdates": {
+   "class": "Mirror",
+   "digest": "fcfd98766a7fe22a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      270,
+      272
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ProposedPPUpdates"
+    }
+   ]
+  },
+  "class ledger.era.Update": {
+   "class": "Mirror",
+   "digest": "7c85d5002dfda4af",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      247,
+      249
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Update"
+    }
+   ]
+  },
+  "def ledger.era.KeptUpdate.decode": {
+   "class": "Mirror",
+   "digest": "186d4ccc3a6c075f",
+   "evidence": [
+    "BabbageUpdateSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "read only at an era whose update sets the protocol version (EraPParamsToBabbage, the range of `updateTxBodyL`), at its `eraProtVerLow`; each field's value kept as the bytes it was read from beside the typed update, the form the node stores a proposal in (ADR 0006); the same stored form as the flat decoder's, byte for byte. Known diagnostic gap at Babbage's versions 7 and 8, shared with the flat decoder that runs today (#85): a repeated update key is refused naming the key, as the reference's `duplicateKey` does, where the flat decoder names none; a value out of its word's width is a NumberOutOfRange, at the update's site here and the field's in the flat decoder, where cborg's `decodeWord16` refuses it as not a word16; a nonempty indefinite outer record is an IndefiniteLength, where `RecD` refuses it with \"Excess terms in array\" (`Coders.hs:478-483`). What is accepted and refused is the same.",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      263,
+      267
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Update era)"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxBody.hs",
+     "lines": [
+      97,
+      100
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "updateTxBodyL"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.era.KeptUpdate",
+    "def ledger.era.KeptUpdate.fromStored"
+   ],
+   "reason": "an update proposal of the eras before Conway, and each delegate's proposed update the governance state keeps (KeptPParamsUpdate), with the bytes of its values, as the node stores it (ADR 0006), and its reading from that stored form; the reference stores the typed update and writes it canonically, so it has no counterpart; the kept bytes reproduce the stored record, and the reference's re-encoding differs from them in the Haskell-layout state answers for a non-canonical proposal (#85 item 7211463135); a stored proposal with a legacy unread field is refused (#85 item 7222565136)"
+  },
+  {
+   "definitions": [
+    "object ledger.era.KeptUpdate"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/Update.scala"
+}

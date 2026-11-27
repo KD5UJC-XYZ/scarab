@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "class storage.FrozenSidecar.BootstrapState": null,
+  "class storage.FrozenSidecar.ConsensusExtras": null,
+  "class storage.FrozenSidecar.FutureGenDeleg": null,
+  "class storage.FrozenSidecar.LiteLedger": null,
+  "class storage.FrozenSidecar.LiteParams": null,
+  "class storage.FrozenSidecar.MirrorExtras.InShelley": null,
+  "class storage.FrozenSidecar.PoolEntry": null,
+  "class storage.FrozenSidecar.SnapshotSidecar": null,
+  "def storage.FrozenSidecar.live": null,
+  "enum storage.FrozenSidecar.Chain": null,
+  "object storage.FrozenSidecar": null,
+  "object storage.FrozenSidecar.MirrorExtras": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/FrozenSidecar.scala"
+}

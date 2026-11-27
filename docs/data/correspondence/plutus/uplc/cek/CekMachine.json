@@ -1,0 +1,48 @@
+{
+ "baseline": {
+  "class uplc.cek.CekEvaluated": null,
+  "class uplc.cek.CekFailed": null,
+  "class uplc.cek.CekReport": null,
+  "class uplc.cek.CekResult": null,
+  "class uplc.cek.CekResult.Failure": null,
+  "class uplc.cek.CekResult.Success": null,
+  "class uplc.cek.CekResult.SuccessConstant": null,
+  "class uplc.cek.CekResult.SuccessNonConstant": null,
+  "class uplc.cek.MachineParameters": [
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Evaluation/Machine/MachineParameters.hs",
+    "lines": [
+     55,
+     64
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "MachineParameters"
+   }
+  ],
+  "def uplc.cek.BudgetState#spent": null,
+  "def uplc.cek.CekMachine.evaluate": null,
+  "def uplc.cek.CekMachine.run": null,
+  "def uplc.cek.CekResult.Success#term": null,
+  "def uplc.cek.CekResult.SuccessConstant#term": null,
+  "enum uplc.cek.BudgetMode": null,
+  "enum uplc.cek.BudgetState": null,
+  "object uplc.cek.CekMachine": null,
+  "object uplc.cek.CekResult": null,
+  "val uplc.cek.CekMachine.Slippage": null,
+  "val uplc.cek.CekResult.SuccessNonConstant#term": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def uplc.cek.CekMachine.runUntil",
+    "def uplc.cek.Stop#apply",
+    "object uplc.cek.Stop",
+    "trait uplc.cek.Stop",
+    "val uplc.cek.Stop.never"
+   ],
+   "reason": "Scarab's means of ending an evaluation its caller has cancelled, the mempool's hard time limit: the reference's mempool ends the evaluation with GHC's asynchronous exception (`timeout`, ouroboros-consensus `Mempool/Update.hs` 239-245 at 82ecba32, 240-246 at 808e4005), which the JVM cannot deliver to a running computation, so the machine asks a stop each time it spends its counted steps, and one that never answers is the reference's machine; plutus has no counterpart"
+  }
+ ],
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cek/CekMachine.scala"
+}

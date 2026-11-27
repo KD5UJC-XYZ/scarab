@@ -1,0 +1,79 @@
+{
+ "baseline": {
+  "def uplc.bls.Bls12_381.G1.add": null,
+  "def uplc.bls.Bls12_381.G1.hashToGroup": null,
+  "def uplc.bls.Bls12_381.G1.multiScalarMul": null,
+  "def uplc.bls.Bls12_381.G1.neg": null,
+  "def uplc.bls.Bls12_381.G1.scalarMul": null,
+  "def uplc.bls.Bls12_381.G1.uncompress": null,
+  "def uplc.bls.Bls12_381.G2.add": null,
+  "def uplc.bls.Bls12_381.G2.hashToGroup": null,
+  "def uplc.bls.Bls12_381.G2.multiScalarMul": null,
+  "def uplc.bls.Bls12_381.G2.neg": null,
+  "def uplc.bls.Bls12_381.G2.scalarMul": null,
+  "def uplc.bls.Bls12_381.G2.uncompress": null,
+  "def uplc.bls.Bls12_381.Pairing.finalVerify": null,
+  "def uplc.bls.Bls12_381.Pairing.millerLoop": null,
+  "def uplc.bls.Bls12_381.Pairing.mulMlResult": null,
+  "def uplc.bls.Bls12_381.scalarOutOfBounds": null,
+  "def uplc.bls.BlsFailure#message": null,
+  "def uplc.bls.BlstError#show": null,
+  "def uplc.bls.ScalarOperation#name": null,
+  "enum uplc.bls.BlsDefect": null,
+  "enum uplc.bls.BlsFailure": null,
+  "enum uplc.bls.BlstError": null,
+  "enum uplc.bls.Group": null,
+  "enum uplc.bls.ScalarOperation": null,
+  "object uplc.bls.Bls12_381": null,
+  "object uplc.bls.Bls12_381.G1": null,
+  "object uplc.bls.Bls12_381.G2": null,
+  "object uplc.bls.Bls12_381.Pairing": null,
+  "type uplc.bls.Bls12_381.Result": null,
+  "val uplc.bls.Bls12_381.FieldModulus": null,
+  "val uplc.bls.Bls12_381.G1.CompressedSize": null,
+  "val uplc.bls.Bls12_381.G1.Zero": null,
+  "val uplc.bls.Bls12_381.G2.CompressedSize": null,
+  "val uplc.bls.Bls12_381.G2.Zero": null,
+  "val uplc.bls.Bls12_381.GroupOrder": null,
+  "val uplc.bls.Bls12_381.MaxDstLength": null,
+  "val uplc.bls.Bls12_381.ScalarMax": null,
+  "val uplc.bls.Bls12_381.ScalarMin": null
+ },
+ "entries": {
+  "def uplc.bls.Bls12_381.G1.equal": {
+   "class": "Mirror",
+   "digest": "8285fa25240ee4a5",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "cardano-crypto-class/src/Cardano/Crypto/EllipticCurve/BLS12_381/Internal.hs",
+     "lines": [
+      897,
+      901
+     ],
+     "repository": "IntersectMBO/cardano-base",
+     "revision": "12168e4b32b44d30dd401010ccd969accaf2add7",
+     "symbol": "c_blst_p_is_equal"
+    }
+   ]
+  },
+  "def uplc.bls.Bls12_381.G2.equal": {
+   "class": "Mirror",
+   "digest": "ad59a05f8761710b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "cardano-crypto-class/src/Cardano/Crypto/EllipticCurve/BLS12_381/Internal.hs",
+     "lines": [
+      897,
+      901
+     ],
+     "repository": "IntersectMBO/cardano-base",
+     "revision": "12168e4b32b44d30dd401010ccd969accaf2add7",
+     "symbol": "c_blst_p_is_equal"
+    }
+   ]
+  }
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/bls/Bls12_381.scala"
+}

@@ -1,0 +1,14 @@
+{
+ "baseline": {
+  "class storage.scls.SclsValue.ProposalValue": null,
+  "class storage.scls.SclsValue.StakePoolValue": null,
+  "def storage.scls.SclsValue.Entry#namespace": null,
+  "def storage.scls.SclsValue.decode": null,
+  "def storage.scls.SclsValue.encode": null,
+  "enum storage.scls.SclsValue.Entry": null,
+  "enum storage.scls.SclsValue.Error": null,
+  "enum storage.scls.SclsValue.Reading": null,
+  "object storage.scls.SclsValue": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsValue.scala"
+}

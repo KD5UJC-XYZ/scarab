@@ -1,0 +1,247 @@
+{
+ "entries": {
+  "def ledger.era.rules.ConwayRatify.acceptedByEveryone": {
+   "class": "Mirror",
+   "digest": "dbc0c1fcf48096f5",
+   "evidence": [
+    "EraRatifySuite",
+    "EraRatifyConformanceSuite",
+    "EraRatifyStoredSuite"
+   ],
+   "note": "the committee's verdict a VocabError where the committee cannot be read",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      297,
+      306
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "acceptedByEveryone"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayRatify.committeeAccepted": {
+   "class": "Mirror",
+   "digest": "a8e9b8c3e657db34",
+   "evidence": [
+    "EraRatifySuite",
+    "EraRatifyConformanceSuite",
+    "EraRatifyStoredSuite"
+   ],
+   "note": "the committee the node's record, read at the reference's type, a VocabError where it cannot be",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      118,
+      134
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "committeeAccepted"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayRatify.committeeAcceptedRatio": {
+   "class": "Mirror",
+   "digest": "2d6c5189c3145ebf",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      136,
+      163
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "committeeAcceptedRatio"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayRatify.dRepAccepted": {
+   "class": "Mirror",
+   "digest": "01ea1cca49f62c19",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      228,
+      239
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "dRepAccepted"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayRatify.dRepAcceptedRatio": {
+   "class": "Mirror",
+   "digest": "5ac383782936903a",
+   "note": "the sums compact coins (Word64), as the reference's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      252,
+      281
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "dRepAcceptedRatio"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayRatify.delayingAction": {
+   "class": "Mirror",
+   "digest": "2861f353cb685d5c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      283,
+      290
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "delayingAction"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayRatify.prevActionAsExpected": {
+   "class": "Mirror",
+   "digest": "768c8f33eed513e9",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      364,
+      367
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "prevActionAsExpected"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayRatify.ratifyTransition": {
+   "class": "Mirror",
+   "digest": "b9782c7b3ac5a64b",
+   "evidence": [
+    "EraRatifySuite",
+    "EraRatifyConformanceSuite",
+    "EraRatifyStoredSuite"
+   ],
+   "note": "a fold over the signal where the reference recurses, not in tail position (STK-1): the not-ratified branch carries the state on unchanged and nothing later reads the expired set, so adding to it before the rest is adding to it after; ENACT, Conway's at both eras, is called as a function",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      308,
+      362
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ratifyTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayRatify.spoAccepted": {
+   "class": "Mirror",
+   "digest": "2702be08b89a58c5",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      165,
+      176
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "spoAccepted"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayRatify.spoAcceptedRatio": {
+   "class": "Mirror",
+   "digest": "10fcff4bdcdb13e6",
+   "note": "over the pools' voting stake, as the Leios build's; the sums compact coins (Word64), as the reference's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      197,
+      227
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "spoAcceptedRatio"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      195,
+      226
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "spoAcceptedRatio"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayRatify.validCommitteeTerm": {
+   "class": "Mirror",
+   "digest": "cc38e79934943e66",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      369,
+      381
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validCommitteeTerm"
+    }
+   ]
+  },
+  "def ledger.era.rules.ConwayRatify.withdrawalCanWithdraw": {
+   "class": "Mirror",
+   "digest": "ea8f7f793234421d",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Ratify.hs",
+     "lines": [
+      292,
+      295
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "withdrawalCanWithdraw"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.rules.ConwayRatify"
+   ],
+   "reason": "RATIFY's and ENACT's era types (#85): the companions holding the reference's functions (each mapped by itself), their equality, which the reference derives, and the module objects of the two rules; the node's record of the committee read at the reference's Committee and written back, until the governance state holds the reference's committee"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/Ratify.scala"
+}

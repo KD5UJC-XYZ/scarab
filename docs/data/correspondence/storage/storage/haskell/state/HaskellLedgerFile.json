@@ -1,0 +1,21 @@
+{
+ "baseline": {
+  "class storage.haskell.state.HaskellLedgerFile": null,
+  "def storage.haskell.state.HaskellLedgerFile#era": null,
+  "def storage.haskell.state.HaskellLedgerFile#ext": null,
+  "def storage.haskell.state.HaskellLedgerFile.codecs": null,
+  "def storage.haskell.state.HaskellLedgerFile.decode": null,
+  "def storage.haskell.state.HaskellLedgerFile.encode": null,
+  "def storage.haskell.state.HaskellLedgerFile.of": null,
+  "def storage.haskell.state.LedgerFileEra.era": null,
+  "enum storage.haskell.state.LedgerFileEra": null,
+  "given storage.haskell.state.HaskellLedgerFile.given_Eq_HaskellLedgerFile": null,
+  "given storage.haskell.state.HaskellLedgerFile.given_Show_HaskellLedgerFile": null,
+  "given storage.haskell.state.LedgerFileEra.given_Eq_LedgerFileEra": null,
+  "given storage.haskell.state.LedgerFileEra.given_EraIndexed_LedgerFileEra": null,
+  "given storage.haskell.state.LedgerFileEra.given_Show_LedgerFileEra": null,
+  "object storage.haskell.state.HaskellLedgerFile": null,
+  "object storage.haskell.state.LedgerFileEra": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellLedgerFile.scala"
+}

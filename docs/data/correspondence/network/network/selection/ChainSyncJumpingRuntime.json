@@ -1,0 +1,84 @@
+{
+ "baseline": {
+  "class network.selection.ChainSyncJumpingRuntime": null,
+  "class network.selection.ChainSyncJumpingRuntime#Session": null,
+  "def network.selection.ChainSyncJumpingRuntime#Session#next": null,
+  "def network.selection.ChainSyncJumpingRuntime#Session#onAwaitReply": null,
+  "def network.selection.ChainSyncJumpingRuntime#Session#onRollForward": null,
+  "def network.selection.ChainSyncJumpingRuntime#Session#onRollback": null,
+  "def network.selection.ChainSyncJumpingRuntime#Session#processJump": null,
+  "def network.selection.ChainSyncJumpingRuntime#Session#snapshot": null,
+  "def network.selection.ChainSyncJumpingRuntime#Session#update": null,
+  "def network.selection.ChainSyncJumpingRuntime#rotate": null,
+  "def network.selection.ChainSyncJumpingRuntime#session": null,
+  "def network.selection.ChainSyncJumpingRuntime#snapshot": null,
+  "def network.selection.ChainSyncJumpingRuntime.create": null,
+  "def network.selection.ChainSyncJumpingRuntime.publish": null,
+  "object network.selection.ChainSyncJumpingRuntime": null
+ },
+ "entries": {
+  "def network.selection.ChainSyncJumpingRuntime.Traces#csj": {
+   "class": "Mirror",
+   "digest": "3e96ca8c26c81f3e",
+   "note": "TraceLabelPeer's label is the first parameter",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/Tracers.hs",
+     "lines": [
+      100,
+      101
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "csjTracer"
+    }
+   ]
+  },
+  "def network.selection.ChainSyncJumpingRuntime.Traces#dbf": {
+   "class": "Mirror",
+   "digest": "e8c02c2d43427423",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/Tracers.hs",
+     "lines": [
+      102,
+      102
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "dbfTracer"
+    }
+   ]
+  },
+  "trait network.selection.ChainSyncJumpingRuntime.Traces": {
+   "class": "Mirror",
+   "digest": "f702e4e7121c2583",
+   "note": "the two tracers of Tracers' record that CSJ writes to, csjTracer (labelled with the peer) and dbfTracer",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Node/Tracers.hs",
+     "lines": [
+      100,
+      102
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "csjTracer"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def network.selection.ChainSyncJumpingRuntime.Traces.none",
+    "object network.selection.ChainSyncJumpingRuntime.Traces"
+   ],
+   "reason": "a runtime with no tracer, the reference's nullTracer"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/ChainSyncJumpingRuntime.scala"
+}

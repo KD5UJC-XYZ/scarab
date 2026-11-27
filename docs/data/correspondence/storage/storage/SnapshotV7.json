@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "def storage.SnapshotV7.bindingOf": null,
+  "def storage.SnapshotV7.framed": null,
+  "def storage.SnapshotV7.fromV5": null,
+  "def storage.SnapshotV7.sections": null,
+  "def storage.SnapshotV7.sidecarOf": null,
+  "object storage.SnapshotV7": null,
+  "val storage.SnapshotV7.Magic": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala"
+}

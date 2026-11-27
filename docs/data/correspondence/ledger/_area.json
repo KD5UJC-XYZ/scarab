@@ -1,0 +1,7 @@
+{
+ "_comment": "Ledger: blocks, transactions, rules and state of every era (module ledger). Its reference is cardano-ledger. docs/design/correspondence-map.md says what an entry holds; scripts/check_correspondence.py checks it.",
+ "area": "ledger",
+ "roots": [
+  "ledger/src/main/scala"
+ ]
+}

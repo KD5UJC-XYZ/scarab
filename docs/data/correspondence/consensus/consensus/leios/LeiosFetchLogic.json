@@ -1,0 +1,390 @@
+{
+ "entries": {
+  "def consensus.leios.LeiosFetchLogic.batchTxsRequests": {
+   "class": "Mirror",
+   "digest": "b93138e64be24cd0",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "each request also names the pool its jobs were picked from (LeiosJobPoolId)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      678,
+      699
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "batchTxsRequests"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.bitmapOffsets": {
+   "class": "Mirror",
+   "digest": "7b7128e3cf740edc",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1339,
+      1346
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "bitmapOffsets"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.checkJobSize": {
+   "class": "Mirror",
+   "digest": "36ee0b4d58e4fb9c",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the byte sum into a Word32 as the reference's fromIntegral",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1356,
+      1369
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "checkJobSize"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.completeTxRequest": {
+   "class": "Improvement",
+   "digest": "8578cf5c584d9d81",
+   "evidence": [
+    "LeiosFetchArrivalSuite",
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the jobs are completed in the held pool only where it is the pool the request names, and only the peer's jobs in flight from that pool are dropped; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1299,
+      1306
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "completeTxRequest"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1308,
+      1333
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "adjustOutstandingTxRequest"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.ingestJob": {
+   "class": "Mirror",
+   "digest": "52b1434b33c7ee11",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1376,
+      1391
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ingestJob"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.iteration": {
+   "class": "Mirror",
+   "digest": "c5762b8da2fc4b53",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the forecast's failure left generic, as only its Left is read",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      347,
+      393
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosFetchLogicIteration"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.mempoolPull": {
+   "class": "Mirror",
+   "digest": "d7a1c9f2ee159390",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the pure step after the index is read; the index holds only transactions with bytes, so the reference's toBytes is the identity here",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1186,
+      1200
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "mkMempoolPull"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.offsetsToBitmap": {
+   "class": "Mirror",
+   "digest": "583be2f8d28769c7",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "a window and its mask as an Int and a Long's bits; the wire's Word16 and Word64 are the client's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      702,
+      712
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "offsetsToBitmap"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.peerBudget": {
+   "class": "Mirror",
+   "digest": "8f9e029d8b2ea1b7",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      402,
+      410
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "peerBudget"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.pendingJobs": {
+   "class": "Improvement",
+   "digest": "0e62c319ba40d3e5",
+   "evidence": [
+    "LeiosFetchArrivalSuite",
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the let binding of processLeiosBlockTxs's ReceivedTxsFrom over the state read once, as a pure function: restrictToPending over the held pool only where it is the pool the request names, none otherwise; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1469,
+      1478
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "pendingJobs"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.pickJobs": {
+   "class": "Mirror",
+   "digest": "ff425275f3c1f331",
+   "evidence": [
+    "LeiosFetchLogicSuite",
+    "StdGenSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      652,
+      671
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "pickJobs"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.popLeftmostOffset": {
+   "class": "Mirror",
+   "digest": "32a243b23461265d",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      323,
+      329
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "popLeftmostOffset"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.priorityTiers": {
+   "class": "Mirror",
+   "digest": "11d653e18b96d91a",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the prefix of Map.spanAntitone, the sum modulo 2^64 as the reference's Word64",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      429,
+      440
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "fetchPriorityTiers"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.refundEbRequest": {
+   "class": "Mirror",
+   "digest": "486ac4e30e487269",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1257,
+      1272
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "refundEbRequest"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.refundTxRequest": {
+   "class": "Mirror",
+   "digest": "e5b54a75a0ca8397",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1279,
+      1291
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "refundTxRequest"
+    }
+   ]
+  },
+  "def consensus.leios.LeiosFetchLogic.removePeer": {
+   "class": "Improvement",
+   "digest": "77f2bee8b4e8719c",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the peer's jobs in flight are unpicked in the held pool only where it is the pool they were picked from; an Improvement approved on 2026-11-22: a reply after its endorser block was pruned and acquired again with another pool no longer matches that pool's jobs by number",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/54#issuecomment-7076220269",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1217,
+      1243
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "removePeerFromOutstanding"
+    }
+   ]
+  },
+  "enum consensus.leios.LeiosTxsReplyFault": {
+   "class": "Mirror",
+   "digest": "01d248d47493bf0f",
+   "evidence": [
+    "LeiosFetchLogicSuite"
+   ],
+   "note": "the Left strings of the two checks as a closed type; the reference raises them with error and the peer loses its connection",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1356,
+      1369
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "checkJobSize"
+    },
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoLogic.hs",
+     "lines": [
+      1376,
+      1391
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "ingestJob"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class consensus.leios.LeiosFetchDecision",
+    "object consensus.leios.LeiosFetchLogic"
+   ],
+   "reason": "the Leios fetch state's Scala plumbing with no counterpart of its own: the companions, Word32's conversions and order on BytesSize, the MultiSet operations on FocusedEbs, the orders as Scala Orderings, the equalities, the job id's constructor, and the decision's result triple as a named record (#54)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/leios/LeiosFetchLogic.scala"
+}

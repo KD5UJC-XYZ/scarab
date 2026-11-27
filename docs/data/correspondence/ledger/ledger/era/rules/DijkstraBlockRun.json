@@ -1,0 +1,40 @@
+{
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.era.rules.DijkstraBlockRun.Applied",
+    "class ledger.era.rules.DijkstraBlockRun.Body",
+    "class ledger.era.rules.DijkstraBlockRun.Deferred",
+    "class ledger.era.rules.DijkstraBlockRun.Evaluated",
+    "class ledger.era.rules.DijkstraBlockRun.Plan",
+    "class ledger.era.rules.DijkstraBlockRun.Plan#Completed",
+    "def ledger.era.rules.DijkstraBlockRun.Body#hasScripts",
+    "def ledger.era.rules.DijkstraBlockRun.Body#preparable",
+    "def ledger.era.rules.DijkstraBlockRun.Body#prepare",
+    "def ledger.era.rules.DijkstraBlockRun.Body#serial",
+    "def ledger.era.rules.DijkstraBlockRun.Deferred#requests",
+    "def ledger.era.rules.DijkstraBlockRun.Plan#batches",
+    "def ledger.era.rules.DijkstraBlockRun.Plan#execute",
+    "def ledger.era.rules.DijkstraBlockRun.Plan#resolve",
+    "def ledger.era.rules.DijkstraBlockRun.bbody",
+    "def ledger.era.rules.DijkstraBlockRun.closure",
+    "def ledger.era.rules.DijkstraBlockRun.program",
+    "enum ledger.era.rules.DijkstraBlockRun.Recorded",
+    "enum ledger.era.rules.DijkstraRuleDefect",
+    "object ledger.era.rules.DijkstraBlockRun",
+    "type ledger.era.rules.DijkstraBlockRun.Plan#Job",
+    "type ledger.era.rules.DijkstraBlockRun.Result",
+    "val ledger.era.rules.DijkstraBlockRun.Body#declared",
+    "val ledger.era.rules.DijkstraBlockRun.Deferred#flag",
+    "val ledger.era.rules.DijkstraBlockRun.Deferred#index",
+    "val ledger.era.rules.DijkstraBlockRun.Deferred#observation",
+    "val ledger.era.rules.DijkstraBlockRun.Deferred#scripts",
+    "val ledger.era.rules.DijkstraBlockRun.Plan#Completed#job",
+    "val ledger.era.rules.DijkstraBlockRun.Plan#Completed#outcome",
+    "val ledger.era.rules.DijkstraBlockRun.Plan#jobs"
+   ],
+   "reason": "the run of Dijkstra's era rules on a block as the node applies it, BBODY with every failure accumulated, the context of its transactions' rules made from the judgment's Globals (the network, networkId) with every check validated as the reference's application does (its reapplication validates none, where the node validates replays in full), and the closure's application, on the fused interpreter with the proposals as their own state (applyBlockEither with ValidateAll, ComputeLedgerEvents off), and its defects; of a block's events only what the node's phase-2 counters read kept, the counters of an admitted block (Applied, DijkstraPhase2.counted), and a script the evaluator gives no verdict for named by the batch UTXOS ran (the annotated transaction Phase2Deferral is told of) and its place among its scripts (DijkstraPhase2.named), Scarab's own (#85); the same run as a body program (program, Body, its Plan, a batch's deferred scripts, Deferred, run by a worker, Evaluated, what it comes to, Result), modelled on Conway's, which the node can evaluate in bounded parallel workers after an ordered preparation under ADR 0018, its result the serial run's (#85); the node's phase-2 observer (--plutus-cases) told of each batch whose scripts the run evaluates or could not collect, serially and prepared alike (what a prepared block recorded, Recorded, a deferred batch's observation made once its scripts ran, Deferred#observation), as Conway's run tells it (#85); and the tick of a block given by its era and header hash, which a block on the era types gives (#54)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/DijkstraBlockRun.scala"
+}

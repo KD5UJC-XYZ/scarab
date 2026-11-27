@@ -1,0 +1,68 @@
+{
+ "entries": {
+  "def ledger.era.babbage.BabbageEraUTxO.mkStAnnTx": {
+   "class": "Mirror",
+   "digest": "a755d6fb89efc07f",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "mkAlonzoStAnnTx at Babbage, a function as Conway's is until its mempool",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage.hs",
+     "lines": [
+      65,
+      65
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkStAnnTx"
+    }
+   ]
+  },
+  "val ledger.era.babbage.BabbageEraUTxO.instance": {
+   "class": "Mirror",
+   "digest": "1f2da1538bd9f13f",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "every member of the reference's EraUTxO and AlonzoEraUTxO instances; getWitsVKeyNeeded reads the genesis delegations from Babbage's certificate state itself",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs",
+     "lines": [
+      43,
+      59
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraUTxO BabbageEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs",
+     "lines": [
+      61,
+      72
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraUTxO BabbageEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.babbage.BabbageEraUTxO.fromStored",
+    "object ledger.era.babbage.BabbageEraUTxO"
+   ],
+   "reason": "the reading of the outputs the node keeps as an era's UTxO, refused only for an output a damaged store holds; the reference keeps the UTxO at its era's type and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/babbage/BabbageEraUTxO.scala"
+}

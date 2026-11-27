@@ -1,0 +1,3140 @@
+{
+ "entries": {
+  "def ledger.era.AlonzoEraPParams#hkdCollateralPercentageL": {
+   "class": "Mirror",
+   "digest": "92a42e2eaedcc9bb",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      147,
+      147
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCollateralPercentageL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams#hkdCostModelsL": {
+   "class": "Mirror",
+   "digest": "74aeeaec87040608",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      137,
+      137
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCostModelsL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams#hkdMaxBlockExUnitsL": {
+   "class": "Mirror",
+   "digest": "94b804cc92755a17",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      143,
+      143
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxBlockExUnitsL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams#hkdMaxCollateralInputsL": {
+   "class": "Mirror",
+   "digest": "8b4df138dfcdec34",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      149,
+      149
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxCollateralInputsL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams#hkdMaxTxExUnitsL": {
+   "class": "Mirror",
+   "digest": "288a270d498d3db7",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      141,
+      141
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxTxExUnitsL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams#hkdMaxValSizeL": {
+   "class": "Mirror",
+   "digest": "8299f1afbafc7414",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      145,
+      145
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxValSizeL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams#hkdPricesL": {
+   "class": "Mirror",
+   "digest": "8fa82021db998a71",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      139,
+      139
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdPricesL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams.ppCollateralPercentage": {
+   "class": "Mirror",
+   "digest": "a88a9046b016e250",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      712,
+      719
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppCollateralPercentage"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams.ppCollateralPercentageL": {
+   "class": "Mirror",
+   "digest": "247a5cbcb00635d4",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      172,
+      173
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppCollateralPercentageL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams.ppCostModels": {
+   "class": "Mirror",
+   "digest": "2ed8189d2b564823",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      667,
+      674
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppCostModels"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams.ppMaxBlockExUnits": {
+   "class": "Mirror",
+   "digest": "8e32a2201684114b",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      694,
+      701
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxBlockExUnits"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams.ppMaxBlockExUnitsL": {
+   "class": "Mirror",
+   "digest": "d9a9c686cb568efc",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      164,
+      165
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ppMaxBlockExUnitsL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams.ppMaxCollateralInputs": {
+   "class": "Mirror",
+   "digest": "6db8c13b8c979bd7",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      721,
+      728
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxCollateralInputs"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams.ppMaxTxExUnits": {
+   "class": "Mirror",
+   "digest": "a84bc0fc0b15f46c",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      685,
+      692
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxTxExUnits"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams.ppMaxTxExUnitsL": {
+   "class": "Mirror",
+   "digest": "7b79fe631be848ae",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      163,
+      164
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxTxExUnitsL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams.ppMaxValSize": {
+   "class": "Mirror",
+   "digest": "80c3c0a3fdfce583",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      703,
+      710
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxValSize"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams.ppMaxValSizeL": {
+   "class": "Mirror",
+   "digest": "f1fa9e376feb2d89",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      169,
+      170
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxValSizeL"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams.ppPrices": {
+   "class": "Mirror",
+   "digest": "3285f0b53e8b80ea",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      676,
+      683
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppPrices"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraPParams.ppPricesL": {
+   "class": "Mirror",
+   "digest": "28c2d801a4e53db4",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      160,
+      161
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppPricesL"
+    }
+   ]
+  },
+  "def ledger.era.BabbageEraPParams#hkdCoinsPerUTxOByteL": {
+   "class": "Mirror",
+   "digest": "22f981a570de8d96",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      77,
+      77
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCoinsPerUTxOByteL"
+    }
+   ]
+  },
+  "def ledger.era.BabbageEraPParams.ppCoinsPerUTxOByte": {
+   "class": "Mirror",
+   "digest": "7bd9a73692debf88",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      405,
+      412
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppCoinsPerUTxOByte"
+    }
+   ]
+  },
+  "def ledger.era.BabbageEraPParams.ppCoinsPerUTxOByteL": {
+   "class": "Mirror",
+   "digest": "edbf3411e84c80b4",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      79,
+      81
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppCoinsPerUTxOByteL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#hkdCommitteeMaxTermLengthL": {
+   "class": "Mirror",
+   "digest": "2ecf8e0f7a5ab27f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      187,
+      187
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCommitteeMaxTermLengthL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#hkdCommitteeMinSizeL": {
+   "class": "Mirror",
+   "digest": "b7687efbd737d591",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      186,
+      186
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCommitteeMinSizeL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#hkdDRepActivityL": {
+   "class": "Mirror",
+   "digest": "06a0fd8f87b35247",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      191,
+      191
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdDRepActivityL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#hkdDRepDepositCompactL": {
+   "class": "Mirror",
+   "digest": "4c65c0b309d86472",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      190,
+      190
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdDRepDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#hkdDRepVotingThresholdsL": {
+   "class": "Mirror",
+   "digest": "f54d45c61d4de49f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      185,
+      185
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdDRepVotingThresholdsL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#hkdGovActionDepositCompactL": {
+   "class": "Mirror",
+   "digest": "58125da9dc3dc2a7",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      189,
+      189
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdGovActionDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#hkdGovActionLifetimeL": {
+   "class": "Mirror",
+   "digest": "c585b0f67de04552",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      188,
+      188
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdGovActionLifetimeL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#hkdMinFeeRefScriptCostPerByteL": {
+   "class": "Mirror",
+   "digest": "1deb11d9c7aef73f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      192,
+      193
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMinFeeRefScriptCostPerByteL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#hkdPoolVotingThresholdsL": {
+   "class": "Mirror",
+   "digest": "784c6bed69214435",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      184,
+      184
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdPoolVotingThresholdsL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#modifiedPPGroups": {
+   "class": "Mirror",
+   "digest": "da225219c2c4db93",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      173,
+      173
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "modifiedPPGroups"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#ppMaxRefScriptSizePerBlockG": {
+   "class": "Mirror",
+   "digest": "499034432d7cb930",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      195,
+      195
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxRefScriptSizePerBlockG"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#ppMaxRefScriptSizePerTxG": {
+   "class": "Mirror",
+   "digest": "f367c5e2123f8733",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      194,
+      194
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxRefScriptSizePerTxG"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#ppRefScriptCostMultiplierG": {
+   "class": "Mirror",
+   "digest": "a46b2445a32f7335",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      196,
+      196
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppRefScriptCostMultiplierG"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#ppRefScriptCostStrideG": {
+   "class": "Mirror",
+   "digest": "a32a7d207aadb5b5",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      197,
+      197
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppRefScriptCostStrideG"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams#ppuWellFormed": {
+   "class": "Mirror",
+   "digest": "37fb77d90a986817",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      182,
+      182
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppuWellFormed"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppCommitteeMaxTermLength": {
+   "class": "Mirror",
+   "digest": "546839bbc7a79678",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1293,
+      1300
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppCommitteeMaxTermLength"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppCommitteeMaxTermLengthL": {
+   "class": "Mirror",
+   "digest": "f442c44ad79b6e11",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      234,
+      235
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppCommitteeMaxTermLengthL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppCommitteeMinSize": {
+   "class": "Mirror",
+   "digest": "b1f43c2a892db691",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1284,
+      1291
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppCommitteeMinSize"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppCommitteeMinSizeL": {
+   "class": "Mirror",
+   "digest": "f10c6a931557f783",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      231,
+      232
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppCommitteeMinSizeL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppDRepActivity": {
+   "class": "Mirror",
+   "digest": "3ebac06f7f420ae2",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1329,
+      1336
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppDRepActivity"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppDRepDeposit": {
+   "class": "Mirror",
+   "digest": "41a9fefb1e26b680",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1320,
+      1327
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppDRepDeposit"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppDRepDepositCompactL": {
+   "class": "Mirror",
+   "digest": "548c5f2fc4aaef77",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      247,
+      248
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppDRepDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppDRepVotingThresholds": {
+   "class": "Mirror",
+   "digest": "6b7694931f42774c",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1275,
+      1282
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppDRepVotingThresholds"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppDRepVotingThresholdsL": {
+   "class": "Mirror",
+   "digest": "500ab842639c5184",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      227,
+      229
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppDRepVotingThresholdsL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppGovActionDeposit": {
+   "class": "Mirror",
+   "digest": "2f96e18f29f74e61",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1311,
+      1318
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppGovActionDeposit"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppGovActionDepositCompactL": {
+   "class": "Mirror",
+   "digest": "bc161588c7432220",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      240,
+      242
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppGovActionDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppGovActionLifetime": {
+   "class": "Mirror",
+   "digest": "c044794790c8d452",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1302,
+      1309
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppGovActionLifetime"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppGovActionLifetimeL": {
+   "class": "Mirror",
+   "digest": "b5505c8c9026f53e",
+   "evidence": [
+    "ConwayGovChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      237,
+      238
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppGovActionLifetimeL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppGovProtocolVersion": {
+   "class": "Mirror",
+   "digest": "a8108de271194b30",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1347,
+      1354
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppGovProtocolVersion"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppMinFeeRefScriptCostPerByte": {
+   "class": "Mirror",
+   "digest": "67dc250cc48251b6",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1338,
+      1345
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMinFeeRefScriptCostPerByte"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppMinFeeRefScriptCostPerByteL": {
+   "class": "Mirror",
+   "digest": "92c9e2cbe248dc0e",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      256,
+      258
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMinFeeRefScriptCostPerByteL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppPoolVotingThresholds": {
+   "class": "Mirror",
+   "digest": "6d100825890843e8",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      1266,
+      1273
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppPoolVotingThresholds"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParams.ppPoolVotingThresholdsL": {
+   "class": "Mirror",
+   "digest": "298b9727b936ca71",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      223,
+      225
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppPoolVotingThresholdsL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.applyPPUpdates": {
+   "class": "Mirror",
+   "digest": "ab69dad3e54ecd58",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      830,
+      831
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "applyPPUpdates"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.emptyPParamsIdentity": {
+   "class": "Mirror",
+   "digest": "4f0b6329f7143ef2",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      833,
+      833
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyPParamsIdentity"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.emptyPParamsStrictMaybe": {
+   "class": "Mirror",
+   "digest": "bab4b93822f22f4f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      834,
+      834
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyPParamsStrictMaybe"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdA0L": {
+   "class": "Mirror",
+   "digest": "ff5791bede9a6fcb",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      849,
+      849
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdA0L"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdCoinsPerUTxOByteL": {
+   "class": "Mirror",
+   "digest": "7e50ad09dd458224",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      931,
+      932
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCoinsPerUTxOByteL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdCollateralPercentageL": {
+   "class": "Mirror",
+   "digest": "f0eef6f126d1392d",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      925,
+      926
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCollateralPercentageL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdCommitteeMaxTermLengthL": {
+   "class": "Mirror",
+   "digest": "bf9f1e8151c3057f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      969,
+      970
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCommitteeMaxTermLengthL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdCommitteeMinSizeL": {
+   "class": "Mirror",
+   "digest": "c13e726424279832",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      967,
+      968
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCommitteeMinSizeL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdCostModelsL": {
+   "class": "Mirror",
+   "digest": "28ccaad02350f193",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      912,
+      912
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdCostModelsL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdDRepActivityL": {
+   "class": "Mirror",
+   "digest": "373b537c37345d5f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      977,
+      978
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdDRepActivityL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdDRepDepositCompactL": {
+   "class": "Mirror",
+   "digest": "689e8c0846692d17",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      975,
+      976
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdDRepDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdDRepVotingThresholdsL": {
+   "class": "Mirror",
+   "digest": "90bd37a6f224e881",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      965,
+      966
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdDRepVotingThresholdsL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdEMaxL": {
+   "class": "Mirror",
+   "digest": "affae8a1b81e232e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      847,
+      847
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdEMaxL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdGovActionDepositCompactL": {
+   "class": "Mirror",
+   "digest": "4544743880e4b139",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      973,
+      974
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdGovActionDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdGovActionLifetimeL": {
+   "class": "Mirror",
+   "digest": "65149bb3217703c5",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      971,
+      972
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdGovActionLifetimeL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdKeyDepositCompactL": {
+   "class": "Mirror",
+   "digest": "10826efe45a2b878",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      845,
+      845
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdKeyDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdMaxBBSizeL": {
+   "class": "Mirror",
+   "digest": "7f0c46d602ea632b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      842,
+      842
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxBBSizeL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdMaxBHSizeL": {
+   "class": "Mirror",
+   "digest": "6d571b5506109269",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      844,
+      844
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxBHSizeL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdMaxBlockExUnitsL": {
+   "class": "Mirror",
+   "digest": "6a0efb36a1731f87",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      920,
+      922
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxBlockExUnitsL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdMaxCollateralInputsL": {
+   "class": "Mirror",
+   "digest": "2545b365e1aa51f2",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      927,
+      928
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxCollateralInputsL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdMaxTxExUnitsL": {
+   "class": "Mirror",
+   "digest": "f7deca4af5806836",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      916,
+      918
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxTxExUnitsL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdMaxTxSizeL": {
+   "class": "Mirror",
+   "digest": "2a713e2abfed4d75",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      843,
+      843
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxTxSizeL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdMaxValSizeL": {
+   "class": "Mirror",
+   "digest": "70412384e4364fde",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      923,
+      924
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxValSizeL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdMinFeeRefScriptCostPerByteL": {
+   "class": "Mirror",
+   "digest": "6c89ec1ef97e29fc",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      979,
+      980
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMinFeeRefScriptCostPerByteL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdMinPoolCostCompactL": {
+   "class": "Mirror",
+   "digest": "c25fe8de76e14770",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      853,
+      853
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMinPoolCostCompactL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdNOptL": {
+   "class": "Mirror",
+   "digest": "4f9355b1ccaa758d",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      848,
+      848
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdNOptL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdPoolDepositCompactL": {
+   "class": "Mirror",
+   "digest": "22652be13c2c58be",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      846,
+      846
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdPoolDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdPoolVotingThresholdsL": {
+   "class": "Mirror",
+   "digest": "1ee4a48ae0638f20",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      963,
+      964
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdPoolVotingThresholdsL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdPricesL": {
+   "class": "Mirror",
+   "digest": "81419bef6f59e152",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      913,
+      913
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdPricesL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdRhoL": {
+   "class": "Mirror",
+   "digest": "481a088ac9d4a86a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      850,
+      850
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdRhoL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdTauL": {
+   "class": "Mirror",
+   "digest": "d017bad8bf9ab5a5",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      851,
+      851
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdTauL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdTxFeeFixedCompactL": {
+   "class": "Mirror",
+   "digest": "8001b2d1fb3d3e0e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      841,
+      841
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdTxFeeFixedCompactL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.hkdTxFeePerByteL": {
+   "class": "Mirror",
+   "digest": "0c40a30600cbea67",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      840,
+      840
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdTxFeePerByteL"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.modifiedPPGroups": {
+   "class": "Mirror",
+   "digest": "de2f9a2dc3291cd8",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      181,
+      181
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "modifiedPPGroups"
+    }
+   ]
+  },
+  "def ledger.era.ConwayEraPParamsInstance.ppuWellFormed": {
+   "class": "Mirror",
+   "digest": "41d757a65f0adce2",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      935,
+      962
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppuWellFormed"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#applyPPUpdates": {
+   "class": "Mirror",
+   "digest": "c08a7a77ec969c0d",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      379,
+      382
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "applyPPUpdates"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#emptyPParams": {
+   "class": "Mirror",
+   "digest": "4a2876d6084b97f4",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      501,
+      502
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyPParams"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#emptyPParamsIdentity": {
+   "class": "Mirror",
+   "digest": "f15a24bbe1a28751",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      394,
+      394
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyPParamsIdentity"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#emptyPParamsStrictMaybe": {
+   "class": "Mirror",
+   "digest": "1eab289b54c24c31",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      395,
+      395
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyPParamsStrictMaybe"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#emptyPParamsUpdate": {
+   "class": "Mirror",
+   "digest": "b618e081bdc8bc48",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      504,
+      505
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "emptyPParamsUpdate"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#eraPParams": {
+   "class": "Mirror",
+   "digest": "6f1a4c1073baa76c",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      489,
+      489
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "eraPParams"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdA0L": {
+   "class": "Mirror",
+   "digest": "233fb4b151eb9064",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      451,
+      451
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdA0L"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdEMaxL": {
+   "class": "Mirror",
+   "digest": "4a89501f7ee0e870",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      445,
+      445
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdEMaxL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdKeyDepositCompactL": {
+   "class": "Mirror",
+   "digest": "626076feaccf70f4",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      439,
+      439
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdKeyDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdMaxBBSizeL": {
+   "class": "Mirror",
+   "digest": "4a4da7e27f751e5f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      430,
+      430
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxBBSizeL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdMaxBHSizeL": {
+   "class": "Mirror",
+   "digest": "a6e419f81c71c7e8",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      436,
+      436
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxBHSizeL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdMaxTxSizeL": {
+   "class": "Mirror",
+   "digest": "8337a4e10494995c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      433,
+      433
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMaxTxSizeL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdMinPoolCostCompactL": {
+   "class": "Mirror",
+   "digest": "12091351d2564c8c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      487,
+      487
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMinPoolCostCompactL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdNOptL": {
+   "class": "Mirror",
+   "digest": "32fde0c7b17c3dad",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      448,
+      448
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdNOptL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdPoolDepositCompactL": {
+   "class": "Mirror",
+   "digest": "4c48f3bb2d096593",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      442,
+      442
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdPoolDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdRhoL": {
+   "class": "Mirror",
+   "digest": "1b46e8d905a7824b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      454,
+      454
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdRhoL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdTauL": {
+   "class": "Mirror",
+   "digest": "36feda0dda5492c3",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      457,
+      457
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdTauL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdTxFeeFixedCompactL": {
+   "class": "Mirror",
+   "digest": "043df7956131d894",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      427,
+      427
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdTxFeeFixedCompactL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#hkdTxFeePerByteL": {
+   "class": "Mirror",
+   "digest": "80a9c581e8a4890b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      424,
+      424
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdTxFeePerByteL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#ppDG": {
+   "class": "Mirror",
+   "digest": "5e8fae2e704bf5ae",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      463,
+      463
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppDG"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#ppMaxPledgeLeverageG": {
+   "class": "Deviation",
+   "digest": "e5fab64b2004bb9f",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "a member at 9df9f98c that f649f975 lacks; up to Conway the class default, no limit",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6898975221",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      510,
+      516
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ppMaxPledgeLeverageG"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#ppMinPoolMarginG": {
+   "class": "Deviation",
+   "digest": "c5087c4d920a44ed",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "a member at 9df9f98c that f649f975 lacks; up to Conway the class default, minBound",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6898975221",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      518,
+      524
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ppMinPoolMarginG"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams#ppProtocolVersionL": {
+   "class": "Mirror",
+   "digest": "45eca22e6d6f5b39",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      474,
+      474
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppProtocolVersionL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppA0": {
+   "class": "Mirror",
+   "digest": "c8409683584bc4d7",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      426,
+      433
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppA0"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppEMax": {
+   "class": "Mirror",
+   "digest": "55a2a8dc12cec937",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      409,
+      416
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppEMax"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppKeyDeposit": {
+   "class": "Mirror",
+   "digest": "8c3f729adc6ee4fd",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      391,
+      398
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppKeyDeposit"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppKeyDepositCompactL": {
+   "class": "Mirror",
+   "digest": "3f9f6755b1276909",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      552,
+      553
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppKeyDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppMaxBBSize": {
+   "class": "Mirror",
+   "digest": "bf6889f15ec1ffe4",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      364,
+      371
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxBBSize"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppMaxBHSize": {
+   "class": "Mirror",
+   "digest": "e98f585ac0a1c8a3",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      382,
+      389
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxBHSize"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppMaxTxSize": {
+   "class": "Mirror",
+   "digest": "bc6fe815f3bf7942",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      373,
+      380
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxTxSize"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppMaxTxSizeL": {
+   "class": "Mirror",
+   "digest": "283d958456551db3",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      540,
+      541
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxTxSizeL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppMinPoolCost": {
+   "class": "Mirror",
+   "digest": "71d577e21c345a2a",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      490,
+      497
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMinPoolCost"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppNOpt": {
+   "class": "Mirror",
+   "digest": "c15d2c80060d7256",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      418,
+      425
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppNOpt"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppPoolDeposit": {
+   "class": "Mirror",
+   "digest": "61d4969d1030d0ad",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      400,
+      407
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppPoolDeposit"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppPoolDepositCompactL": {
+   "class": "Mirror",
+   "digest": "3b87e8637af0b534",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      560,
+      561
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppPoolDepositCompactL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppRho": {
+   "class": "Mirror",
+   "digest": "80db4ccbf6e04766",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      436,
+      443
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppRho"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppTau": {
+   "class": "Mirror",
+   "digest": "2482c4d06af80c14",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      445,
+      452
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppTau"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppTxFeeFixed": {
+   "class": "Mirror",
+   "digest": "59658fa138aaa6d6",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      351,
+      358
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppTxFeeFixed"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppTxFeeFixedCompactL": {
+   "class": "Mirror",
+   "digest": "7ede3bb8105b7f8e",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      532,
+      533
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppTxFeeFixedCompactL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppTxFeePerByte": {
+   "class": "Mirror",
+   "digest": "989a7fe9161d040d",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      338,
+      345
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppTxFeePerByte"
+    }
+   ]
+  },
+  "def ledger.era.EraPParams.ppTxFeePerByteL": {
+   "class": "Mirror",
+   "digest": "be6902a90b054e37",
+   "note": "the reference's lens, `ppLensHKD` and the class's field at `Identity`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      516,
+      517
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppTxFeePerByteL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParamsToBabbage#hkdProtocolVersionL": {
+   "class": "Mirror",
+   "digest": "990ed746e965efaa",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      471,
+      472
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdProtocolVersionL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParamsToBabbage#ppProtocolVersionL": {
+   "class": "Mirror",
+   "digest": "ddc6f8593575bb1b",
+   "note": "the default of the eras up to Babbage",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      474,
+      476
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppProtocolVersionL"
+    }
+   ]
+  },
+  "def ledger.era.EraPParamsToBabbage.ppProtocolVersion": {
+   "class": "Mirror",
+   "digest": "f98cf82289915ac8",
+   "evidence": [
+    "BabbagePParamsSuite",
+    "BabbageUpdateSuite"
+   ],
+   "note": "the era decoder `decodeProtVer` packed in the update's era codec (`ppuEraCodec`), the form of the Leios build's pin, where f649f975 packs it on the description (`ppEraDecoder`); the parameters read the version by its `decCBOR` either way",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      472,
+      479
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppProtocolVersion"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      253,
+      262
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "decodeProtVer"
+    }
+   ]
+  },
+  "def ledger.era.EraPParamsToBabbage.ppuProtocolVersionL": {
+   "class": "Mirror",
+   "digest": "e6eb67de26460ddf",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      479,
+      480
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppuProtocolVersionL"
+    }
+   ]
+  },
+  "given ledger.era.AlonzoEraPParams.babbage": {
+   "class": "Mirror",
+   "digest": "ba4e85f4bc063ee2",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      228,
+      228
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraPParams"
+    }
+   ]
+  },
+  "given ledger.era.AlonzoEraPParams.conway": {
+   "class": "Mirror",
+   "digest": "7a779a746656f788",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      910,
+      910
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraPParams"
+    }
+   ]
+  },
+  "given ledger.era.AlonzoEraPParams.dijkstra": {
+   "class": "Mirror",
+   "digest": "16787e9dd381df1e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "lines": [
+      1125,
+      1125
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "AlonzoEraPParams"
+    }
+   ]
+  },
+  "given ledger.era.BabbageEraPParams.babbage": {
+   "class": "Mirror",
+   "digest": "3ebb9f5f42255f0a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      246,
+      246
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "BabbageEraPParams"
+    }
+   ]
+  },
+  "given ledger.era.BabbageEraPParams.conway": {
+   "class": "Mirror",
+   "digest": "1e1d7309615a9d84",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      930,
+      930
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "BabbageEraPParams"
+    }
+   ]
+  },
+  "given ledger.era.BabbageEraPParams.dijkstra": {
+   "class": "Mirror",
+   "digest": "983c99d46c40a06a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "lines": [
+      1144,
+      1144
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "BabbageEraPParams"
+    }
+   ]
+  },
+  "given ledger.era.ConwayEraPParams.conway": {
+   "class": "Mirror",
+   "digest": "c6aca1bb12f16c4e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      934,
+      934
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayEraPParams"
+    }
+   ]
+  },
+  "given ledger.era.ConwayEraPParams.dijkstra": {
+   "class": "Mirror",
+   "digest": "c24383cfa51aff9e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "lines": [
+      1148,
+      1148
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ConwayEraPParams"
+    }
+   ]
+  },
+  "given ledger.era.EraPParams.babbage": {
+   "class": "Mirror",
+   "digest": "c72faa63acd1f12c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      172,
+      172
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPParams"
+    }
+   ]
+  },
+  "given ledger.era.EraPParams.conway": {
+   "class": "Mirror",
+   "digest": "c6aca1bb12f16c4e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      825,
+      825
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPParams"
+    }
+   ]
+  },
+  "given ledger.era.EraPParams.dijkstra": {
+   "class": "Mirror",
+   "digest": "b954ad1a87981823",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "lines": [
+      703,
+      703
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraPParams"
+    }
+   ]
+  },
+  "given ledger.era.EraPParamsToBabbage.babbage": {
+   "class": "Mirror",
+   "digest": "7817f1436752e3ce",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      195,
+      195
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdProtocolVersionL"
+    }
+   ]
+  },
+  "object ledger.era.ConwayEraPParamsInstance": {
+   "class": "Gap",
+   "digest": "59a99440b7c3bda0",
+   "evidence": [
+    "EraPParamsSuite",
+    "ConwayPParamsStateSuite"
+   ],
+   "note": "Conway's four instances in one object, given in each class's companion; the instances' upgradePParamsHKD, downgradePParamsHKD and emptyUpgradePParamsUpdate are not class members yet but Conway's functions (ConwayPParams.upgrade and downgrade, UpgradeConwayPParams.emptyUpdate), nor is the update's Plutus data here (#85), and the members the reference confines to a range of eras are classes of their own",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6896116597",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      825,
+      894
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPParams"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      910,
+      928
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraPParams"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      930,
+      932
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "BabbageEraPParams"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      934,
+      984
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayEraPParams"
+    }
+   ]
+  },
+  "trait ledger.era.AlonzoEraPParams": {
+   "class": "Deviation",
+   "digest": "bd5531a4ff7b39c0",
+   "evidence": [
+    "EraPParamsSuite",
+    "ConwayPParamsStateSuite"
+   ],
+   "note": "hkdCoinsPerUTxOWordL, Alonzo's alone, is a class of its own with Alonzo's record",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6895880261",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      132,
+      149
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraPParams"
+    }
+   ]
+  },
+  "trait ledger.era.BabbageEraPParams": {
+   "class": "Mirror",
+   "digest": "ed7be4da09e905dd",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      76,
+      77
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "BabbageEraPParams"
+    }
+   ]
+  },
+  "trait ledger.era.ConwayEraPParams": {
+   "class": "Mirror",
+   "digest": "a38322b1c3d605d0",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      172,
+      197
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ConwayEraPParams"
+    }
+   ]
+  },
+  "trait ledger.era.EraPParams": {
+   "class": "Deviation",
+   "digest": "3427b60c3dc8d2a0",
+   "evidence": [
+    "EraPParamsSuite",
+    "ConwayPParamsStateSuite"
+   ],
+   "note": "the members the reference confines to a range of eras (hkdDL, hkdExtraEntropyL, hkdProtocolVersionL, ppuProtocolVersionL, hkdMinUTxOValueCompactL) are classes of their own with their eras' records; upgradePParamsHKD, downgradePParamsHKD and emptyUpgradePParamsUpdate, with the type families UpgradePParams and DowngradePParams, are not here yet (#85)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6895880261",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      360,
+      489
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPParams"
+    }
+   ]
+  },
+  "trait ledger.era.EraPParamsToBabbage": {
+   "class": "Mirror",
+   "digest": "4aed376ca374e0ae",
+   "evidence": [
+    "BabbagePParamsSuite"
+   ],
+   "note": "the members of EraPParams confined to the eras up to Babbage (`AtMostEra \"Babbage\"`) as a class of their own, with instances at exactly those eras (#85, 2026-11-15)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      471,
+      480
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdProtocolVersionL"
+    }
+   ]
+  },
+  "val ledger.era.ConwayEraPParamsInstance.eraPParams": {
+   "class": "Mirror",
+   "digest": "62e04c18dc890eef",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      862,
+      894
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "eraPParams"
+    }
+   ]
+  },
+  "val ledger.era.ConwayEraPParamsInstance.ppDG": {
+   "class": "Mirror",
+   "digest": "2707723379417417",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      856,
+      856
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppDG"
+    }
+   ]
+  },
+  "val ledger.era.ConwayEraPParamsInstance.ppMaxPledgeLeverageG": {
+   "class": "Deviation",
+   "digest": "be7db5f1b71264fc",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "a member at 9df9f98c that f649f975 lacks; up to Conway the class default, no limit",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6898975221",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      510,
+      516
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ppMaxPledgeLeverageG"
+    }
+   ]
+  },
+  "val ledger.era.ConwayEraPParamsInstance.ppMaxRefScriptSizePerBlockG": {
+   "class": "Mirror",
+   "digest": "ecfbc7fa94af931e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      982,
+      982
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxRefScriptSizePerBlockG"
+    }
+   ]
+  },
+  "val ledger.era.ConwayEraPParamsInstance.ppMaxRefScriptSizePerTxG": {
+   "class": "Mirror",
+   "digest": "22faf26ebd8e0dbb",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      981,
+      981
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppMaxRefScriptSizePerTxG"
+    }
+   ]
+  },
+  "val ledger.era.ConwayEraPParamsInstance.ppMinPoolMarginG": {
+   "class": "Deviation",
+   "digest": "dc0f189d4247291e",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "a member at 9df9f98c that f649f975 lacks; up to Conway the class default, minBound",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6898975221",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      518,
+      524
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "ppMinPoolMarginG"
+    }
+   ]
+  },
+  "val ledger.era.ConwayEraPParamsInstance.ppProtocolVersionL": {
+   "class": "Mirror",
+   "digest": "d912e8fc834629ad",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      854,
+      854
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppProtocolVersionL"
+    }
+   ]
+  },
+  "val ledger.era.ConwayEraPParamsInstance.ppRefScriptCostMultiplierG": {
+   "class": "Mirror",
+   "digest": "a27dacb430e59787",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      983,
+      983
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppRefScriptCostMultiplierG"
+    }
+   ]
+  },
+  "val ledger.era.ConwayEraPParamsInstance.ppRefScriptCostStrideG": {
+   "class": "Mirror",
+   "digest": "5f99e8d479191173",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      984,
+      984
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppRefScriptCostStrideG"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.AlonzoEraPParams",
+    "object ledger.era.BabbageEraPParams",
+    "object ledger.era.ConwayEraPParams",
+    "object ledger.era.EraPParams",
+    "object ledger.era.EraPParamsToBabbage"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/EraPParams.scala"
+}

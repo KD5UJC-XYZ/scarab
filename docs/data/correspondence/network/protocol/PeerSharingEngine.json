@@ -1,0 +1,79 @@
+{
+ "baseline": {
+  "class protocol.PeerSharingEngine.Cursor": null,
+  "class protocol.PeerSharingEngine.Head": null,
+  "class protocol.PeerSharingEngine.Writer": null,
+  "def protocol.PeerSharingEngine.Cursor#arrayOrIndefinite": null,
+  "def protocol.PeerSharingEngine.Cursor#break": null,
+  "def protocol.PeerSharingEngine.Cursor#definiteArray": null,
+  "def protocol.PeerSharingEngine.Cursor#head": null,
+  "def protocol.PeerSharingEngine.Cursor#item": null,
+  "def protocol.PeerSharingEngine.Cursor#peekBreak": null,
+  "def protocol.PeerSharingEngine.Cursor#ranged": null,
+  "def protocol.PeerSharingEngine.Cursor#uint": null,
+  "def protocol.PeerSharingEngine.PeerCodec#decode": null,
+  "def protocol.PeerSharingEngine.PeerCodec#encode": null,
+  "def protocol.PeerSharingEngine.PeerCodec#readFrom": null,
+  "def protocol.PeerSharingEngine.PeerCodec#writeTo": null,
+  "def protocol.PeerSharingEngine.Writer#byte": null,
+  "def protocol.PeerSharingEngine.Writer#head": null,
+  "def protocol.PeerSharingEngine.Writer#raw": null,
+  "def protocol.PeerSharingEngine.Writer#result": null,
+  "def protocol.PeerSharingEngine.decodePeer": null,
+  "def protocol.PeerSharingEngine.decodePrefix": null,
+  "def protocol.PeerSharingEngine.encode": null,
+  "def protocol.PeerSharingEngine.encodeTyped": null,
+  "def protocol.PeerSharingEngine.fail": null,
+  "def protocol.PeerSharingEngine.peerCodec": null,
+  "def protocol.PeerSharingEngine.transition": null,
+  "def protocol.PeerSharingEngine.transitionTyped": null,
+  "enum protocol.PeerSharingEngine.Message": null,
+  "enum protocol.PeerSharingEngine.Stop": null,
+  "object protocol.PeerSharingEngine": null,
+  "trait protocol.PeerSharingEngine.PeerCodec": null,
+  "type protocol.PeerSharingEngine.Parse": null,
+  "type protocol.PeerSharingEngine.Read": null
+ },
+ "entries": {
+  "def protocol.PeerSharingEngine.decodeTyped": {
+   "class": "Mirror",
+   "digest": "3216641e4efa7f3a",
+   "note": "the length of the message's array is read and ignored (a definite array whose length cborg's decodeListLen holds in an Int), then the key as a word; in StIdle 0 is MsgShareRequest with its Word8 amount and 2 is MsgDone, in StBusy 1 is MsgSharePeers with a definite or indefinite list of peers (decodeListWith), and any other key is refused. Agency, which the reference has in its state tokens, is the same table checked at run time; the byte limit its Cursor applies while reading is the driver's (runDecoderWithLimit, framework Driver/Limits.hs:295-331, with byteLimitsPeerSharing); a MsgSharePeers that arrives in parts is read on after the peers read whole (attemptTyped), as decodeMsg runs from the stream through mkCodecCborLazyBS (Codec.hs:42)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
+     "lines": [
+      58,
+      77
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "decodeMsg"
+    },
+    {
+     "file": "ouroboros-network/protocols/lib/Ouroboros/Network/Protocol/PeerSharing/Codec.hs",
+     "lines": [
+      86,
+      93
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "decodeListWith"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class protocol.PeerSharingEngine.Peers",
+    "def protocol.PeerSharingEngine.attemptTyped",
+    "def protocol.PeerSharingEngine.incremental",
+    "enum protocol.PeerSharingEngine.Attempted"
+   ],
+   "reason": "how a decoder keeps its progress on a message not all of which has arrived, so that a longer prefix is read on from where it stopped and nothing read whole is read again: the reference keeps that progress in its decoder's continuation (cborg 0.2.10.0 deserialiseIncremental, src/Codec/CBOR/Read.hs:169-172 and 1254-1260; typed-protocols 1.2.2.0 convertCborDecoderLBS, cborg/Network/TypedProtocol/Codec/CBOR.hs:136-164), fed a chunk at a time by runDecoderWithLimit (ouroboros-network framework/lib/Ouroboros/Network/Driver/Limits.hs:281-331 at c45735a5 and 4646039f); here a decoder's cursor holds it as a value. What each codec accepts and refuses, and where, is the codec's as before; each codec's incremental is its decodePrefix as the multiplexer takes it (decodePrefix is it started afresh), the reading itself in the codec's own definitions as before"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/PeerSharingEngine.scala"
+}

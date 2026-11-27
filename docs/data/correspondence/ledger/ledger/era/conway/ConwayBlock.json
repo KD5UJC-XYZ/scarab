@@ -1,0 +1,256 @@
+{
+ "entries": {
+  "class ledger.era.conway.ConwayBlockBody": {
+   "class": "Mirror",
+   "digest": "88169b37d2ce2955",
+   "evidence": [
+    "ConwayBbodySuite"
+   ],
+   "note": "the transactions and the size and hash of the segments the body was read from, made only from a block's bytes (ConwayBlock.decode), where the reference keeps the four segments' bytes and their hash; ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs",
+     "lines": [
+      78,
+      92
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoBlockBody"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayBlock.decode": {
+   "class": "Mirror",
+   "digest": "85397cee6a796af7",
+   "evidence": [
+    "ConwayBbodySuite"
+   ],
+   "note": "a block's bytes as the flat block decoder reads them, its header and body in the era's types; ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "lines": [
+      99,
+      111
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (Block h era))"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayBlock.inputs": {
+   "class": "Mirror",
+   "digest": "95ed84baa3a44ad0",
+   "note": "every input of the block's transactions (allInputsTxBodyF) less those a transaction of the block creates; the node's read set of a Conway block from the store",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "lines": [
+      132,
+      141
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "neededTxInsForBlock"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayBlock.read": {
+   "class": "Mirror",
+   "digest": "97dcab8810de8234",
+   "evidence": [
+    "ConwayBbodySuite"
+   ],
+   "note": "a block's bytes as the flat block decoder reads them, a Conway block's header and body also in the era's types, read once for the rules of its era; decode is its Conway case; ConwayBbodySuite runs the era block",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Block.hs",
+     "lines": [
+      99,
+      111
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (Block h era))"
+    }
+   ]
+  },
+  "def ledger.era.conway.ConwayBlockBody.ofDecoded": {
+   "class": "Mirror",
+   "digest": "809c73dd5ac56c60",
+   "evidence": [
+    "ConwayBbodySuite"
+   ],
+   "note": "the body in Conway's types from the body the flat block decoder read from a block's bytes, each transaction read by Conway's decoders, the size and hash the decoder computed from the same segments; ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs",
+     "lines": [
+      212,
+      256
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoBlockBody era))"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayBlockBody#hash": {
+   "class": "Mirror",
+   "digest": "4b38bdf25f8d6f74",
+   "evidence": [
+    "ConwayBbodySuite"
+   ],
+   "note": "the hash of the segments the decoder computed (hashAlonzoSegWits); ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs",
+     "lines": [
+      80,
+      80
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "abbHash"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayBlockBody#size": {
+   "class": "Mirror",
+   "digest": "58deea0c4eb5df25",
+   "evidence": [
+    "ConwayBbodySuite"
+   ],
+   "note": "the segments' length, what encCBORGroup writes; ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs",
+     "lines": [
+      181,
+      186
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "encCBORGroup"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayBlockBody#txs": {
+   "class": "Mirror",
+   "digest": "eed78fe2f63f69c3",
+   "evidence": [
+    "ConwayBbodySuite"
+   ],
+   "note": "ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs",
+     "lines": [
+      79,
+      79
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "abbTxs"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayBlockBody.instance": {
+   "class": "Mirror",
+   "digest": "91acaf9186b517fa",
+   "evidence": [
+    "ConwayBbodySuite"
+   ],
+   "note": "blockBodySize the segments' length, which encCBORGroup writes again at every version; ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/BlockBody.hs",
+     "lines": [
+      14,
+      20
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraBlockBody ConwayEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/BlockBody/Internal.hs",
+     "lines": [
+      97,
+      103
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraBlockBody AlonzoEra"
+    }
+   ]
+  },
+  "val ledger.era.conway.ConwayBlockHeader.instance": {
+   "class": "Mirror",
+   "digest": "fadcb7181089a648",
+   "evidence": [
+    "ConwayBbodySuite"
+   ],
+   "note": "the Praos header's instance of EraBlockHeader with its protocol version (PraosEraBlockHeader), over the header the block decoder read with its fields read once in the classes' types; ConwayBbodySuite's expectations are the reference's own only on the 53 recorded Conway blocks the reference accepted",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-protocol/src/Cardano/Protocol/Praos/BlockHeader.hs",
+     "lines": [
+      241,
+      269
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraBlockHeader (Header c) era"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.era.conway.ConwayBlock.Read",
+    "def ledger.era.conway.ConwayBlock.Read#inputs",
+    "val ledger.era.conway.ConwayBlock.Read#block",
+    "val ledger.era.conway.ConwayBlock.Read#envelope",
+    "val ledger.era.conway.ConwayBlock.Read#layout"
+   ],
+   "reason": "The Conway switch (#85): the node's one reading of a block's bytes for the rules of its era (Prepared, and ConwayBlock.Read, the block decoder's reading beside the era block made from it), why the node reaches no verdict on a Conway block its era rules apply (ConwayBlockDefect), and the node's phase-2 counters added field by field (PlutusStats' Monoid). The reference reads a block once and has no verdict-less outcome or such counters; these are Scarab's own."
+  },
+  {
+   "definitions": [
+    "class ledger.era.conway.ConwayBlock.Decoded",
+    "class ledger.era.conway.ConwayBlockHeader",
+    "def ledger.era.conway.ConwayBlockBody#toString",
+    "def ledger.era.conway.ConwayBlockError.of",
+    "def ledger.era.conway.ConwayBlockHeader#toString",
+    "def ledger.era.conway.ConwayBlockHeader.fromHeader",
+    "enum ledger.era.conway.ConwayBlockError",
+    "object ledger.era.conway.ConwayBlock",
+    "object ledger.era.conway.ConwayBlockBody",
+    "object ledger.era.conway.ConwayBlockError",
+    "object ledger.era.conway.ConwayBlockHeader",
+    "val ledger.era.conway.ConwayBlockHeader#bodyHash",
+    "val ledger.era.conway.ConwayBlockHeader#bodySize",
+    "val ledger.era.conway.ConwayBlockHeader#header",
+    "val ledger.era.conway.ConwayBlockHeader#issuer",
+    "val ledger.era.conway.ConwayBlockHeader#protVer",
+    "val ledger.era.conway.ConwayBlockHeader#slot"
+   ],
+   "reason": "the companions and readers of Conway's block in the era's types, as Dijkstra's: the header's fields read once in the classes' types (ConwayBlockHeader, a plain class so that no Mirror builds one whose fields are not its header's, its fields, rendering and reader), the evidence that a flat block is one the block decoder read (ConwayBlock.Decoded, which only ConwayBlock.decode makes), why a block's bytes are not a Conway block in the era's types, by whose the failure is (ConwayBlockError and its total classification ConwayBlockError.of), a body's rendering, the object of the Praos header class; the gate of the header's version from the build (HeaderProtVerGate.of), as WithdrawalsRule.of; and a BBODY test's failures injected into the rule's (bbodyTest), which the reference's ?! injectFailure does"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/conway/ConwayBlock.scala"
+}

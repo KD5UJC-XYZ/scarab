@@ -1,0 +1,263 @@
+{
+ "baseline": {
+  "class ledger.Address": null,
+  "class ledger.Ptr": null,
+  "class ledger.RewardAccount": null,
+  "class ledger.TxIn": null,
+  "class ledger.TxOut": null,
+  "class ledger.Value": null,
+  "def ledger.Address.Mode.at": null,
+  "def ledger.Address.Mode.of": null,
+  "def ledger.Address.byronGenesisTxId": null,
+  "def ledger.Address.decode": null,
+  "def ledger.Credential#hash": null,
+  "def ledger.Credential#isKey": null,
+  "def ledger.Credential#render": null,
+  "def ledger.Credential.decode": null,
+  "def ledger.Ptr#fits": null,
+  "def ledger.Ptr#normalised": null,
+  "def ledger.Ptr.encode": null,
+  "def ledger.Ptr.ofCertificate": null,
+  "def ledger.Ptr.read": null,
+  "def ledger.RewardAccount.decode": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs",
+    "lines": [
+     906,
+     911
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "decodeAccountAddress"
+   }
+  ],
+  "def ledger.TxIn#render": null,
+  "def ledger.TxIn.decode": null,
+  "def ledger.TxOut#hasDatum": null,
+  "def ledger.TxOut#hasScriptRef": null,
+  "def ledger.TxOut#ledgerSize": null,
+  "def ledger.TxOut#referenceScript": null,
+  "def ledger.TxOut#referenceScriptSize": null,
+  "def ledger.TxOut.Forms.of": null,
+  "def ledger.TxOut.apply": null,
+  "def ledger.TxOut.decode": null,
+  "def ledger.TxOut.fromBytes": null,
+  "def ledger.TxOut.node": null,
+  "def ledger.Value#+": null,
+  "def ledger.Value#-": null,
+  "def ledger.Value#isZero": null,
+  "def ledger.Value#serializedSize": null,
+  "def ledger.Value.Decoding.of": null,
+  "def ledger.Value.burned": null,
+  "def ledger.Value.coin": null,
+  "def ledger.Value.decode": [
+   {
+    "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+    "lines": [
+     287,
+     296
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "decodeMaryValue"
+   }
+  ],
+  "def ledger.Value.headSize": null,
+  "def ledger.Value.mapHead": null,
+  "def ledger.Value.minted": null,
+  "def ledger.Value.multiasset": null,
+  "enum ledger.Address.Headers": null,
+  "enum ledger.Address.Kind": null,
+  "enum ledger.Address.Mode": null,
+  "enum ledger.Credential": null,
+  "enum ledger.Datum": null,
+  "enum ledger.Ptr.Failure": null,
+  "enum ledger.Ptr.Policy": null,
+  "enum ledger.TxOut.Forms": null,
+  "enum ledger.Value.Decoding": null,
+  "given ledger.Credential.given_Ordering_Credential": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Credential.hs",
+    "lines": [
+     98,
+     101
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "Credential"
+   }
+  ],
+  "given ledger.Ptr.given_Ordering_Ptr": null,
+  "given ledger.RewardAccount.given_Ordering_RewardAccount": null,
+  "given ledger.TxIn.given_Ordering_TxIn": null,
+  "object ledger.Address": null,
+  "object ledger.Address.Mode": null,
+  "object ledger.Credential": null,
+  "object ledger.Ptr": null,
+  "object ledger.RewardAccount": null,
+  "object ledger.TxIn": null,
+  "object ledger.TxOut": null,
+  "object ledger.TxOut.Forms": null,
+  "object ledger.Value": null,
+  "object ledger.Value.Decoding": null,
+  "val ledger.Address.Mode#dropsTrailing": null,
+  "val ledger.Address.Mode#headers": null,
+  "val ledger.Address.Mode#pointers": null,
+  "val ledger.Address.Mode#values": null,
+  "val ledger.Address.UnusedHeaderBits": null,
+  "val ledger.Ptr.zero": null,
+  "val ledger.TxOut.Forms#admitsMap": null,
+  "val ledger.TxOut.Forms#arities": null,
+  "val ledger.TxOut.Forms#keys": null,
+  "val ledger.TxOut.Forms#records": null,
+  "val ledger.TxOut.Forms#wideMaps": null,
+  "val ledger.Value.zero": null
+ },
+ "entries": {
+  "def ledger.TxIn.collOuts": {
+   "class": "Mirror",
+   "digest": "7ae41dbcea1ba986",
+   "evidence": [
+    "TxOutsBoundSuite"
+   ],
+   "note": "of a transaction's id, its outputs' count and its collateral return, the one entry as an option",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs",
+     "lines": [
+      43,
+      50
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "collOuts"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs",
+     "lines": [
+      43,
+      50
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "collOuts"
+    }
+   ]
+  },
+  "def ledger.TxIn.mkCollateralTxIn": {
+   "class": "Mirror",
+   "digest": "c24eee36219736ed",
+   "evidence": [
+    "TxOutsBoundSuite"
+   ],
+   "note": "of a transaction's id and its outputs' count",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs",
+     "lines": [
+      52,
+      61
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkCollateralTxIn"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Collateral.hs",
+     "lines": [
+      52,
+      61
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkCollateralTxIn"
+    }
+   ]
+  },
+  "def ledger.TxIn.txouts": {
+   "class": "Mirror",
+   "digest": "5c977246a348421b",
+   "evidence": [
+    "TxOutsBoundSuite"
+   ],
+   "note": "of a transaction's id and outputs, which the flat bodies of every era hold; the outputs zipped with TxIx.enumerate, so none past index 65,535",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      146,
+      158
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "txouts"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      146,
+      158
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "txouts"
+    }
+   ]
+  },
+  "def ledger.Value.compactable": {
+   "class": "Mirror",
+   "digest": "1e63c1feeaee4045",
+   "evidence": [
+    "MultiAssetDecodeSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      744,
+      746
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "isMultiAssetSmallEnough"
+    }
+   ]
+  },
+  "def ledger.Value.sum": {
+   "class": "Mirror",
+   "digest": "441774dbc8bcea32",
+   "evidence": [
+    "ValueSumSuite",
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      175,
+      177
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "Semigroup MultiAsset"
+    },
+    {
+     "file": "libs/cardano-data/src/Data/CanonicalMaps.hs",
+     "lines": [
+      41,
+      66
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "canonicalMapUnion"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Address.scala"
+}

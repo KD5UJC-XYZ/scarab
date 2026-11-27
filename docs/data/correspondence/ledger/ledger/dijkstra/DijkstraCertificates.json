@@ -1,0 +1,47 @@
+{
+ "baseline": {
+  "class ledger.dijkstra.DijkstraAnchor": null,
+  "class ledger.dijkstra.DijkstraBlsKey": null,
+  "class ledger.dijkstra.DijkstraPoolMetadata": null,
+  "class ledger.dijkstra.DijkstraPoolParams": null,
+  "def ledger.dijkstra.Account.decode": null,
+  "def ledger.dijkstra.DijkstraAnchor.decode": null,
+  "def ledger.dijkstra.DijkstraAnchor.optional": null,
+  "def ledger.dijkstra.DijkstraBlsKey.decode": null,
+  "def ledger.dijkstra.DijkstraCert.decode": [
+   {
+    "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
+    "lines": [
+     557,
+     567
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "poolTxCertDecoder"
+   },
+   {
+    "file": "eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs",
+    "lines": [
+     729,
+     778
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+    "symbol": "conwayTxCertDelegDecoder"
+   }
+  ],
+  "def ledger.dijkstra.DijkstraCert.set": null,
+  "def ledger.dijkstra.DijkstraPoolParams.flat": null,
+  "def ledger.dijkstra.DijkstraRelay.decode": null,
+  "enum ledger.dijkstra.DijkstraCert": null,
+  "enum ledger.dijkstra.DijkstraDelegatee": null,
+  "enum ledger.dijkstra.DijkstraRelay": null,
+  "object ledger.dijkstra.Account": null,
+  "object ledger.dijkstra.DijkstraAnchor": null,
+  "object ledger.dijkstra.DijkstraBlsKey": null,
+  "object ledger.dijkstra.DijkstraCert": null,
+  "object ledger.dijkstra.DijkstraPoolParams": null,
+  "object ledger.dijkstra.DijkstraRelay": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/dijkstra/DijkstraCertificates.scala"
+}

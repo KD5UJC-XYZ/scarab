@@ -1,0 +1,44 @@
+{
+ "baseline": {
+  "def ledger.DetachedRecords.Shapes.auxiliaryData": null,
+  "def ledger.DetachedRecords.Shapes.auxiliaryDataAt": null,
+  "def ledger.DetachedRecords.Shapes.blockAt": null,
+  "def ledger.DetachedRecords.Shapes.body": null,
+  "def ledger.DetachedRecords.Shapes.header": null,
+  "def ledger.DetachedRecords.Shapes.output": null,
+  "def ledger.DetachedRecords.Shapes.transaction": null,
+  "def ledger.DetachedRecords.Shapes.witnesses": null,
+  "def ledger.DetachedRecords.detached": null,
+  "def ledger.DetachedRecords.mayHold": null,
+  "def ledger.DetachedRecords.prefix": null,
+  "def ledger.DetachedRecords.read": null,
+  "enum ledger.DetachedRecords.Prefix": null,
+  "enum ledger.DetachedRecords.Shape": null,
+  "enum ledger.DetachedRecords.Token": null,
+  "object ledger.DetachedRecords": null,
+  "object ledger.DetachedRecords.Shapes": null,
+  "val ledger.DetachedRecords.Shapes.actionId": null,
+  "val ledger.DetachedRecords.Shapes.block": null,
+  "val ledger.DetachedRecords.Shapes.storedOutput": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.DetachedRecords.Walking",
+    "enum ledger.DetachedRecords.Scan",
+    "val ledger.DetachedRecords.Walking#at",
+    "val ledger.DetachedRecords.Walking#found",
+    "val ledger.DetachedRecords.Walking#item",
+    "val ledger.DetachedRecords.Walking#stack"
+   ],
+   "reason": "the walk of a query's detached records and the search for 9f ff resumed on a longer prefix of the same query, so that the node-to-client codec reads each head of a query that arrives in parts once, as the reference's decoder of queries reads it from the stream; the walk answers as DetachedRecords.prefix does"
+  },
+  {
+   "definitions": [
+    "def ledger.DetachedRecords.Shapes.parameterUpdate"
+   ],
+   "reason": "the walk's shape of a parameter update below version 12, which the era codec's test reads a detached update by; the reference reads the stream and has no walk (DetachedRecords, #687)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/DetachedRecords.scala"
+}

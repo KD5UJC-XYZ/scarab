@@ -1,0 +1,32 @@
+{
+ "baseline": {
+  "def uplc.ledger.LedgerEval.defect": null,
+  "def uplc.ledger.LedgerEval.deserialiseScript": null,
+  "def uplc.ledger.LedgerEval.evaluateScriptCounting": null,
+  "def uplc.ledger.LedgerEval.evaluateScriptRestricting": null,
+  "def uplc.ledger.LedgerEval.evaluateSerialised": null,
+  "def uplc.ledger.LedgerEval.evaluateTerm": null,
+  "def uplc.ledger.LedgerEval.mkTermToEvaluate": null,
+  "def uplc.ledger.PlutusV1.deserialiseScript": null,
+  "def uplc.ledger.PlutusV1.evaluateScriptCounting": null,
+  "def uplc.ledger.PlutusV1.evaluateScriptRestricting": null,
+  "def uplc.ledger.PlutusV1.mkEvaluationContext": null,
+  "def uplc.ledger.PlutusV2.deserialiseScript": null,
+  "def uplc.ledger.PlutusV2.evaluateScriptCounting": null,
+  "def uplc.ledger.PlutusV2.evaluateScriptRestricting": null,
+  "def uplc.ledger.PlutusV2.mkEvaluationContext": null,
+  "def uplc.ledger.PlutusV3.deserialiseScript": null,
+  "def uplc.ledger.PlutusV3.evaluateScriptCounting": null,
+  "def uplc.ledger.PlutusV3.evaluateScriptRestricting": null,
+  "def uplc.ledger.PlutusV3.mkEvaluationContext": null,
+  "object uplc.ledger.LedgerEval": null,
+  "object uplc.ledger.PlutusV1": null,
+  "object uplc.ledger.PlutusV2": null,
+  "object uplc.ledger.PlutusV3": null,
+  "type uplc.ledger.LedgerEval.NotAdmitted": null,
+  "val uplc.ledger.PlutusV1.language": null,
+  "val uplc.ledger.PlutusV2.language": null,
+  "val uplc.ledger.PlutusV3.language": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/ledger/LedgerEval.scala"
+}

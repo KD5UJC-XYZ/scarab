@@ -1,0 +1,386 @@
+{
+ "baseline": {
+  "def ledger.state.BlockNo.fromBigInt": null,
+  "def ledger.state.BlockNo.fromUnsigned": null,
+  "def ledger.state.BlockNo.toBigInt": null,
+  "def ledger.state.BlockNo.word": null,
+  "def ledger.state.Coin.apply": null,
+  "def ledger.state.Coin.value": null,
+  "def ledger.state.CompactCoin.add": null,
+  "def ledger.state.CompactCoin.fromBigInt": null,
+  "def ledger.state.CompactCoin.fromCoin": null,
+  "def ledger.state.CompactCoin.fromUnsigned": null,
+  "def ledger.state.CompactCoin.subtract": null,
+  "def ledger.state.CompactCoin.sum": null,
+  "def ledger.state.CompactCoin.toBigInt": null,
+  "def ledger.state.CompactCoin.toCoin": null,
+  "def ledger.state.CompactCoin.word": null,
+  "def ledger.state.DeltaCoin.apply": null,
+  "def ledger.state.DeltaCoin.value": null,
+  "def ledger.state.EpochNo.fromBigInt": null,
+  "def ledger.state.EpochNo.fromUnsigned": null,
+  "def ledger.state.EpochNo.next": null,
+  "def ledger.state.EpochNo.toBigInt": null,
+  "def ledger.state.EpochNo.word": null,
+  "def ledger.state.HasZero#isZero": null,
+  "def ledger.state.HasZero.instance": null,
+  "def ledger.state.Hash32.bytes": null,
+  "def ledger.state.Hash32.fromBytes": null,
+  "def ledger.state.KeyHash.bytes": null,
+  "def ledger.state.KeyHash.fromBytes": null,
+  "def ledger.state.NonZero.from": null,
+  "def ledger.state.NonZero.unsafe": null,
+  "def ledger.state.NonZero.value": null,
+  "def ledger.state.ScriptHash.bytes": null,
+  "def ledger.state.ScriptHash.fromBytes": null,
+  "def ledger.state.SlotNo.fromBigInt": null,
+  "def ledger.state.SlotNo.fromUnsigned": null,
+  "def ledger.state.SlotNo.toBigInt": null,
+  "def ledger.state.SlotNo.word": null,
+  "def ledger.state.TxIx.enumerate": null,
+  "def ledger.state.TxIx.index": null,
+  "def ledger.state.VRFVerKeyHash.bytes": null,
+  "def ledger.state.VRFVerKeyHash.fromBytes": null,
+  "def ledger.state.checked": null,
+  "enum ledger.state.Credential": null,
+  "enum ledger.state.DRep": null,
+  "enum ledger.state.VocabError": null,
+  "enum ledger.state.VocabError.Kind": null,
+  "enum ledger.state.WithOrigin": null,
+  "given ledger.state.BlockNo.given_Order_BlockNo": null,
+  "given ledger.state.BlockNo.given_Show_BlockNo": null,
+  "given ledger.state.Coin.given_HasZero_Coin": null,
+  "given ledger.state.Coin.given_Order_Coin": null,
+  "given ledger.state.Coin.given_Show_Coin": null,
+  "given ledger.state.CompactCoin.given_HasZero_CompactCoin": null,
+  "given ledger.state.CompactCoin.given_Order_CompactCoin": null,
+  "given ledger.state.CompactCoin.given_Show_CompactCoin": null,
+  "given ledger.state.Credential.blockIssuerCredentialOrder": null,
+  "given ledger.state.Credential.coldCommitteeCredentialOrder": null,
+  "given ledger.state.Credential.drepCredentialOrder": null,
+  "given ledger.state.Credential.genesisCredentialOrder": null,
+  "given ledger.state.Credential.genesisDelegateCredentialOrder": null,
+  "given ledger.state.Credential.given_Show_Credential_R": null,
+  "given ledger.state.Credential.hotCommitteeCredentialOrder": null,
+  "given ledger.state.Credential.stakePoolCredentialOrder": null,
+  "given ledger.state.Credential.stakingCredentialOrder": null,
+  "given ledger.state.DRep.given_Order_DRep": null,
+  "given ledger.state.DeltaCoin.given_Order_DeltaCoin": null,
+  "given ledger.state.DeltaCoin.given_Show_DeltaCoin": null,
+  "given ledger.state.EpochNo.given_Order_EpochNo": null,
+  "given ledger.state.EpochNo.given_Show_EpochNo": null,
+  "given ledger.state.HasZero.given_HasZero_BigInt": null,
+  "given ledger.state.HasZero.given_HasZero_Int": null,
+  "given ledger.state.HasZero.given_HasZero_Long": null,
+  "given ledger.state.HasZero.given_HasZero_Word64": null,
+  "given ledger.state.Hash32.given_Order_Hash32": null,
+  "given ledger.state.Hash32.given_Show_Hash32": null,
+  "given ledger.state.KeyHash.given_Order_KeyHash_R": null,
+  "given ledger.state.KeyHash.given_Show_KeyHash_R": null,
+  "given ledger.state.NonZero.given_Order_NonZero_A": null,
+  "given ledger.state.NonZero.given_Show_NonZero_A": null,
+  "given ledger.state.ScriptHash.given_Order_ScriptHash": null,
+  "given ledger.state.ScriptHash.given_Show_ScriptHash": null,
+  "given ledger.state.SlotNo.given_Order_SlotNo": null,
+  "given ledger.state.SlotNo.given_Show_SlotNo": null,
+  "given ledger.state.VRFVerKeyHash.given_Order_VRFVerKeyHash": null,
+  "given ledger.state.VRFVerKeyHash.given_Show_VRFVerKeyHash": null,
+  "given ledger.state.WithOrigin.given_Diff_WithOrigin_A": null,
+  "given ledger.state.WithOrigin.given_Order_WithOrigin_A": null,
+  "given ledger.state.WithOrigin.given_Show_WithOrigin_A": null,
+  "object ledger.state.BlockNo": null,
+  "object ledger.state.Coin": null,
+  "object ledger.state.CompactCoin": null,
+  "object ledger.state.Credential": null,
+  "object ledger.state.DRep": null,
+  "object ledger.state.DeltaCoin": null,
+  "object ledger.state.EpochNo": null,
+  "object ledger.state.HasZero": null,
+  "object ledger.state.Hash32": null,
+  "object ledger.state.KeyHash": null,
+  "object ledger.state.NonZero": null,
+  "object ledger.state.ScriptHash": null,
+  "object ledger.state.SlotNo": null,
+  "object ledger.state.TxIx": null,
+  "object ledger.state.VRFVerKeyHash": null,
+  "object ledger.state.VocabError": null,
+  "object ledger.state.WithOrigin": null,
+  "trait ledger.state.BlockIssuer": null,
+  "trait ledger.state.ColdCommittee": null,
+  "trait ledger.state.DRepRole": null,
+  "trait ledger.state.Genesis": null,
+  "trait ledger.state.GenesisDelegate": null,
+  "trait ledger.state.HasZero": null,
+  "trait ledger.state.HotCommittee": null,
+  "trait ledger.state.KeyRole": null,
+  "trait ledger.state.StakePool": null,
+  "trait ledger.state.Staking": null,
+  "type ledger.state.BlockNo": null,
+  "type ledger.state.Coin": null,
+  "type ledger.state.CompactCoin": null,
+  "type ledger.state.DeltaCoin": null,
+  "type ledger.state.EpochNo": null,
+  "type ledger.state.Hash32": null,
+  "type ledger.state.KeyHash": null,
+  "type ledger.state.NonZero": null,
+  "type ledger.state.ScriptHash": null,
+  "type ledger.state.SlotNo": null,
+  "type ledger.state.TxIx": [
+   {
+    "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+    "lines": [
+     918,
+     921
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "TxIx"
+   }
+  ],
+  "type ledger.state.VRFVerKeyHash": null,
+  "val ledger.state.Coin.oneNonZero": null,
+  "val ledger.state.Coin.zero": null,
+  "val ledger.state.CompactCoin.zero": null,
+  "val ledger.state.NonZero.oneWord": null,
+  "val ledger.state.TxIx.count": null,
+  "val ledger.state.bigOrder": null,
+  "val ledger.state.hashOrder": null
+ },
+ "entries": {
+  "def ledger.state.KeyHash.coerceKeyRole": {
+   "class": "Mirror",
+   "digest": "9c7017402cb2a6d4",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Internal.hs",
+     "lines": [
+      89,
+      95
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "coerceKeyRole"
+    }
+   ]
+  },
+  "def ledger.state.Network.of": {
+   "class": "Mirror",
+   "digest": "2e48a4e8b3c03441",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      886,
+      890
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "word8ToNetwork"
+    }
+   ]
+  },
+  "def ledger.state.TxIx.txIxFromIntegral": {
+   "class": "Mirror",
+   "digest": "2a557bdec4a74858",
+   "evidence": [
+    "TxOutsBoundSuite"
+   ],
+   "note": "of an Int, none where the reference's MonadFail fails",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      934,
+      936
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "txIxFromIntegral"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      941,
+      943
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "txIxFromIntegral"
+    }
+   ]
+  },
+  "def ledger.state.UnitInterval.boundRational": {
+   "class": "Mirror",
+   "digest": "5480882d23fb93f6",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      333,
+      333
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "boundRational"
+    }
+   ]
+  },
+  "enum ledger.state.Network": {
+   "class": "Mirror",
+   "digest": "6db64aeb3eae9771",
+   "note": "moved from the era package to the state's vocabulary, which an account address holds; the era's name exports it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      878,
+      881
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Network"
+    }
+   ]
+  },
+  "trait ledger.state.Guard": {
+   "class": "Mirror",
+   "digest": "ad58e54634c68be9",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Keys/Internal.hs",
+     "lines": [
+      82,
+      82
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Guard"
+    }
+   ]
+  },
+  "type ledger.state.UnitInterval": {
+   "class": "Mirror",
+   "digest": "267e35c3f8d49bb7",
+   "note": "defined with the state's vocabulary, which the pool parameters hold, the era's name an alias of it",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      543,
+      556
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "UnitInterval"
+    }
+   ]
+  },
+  "val ledger.state.TxIx.maxBound": {
+   "class": "Mirror",
+   "digest": "c33d11a3cdf12810",
+   "evidence": [
+    "TxOutsBoundSuite"
+   ],
+   "note": "maxBound of TxIx's derived Bounded instance, a Word16's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      918,
+      921
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Bounded"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      925,
+      928
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Bounded"
+    }
+   ]
+  },
+  "val ledger.state.TxIx.minBound": {
+   "class": "Mirror",
+   "digest": "779d7edb6f9f68d1",
+   "evidence": [
+    "DijkstraBbodyImpSuite",
+    "DijkstraClosureSuite"
+   ],
+   "note": "minBound of the derived Bounded instance",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      925,
+      928
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "TxIx"
+    }
+   ]
+  },
+  "val ledger.state.UnitInterval.zero": {
+   "class": "Mirror",
+   "digest": "719eec86f944d18d",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      558,
+      560
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "minBound"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.state.UnitInterval.rational"
+   ],
+   "reason": "Scala machinery with no counterpart: the probe and invariant wrapper that let a match type tell `Identity` from `StrictMaybe`, the names of the parameter groups' singleton types, constants checked when compiled, accessors of opaque types, and the checked constructors' typed refusals"
+  },
+  {
+   "definitions": [
+    "given ledger.state.Credential.guardCredentialOrder",
+    "object ledger.state.Network",
+    "object ledger.state.UnitInterval"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "def ledger.state.Network.wire",
+    "given ledger.state.Network.given_CanEqual_Network_Network"
+   ],
+   "reason": "the conversions between the node's flat pool parameters, reward accounts and withdrawals and the state's (the flat rules and decoders read the node's, and the state holds the reference's types), each refusal the vocabulary's; and the instances and rendering that hold the state's pool parameters', metadata's and withdrawals' equality, the reference's derived Eq; the metadata of a term a decoder already read, as POOL reads its hash again (held); the decoder version of a stored record's ProtVer; and POOL's refusal of parameters of another layout than the state they go into, a defect the reference, one build, never meets"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Vocabulary.scala"
+}

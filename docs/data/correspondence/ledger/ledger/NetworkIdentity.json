@@ -1,0 +1,32 @@
+{
+ "baseline": {
+  "class ledger.GenesisFileHash": null,
+  "class ledger.IdentityBeforeDijkstra": null,
+  "class ledger.LegacyNetworkIdentity": null,
+  "class ledger.NetworkIdentity": null,
+  "def ledger.IdentityBeforeDijkstra#bind": null,
+  "def ledger.IdentityBeforeDijkstra#describe": null,
+  "def ledger.IdentityBeforeDijkstra#renderAs": null,
+  "def ledger.IdentityProvenance.parse": null,
+  "def ledger.IdentityProvenance.render": null,
+  "def ledger.LegacyNetworkIdentity#describe": null,
+  "def ledger.LegacyNetworkIdentity#matches": null,
+  "def ledger.LegacyNetworkIdentity#renderAs": null,
+  "def ledger.NetworkIdentity#adopts": null,
+  "def ledger.NetworkIdentity#beforeDijkstra": null,
+  "def ledger.NetworkIdentity#consistentWith": null,
+  "def ledger.NetworkIdentity#describe": null,
+  "def ledger.NetworkIdentity#legacy": null,
+  "def ledger.NetworkIdentity#render": null,
+  "def ledger.NetworkIdentity#renderAs": null,
+  "def ledger.NetworkIdentity.describeBinding": null,
+  "def ledger.NetworkIdentity.parse": null,
+  "def ledger.NetworkIdentity.parseVersioned": null,
+  "def ledger.NetworkIdentity.renderGenesisHash": null,
+  "enum ledger.IdentityProvenance": null,
+  "enum ledger.StoredNetworkIdentity": null,
+  "object ledger.IdentityProvenance": null,
+  "object ledger.NetworkIdentity": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/NetworkIdentity.scala"
+}

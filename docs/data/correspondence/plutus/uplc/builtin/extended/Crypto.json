@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "def uplc.builtin.extended.ExpMod.expMod": null,
+  "def uplc.builtin.extended.Hashes.blake2b_224": null,
+  "def uplc.builtin.extended.Hashes.blake2b_256": null,
+  "def uplc.builtin.extended.Hashes.keccak_256": null,
+  "def uplc.builtin.extended.Hashes.ripemd_160": null,
+  "def uplc.builtin.extended.Hashes.sha2_256": null,
+  "def uplc.builtin.extended.Hashes.sha3_256": null,
+  "def uplc.builtin.extended.Signatures.verifyEcdsa": null,
+  "def uplc.builtin.extended.Signatures.verifyEd25519": null,
+  "def uplc.builtin.extended.Signatures.verifySchnorr": null,
+  "object uplc.builtin.extended.ExpMod": null,
+  "object uplc.builtin.extended.Hashes": null,
+  "object uplc.builtin.extended.Signatures": null,
+  "type uplc.builtin.extended.Verified": null,
+  "val uplc.builtin.extended.ExpMod.Max": null,
+  "val uplc.builtin.extended.ExpMod.Min": null,
+  "val uplc.builtin.extended.Signatures.FieldModulus": null,
+  "val uplc.builtin.extended.Signatures.Order": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/builtin/extended/Crypto.scala"
+}

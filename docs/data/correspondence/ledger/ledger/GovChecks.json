@@ -1,0 +1,7 @@
+{
+ "baseline": {
+  "def ledger.GovChecks.wellFormed": null,
+  "object ledger.GovChecks": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/GovChecks.scala"
+}

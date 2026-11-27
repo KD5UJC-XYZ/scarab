@@ -1,0 +1,11 @@
+{
+ "baseline": {
+  "def ledger.ScriptIntegrity.hash": null,
+  "def ledger.ScriptIntegrity.languageViews": null,
+  "def ledger.ScriptIntegrity.mismatch": null,
+  "def ledger.ScriptIntegrity.plutusLanguageViews": null,
+  "def ledger.ScriptIntegrity.preimage": null,
+  "object ledger.ScriptIntegrity": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/ScriptIntegrity.scala"
+}

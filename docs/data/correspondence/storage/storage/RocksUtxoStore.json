@@ -1,0 +1,44 @@
+{
+ "baseline": {
+  "class storage.RocksUtxoStore": null,
+  "class storage.RocksUtxoStore.Shared": null,
+  "def storage.RocksUtxoStore#all": null,
+  "def storage.RocksUtxoStore#checkpoint": null,
+  "def storage.RocksUtxoStore#entries": null,
+  "def storage.RocksUtxoStore#flushed": null,
+  "def storage.RocksUtxoStore#memory": null,
+  "def storage.RocksUtxoStore#read": null,
+  "def storage.RocksUtxoStore#readView": null,
+  "def storage.RocksUtxoStore#reset": null,
+  "def storage.RocksUtxoStore#restore": null,
+  "def storage.RocksUtxoStore#scan": null,
+  "def storage.RocksUtxoStore#select": null,
+  "def storage.RocksUtxoStore#selectAddresses": null,
+  "def storage.RocksUtxoStore#size": null,
+  "def storage.RocksUtxoStore#stamp": null,
+  "def storage.RocksUtxoStore#write": null,
+  "def storage.RocksUtxoStore.Shared#close": null,
+  "def storage.RocksUtxoStore.cloneInto": null,
+  "def storage.RocksUtxoStore.deleteTree": null,
+  "def storage.RocksUtxoStore.hasCurrentKeys": null,
+  "def storage.RocksUtxoStore.open": null,
+  "def storage.RocksUtxoStore.rekeyInto": null,
+  "def storage.RocksUtxoStore.resource": null,
+  "object storage.RocksUtxoStore": null,
+  "val storage.RocksUtxoStore.KeyLength": null,
+  "val storage.RocksUtxoStore.Shared#cache": null,
+  "val storage.RocksUtxoStore.Shared#writeBuffers": null,
+  "val storage.RocksUtxoStore.StampKeyLength": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def storage.RocksUtxoStore.failureOf",
+    "def storage.RocksUtxoStore.multiRead",
+    "def storage.RocksUtxoStore.options"
+   ],
+   "reason": "The RocksDB UTxO store's own plumbing, Scarab's backing store of the ledger tables with no counterpart in the reference's UTxO-HD backends: the options it opens its database with, its batch read by each key's status, and its library failures as typed errors (#79)."
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/RocksUtxoStore.scala"
+}

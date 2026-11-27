@@ -1,0 +1,13 @@
+{
+ "baseline": {
+  "def ledger.state.Empty.certState": null,
+  "def ledger.state.Empty.epochState": null,
+  "def ledger.state.Empty.govState": null,
+  "def ledger.state.Empty.instantStake": null,
+  "def ledger.state.Empty.ledgerState": null,
+  "def ledger.state.Empty.stashedAvvm": null,
+  "object ledger.state.Empty": null,
+  "val ledger.state.Empty.pState": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/state/Empty.scala"
+}

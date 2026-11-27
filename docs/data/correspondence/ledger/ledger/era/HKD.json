@@ -1,0 +1,244 @@
+{
+ "entries": {
+  "class ledger.era.NoUpdate": {
+   "class": "Mirror",
+   "digest": "ea3dbd4000090985",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
+     "lines": [
+      34,
+      35
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "NoUpdate"
+    }
+   ]
+  },
+  "def ledger.era.HKDApplicative#hkdLiftA2": {
+   "class": "Mirror",
+   "digest": "66c07ccaa8230bf5",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
+     "lines": [
+      69,
+      69
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdLiftA2"
+    }
+   ]
+  },
+  "def ledger.era.HKDFunctor#fromNoUpdate": {
+   "class": "Mirror",
+   "digest": "ef2f648e7e09b75b",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
+     "lines": [
+      50,
+      50
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "fromNoUpdate"
+    }
+   ]
+  },
+  "def ledger.era.HKDFunctor#hkdMap": {
+   "class": "Mirror",
+   "digest": "985ab06318af8f0f",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
+     "lines": [
+      48,
+      50
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hkdMap"
+    }
+   ]
+  },
+  "def ledger.era.HKDFunctor#toNoUpdate": {
+   "class": "Mirror",
+   "digest": "317f4851285750be",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
+     "lines": [
+      49,
+      50
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "toNoUpdate"
+    }
+   ]
+  },
+  "given ledger.era.HKDApplicative.identity": {
+   "class": "Mirror",
+   "digest": "72378e3385d7fcb9",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
+     "lines": [
+      71,
+      73
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "HKDApplicative"
+    }
+   ]
+  },
+  "given ledger.era.HKDApplicative.strictMaybe": {
+   "class": "Mirror",
+   "digest": "ab5d6fb2f362ecee",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
+     "lines": [
+      79,
+      81
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "HKDApplicative"
+    }
+   ]
+  },
+  "given ledger.era.HKDFunctor.identity": {
+   "class": "Mirror",
+   "digest": "9de51e3fb90dfba4",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
+     "lines": [
+      52,
+      55
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "HKDFunctor"
+    }
+   ]
+  },
+  "given ledger.era.HKDFunctor.strictMaybe": {
+   "class": "Mirror",
+   "digest": "c5c3d17ec918e345",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
+     "lines": [
+      62,
+      65
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "HKDFunctor"
+    }
+   ]
+  },
+  "trait ledger.era.HKDApplicative": {
+   "class": "Mirror",
+   "digest": "3f73237c5abfb5f6",
+   "evidence": [
+    "BabbagePParamsSuite"
+   ],
+   "note": "with `hkdSequence`, which the reference has not: its partial conversions inside an upgrade throw (`compactCoinOrError`), here they are an Either sequenced through the field; without `hkdPure`, which nothing here calls",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
+     "lines": [
+      67,
+      69
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "HKDApplicative"
+    }
+   ]
+  },
+  "trait ledger.era.HKDFunctor": {
+   "class": "Mirror",
+   "digest": "bf2e29f7d3635bbc",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
+     "lines": [
+      47,
+      50
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "HKDFunctor"
+    }
+   ]
+  },
+  "type ledger.era.HKDNoUpdate": {
+   "class": "Mirror",
+   "digest": "aed8235dd95475f5",
+   "note": "a match type on F applied to a probe: Identity, StrictMaybe (Scala's Option, Maybe too) and any other constructor; at Some, below Option, it does not reduce, so a record over Some does not compile where the reference gives Some a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/HKD.hs",
+     "lines": [
+      41,
+      45
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "HKDNoUpdate"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.era.HKD.Exactly",
+    "trait ledger.era.HKD.Probe"
+   ],
+   "reason": "Scala machinery with no counterpart: the probe and invariant wrapper that let a match type tell `Identity` from `StrictMaybe`, the names of the parameter groups' singleton types, constants checked when compiled, accessors of opaque types, and the checked constructors' typed refusals"
+  },
+  {
+   "definitions": [
+    "type ledger.era.Identity",
+    "type ledger.era.StrictMaybe"
+   ],
+   "reason": "Scala names for `Identity` (base's `Data.Functor.Identity`) and `StrictMaybe` (strict-containers' `Data.Maybe.Strict`), which are outside cardano-ledger; Scala's `Option` is strict"
+  },
+  {
+   "definitions": [
+    "object ledger.era.HKD",
+    "object ledger.era.HKDApplicative",
+    "object ledger.era.HKDFunctor"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "def ledger.era.HKDApplicative#hkdSequence"
+   ],
+   "reason": "the sequencing through a field of a conversion that may fail, which an upgrade of the parameters makes its deposits with; the reference throws there (`compactCoinOrError`) and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/HKD.scala"
+}

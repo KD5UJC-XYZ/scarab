@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "class consensus.state.AnnTip": null,
+  "class consensus.state.HeaderState": null,
+  "def consensus.state.HeaderState.live": null,
+  "enum consensus.state.IsEBB": null,
+  "enum consensus.state.TipInfo": null,
+  "given consensus.state.HeaderState.given_Diff_HeaderState": null,
+  "given consensus.state.HeaderState.given_Eq_HeaderState": null,
+  "given consensus.state.HeaderState.given_Show_HeaderState": null,
+  "given consensus.state.TipInfo.given_Eq_TipInfo": null,
+  "given consensus.state.TipInfo.given_Show_TipInfo": null,
+  "object consensus.state.AnnTip": null,
+  "object consensus.state.HeaderState": null,
+  "object consensus.state.TipInfo": null,
+  "val consensus.state.AnnTip.blockNo": null,
+  "val consensus.state.AnnTip.info": null,
+  "val consensus.state.AnnTip.slot": null,
+  "val consensus.state.HeaderState.chainDep": null,
+  "val consensus.state.HeaderState.tip": null
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/state/HeaderState.scala"
+}

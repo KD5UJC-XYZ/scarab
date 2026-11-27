@@ -1,0 +1,19 @@
+{
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.StoredPParams.compact",
+    "def ledger.era.StoredPParams.epochs",
+    "def ledger.era.StoredPParams.nonNegative",
+    "def ledger.era.StoredPParams.protVer",
+    "def ledger.era.StoredPParams.unit",
+    "def ledger.era.StoredPParams.units",
+    "def ledger.era.StoredPParams.unsigned",
+    "object ledger.era.StoredPParams",
+    "type ledger.era.StoredPParams.Read"
+   ],
+   "reason": "the conversions between Babbage's record and the parameters the node keeps (the flat `ProtocolParams`), both ways, and the readers of the stored fields at the reference's types they and Conway's share; the reference keeps the record itself and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/StoredPParams.scala"
+}

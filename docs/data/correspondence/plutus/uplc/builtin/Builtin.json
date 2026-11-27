@@ -1,0 +1,63 @@
+{
+ "baseline": {
+  "class uplc.builtin.Builtins": null,
+  "class uplc.builtin.Prepared": null,
+  "class uplc.builtin.UnliftingFailure": null,
+  "def uplc.builtin.Builtins#prepare": null,
+  "def uplc.builtin.Costing#apply": null,
+  "def uplc.builtin.CostingFunction#apply": null,
+  "def uplc.builtin.DataShape#constructor": null,
+  "def uplc.builtin.Denotation#apply": null,
+  "def uplc.builtin.Denotations#apply": null,
+  "def uplc.builtin.EvaluationFailure#logs": null,
+  "def uplc.builtin.EvaluationFailure#message": null,
+  "def uplc.builtin.MachineValue#constantOf": null,
+  "def uplc.builtin.MachineValue#ofConstant": null,
+  "def uplc.builtin.Outcome.failed": null,
+  "def uplc.builtin.Outcome.succeeded": null,
+  "def uplc.builtin.Unlifting#apply": null,
+  "def uplc.builtin.UnliftingBound#typeName": null,
+  "def uplc.builtin.UnliftingFailure#message": null,
+  "enum uplc.builtin.Argument": null,
+  "enum uplc.builtin.BuiltinFailure": null,
+  "enum uplc.builtin.DataShape": null,
+  "enum uplc.builtin.ErrorClass": null,
+  "enum uplc.builtin.EvaluationFailure": null,
+  "enum uplc.builtin.Outcome": null,
+  "enum uplc.builtin.UnliftingBound": null,
+  "enum uplc.builtin.UnliftingCause": null,
+  "object uplc.builtin.Outcome": null,
+  "trait uplc.builtin.Costing": null,
+  "trait uplc.builtin.CostingFunction": null,
+  "trait uplc.builtin.Denotation": null,
+  "trait uplc.builtin.Denotations": null,
+  "trait uplc.builtin.MachineValue": null,
+  "trait uplc.builtin.Unlifting": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class uplc.builtin.HeldApplication",
+    "def uplc.builtin.Argument.of",
+    "def uplc.builtin.Builtins#held",
+    "def uplc.builtin.Builtins.refused",
+    "def uplc.builtin.CostingFunction#held",
+    "def uplc.builtin.Denotation#held",
+    "def uplc.builtin.HeldCosting#spend",
+    "def uplc.builtin.HeldDenotation#applied",
+    "def uplc.builtin.HeldUnlifting#refusal",
+    "def uplc.builtin.MachineValue#asConstant",
+    "def uplc.builtin.Unlifting#held",
+    "object uplc.builtin.Argument",
+    "object uplc.builtin.Builtins",
+    "object uplc.builtin.MachineValue",
+    "object uplc.builtin.MachineValue.NoConstant",
+    "trait uplc.builtin.HeldCosting",
+    "trait uplc.builtin.HeldDenotation",
+    "trait uplc.builtin.HeldUnlifting"
+   ],
+   "reason": "The held forms of a builtin's unlifting, costing and denotation, by which the CEK machine takes a saturated application on the arguments as it holds them (the last one first) when all three have one, so that it makes no vector, Option or closure for them (#1411); a builtin a component of which has none is taken by the vector forms, as before. The reference's order (unlift every argument, spend the cost, then compute the result; `evalBuiltinApp`, `Cek/Internal.hs:1052-1075`, plutus 1.70.0.0) is that of the vector forms, and CekApplicationSuite compares the machine with the one before #1411"
+  }
+ ],
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/builtin/Builtin.scala"
+}

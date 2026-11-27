@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "def ledger.rules.RuleT.judge": null,
+  "def ledger.rules.RuleT.pure": null,
+  "def ledger.rules.RuleT.run": null,
+  "enum ledger.rules.Frame": null,
+  "enum ledger.rules.Frames": null,
+  "enum ledger.rules.Prog": null,
+  "enum ledger.rules.RuleT.Outcome": null,
+  "enum ledger.rules.RuleT.Policy": null,
+  "enum ledger.rules.Trace": null,
+  "given ledger.rules.RuleT.handle": null,
+  "given ledger.rules.RuleT.judge": null,
+  "given ledger.rules.RuleT.local": null,
+  "given ledger.rules.RuleT.monad": null,
+  "given ledger.rules.RuleT.stateful": null,
+  "object ledger.rules.RuleT": null,
+  "type ledger.rules.RuleT": null,
+  "type ledger.rules.RuleT.Judged": null,
+  "type ledger.rules.RuleT.Of": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/RuleT.scala"
+}

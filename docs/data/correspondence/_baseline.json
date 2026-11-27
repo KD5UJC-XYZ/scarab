@@ -1,0 +1,10 @@
+{
+ "_comment": "The baseline is recorded: the definitions of each mirrored area not yet mapped or listed as glue are the \"baseline\" of their source's map file, each with null or with the upstream counterpart its own citation names, checked at the pin but not yet reviewed (docs/design/correspondence-map.md). Written by scripts/check_correspondence.py --write-baseline, which refuses a new key. It only shrinks.",
+ "areas": [
+  "consensus",
+  "ledger",
+  "network",
+  "plutus",
+  "storage"
+ ]
+}

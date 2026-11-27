@@ -1,0 +1,47 @@
+{
+ "baseline": {
+  "def protocol.LocalStateQuery.QueryReader#span": null,
+  "def protocol.LocalStateQuery.decodePrefix": null,
+  "def protocol.LocalStateQuery.encode": null,
+  "def protocol.LocalStateQuery.transition": null,
+  "enum protocol.LocalStateQuery.Failure": null,
+  "enum protocol.LocalStateQuery.QuerySpan": null,
+  "enum protocol.LocalStateQuery.State": null,
+  "object protocol.LocalStateQuery": null,
+  "object protocol.LocalStateQuery.QueryReader": null,
+  "trait protocol.LocalStateQuery.QueryReader": null,
+  "type protocol.LocalStateQuery.Message": null,
+  "type protocol.LocalStateQuery.Target": null,
+  "val protocol.LocalStateQuery.MaxQueryBytes": null,
+  "val protocol.LocalStateQuery.MaxQueryDepth": null,
+  "val protocol.LocalStateQuery.MaxResultBytes": null,
+  "val protocol.LocalStateQuery.Message": null,
+  "val protocol.LocalStateQuery.MiniProtocolId": null,
+  "val protocol.LocalStateQuery.QueryReader.items": null,
+  "val protocol.LocalStateQuery.Target": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def protocol.LocalStateQuery.QueryReader#prefixOf",
+    "def protocol.LocalStateQuery.QueryReader#spanOf",
+    "def protocol.LocalStateQuery.QueryReader#unread",
+    "def protocol.LocalStateQuery.QueryReader.Restarting#prefix",
+    "def protocol.LocalStateQuery.QueryReader.Restarting#span",
+    "def protocol.LocalStateQuery.QueryReader.Restarting#unread",
+    "trait protocol.LocalStateQuery.QueryReader.Restarting",
+    "type protocol.LocalStateQuery.QueryReader#Reading",
+    "type protocol.LocalStateQuery.QueryReader.Restarting#Reading"
+   ],
+   "reason": "how a decoder keeps its progress on a message not all of which has arrived, so that a longer prefix is read on from where it stopped and nothing read whole is read again: the reference keeps that progress in its decoder's continuation (cborg 0.2.10.0 deserialiseIncremental, src/Codec/CBOR/Read.hs:169-172 and 1254-1260; typed-protocols 1.2.2.0 convertCborDecoderLBS, cborg/Network/TypedProtocol/Codec/CBOR.hs:136-164), fed a chunk at a time by runDecoderWithLimit (ouroboros-network framework/lib/Ouroboros/Network/Driver/Limits.hs:281-331 at c45735a5 and 4646039f); here a decoder's cursor holds it as a value. What each codec accepts and refuses, and where, is the codec's as before; each codec's incremental is its decodePrefix as the multiplexer takes it (decodePrefix is it started afresh), the reading itself in the codec's own definitions as before"
+  },
+  {
+   "definitions": [
+    "def protocol.LocalStateQuery.QueryReader#prefix",
+    "enum protocol.LocalStateQuery.QueryPrefix"
+   ],
+   "reason": "the query reader's judgement of a LocalStateQuery query that has not all arrived: the reference hands the codec the decoder of queries itself (decodeQuery, LocalStateQuery/Codec.hs:169-170 at ouroboros-network c45735a5) and reads the query from the stream; Scarab reads a whole query as one item, and the judgement is in the node, outside the areas"
+  }
+ ],
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/LocalStateQuery.scala"
+}

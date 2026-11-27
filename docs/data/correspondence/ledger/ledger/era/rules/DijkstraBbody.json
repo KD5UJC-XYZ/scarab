@@ -1,0 +1,55 @@
+{
+ "entries": {
+  "def ledger.era.rules.DijkstraBbody.dijkstraBbodyTransition": {
+   "class": "Mirror",
+   "digest": "1d5d54231aea4a1e",
+   "evidence": [
+    "DijkstraBbodySuite",
+    "DijkstraRulesOracleSuite"
+   ],
+   "note": "the signal the block with its header's two classes as using clauses (LeiosBbodySignal); the proposals in their own capability beside the ledger state, as LEDGER's are; the UTxO set the reference scripts are measured against the stored outputs of the block's inputs and reference inputs before LEDGERS, read into the era; where UTXOS evaluates the scripts a capability (Phase2Deferral), passed down to UTXO",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Bbody.hs",
+     "lines": [
+      333,
+      402
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraBbodyTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.DijkstraBbody.validatePerasCert": {
+   "class": "Mirror",
+   "digest": "7027e3060310d44c",
+   "evidence": [
+    "DijkstraBbodySuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      245,
+      246
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "validatePerasCert"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.rules.DijkstraBbody"
+   ],
+   "reason": "the companions of BBODY's era types and failures (their CanEqual givens), the header's fields read once in the classes' types (DijkstraBlockHeader, a plain class so that no derived Mirror builds one whose fields are not its header's, and its rendering), the evidence that a block is one the block decoder read (DijkstraBlock.Decoded, which only DijkstraBlock.decode makes), why a block's bytes are not a block in the era's types, by whose the failure is (DijkstraBlockError and its total classification DijkstraBlockError.of: the block decoder's refusal, the era types' refusal of what it read, or a value the decoder's own bounds rule out), a body's rendering, and the BBODY state's lens"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/DijkstraBbody.scala"
+}

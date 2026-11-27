@@ -1,0 +1,90 @@
+{
+ "baseline": {
+  "class ledger.rules.PoolreapState": null,
+  "def ledger.rules.PoolReap.step": null,
+  "def ledger.rules.PoolReap.sts": null,
+  "def ledger.rules.PoolreapState.lens": null,
+  "object ledger.rules.PoolReap": null,
+  "object ledger.rules.PoolreapState": null
+ },
+ "entries": {
+  "def ledger.rules.PoolReap.removeOccurrences": {
+   "class": "Mirror",
+   "digest": "044607c72d119574",
+   "evidence": [
+    "DijkstraEpochReferenceSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/CertState.hs",
+     "lines": [
+      515,
+      519
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "removeVRFKeyHashOccurrence"
+    }
+   ]
+  },
+  "val ledger.rules.PoolReap.shelleyAdopt": {
+   "class": "Mirror",
+   "digest": "844e45394d2cf1fa",
+   "evidence": [
+    "LeiosEpochReferenceSuite",
+    "TickRulesSuite"
+   ],
+   "note": "the voting key of mkStakePoolState e SNothing futureParams: the parameters' key registered at e (PoolParamsBlsKey.registered)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/PoolReap.hs",
+     "lines": [
+      118,
+      155
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "poolReapTransition"
+    }
+   ]
+  },
+  "val ledger.rules.PoolReap.shelleyRelease": {
+   "class": "Mirror",
+   "digest": "a464216b351e9c26",
+   "evidence": [
+    "LeiosEpochReferenceSuite",
+    "CompactCoinRulesSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/PoolReap.hs",
+     "lines": [
+      118,
+      226
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "poolReapTransition"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "type ledger.rules.PoolReap.Adopt"
+   ],
+   "reason": "the companion of BlsKeyState, and the type of POOLREAP's voting key on adoption, which the reference passes to mkStakePoolState as an argument; neither has a counterpart"
+  },
+  {
+   "definitions": [
+    "type ledger.rules.PoolReap.Release"
+   ],
+   "reason": "the proof that an era from Conway holds Conway's certificate and governance records ([[ConwayShapes]]), given for Conway and Dijkstra, through which Conway's EPOCH helpers serve both eras; the reference shares them through its era classes and has no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/PoolReap.scala"
+}

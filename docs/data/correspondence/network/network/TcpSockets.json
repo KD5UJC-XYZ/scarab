@@ -1,0 +1,30 @@
+{
+ "baseline": {
+  "class network.NodeAddresses": null,
+  "class network.ObservedSettings": null,
+  "class network.OutboundPlan": null,
+  "class network.TcpStream": null,
+  "def network.NodeAddresses#of": null,
+  "def network.NodeAddresses.listening": null,
+  "def network.OutboundPlan.of": null,
+  "def network.SocketFamily.of": null,
+  "def network.SocketSetting.onListener": null,
+  "def network.TcpSockets.connect": null,
+  "def network.TcpSockets.dial": null,
+  "def network.TcpSockets.listen": null,
+  "object network.NodeAddresses": null,
+  "object network.OutboundPlan": null,
+  "object network.SocketFamily": null,
+  "object network.SocketSetting": null,
+  "object network.TcpSockets": null,
+  "type network.SocketFamily": null,
+  "type network.SocketSetting": null,
+  "type network.SocketStep": null,
+  "type network.TcpSocketError": null,
+  "val network.NodeAddresses.none": null,
+  "val network.SocketStep": null,
+  "val network.TcpSocketError": null,
+  "val network.TcpSockets.Backlog": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/TcpSockets.scala"
+}

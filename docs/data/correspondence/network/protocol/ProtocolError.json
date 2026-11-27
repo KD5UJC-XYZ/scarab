@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "def protocol.ProtocolError#incomplete": null,
+  "def protocol.ProtocolError#message": null,
+  "enum protocol.ProtocolError": null,
+  "enum protocol.ProtocolError.MonitorField": null,
+  "object protocol.ProtocolError": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ProtocolError.scala"
+}

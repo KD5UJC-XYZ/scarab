@@ -1,0 +1,57 @@
+{
+ "baseline": {
+  "class ledger.Phase2.Completed": null,
+  "class ledger.Phase2.Defect": null,
+  "class ledger.Phase2.Evaluation": null,
+  "class ledger.Phase2.Failure": null,
+  "class ledger.Phase2.Job": null,
+  "class ledger.Phase2.Observation": null,
+  "class ledger.Phase2.Report": null,
+  "def ledger.Phase2.Outcome#passed": null,
+  "def ledger.Phase2.Report#logs": null,
+  "def ledger.Phase2.Report#scripts": null,
+  "def ledger.Phase2.Report#used": null,
+  "def ledger.Phase2.capture": null,
+  "def ledger.Phase2.collect": null,
+  "def ledger.Phase2.evaluate": null,
+  "def ledger.Phase2.execute": null,
+  "def ledger.Phase2.job": null,
+  "def ledger.Phase2.languageOf": null,
+  "def ledger.Phase2.run": null,
+  "enum ledger.Phase2.Outcome": null,
+  "object ledger.Phase2": null,
+  "type ledger.Phase2.Collected": null,
+  "val ledger.Phase2.Completed#job": null,
+  "val ledger.Phase2.Completed#outcome": null,
+  "val ledger.Phase2.Job#index": null,
+  "val ledger.Phase2.Job#observation": null,
+  "val ledger.Phase2.Job#requests": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class ledger.Phase2.Recorder",
+    "def ledger.Phase2.Plan#batches",
+    "def ledger.Phase2.Plan#execute",
+    "def ledger.Phase2.Plan#resolve",
+    "def ledger.Phase2.Program#declared",
+    "def ledger.Phase2.Program#hasScripts",
+    "def ledger.Phase2.Program#preparable",
+    "def ledger.Phase2.Program#prepare",
+    "def ledger.Phase2.Program#serial",
+    "def ledger.Phase2.Program#worthwhile",
+    "def ledger.Phase2.Recorder#append",
+    "def ledger.Phase2.captured",
+    "def ledger.Phase2.pays",
+    "trait ledger.Phase2.Plan",
+    "trait ledger.Phase2.Program",
+    "type ledger.Phase2.Plan#Completed",
+    "type ledger.Phase2.Plan#Job",
+    "type ledger.Phase2.Preparation",
+    "val ledger.Phase2.payingSteps"
+   ],
+   "reason": "the contract of a block body whose Plutus scripts the node evaluates in bounded parallel workers after an ordered preparation (ADR 0018, Scarab's own: the reference evaluates them where it collects them): a body program and its plan (Phase2.Program, Phase2.Plan) that the node's one scheduler runs, each plan's completions of its own type so that another plan's do not type-check, the sealed recorder of a preparation's jobs (Phase2.Recorder, captured, the flat rules' Preparation), the dependency graph over transactions' footprints (TxDependencies.Footprint, levelsOf, scheduled), and the capability through which an era's UTXOS evaluates a transaction's collected scripts, now or deferred into a preparation with no verdict, and is told of a transaction whose scripts it could not collect (Phase2Deferral, uncollected, #85); and the floor of declared work below which the node runs a body serially, a performance choice that no verdict depends on (Phase2.pays, payingSteps, each body's preparable and declared, #85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Phase2.scala"
+}

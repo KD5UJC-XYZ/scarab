@@ -1,0 +1,138 @@
+{
+ "baseline": {
+  "class ledger.BootstrapWitness": null,
+  "class ledger.PoolIdentity": null,
+  "class ledger.PoolParams": null,
+  "class ledger.Redeemer": null,
+  "class ledger.Tx": null,
+  "class ledger.TxBody": null,
+  "class ledger.Update": null,
+  "class ledger.Witnesses": null,
+  "def ledger.BootstrapWitness.chainCode": null,
+  "def ledger.BootstrapWitness.set": null,
+  "def ledger.Certificate.decode": null,
+  "def ledger.Certificate.identity": null,
+  "def ledger.DRep#render": null,
+  "def ledger.DRep.decode": null,
+  "def ledger.PoolParams.decodeMetadata": null,
+  "def ledger.PoolParams.identity": null,
+  "def ledger.PoolParams.metadataHash": null,
+  "def ledger.PoolParams.registeredOn": null,
+  "def ledger.Redeemer.maxTag": null,
+  "def ledger.Redeemer.purpose": null,
+  "def ledger.Tx#hasAuxiliaryData": null,
+  "def ledger.Tx.envelope": null,
+  "def ledger.Tx.envelopeParts": null,
+  "def ledger.Tx.fromBlock": null,
+  "def ledger.Tx.fromEnvelope": null,
+  "def ledger.TxBody#hasScriptData": null,
+  "def ledger.TxBody.decode": null,
+  "def ledger.Witnesses#hasPlutus": null,
+  "def ledger.Witnesses#totalExUnits": null,
+  "def ledger.Witnesses.decode": null,
+  "enum ledger.Certificate": null,
+  "enum ledger.DRep": null,
+  "enum ledger.Pot": null,
+  "object ledger.BootstrapWitness": null,
+  "object ledger.Certificate": null,
+  "object ledger.DRep": null,
+  "object ledger.PoolParams": null,
+  "object ledger.Redeemer": null,
+  "object ledger.Tx": null,
+  "object ledger.TxBody": null,
+  "object ledger.Witnesses": null,
+  "val ledger.BootstrapWitness#addressRoot": null,
+  "val ledger.TxBody#id": null,
+  "val ledger.Witnesses#datumHashes": null,
+  "val ledger.Witnesses#scriptsByHash": null,
+  "val ledger.Witnesses.empty": null
+ },
+ "entries": {
+  "def ledger.PoolParams.metadataAt": {
+   "class": "Mirror",
+   "digest": "79c4d3d624556d8c",
+   "evidence": [
+    "FuturePoolParamsCodecSuite",
+    "DijkstraTxCertSuite"
+   ],
+   "note": "the hash of a PoolMetadata term read as DecCBOR PoolMetadata at a version, in the build of a layout (PoolMetadata.read)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      522,
+      524
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR PoolMetadata"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs",
+     "lines": [
+      683,
+      685
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBOR PoolMetadata"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      678,
+      685
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR Url"
+    },
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "lines": [
+      1564,
+      1598
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "decodeString"
+    }
+   ]
+  },
+  "given ledger.DRep.given_Ordering_DRep": {
+   "class": "Mirror",
+   "digest": "71c115bb2be3bfea",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/DRep.hs",
+     "lines": [
+      67,
+      72
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "29a7d65663f476909981d2757da2b07f16d21040",
+     "symbol": "data DRep"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.TxBody.known",
+    "def ledger.TxBody.networkId",
+    "def ledger.Witnesses.exUnits"
+   ],
+   "reason": "Conway's one-pass decoders (#85): the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses), the output the first phase read with the flat output beside it and its second phase (ConwayTxOut.Read, ConwayTxOut.checked); the two passes they replaced, kept for the differential and the bench until the flat decoder goes at stage 6a (decodeByFlat, fromEnvelopeByFlat); and three readers of the flat decoder made visible to them, unchanged (TxBody.known, TxBody.networkId, Witnesses.exUnits). Scala containers and helpers of the decoders, with no counterpart of their own"
+  },
+  {
+   "definitions": [
+    "given ledger.Certificate.identityOrder"
+   ],
+   "reason": "the orders an ordered set of certificates or proposals sorts its elements' identities with to find repeats, so that the check costs a sort whatever their hash codes; the reference finds them with the derived `Ord` (`decodeOSet`, `libs/cardano-data/src/Data/OSet/Strict.hs:109-116`, cardano-ledger 29a7d656) and only its equality decides, so these orders, which agree with Scarab's equality of each type and order nothing else, have no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Tx.scala"
+}

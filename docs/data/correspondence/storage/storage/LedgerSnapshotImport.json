@@ -1,0 +1,20 @@
+{
+ "baseline": {
+  "class storage.LedgerSnapshotImport.Config": null,
+  "class storage.LedgerSnapshotImport.Report": null,
+  "def storage.LedgerSnapshotImport.Error#message": null,
+  "def storage.LedgerSnapshotImport.Move#apply": null,
+  "def storage.LedgerSnapshotImport.Move.native": null,
+  "def storage.LedgerSnapshotImport.checkStake": null,
+  "def storage.LedgerSnapshotImport.loadTables": null,
+  "def storage.LedgerSnapshotImport.publish": null,
+  "def storage.LedgerSnapshotImport.run": null,
+  "enum storage.LedgerSnapshotImport.Error": null,
+  "enum storage.LedgerSnapshotImport.Evidence": null,
+  "enum storage.LedgerSnapshotImport.Trust": null,
+  "object storage.LedgerSnapshotImport": null,
+  "object storage.LedgerSnapshotImport.Move": null,
+  "trait storage.LedgerSnapshotImport.Move": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotImport.scala"
+}

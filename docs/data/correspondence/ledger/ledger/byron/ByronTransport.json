@@ -1,0 +1,106 @@
+{
+ "baseline": {
+  "def ledger.byron.ByronTransport.attributes": null,
+  "def ledger.byron.ByronTransport.blockVersions": [
+   {
+    "file": "eras/byron/ledger/impl/src/Cardano/Chain/Block/Header.hs",
+    "lines": [
+     392,
+     395
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "decCBORBlockVersions"
+   }
+  ],
+  "def ledger.byron.ByronTransport.bodyProof": null,
+  "def ledger.byron.ByronTransport.boundaryExtra": [
+   {
+    "file": "eras/byron/ledger/impl/src/Cardano/Chain/Block/Boundary.hs",
+    "lines": [
+     61,
+     71
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "dropBoundaryExtraHeaderDataRetainGenesisTag"
+   }
+  ],
+  "def ledger.byron.ByronTransport.canonicalBytes": null,
+  "def ledger.byron.ByronTransport.canonicalWord": null,
+  "def ledger.byron.ByronTransport.check": null,
+  "def ledger.byron.ByronTransport.definite": null,
+  "def ledger.byron.ByronTransport.emptyAttributes": null,
+  "def ledger.byron.ByronTransport.installerMetadata": [
+   {
+    "file": "eras/byron/ledger/impl/src/Cardano/Chain/Update/Proposal.hs",
+    "lines": [
+     216,
+     216
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "metadata"
+   }
+  ],
+  "def ledger.byron.ByronTransport.parameters": null,
+  "def ledger.byron.ByronTransport.tuple": null,
+  "def ledger.byron.ByronTransport.word": null,
+  "object ledger.byron.ByronTransport": null
+ },
+ "entries": {
+  "def ledger.byron.ByronTransport.mempoolPayload": {
+   "class": "Mirror",
+   "digest": "23dcdeaaaf1268f1",
+   "evidence": [
+    "ByronSubmissionSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/byron/ledger/impl/src/Cardano/Chain/MempoolPayload.hs",
+     "lines": [
+      85,
+      93
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (AMempoolPayload ByteSpan)"
+    },
+    {
+     "file": "ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Ledger/Mempool.hs",
+     "lines": [
+      338,
+      339
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "decodeByronGenTx"
+    }
+   ]
+  },
+  "def ledger.byron.ByronTransport.verificationKey": {
+   "class": "Mirror",
+   "digest": "74fc220cc22a5e90",
+   "evidence": [
+    "ByronBodyKeysSuite",
+    "ByronStoredKeysSuite",
+    "ByronSubmissionSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/byron/crypto/src/Cardano/Crypto/Signing/VerificationKey.hs",
+     "lines": [
+      88,
+      97
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "decCBORXPub"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/byron/ByronTransport.scala"
+}

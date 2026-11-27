@@ -1,0 +1,202 @@
+{
+ "entries": {
+  "def network.LeiosFetchPipelined.run": {
+   "class": "Mirror",
+   "digest": "ac70fd2bc802285b",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "the receiver queue of the pipelined driver as a receiver fiber of its own that hands each answer on and counts it arrived; Collect (Just k) as a take of an answer that has arrived, if one has",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "lines": [
+      587,
+      683
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosFetchClientPeerPipelined"
+    }
+   ]
+  },
+  "def network.LeiosFetchRequestHandler#block": {
+   "class": "Mirror",
+   "digest": "d2e4a09da6fc5403",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "lines": [
+      538,
+      543
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "LeiosFetchRequestHandler"
+    }
+   ]
+  },
+  "def network.LeiosFetchRequestHandler#blockTxs": {
+   "class": "Mirror",
+   "digest": "dcc44012938c97c3",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "lines": [
+      538,
+      543
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "LeiosFetchRequestHandler"
+    }
+   ]
+  },
+  "def network.LeiosFetchServer.run": {
+   "class": "Mirror",
+   "digest": "50d7d19dd24c4944",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "lines": [
+      545,
+      568
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosFetchServerPeer"
+    }
+   ]
+  },
+  "enum network.LeiosFetchJob": {
+   "class": "Mirror",
+   "digest": "e67149971ae95ef8",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "the request and its answer's continuation, a constructor per request; the continuation raises through the receiver's capability, as the reference's collector thread dies of its exception",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "lines": [
+      494,
+      499
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "SomeLeiosFetchJob"
+    }
+   ]
+  },
+  "trait network.LeiosFetchRequestHandler": {
+   "class": "Mirror",
+   "digest": "f3c579a491ddd7e8",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "one method per request where the reference's is one function over the request",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "lines": [
+      538,
+      543
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "LeiosFetchRequestHandler"
+    }
+   ]
+  },
+  "val network.LeiosFetchPipelined.BusyTimeout": {
+   "class": "Mirror",
+   "digest": "d3701dd904b28b74",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "longWait, the limit of Block and BlockTxs; Idle waits forever",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "lines": [
+      245,
+      251
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "timeLimitsLeiosFetch"
+    }
+   ]
+  },
+  "val network.LeiosFetchPipelined.PipelineDepth": {
+   "class": "Mirror",
+   "digest": "ef87e4be9e6e20ef",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      2167,
+      2168
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosFetchPipelineDepth"
+    }
+   ]
+  },
+  "val network.LeiosFetchServer.IdleByteLimit": {
+   "class": "Mirror",
+   "digest": "5966ee26078cd7a1",
+   "evidence": [
+    "LeiosFetchProtocolSuite"
+   ],
+   "note": "smallByteLimit, the limit of Idle",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestFetch.hs",
+     "lines": [
+      231,
+      243
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "byteLimitsLeiosFetch"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class network.LeiosFetchPipelined.Settings",
+    "def network.LeiosFetchPipelined.tag",
+    "object network.LeiosFetchPipelined",
+    "object network.LeiosFetchServer",
+    "type network.LeiosFetchPipelined.Instruction"
+   ],
+   "reason": "the LeiosFetch runtime's Scala plumbing with no counterpart of its own: the client's settings record and instruction alias, the message tag a refusal names, the companions, the refusal's rendering, and the decoder the multiplexer receives a LeiosFetch message with, the codec resumed on each longer prefix from the step its last prefix stopped in, as the driver feeds cborg's decoder each chunk (#54)"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/LeiosFetchRuntime.scala"
+}

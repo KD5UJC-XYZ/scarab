@@ -1,0 +1,20 @@
+{
+ "baseline": {
+  "class ledger.injection.InjectionJson.Input": null,
+  "class ledger.injection.InjectionJson.State": null,
+  "def ledger.injection.InjectionJson.Error#message": null,
+  "def ledger.injection.InjectionJson.Input#feed": null,
+  "def ledger.injection.InjectionJson.Scalar#json": null,
+  "def ledger.injection.InjectionJson.State#pull": null,
+  "enum ledger.injection.InjectionJson.Arrival": null,
+  "enum ledger.injection.InjectionJson.End": null,
+  "enum ledger.injection.InjectionJson.Error": null,
+  "enum ledger.injection.InjectionJson.Item": null,
+  "enum ledger.injection.InjectionJson.Scalar": null,
+  "enum ledger.injection.InjectionJson.Step": null,
+  "enum ledger.injection.InjectionJson.TokenSite": null,
+  "object ledger.injection.InjectionJson": null,
+  "val ledger.injection.InjectionJson.initial": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/injection/InjectionJson.scala"
+}

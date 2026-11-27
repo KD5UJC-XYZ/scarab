@@ -1,0 +1,175 @@
+{
+ "entries": {
+  "class ledger.era.LangDepView": {
+   "class": "Mirror",
+   "digest": "cffded14cb2b05cd",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the tag and the parameters, each already encoded",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      547,
+      548
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "LangDepView"
+    }
+   ]
+  },
+  "class ledger.era.ScriptIntegrity": {
+   "class": "Mirror",
+   "digest": "1ad9aef054b355c4",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the redeemers and datums with the bytes they arrived as, and the language views",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      377,
+      382
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ScriptIntegrity"
+    }
+   ]
+  },
+  "def ledger.era.LangDepView.encodeLangViews": {
+   "class": "Mirror",
+   "digest": "a52fc69ecf80b5b7",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the views in their derived (tag, parameters) order, then stably in the short-lex order of their tags, as the reference sorts Set.toList",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      587,
+      597
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "encodeLangViews"
+    }
+   ]
+  },
+  "def ledger.era.LangDepView.getLanguageView": {
+   "class": "Mirror",
+   "digest": "ed6d99af5647e881",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "the valid cost model by the language's tag in CostModels' one map, which holds a known language's model only among the valid ones",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      566,
+      585
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getLanguageView"
+    }
+   ]
+  },
+  "def ledger.era.ScriptIntegrity.hashScriptIntegrity": {
+   "class": "Mirror",
+   "digest": "d2779f4d49b5e1c3",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "blake2b-256 of the original bytes",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      401,
+      402
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hashScriptIntegrity"
+    }
+   ]
+  },
+  "def ledger.era.ScriptIntegrity.mkScriptIntegrity": {
+   "class": "Mirror",
+   "digest": "e831f304898a5f9f",
+   "evidence": [
+    "EraUtxowSuite"
+   ],
+   "note": "over the classes the reference names: EraTx, AlonzoEraPParams and AlonzoEraTxWits",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      404,
+      423
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkScriptIntegrity"
+    }
+   ]
+  },
+  "def ledger.era.ScriptIntegrity.originalBytes": {
+   "class": "Mirror",
+   "digest": "01f8eb6a445acef0",
+   "evidence": [
+    "EraUtxowSuite",
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "the reference's empty redeemers carry the bytes mkMemoizedEra gave them at the era's eraProtVerLow; the era's witness set keeps none for a set without redeemers, so their encoding at the era's lowest version (Era) is written here; compared byte for byte with the flat preimage",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      391,
+      395
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "originalBytes"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.LangDepView.given_CanEqual_LangDepView_LangDepView",
+    "given ledger.era.LangDepView.ordering",
+    "object ledger.era.LangDepView",
+    "object ledger.era.ScriptIntegrity"
+   ],
+   "reason": "the companions of the script integrity's types and of the era's versions, holding their instances, their equality and the Scala Ordering of a language view, whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "def ledger.era.LanguageViews#view",
+    "def ledger.era.LanguageViews.direct",
+    "def ledger.era.LanguageViews.of",
+    "def ledger.era.ScriptIntegrity.mkScriptIntegrityWith",
+    "object ledger.era.LanguageViews",
+    "trait ledger.era.LanguageViews"
+   ],
+   "reason": "values the reference computes lazily or shares, made once here (#85): the scripts of getReferenceScriptsNonDistinct without their hashes, which txNonDistinctRefScriptsSize reads without forcing the lazy hashes; and each script context's info as data (TxInfo's toData), made once for the scripts of a transaction that hold its one info; each language's view of one set of parameters, encoded once for the rules of a block (LanguageViews, mkScriptIntegrity with them, which getLanguageView's are by default); and each language's cost model read once for a transaction's scripts (lookupCostModel in a reading of the models)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/ScriptIntegrity.scala"
+}

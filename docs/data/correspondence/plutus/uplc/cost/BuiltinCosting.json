@@ -1,0 +1,11 @@
+{
+ "baseline": {
+  "class uplc.cost.BuiltinCosting": null,
+  "class uplc.cost.BuiltinCosting.Refinements": null,
+  "def uplc.cost.BuiltinCosting#apply": null,
+  "def uplc.cost.BuiltinCosting#measures": null,
+  "def uplc.cost.BuiltinCosting.of": null,
+  "object uplc.cost.BuiltinCosting": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/cost/BuiltinCosting.scala"
+}

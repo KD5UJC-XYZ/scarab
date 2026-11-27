@@ -1,0 +1,1048 @@
+{
+ "entries": {
+  "class ledger.era.AlonzoScriptsNeeded": {
+   "class": "Mirror",
+   "digest": "439f2724b90bab10",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      102,
+      104
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoScriptsNeeded"
+    }
+   ]
+  },
+  "class ledger.era.ScriptsProvided": {
+   "class": "Mirror",
+   "digest": "77de8234dd7ad687",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      229,
+      232
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ScriptsProvided"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraUTxO#getSpendingDatum": {
+   "class": "Mirror",
+   "digest": "9fe3c07551a3f586",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "EraConwaySuite"
+   ],
+   "note": "the datum read as data, its failure returned where the reference raises `error`: only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      148,
+      152
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getSpendingDatum"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraUTxO#getSupplementalDataHashes": {
+   "class": "Mirror",
+   "digest": "84a6b7bbf8c26d15",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      134,
+      137
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getSupplementalDataHashes"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraUTxO#plutusLanguagesUsedStAnnTx": {
+   "class": "Mirror",
+   "digest": "394fe1a8e3ff29f5",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      162,
+      162
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "plutusLanguagesUsedStAnnTx"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraUTxO#plutusScriptsWithContextStAnnTx": {
+   "class": "Mirror",
+   "digest": "307c57f32c90bcdb",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      158,
+      160
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "plutusScriptsWithContextStAnnTx"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraUTxO#scriptsNeededStAnnTx": {
+   "class": "Mirror",
+   "digest": "a244dcb16c6cc519",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      156,
+      156
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "scriptsNeededStAnnTx"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoEraUTxO#scriptsProvidedStAnnTx": {
+   "class": "Mirror",
+   "digest": "eb31ed13aae62420",
+   "evidence": [
+    "EraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      154,
+      154
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "scriptsProvidedStAnnTx"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoScriptsNeeded#++": {
+   "class": "Mirror",
+   "digest": "6ece0abae2be3d96",
+   "note": "the derived Semigroup of the list",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      104,
+      104
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Semigroup"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoUTxO.getAlonzoScriptsHashesNeeded": {
+   "class": "Mirror",
+   "digest": "97d05a87081887c6",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      241,
+      242
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getAlonzoScriptsHashesNeeded"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoUTxO.getAlonzoScriptsNeeded": {
+   "class": "Mirror",
+   "digest": "70cd0cca9ec64cb9",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "a certificate a script witnesses that occurs again takes the index of its first occurrence, the seen certificates compared by value as the reference's derived Ord compares them; the same at 9df9f98c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      313,
+      362
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getAlonzoScriptsNeeded"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoUTxO.getAlonzoWitsVKeyNeeded": {
+   "class": "Mirror",
+   "digest": "323cfa5f1c5d8910",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "of a top-level body, the genesis delegations given where the reference reads them from the certificate state, as Babbage's state classes (EraCertState) are not among the era types yet (#85)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      413,
+      429
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getAlonzoWitsVKeyNeeded"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoUTxO.getInputDataHashesTxBody": {
+   "class": "Mirror",
+   "digest": "eebfa96ea7b61cc0",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "a fold over the spent outputs the UTxO set holds, as Map.foldlWithKey' over Map.restrictKeys (txInsFilter); getScriptHash (State/UTxO.hs:222-224) is a private helper",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      250,
+      279
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getInputDataHashesTxBody"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoUTxO.getMintingScriptsNeeded": {
+   "class": "Mirror",
+   "digest": "be8ab57311f3947d",
+   "evidence": [
+    "ConwayUtxowChecksSuite",
+    "EraUtxowSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "each purpose built through the script class's builder (`mkSpendingPurpose` and the others, `AlonzoEraScript`); the same at 9df9f98c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      403,
+      411
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getMintingScriptsNeeded"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoUTxO.getSpendingScriptsNeeded": {
+   "class": "Mirror",
+   "digest": "9d32f3bc17e30a67",
+   "evidence": [
+    "ConwayUtxowChecksSuite",
+    "EraUtxowSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "each purpose built through the script class's builder (`mkSpendingPurpose` and the others, `AlonzoEraScript`); the same at 9df9f98c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      370,
+      383
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getSpendingScriptsNeeded"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoUTxO.getWithdrawingScriptsNeeded": {
+   "class": "Mirror",
+   "digest": "e0a19c719ad22bd4",
+   "evidence": [
+    "ConwayUtxowChecksSuite",
+    "EraUtxowSuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "each purpose built through the script class's builder (`mkSpendingPurpose` and the others, `AlonzoEraScript`); the same at 9df9f98c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      385,
+      394
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getWithdrawingScriptsNeeded"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoUTxO.zipAsIxItem": {
+   "class": "Mirror",
+   "digest": "b7e2c8c36744f89f",
+   "evidence": [
+    "ConwayUtxowChecksSuite",
+    "EraUtxowSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      364,
+      368
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "zipAsIxItem"
+    }
+   ]
+  },
+  "def ledger.era.BabbageUTxO.getBabbageScriptsProvided": {
+   "class": "Mirror",
+   "digest": "3cd8ced204a1dbab",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs",
+     "lines": [
+      136,
+      146
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getBabbageScriptsProvided"
+    }
+   ]
+  },
+  "def ledger.era.BabbageUTxO.getBabbageSpendingDatum": {
+   "class": "Mirror",
+   "digest": "b997c7dfd352d32f",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "EraConwaySuite",
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "the spending purpose read through the script class's `toSpendingPurpose`, an `AlonzoEraScript` member; the output's inline datum is read as data first, as the reference's `<|>` forces its strict `SJust`, and its failure returned where the reference raises `error`: only an inline datum taken unread (`BabbageTxOutRep.fromStored`) can reach it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs",
+     "lines": [
+      88,
+      101
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getBabbageSpendingDatum"
+    }
+   ]
+  },
+  "def ledger.era.BabbageUTxO.getBabbageSupplementalDataHashes": {
+   "class": "Mirror",
+   "digest": "f481f6954b571399",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs",
+     "lines": [
+      74,
+      83
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getBabbageSupplementalDataHashes"
+    }
+   ]
+  },
+  "def ledger.era.BabbageUTxO.getReferenceScripts": {
+   "class": "Mirror",
+   "digest": "f0553fed57cc357c",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs",
+     "lines": [
+      150,
+      155
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getReferenceScripts"
+    }
+   ]
+  },
+  "def ledger.era.BabbageUTxO.getReferenceScriptsNonDistinct": {
+   "class": "Mirror",
+   "digest": "e878bec7081f0cf9",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs",
+     "lines": [
+      157,
+      166
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getReferenceScriptsNonDistinct"
+    }
+   ]
+  },
+  "def ledger.era.DijkstraEraUTxO#plutusLegacyModeStAnnTx": {
+   "class": "Gap",
+   "digest": "880db0f4a43acb78",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "a member of the annotated transaction, which the makers make (`DijkstraStAnnTx.mkDijkstraStAnnTopTx`); read on built values only, no rule reads it yet (incomplete, CNF-2)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      65,
+      65
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "plutusLegacyModeStAnnTxG"
+    }
+   ]
+  },
+  "def ledger.era.DijkstraEraUTxO#scriptsHashesNeededStAnnTx": {
+   "class": "Gap",
+   "digest": "8e75e9a6e75f980a",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "a member of the annotated transaction, which the makers make (`DijkstraStAnnTx.mkDijkstraStAnnTopTx`); read on built values only, no rule reads it yet (incomplete, CNF-2)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      66,
+      66
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "scriptsHashesNeededStAnnTx"
+    }
+   ]
+  },
+  "def ledger.era.DijkstraEraUTxO#subTransactionsStAnnTx": {
+   "class": "Gap",
+   "digest": "6632d012ba221ecd",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "a member of the annotated transaction, which the makers make (`DijkstraStAnnTx.mkDijkstraStAnnTopTx`); read on built values only, no rule reads it yet (incomplete, CNF-2)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6981185123",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      64,
+      64
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "subTransactionsStAnnTx"
+    }
+   ]
+  },
+  "def ledger.era.EraUTxO#getConsumedValue": {
+   "class": "Mirror",
+   "digest": "c457a39d75f72045",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      248,
+      254
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getConsumedValue"
+    }
+   ]
+  },
+  "def ledger.era.EraUTxO#getMinFeeTxUtxo": {
+   "class": "Mirror",
+   "digest": "45f89d01674a1652",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      284,
+      285
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getMinFeeTxUtxo"
+    }
+   ]
+  },
+  "def ledger.era.EraUTxO#getProducedValue": {
+   "class": "Mirror",
+   "digest": "a8ffc573a5561b90",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      256,
+      261
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getProducedValue"
+    }
+   ]
+  },
+  "def ledger.era.EraUTxO#getScriptsHashesNeeded": {
+   "class": "Mirror",
+   "digest": "f991a6f0527e6b69",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      278,
+      278
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getScriptsHashesNeeded"
+    }
+   ]
+  },
+  "def ledger.era.EraUTxO#getScriptsNeeded": {
+   "class": "Mirror",
+   "digest": "4a3bc475ee5ab980",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      275,
+      275
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getScriptsNeeded"
+    }
+   ]
+  },
+  "def ledger.era.EraUTxO#getScriptsProvided": {
+   "class": "Mirror",
+   "digest": "34dc5ea0d49bd795",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      266,
+      271
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getScriptsProvided"
+    }
+   ]
+  },
+  "def ledger.era.EraUTxO#getWitsVKeyNeeded": {
+   "class": "Mirror",
+   "digest": "09ae22a032c68c47",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      280,
+      282
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getWitsVKeyNeeded"
+    }
+   ]
+  },
+  "def ledger.era.MaryUTxO.burnedMultiAssets": {
+   "class": "Mirror",
+   "digest": "78934dcef05939bb",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/UTxO.hs",
+     "lines": [
+      93,
+      97
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "burnedMultiAssets"
+    }
+   ]
+  },
+  "def ledger.era.MaryUTxO.getConsumedMaryValue": {
+   "class": "Mirror",
+   "digest": "4d819ca083a31416",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the constraint `Value era ~ MaryValue` as evidence `Value[E] =:= MultiAssetValue`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/UTxO.hs",
+     "lines": [
+      65,
+      81
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getConsumedMaryValue"
+    }
+   ]
+  },
+  "def ledger.era.MaryUTxO.getProducedMaryValue": {
+   "class": "Mirror",
+   "digest": "2d1cd157b9297f11",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the constraint `Value era ~ MaryValue` as evidence `Value[E] =:= MultiAssetValue`",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/UTxO.hs",
+     "lines": [
+      83,
+      91
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getProducedMaryValue"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyUTxO.getShelleyMinFeeTxUtxo": {
+   "class": "Mirror",
+   "digest": "102b695e20b5a1f5",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "lines": [
+      181,
+      183
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getShelleyMinFeeTxUtxo"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyUTxO.getShelleyWitsVKeyNeeded": {
+   "class": "Mirror",
+   "digest": "72921b761cbbea36",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "note": "of a top-level body, the genesis delegations given where the reference reads them from the certificate state (`dsGenDelegs (certState ^. certDStateL)`), as Babbage's state classes are not among the era types yet (#85)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "lines": [
+      253,
+      263
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getShelleyWitsVKeyNeeded"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyUTxO.getShelleyWitsVKeyNeededNoGov": {
+   "class": "Mirror",
+   "digest": "7547b9d5cae3b385",
+   "evidence": [
+    "ConwayUtxowChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "lines": [
+      203,
+      251
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getShelleyWitsVKeyNeededNoGov"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyUTxO.produced": {
+   "class": "Mirror",
+   "digest": "08cc2a4fcfe0d30d",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "lines": [
+      122,
+      129
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "produced"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyUTxO.shelleyConsumed": {
+   "class": "Mirror",
+   "digest": "79d5269255d3d4aa",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "lines": [
+      111,
+      118
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "shelleyConsumed"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyUTxO.shelleyProducedValue": {
+   "class": "Mirror",
+   "digest": "cbac0bd759edea3e",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "lines": [
+      131,
+      143
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "shelleyProducedValue"
+    }
+   ]
+  },
+  "def ledger.era.ShelleyUTxO.witsVKeyNeededGenDelegs": {
+   "class": "Mirror",
+   "digest": "cddb85141bb35748",
+   "evidence": [
+    "BabbagePlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/UTxO.hs",
+     "lines": [
+      188,
+      201
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "witsVKeyNeededGenDelegs"
+    }
+   ]
+  },
+  "def ledger.era.UTxOs.sumAllValue": {
+   "class": "Mirror",
+   "digest": "97f82f70e9f65a1a",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the outputs as an `Iterable`, Scala's form of the reference's `Foldable f`; `foldMap` is the values' `mconcat` (`Val#sumAll`)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      199,
+      200
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "sumAllValue"
+    }
+   ]
+  },
+  "def ledger.era.UTxOs.sumUTxO": {
+   "class": "Mirror",
+   "digest": "5737f6639c875a11",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      185,
+      186
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "sumUTxO"
+    }
+   ]
+  },
+  "def ledger.era.UTxOs.txInsFilter": {
+   "class": "Mirror",
+   "digest": "361a295d00e0232a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      168,
+      174
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "txInsFilter"
+    }
+   ]
+  },
+  "def ledger.era.UTxOs.txouts": {
+   "class": "Mirror",
+   "digest": "5374840996203027",
+   "evidence": [
+    "EraUtxosSuite",
+    "TxOutsBoundSuite"
+   ],
+   "note": "the body's id, outputs and collateral return taken to the function of the same name in TxIn's companion, the one home of the outputs' numbering, which the flat rules use too",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      146,
+      158
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "txouts"
+    }
+   ]
+  },
+  "trait ledger.era.AlonzoEraUTxO": {
+   "class": "Mirror",
+   "digest": "593ff590a3197b45",
+   "evidence": [
+    "EraPlutusContextSuite",
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "every member of the reference's class; getSpendingDatum's failure returned where the reference raises `error`",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      129,
+      162
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraUTxO"
+    }
+   ]
+  },
+  "trait ledger.era.DijkstraEraUTxO": {
+   "class": "Mirror",
+   "digest": "9eb839fb5772fe11",
+   "evidence": [
+    "DijkstraUTxOSuite"
+   ],
+   "note": "every member of the reference's class; `scriptsHashesNeededStAnnTx` takes the evidence of the sub-transaction level (`SubOnly`) where the reference names `StAnnTx SubTx era`, which here would be reduced at Conway too",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/UTxO.hs",
+     "lines": [
+      63,
+      66
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraEraUTxO"
+    }
+   ]
+  },
+  "trait ledger.era.EraUTxO": {
+   "class": "Mirror",
+   "digest": "022250243e0f55d0",
+   "evidence": [
+    "ConwayUtxoChecksSuite",
+    "ConwayUtxowChecksSuite"
+   ],
+   "note": "every member of the reference's class; the associated type ScriptsNeeded is the family of that name (Families.scala) and the superclass EraTx the member txOf",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      242,
+      285
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraUTxO"
+    }
+   ]
+  },
+  "val ledger.era.EraUTxO#txOf": {
+   "class": "Mirror",
+   "digest": "392cee3615a646f5",
+   "evidence": [
+    "ConwayUtxoChecksSuite"
+   ],
+   "note": "the superclass `EraTx era` as a member, as the other classes' superclasses of other families are",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      242,
+      242
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraUTxO"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.EraUTxO.babbage",
+    "given ledger.era.EraUTxO.conway",
+    "given ledger.era.EraUTxO.dijkstra",
+    "object ledger.era.EraUTxO"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "object ledger.era.AlonzoUTxO",
+    "object ledger.era.BabbageUTxO",
+    "object ledger.era.MaryUTxO",
+    "object ledger.era.ShelleyUTxO",
+    "object ledger.era.UTxOs"
+   ],
+   "reason": "objects that stand for the reference's modules of functions (`Alonzo/Scripts.hs`, `State/UTxO.hs`, `Shelley/UTxO.hs`, `Mary/UTxO.hs`, `Babbage/UTxO.hs`, `Alonzo/Tx.hs`, the `TxInfo.hs` and `Context.hs` of the script context, the `Indexable` instances of `Alonzo/TxBody.hs`, plutus-ledger-api's `V1` to `V4`, plutus-tx's `Ratio`), which Scala needs to hold top-level functions under a name"
+  },
+  {
+   "definitions": [
+    "def ledger.era.BabbageUTxO.referenceScriptsNonDistinct"
+   ],
+   "reason": "values the reference computes lazily or shares, made once here (#85): the scripts of getReferenceScriptsNonDistinct without their hashes, which txNonDistinctRefScriptsSize reads without forcing the lazy hashes; and each script context's info as data (TxInfo's toData), made once for the scripts of a transaction that hold its one info; each language's view of one set of parameters, encoded once for the rules of a block (LanguageViews, mkScriptIntegrity with them, which getLanguageView's are by default); and each language's cost model read once for a transaction's scripts (lookupCostModel in a reading of the models)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/EraUTxO.scala"
+}

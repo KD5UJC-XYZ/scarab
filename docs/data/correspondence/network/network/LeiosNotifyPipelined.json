@@ -1,0 +1,181 @@
+{
+ "entries": {
+  "class network.LeiosNotifyPipelined.Handling": {
+   "class": "Mirror",
+   "digest": "9d3b0130e9850772",
+   "evidence": [
+    "LeiosNotifyPipelinedSuite",
+    "LeiosVotesSuite"
+   ],
+   "note": "the handler the client is given (k0), as two parts: prepare reads ahead of a reply's turn what changes nothing its turn relies on, with what to take where that reading has not ended by the reply's turn or failed, and handle takes the replies in order with it; with nothing read ahead (Handling.inOrder) it is k0 itself. LeiosVotesSuite shows that a vote checked ahead and committed in its turn counts as adding it in its turn counts it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "lines": [
+      529,
+      537
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosNotifyClientPeerPipelined"
+    }
+   ]
+  },
+  "class network.LeiosNotifyPipelined.Settings": {
+   "class": "Mirror",
+   "digest": "026972193a8fe6b8",
+   "evidence": [
+    "LeiosNotifyPipelinedSuite"
+   ],
+   "note": "the depth checkDone gives and the Quit limit, and how many replies may be read ahead of the one handed on (Scarab's, Handling)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "lines": [
+      529,
+      537
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosNotifyClientPeerPipelined"
+    }
+   ]
+  },
+  "def network.LeiosNotifyPipelined.run": {
+   "class": "Mirror",
+   "digest": "ddacfa91cb88a61e",
+   "evidence": [
+    "LeiosNotifyPipelinedSuite",
+    "LeiosNotifyClientSuite"
+   ],
+   "note": "checkDone (the stop, then the forecast, awaitImmTipCanForecastNow, then the depth) and the wait for a reply at the depth are one transaction there that retries until they hold; here, before each request, the stop, then a place below the depth, then the gate, read once there is room, an open gate not waited for and a closed one waited for against the stop. The room is a wake for each reply collected (arrived), which a stop also wakes, from a body of its own; told to stop MsgQuit at once, the outstanding replies collected unhandled (AlreadyDraining), then MsgDone, expected after every reply requested; a sender and a receiver, as the pipelined driver's receiver queue, each reply prepared as it arrives (Handling: what is read ahead runs alone, at most lookahead replies received ahead of their handing on, and a reading not ended by its reply's turn, or failed, is replaced by what was given for that without the turn waiting, and none is started once the client has quit), then handed on in the order the replies arrived and counted as arrived after, its turn coming where a client that handles each reply as it receives it would receive it and deciding there, before it waits for anything read ahead, whether the client has quit (AlreadyDraining, as there); a failure to receive, typed or a defect, raised in its turn, after the replies before it are handed on, and MsgDone waited for under its limit only once they are, as a client that handles each reply as it receives it waits",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "lines": [
+      529,
+      634
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosNotifyClientPeerPipelined"
+    },
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      1866,
+      1889
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "aLeiosNotifyClient"
+    }
+   ]
+  },
+  "def network.LeiosNotifyPipelined.tag": {
+   "class": "Mirror",
+   "digest": "438d9a1acf041e42",
+   "note": "a message's key on the wire",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "lines": [
+      259,
+      352
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "codecLeiosNotify"
+    }
+   ]
+  },
+  "enum network.LeiosNotification": {
+   "class": "Mirror",
+   "digest": "917894d87dab5a42",
+   "note": "the messages from StBusy to StIdle a client receives: MsgLeiosBlockAnnouncement by its header's envelope, the two offers, MsgLeiosVotes, MsgCanceled",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "lines": [
+      172,
+      211
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "Message"
+    }
+   ]
+  },
+  "object network.LeiosNotifyPipelined": {
+   "class": "Mirror",
+   "digest": "408209ca7f5bfd3b",
+   "note": "the pipelined client",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "lines": [
+      529,
+      634
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosNotifyClientPeerPipelined"
+    }
+   ]
+  },
+  "val network.LeiosNotifyPipelined.PipelineDepth": {
+   "class": "Mirror",
+   "digest": "2dbf82da8f8ed34b",
+   "note": "1000, the server's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      2145,
+      2146
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "leiosNotifyPipelineDepth"
+    }
+   ]
+  },
+  "val network.LeiosNotifyPipelined.QuitTimeout": {
+   "class": "Mirror",
+   "digest": "d1bce8f0191c4f9e",
+   "note": "longWait, the limit of StQuit; StBusy waits forever",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/LeiosDemoOnlyTestNotify.hs",
+     "lines": [
+      249,
+      255
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "timeLimitsLeiosNotify"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def network.LeiosNotifyPipelined.Handling.inOrder",
+    "enum network.LeiosNotifyPipelined.Prepared",
+    "object network.LeiosNotifyPipelined.Handling",
+    "val network.LeiosNotifyPipelined.Lookahead"
+   ],
+   "reason": "the read-ahead of the pipelined LeiosNotify client, which the reference's client does not do: what a reply's handling reads ahead of its turn (Prepared), the handling that reads nothing ahead (Handling.inOrder), and how far ahead replies are read (Lookahead) (#1349)"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/LeiosNotifyPipelined.scala"
+}

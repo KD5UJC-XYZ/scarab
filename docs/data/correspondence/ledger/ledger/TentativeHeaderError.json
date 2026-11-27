@@ -1,0 +1,7 @@
+{
+ "baseline": {
+  "def ledger.TentativeHeaderError#message": null,
+  "enum ledger.TentativeHeaderError": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/TentativeHeaderError.scala"
+}

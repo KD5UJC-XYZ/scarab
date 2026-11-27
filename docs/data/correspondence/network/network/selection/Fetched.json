@@ -1,0 +1,11 @@
+{
+ "baseline": {
+  "def network.selection.Fetched.apply": null,
+  "def network.selection.Fetched.contains": null,
+  "def network.selection.Fetched.of": null,
+  "object network.selection.Fetched": null,
+  "type network.selection.Fetched": null,
+  "val network.selection.Fetched.none": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/Fetched.scala"
+}

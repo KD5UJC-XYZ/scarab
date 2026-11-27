@@ -1,0 +1,30 @@
+{
+ "baseline": {
+  "def storage.SnapshotSidecarV9.decode": null,
+  "def storage.SnapshotSidecarV9.fingerprint": null,
+  "given storage.SnapshotSidecarV9.bootstrap": null,
+  "given storage.SnapshotSidecarV9.consensusExtras": null,
+  "given storage.SnapshotSidecarV9.liteLedger": null,
+  "given storage.SnapshotSidecarV9.mirrorInShelley": null,
+  "object storage.SnapshotSidecarV9": null,
+  "val storage.SnapshotSidecarV9.codec": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given storage.SnapshotSidecarV9.chainDepState"
+   ],
+   "reason": "the frozen chain-dependent states in the sidecar schemas of the snapshot versions before V10, and the native codecs of Praos2's state: Scarab's own persisted format, which keeps the bytes and fingerprints of its previous files; the reference keeps no such files and has no counterpart (#826)"
+  },
+  {
+   "definitions": [
+    "given storage.SnapshotSidecarV9.script",
+    "given storage.SnapshotSidecarV9.txOut",
+    "given storage.SnapshotSidecarV9.utxo",
+    "given storage.SnapshotSidecarV9.utxoChange"
+   ],
+   "reason": "the frozen kinds of a stored script in the sidecar schemas of the snapshot versions before V10, and the script's codec over a kind's codec: Scarab's own persisted format, which keeps the bytes and fingerprints of its previous files; the reference keeps no such files and has no counterpart (#85, #54)"
+  }
+ ],
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotSidecarV9.scala"
+}

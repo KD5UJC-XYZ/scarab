@@ -1,0 +1,29 @@
+{
+ "baseline": {
+  "class consensus.genesis.DiffusionPunishment.Decision": null,
+  "class consensus.genesis.DiffusionPunishment.HotIdentity": null,
+  "class consensus.genesis.DiffusionPunishment.State.Byron": null,
+  "class consensus.genesis.DiffusionPunishment.State.Shelley": null,
+  "class consensus.genesis.DiffusionPunishment.View.Byron": null,
+  "class consensus.genesis.DiffusionPunishment.View.Shelley": null,
+  "def consensus.genesis.DiffusionPunishment.State#era": null,
+  "def consensus.genesis.DiffusionPunishment.State.Byron#era": null,
+  "def consensus.genesis.DiffusionPunishment.State.Shelley#era": null,
+  "def consensus.genesis.DiffusionPunishment.View#blockNo": null,
+  "def consensus.genesis.DiffusionPunishment.View#era": null,
+  "def consensus.genesis.DiffusionPunishment.View.Byron#era": null,
+  "def consensus.genesis.DiffusionPunishment.View.Shelley#era": null,
+  "def consensus.genesis.DiffusionPunishment.classify": null,
+  "def consensus.genesis.DiffusionPunishment.judge": null,
+  "def consensus.genesis.DiffusionPunishment.view": null,
+  "enum consensus.genesis.DiffusionPunishment.Invalidity": null,
+  "enum consensus.genesis.DiffusionPunishment.Outcome": null,
+  "object consensus.genesis.DiffusionPunishment": null,
+  "object consensus.genesis.DiffusionPunishment.State": null,
+  "object consensus.genesis.DiffusionPunishment.View": null,
+  "trait consensus.genesis.DiffusionPunishment.State": null,
+  "trait consensus.genesis.DiffusionPunishment.View": null,
+  "val consensus.genesis.DiffusionPunishment.initial": null
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/genesis/DiffusionPunishment.scala"
+}

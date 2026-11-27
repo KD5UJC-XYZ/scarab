@@ -1,0 +1,92 @@
+{
+ "baseline": {
+  "class network.NodeToNodeServer.Responders": null,
+  "class network.NodeToNodeServer.Settings": null,
+  "class network.ServerHandlers": null,
+  "def network.NodeToNodeServer.Responders#arm": null,
+  "def network.NodeToNodeServer.Responders#awaitActivity": null,
+  "def network.NodeToNodeServer.Responders#next": null,
+  "def network.NodeToNodeServer.Responders#running": null,
+  "def network.NodeToNodeServer.Responders.create": null,
+  "def network.NodeToNodeServer.accept": null,
+  "def network.NodeToNodeServer.applicationProtocols": null,
+  "def network.NodeToNodeServer.published": null,
+  "def network.NodeToNodeServer.remoteActivity": null,
+  "def network.NodeToNodeServer.start": null,
+  "enum network.NodeToNodeServer.Activity": null,
+  "object network.NodeToNodeServer": null,
+  "object network.NodeToNodeServer.Responders": null,
+  "val network.NodeToNodeServer.Protocol": null,
+  "val network.ServerHandlers#blocks": null,
+  "val network.ServerHandlers#chainSync": null,
+  "val network.ServerHandlers#codec": null,
+  "val network.ServerHandlers#peerSharing": null,
+  "val network.ServerHandlers#transactions": null
+ },
+ "entries": {
+  "def network.NodeToNodeServer.protocols": {
+   "class": "Mirror",
+   "digest": "ce9aecfa61578f97",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "the multiplexer's mini-protocols with withHot's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      2027,
+      2100
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "initiatorAndResponder"
+    }
+   ]
+  },
+  "val network.ServerHandlers#leiosFetch": {
+   "class": "Mirror",
+   "digest": "91986ab68a72dfc6",
+   "evidence": [
+    "LeiosFetchRegistrationSuite"
+   ],
+   "note": "the handler the LeiosFetch responder answers with",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      1937,
+      1951
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "aLeiosFetchServer"
+    }
+   ]
+  },
+  "val network.ServerHandlers#leiosNotify": {
+   "class": "Mirror",
+   "digest": "83cc4f2872d2665e",
+   "evidence": [
+    "LeiosNotifyRelaySuite"
+   ],
+   "note": "the replies of each run of the LeiosNotify server, a resource acquired when the run starts, as aLeiosNotifyServer calls hLeiosNotifyServer per run",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-diffusion/src/ouroboros-consensus-diffusion/Ouroboros/Consensus/Network/NodeToNode.hs",
+     "lines": [
+      769,
+      936
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "hLeiosNotifyServer"
+    }
+   ]
+  }
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/NodeToNodeServer.scala"
+}

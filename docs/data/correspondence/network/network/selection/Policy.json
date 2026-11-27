@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "class network.selection.HotScore": null,
+  "class network.selection.Policy": null,
+  "def network.selection.HotScore.of": null,
+  "def network.selection.Picks.forget": null,
+  "def network.selection.Picks.forgetWords": null,
+  "def network.selection.Picks.hotDemotion": null,
+  "def network.selection.Picks.hotDemotionScores": null,
+  "def network.selection.Picks.hotDemotionWords": null,
+  "def network.selection.Picks.promotion": null,
+  "def network.selection.Picks.promotionWords": null,
+  "def network.selection.Picks.warmDemotion": null,
+  "def network.selection.Picks.warmDemotionWords": null,
+  "def network.selection.Picks.warmPromotion": null,
+  "def network.selection.Picks.warmPromotionWords": null,
+  "given network.selection.HotScore.given_Ordering_HotScore": null,
+  "object network.selection.HotScore": null,
+  "object network.selection.Picks": null,
+  "val network.selection.HotScore.Unknown": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/Policy.scala"
+}

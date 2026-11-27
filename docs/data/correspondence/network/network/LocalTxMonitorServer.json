@@ -1,0 +1,27 @@
+{
+ "baseline": {
+  "class network.LocalTxMonitorServer.Held": null,
+  "class network.LocalTxMonitorServer.Snapshot": null,
+  "class network.LocalTxMonitorServer.TxMeasure": null,
+  "def network.LocalTxMonitorServer.Snapshot#sizes": null,
+  "def network.LocalTxMonitorServer.Source#acquire": null,
+  "def network.LocalTxMonitorServer.Source#awaitChange": null,
+  "def network.LocalTxMonitorServer.TxMeasure#+": null,
+  "def network.LocalTxMonitorServer.measures": null,
+  "def network.LocalTxMonitorServer.run": null,
+  "object network.LocalTxMonitorServer": null,
+  "object network.LocalTxMonitorServer.TxMeasure": null,
+  "trait network.LocalTxMonitorServer.Source": null,
+  "val network.LocalTxMonitorServer.MeasureNames": null,
+  "val network.LocalTxMonitorServer.TxMeasure.zero": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def network.LocalTxMonitorServer.Source#txIds"
+   ],
+   "reason": "the hook by which the node's decoder of a HasTx id judges an id that has not all arrived, and the server source's member naming it: the reference hands the codec the decoder itself (decodeTxId, LocalTxMonitor/Codec.hs:45 and 135-137 at ouroboros-network c45735a5) and reads the id from the stream; Scarab reads a whole id as one item, and the judgement is in the node, outside the areas"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/LocalTxMonitorServer.scala"
+}

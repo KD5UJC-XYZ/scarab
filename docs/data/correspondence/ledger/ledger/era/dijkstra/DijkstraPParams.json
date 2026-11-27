@@ -1,0 +1,143 @@
+{
+ "entries": {
+  "class ledger.era.dijkstra.DijkstraPParams": {
+   "class": "Mirror",
+   "digest": "96365c3f26064969",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "lines": [
+      161,
+      300
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraPParams"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraPParams.applyUpdates": {
+   "class": "Mirror",
+   "digest": "aedc7fa2fceb71ab",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "lines": [
+      317,
+      388
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "dijkstraApplyPPUpdates"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraPParams.downgrade": {
+   "class": "Mirror",
+   "digest": "eca5282a763f94f7",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "lines": [
+      667,
+      701
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "downgradeDijkstraPParams"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraPParams.modifiedGroups": {
+   "class": "Mirror",
+   "digest": "ccea185cf6e3779d",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "note": "the class's generic default over the record's group tags",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs",
+     "lines": [
+      174,
+      182
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "modifiedPPGroups"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraPParams.empty": {
+   "class": "Mirror",
+   "digest": "935feee76be8df60",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "lines": [
+      1200,
+      1257
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "emptyDijkstraPParams"
+    }
+   ]
+  },
+  "val ledger.era.dijkstra.DijkstraPParams.emptyUpdate": {
+   "class": "Mirror",
+   "digest": "310d8af492d9e860",
+   "evidence": [
+    "DijkstraPParamsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/PParams.hs",
+     "lines": [
+      1259,
+      1316
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "emptyDijkstraPParamsUpdate"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.dijkstra.DijkstraPParams"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  },
+  {
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraPParams.fromStored",
+    "def ledger.era.dijkstra.DijkstraPParams.fromUpdate",
+    "def ledger.era.dijkstra.DijkstraPParams.toStored",
+    "def ledger.era.dijkstra.DijkstraPParams.toUpdate"
+   ],
+   "reason": "the conversions between Dijkstra's record and the parameters the node keeps (the flat `ProtocolParams`) and the decoded `DijkstraParamUpdate`, both ways; the reference keeps the record itself and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraPParams.scala"
+}

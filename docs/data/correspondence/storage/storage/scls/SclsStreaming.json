@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "class storage.scls.SclsStreaming.Config": null,
+  "def storage.scls.SclsStreaming.Config.fromInts": null,
+  "def storage.scls.SclsStreaming.read": null,
+  "def storage.scls.SclsStreaming.write": null,
+  "enum storage.scls.SclsStreaming.Error": null,
+  "object storage.scls.SclsStreaming": null,
+  "object storage.scls.SclsStreaming.Config": null,
+  "val storage.scls.SclsStreaming.Config#feedBytes": null,
+  "val storage.scls.SclsStreaming.Config#frameLimit": null,
+  "val storage.scls.SclsStreaming.Config#output": null,
+  "val storage.scls.SclsStreaming.Config#valueLimits": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsStreaming.scala"
+}

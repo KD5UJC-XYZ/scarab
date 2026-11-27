@@ -1,0 +1,13 @@
+{
+ "baseline": {
+  "def network.Bearer#close": null,
+  "def network.Bearer#connectionId": null,
+  "def network.Bearer#reads": null,
+  "def network.Bearer#write": null,
+  "def network.Bearer.inMemory": null,
+  "def network.Bearer.tcp": null,
+  "object network.Bearer": null,
+  "trait network.Bearer": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/Bearer.scala"
+}

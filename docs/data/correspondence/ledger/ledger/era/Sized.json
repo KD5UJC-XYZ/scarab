@@ -1,0 +1,8 @@
+{
+ "baseline": {
+  "class ledger.era.Sized": null,
+  "given ledger.era.Sized.given_CanEqual_Sized_A_Sized_A": null,
+  "object ledger.era.Sized": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/Sized.scala"
+}

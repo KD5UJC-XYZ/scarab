@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "def storage.CheckpointBinding.fingerprint": null,
+  "def storage.CheckpointDigest.admit": null,
+  "def storage.CheckpointDigest.of": null,
+  "def storage.CheckpointDigest.problem": null,
+  "enum storage.CheckpointBinding": null,
+  "given storage.CheckpointBinding.codec": null,
+  "given storage.CheckpointBinding.layoutCodec": null,
+  "object storage.CheckpointBinding": null,
+  "object storage.CheckpointDigest": null,
+  "val storage.CheckpointBinding.FingerprintSize": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/CheckpointBinding.scala"
+}

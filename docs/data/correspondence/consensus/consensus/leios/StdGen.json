@@ -1,0 +1,185 @@
+{
+ "entries": {
+  "class consensus.leios.StdGen": {
+   "class": "Mirror",
+   "digest": "96f6364a09e55ee7",
+   "evidence": [
+    "StdGenSuite"
+   ],
+   "note": "random's StdGen, a newtype over splitmix's SMGen: a seed and an odd gamma, the 64-bit words held in a Long's bits",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "src/System/Random/Internal.hs",
+     "lines": [
+      749,
+      750
+     ],
+     "repository": "haskell/random",
+     "revision": "d83e66f48b937edbc37707f53cee5c85464fe99b",
+     "symbol": "StdGen"
+    },
+    {
+     "file": "src/System/Random/SplitMix.hs",
+     "lines": [
+      77,
+      77
+     ],
+     "repository": "haskellari/splitmix",
+     "revision": "419c763825d6e0dceb266ef64e9cbcb7e07a481f",
+     "symbol": "SMGen"
+    }
+   ]
+  },
+  "def consensus.leios.StdGen#nextWord64": {
+   "class": "Mirror",
+   "digest": "5c5d0420713a9021",
+   "evidence": [
+    "StdGenSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "src/System/Random/SplitMix.hs",
+     "lines": [
+      114,
+      117
+     ],
+     "repository": "haskellari/splitmix",
+     "revision": "419c763825d6e0dceb266ef64e9cbcb7e07a481f",
+     "symbol": "nextWord64"
+    }
+   ]
+  },
+  "def consensus.leios.StdGen#split": {
+   "class": "Mirror",
+   "digest": "2e45079375c0cb04",
+   "evidence": [
+    "StdGenSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "src/System/Random/SplitMix.hs",
+     "lines": [
+      218,
+      223
+     ],
+     "repository": "haskellari/splitmix",
+     "revision": "419c763825d6e0dceb266ef64e9cbcb7e07a481f",
+     "symbol": "splitSMGen"
+    },
+    {
+     "file": "src/System/Random/Internal.hs",
+     "lines": [
+      768,
+      770
+     ],
+     "repository": "haskell/random",
+     "revision": "d83e66f48b937edbc37707f53cee5c85464fe99b",
+     "symbol": "splitGen"
+    }
+   ]
+  },
+  "def consensus.leios.StdGen#uniformR": {
+   "class": "Mirror",
+   "digest": "fa8fb011e040b1c4",
+   "evidence": [
+    "StdGenSuite"
+   ],
+   "note": "uniformR on a 64-bit Int, with Long ends",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "src/System/Random/Internal.hs",
+     "lines": [
+      1061,
+      1063
+     ],
+     "repository": "haskell/random",
+     "revision": "d83e66f48b937edbc37707f53cee5c85464fe99b",
+     "symbol": "signedBitmaskWithRejectionRM"
+    },
+    {
+     "file": "src/System/Random/Internal.hs",
+     "lines": [
+      1666,
+      1683
+     ],
+     "repository": "haskell/random",
+     "revision": "d83e66f48b937edbc37707f53cee5c85464fe99b",
+     "symbol": "signedBitmaskWithRejectionRM"
+    },
+    {
+     "file": "src/System/Random/Internal.hs",
+     "lines": [
+      1688,
+      1700
+     ],
+     "repository": "haskell/random",
+     "revision": "d83e66f48b937edbc37707f53cee5c85464fe99b",
+     "symbol": "unsignedBitmaskWithRejectionM"
+    }
+   ]
+  },
+  "def consensus.leios.StdGen.mk": {
+   "class": "Mirror",
+   "digest": "fb927e57e0c63edb",
+   "evidence": [
+    "StdGenSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "src/System/Random/Internal.hs",
+     "lines": [
+      786,
+      797
+     ],
+     "repository": "haskell/random",
+     "revision": "d83e66f48b937edbc37707f53cee5c85464fe99b",
+     "symbol": "mkStdGen"
+    },
+    {
+     "file": "src/System/Random/SplitMix.hs",
+     "lines": [
+      370,
+      371
+     ],
+     "repository": "haskellari/splitmix",
+     "revision": "419c763825d6e0dceb266ef64e9cbcb7e07a481f",
+     "symbol": "mkSMGen"
+    }
+   ]
+  },
+  "def consensus.leios.StdGen.seeded": {
+   "class": "Mirror",
+   "digest": "745ab8e5b7e92b6a",
+   "evidence": [
+    "StdGenSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "src/System/Random/SplitMix.hs",
+     "lines": [
+      351,
+      355
+     ],
+     "repository": "haskellari/splitmix",
+     "revision": "419c763825d6e0dceb266ef64e9cbcb7e07a481f",
+     "symbol": "seedSMGen"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object consensus.leios.StdGen"
+   ],
+   "reason": "the Leios fetch state's Scala plumbing with no counterpart of its own: the companions, Word32's conversions and order on BytesSize, the MultiSet operations on FocusedEbs, the orders as Scala Orderings, the equalities, the job id's constructor, and the decision's result triple as a named record (#54)"
+  }
+ ],
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/leios/StdGen.scala"
+}

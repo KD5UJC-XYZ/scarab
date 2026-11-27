@@ -7,14 +7,45 @@ keeps it complete and current. The rule it enforces is [REF-6](../design-rules.m
 
 ## The files
 
-- `docs/data/correspondence/<area>.json`, one per area. Each has:
-  - `roots`, the source directories of the area;
-  - `entries`, each mapped definition and its counterpart;
-  - `glue`, the Scarab-only definitions, in groups that share a reason.
-- `docs/data/correspondence-baseline.json`: the definitions not mapped yet. It only shrinks.
+- `docs/data/correspondence/<area>/_area.json`, one per area: its `roots`, the source directories of the area, and
+  a `_comment` that says what the area holds.
+- `docs/data/correspondence/<area>/<path>.json`, one map file per Scala source of the area that holds a definition.
+  `<path>` is the source's path under its root, without the package prefix `xyz/kd5ujc/scarab/` and with `.json`
+  for `.scala`: `ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/rules/Utxo.scala` has
+  `docs/data/correspondence/ledger/ledger/rules/Utxo.json`. Each map file has:
+  - `source`, the source's path in the repository;
+  - `entries`, each mapped definition of the source and its counterpart;
+  - `glue`, the source's Scarab-only definitions, in groups that share a reason;
+  - `baseline`, the source's definitions not mapped yet.
+
+  A section with nothing in it is left out, and a map file with nothing in it is removed.
+- `docs/data/correspondence/_baseline.json` records that the baseline exists, and the areas of the map, so that an
+  area whose directory is missing is refused. The baseline only shrinks.
 - `scripts/check_correspondence.py`: the guard, registered in `scripts/guards.json`. Its docstring lists what it
   refuses.
 - `scripts/scala_definitions.py`: the reader that finds the definitions.
+
+A key is listed in the map file of the source that defines it, and the guard refuses a key listed anywhere else.
+A key that names no current definition stays where it is, and the guard refuses it as before. Every file is in one
+form, which the guard writes and checks: JSON with its keys sorted, one space of indentation and a final line
+break, glue groups sorted by reason and their keys sorted. `--tidy` moves each key to its source's map file, renames
+a map file whose source moved, removes an empty one and writes every file in that form, without changing the data.
+
+### Why one file per source
+
+The map is stored one file per source so that it conflicts only where the mapped source does (2026-11-27,
+[#1515](https://github.com/KD5UJC-XYZ/scarab/issues/1515)). Until then it was one file per area and one baseline
+for all of them. Pull requests whose sources merged cleanly conflicted there whenever they added entries at the same
+place, updated the digests of neighbouring entries or removed neighbouring baseline keys. A change to a definition
+changes its source, and its entry, glue line or baseline key is in that source's map file. Sorted keys and the one
+form keep a merge of two changes to one file line by line.
+
+The guard still reads the earlier layout (one `<area>.json` per area, and one baseline file beside the directory)
+in a base, so that a pull request whose base still has it compares its baseline with the base's. A file of the
+earlier layout in the working tree is refused. `scripts/migrate_correspondence.py` converted the map, checks that
+the earlier layout at a revision and the working tree hold the same map, and carries a pull request's changes made
+in the earlier layout over to this one (`--port BASE HEAD`). The script and the guard's reader of the earlier layout
+go once no open pull request's base has the earlier layout.
 
 | Area | Roots | Reference |
 |---|---|---|
@@ -48,7 +79,7 @@ A key is the keyword and the qualified name, without `xyz.kd5ujc.scarab.`:
 
 For example `def protocol.KeepAlive.transition`, `def network.selection.Churn.Step#reached` and
 `object protocol.KeepAlive`. An anonymous given is named from its type, as the compiler does (`given_Show_Coin`).
-`--show KEY` prints a definition's file, lines and digest.
+`--show KEY` prints a definition's file, lines, digest and map file.
 
 ### Why a lexer
 
@@ -147,7 +178,8 @@ It is not insensitive to everything that leaves the meaning alone:
 
 ## The baseline
 
-The baseline lists, per area, every definition that is neither mapped nor glue, by key. A count per file would
+The baseline lists, per area, every definition that is neither mapped nor glue, by key, in the `baseline` of its
+source's map file. A count per file would
 let a change remove one unmapped definition and add another in the same file, so the list holds keys, not counts.
 
 Each key holds either `null` or a hint. A hint is the counterpart the definition's own doc comment cites, checked
@@ -169,8 +201,8 @@ The baseline shrinks:
 
 The base is the target branch on a pull request in CI: the merge commit's first parent, which the scripts job
 checks out two commits deep for this. Without it the check fails. Elsewhere the base is the merge base with
-`origin/main`, and without that history the check reports that it did not run. A base with no baseline admits
-the first one.
+`origin/main`, and without that history the check reports that it did not run. The base's baseline is read in
+either layout. A base with no baseline admits the first one.
 
 ## Upstream checks
 
@@ -184,16 +216,19 @@ fails. Without clones, as in CI, the guard prints that the check did not run, an
 ## How to update the map
 
 - **A new definition** under a root needs one of these in the same change:
-  - an entry: find its counterpart at the area's pin and fill in `upstream`, `class`, `structure` and `digest`
-    (`--show` prints the digest);
-  - a glue line with its reason.
+  - an entry in its source's map file: find its counterpart at the area's pin and fill in `upstream`, `class`,
+    `structure` and `digest` (`--show` prints the digest and the map file);
+  - a glue line with its reason, in the same file.
 
   Run the guard with `--sources` before you push.
 - **A changed definition with an entry**: the guard names it and prints the new digest. Compare the definition
   with its counterpart again and correct the entry's class, structure and lines. Then record the digest. Copying
   the digest without the comparison defeats the check.
-- **Mapping a baselined definition**: move it from the baseline into an entry, using its hint if it has one, and
-  run `--write-baseline`. `--unmapped AREA` lists the baselined definitions by file.
+- **Mapping a baselined definition**: move it from its map file's baseline into an entry there, using its hint if it
+  has one, and run `--write-baseline`. `--unmapped AREA` lists the baselined definitions by file.
+- **A moved or renamed source**: run `--tidy`, which moves the map file with it.
+- **A conflict in a map file** on a rebase or merge: join the two sides as JSON, keeping both sides' keys, then run
+  `--tidy` and the guard. Only changes to definitions of the same source meet in one file.
 - **A real difference found while mapping**: a Gap entry with its issue, or an Improvement or Deviation with its
   record, as [REF-7](../design-rules.md#ref-7) says. It is fixed in a change of its own.
 

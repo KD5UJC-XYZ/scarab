@@ -1,0 +1,15 @@
+{
+ "baseline": {
+  "def network.LocalServer.cancelled": null,
+  "def network.LocalServer.directory": null,
+  "def network.LocalServer.ending": null,
+  "def network.LocalServer.parentDirectory": null,
+  "def network.LocalServer.permissions": null,
+  "def network.LocalServer.removeStale": null,
+  "def network.LocalServer.resource": null,
+  "enum network.LocalServer.Trace": null,
+  "object network.LocalServer": null,
+  "val network.LocalServer.ConnAbortedDelay": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/LocalServer.scala"
+}

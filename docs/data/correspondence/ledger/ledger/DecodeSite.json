@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "class ledger.DecodeSite.Index": null,
+  "class ledger.DecodeSite.Within": null,
+  "def ledger.DecodeSite#/": null,
+  "enum ledger.DecodeField": null,
+  "enum ledger.DecodeSite.Qualifier": null,
+  "given ledger.DecodeField.given_Show_DecodeField": null,
+  "given ledger.DecodeSite.Qualifier.given_Show_Qualifier": null,
+  "given ledger.DecodeSite.given_Show_DecodeSite": null,
+  "object ledger.DecodeField": null,
+  "object ledger.DecodeSite": null,
+  "object ledger.DecodeSite.Qualifier": null,
+  "trait ledger.DecodeSite": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/DecodeSite.scala"
+}

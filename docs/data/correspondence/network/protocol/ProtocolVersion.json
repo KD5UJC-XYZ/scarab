@@ -1,0 +1,21 @@
+{
+ "baseline": {
+  "def protocol.NtcVersion.fromNumber": null,
+  "def protocol.NtnVersion#carriesPeras": null,
+  "def protocol.NtnVersion.fromNumber": null,
+  "def protocol.NtnVersion.maximum": null,
+  "def protocol.NtnVersion.upTo": null,
+  "enum protocol.NtcVersion": null,
+  "enum protocol.NtnVersion": null,
+  "given protocol.NtcVersion.given_Ordering_NtcVersion": null,
+  "given protocol.NtnVersion.given_Ordering_NtnVersion": null,
+  "object protocol.NtcVersion": null,
+  "object protocol.NtnVersion": null,
+  "val protocol.NtcVersion.All": null,
+  "val protocol.NtcVersion.LatestReleased": null,
+  "val protocol.NtnVersion.All": null,
+  "val protocol.NtnVersion.Latest": null,
+  "val protocol.NtnVersion.LatestReleased": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/ProtocolVersion.scala"
+}

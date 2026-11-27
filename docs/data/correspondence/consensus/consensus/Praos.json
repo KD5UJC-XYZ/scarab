@@ -1,0 +1,17 @@
+{
+ "baseline": {
+  "class consensus.PraosConfig": null,
+  "def consensus.Praos.counterOf": null,
+  "def consensus.Praos.issuerKey": null,
+  "def consensus.Praos.nonceValue": null,
+  "def consensus.Praos.slotOf": null,
+  "def consensus.Praos.tick": null,
+  "def consensus.Praos.update": null,
+  "def consensus.Praos.validate": null,
+  "def consensus.Praos.verifyVrf": null,
+  "def consensus.Praos.verifyVrfWithStake": null,
+  "def consensus.Praos.vrfInput": null,
+  "object consensus.Praos": null
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/Praos.scala"
+}

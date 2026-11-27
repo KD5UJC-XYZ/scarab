@@ -1,0 +1,48 @@
+{
+ "baseline": {
+  "class ledger.DecoderVersion.OutOfRange": null,
+  "class ledger.DecoderVersion.Range": null,
+  "def ledger.DecoderVersion.Range#contains": null,
+  "def ledger.DecoderVersion.Range#versions": null,
+  "def ledger.DecoderVersion.at": null,
+  "def ledger.DecoderVersion.atLeast": null,
+  "def ledger.DecoderVersion.high": null,
+  "def ledger.DecoderVersion.of": null,
+  "def ledger.DecoderVersion.range": null,
+  "def ledger.DecoderVersion.value": null,
+  "def ledger.DecoderVersion.within": null,
+  "object ledger.DecoderVersion": null,
+  "type ledger.DecoderVersion": null,
+  "val ledger.DecoderVersion.Dijkstra": null,
+  "val ledger.DecoderVersion.MaxVersion": null
+ },
+ "entries": {
+  "def ledger.DecoderVersion.ofVersion": {
+   "class": "Mirror",
+   "digest": "000fd515b476030f",
+   "note": "the reference's one `Version` is two types here, a protocol version's major and the decoder's version; this takes the first as the second",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs",
+     "lines": [
+      91,
+      97
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "natVersion"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.DecoderVersion.ofMajor"
+   ],
+   "reason": "the conversions between the node's flat pool parameters, reward accounts and withdrawals and the state's (the flat rules and decoders read the node's, and the state holds the reference's types), each refusal the vocabulary's; and the instances and rendering that hold the state's pool parameters', metadata's and withdrawals' equality, the reference's derived Eq; the metadata of a term a decoder already read, as POOL reads its hash again (held); the decoder version of a stored record's ProtVer; and POOL's refusal of parameters of another layout than the state they go into, a defect the reference, one build, never meets"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/DecoderVersion.scala"
+}

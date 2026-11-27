@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "def storage.haskell.state.SnapshotCrc.combined": null,
+  "def storage.haskell.state.SnapshotCrc.of": null,
+  "def storage.haskell.state.SnapshotCrc.update": null,
+  "def storage.haskell.state.SnapshotCrc.value": null,
+  "object storage.haskell.state.SnapshotCrc": null,
+  "type storage.haskell.state.SnapshotCrc": null,
+  "val storage.haskell.state.SnapshotCrc.empty": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/SnapshotCrc.scala"
+}

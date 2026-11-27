@@ -1,0 +1,116 @@
+{
+ "entries": {
+  "def ledger.era.dijkstra.DijkstraPlutusPurpose#tag": {
+   "class": "Mirror",
+   "digest": "0a5f5785db501245",
+   "evidence": [
+    "DijkstraPlutusPurposeSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "lines": [
+      184,
+      199
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EncCBORGroup (DijkstraPlutusPurpose f era)"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraPlutusPurpose.asIx": {
+   "class": "Mirror",
+   "digest": "2f8ca99962f01af8",
+   "evidence": [
+    "DijkstraTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "lines": [
+      166,
+      182
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DecCBORGroup (DijkstraPlutusPurpose f era)"
+    }
+   ]
+  },
+  "def ledger.era.dijkstra.DijkstraPlutusPurpose.translate": {
+   "class": "Mirror",
+   "digest": "ea6ba2cc40896a3a",
+   "evidence": [
+    "DijkstraPlutusPurposeSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "lines": [
+      528,
+      534
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "upgradePlutusPurposeAsIx"
+    }
+   ]
+  },
+  "enum ledger.era.dijkstra.DijkstraPlutusPurpose": {
+   "class": "Gap",
+   "digest": "058361853fe63bc8",
+   "evidence": [
+    "DijkstraPlutusPurposeSuite"
+   ],
+   "note": "the minting purpose's policy is the node's bytes, as Conway's purpose holds it, not the reference's PolicyID",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6888273413",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "lines": [
+      122,
+      129
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraPlutusPurpose"
+    }
+   ]
+  },
+  "given ledger.era.dijkstra.DijkstraPlutusPurpose.ordering": {
+   "class": "Mirror",
+   "digest": "24562eb4f2976672",
+   "evidence": [
+    "DijkstraPlutusPurposeSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "lines": [
+      260,
+      260
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Ord (DijkstraPlutusPurpose AsIx era)"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraPlutusPurpose.ix",
+    "object ledger.era.dijkstra.DijkstraPlutusPurpose"
+   ],
+   "reason": "Dijkstra's certificates and purposes on the era types (#85): the companions holding their instances, translations and CanEqual, the staking certificate's credential accessor, and the index of a redeemer key's purpose, which the reference reads through its derived instances"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraPlutusPurpose.scala"
+}

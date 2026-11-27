@@ -1,0 +1,23 @@
+{
+ "baseline": {
+  "def uplc.DefaultUni#equals": null,
+  "def uplc.DefaultUni#hashCode": null,
+  "def uplc.DefaultUni#toString": null,
+  "def uplc.DefaultUni.size": null,
+  "enum uplc.DefaultUni": [
+   {
+    "file": "plutus-core/plutus-core/src/PlutusCore/Default/Universe.hs",
+    "lines": [
+     136,
+     153
+    ],
+    "repository": "IntersectMBO/plutus",
+    "revision": "507cab8cf6192e5143f12be5b2d3005a2928dc6d",
+    "symbol": "DefaultUni"
+   }
+  ],
+  "given uplc.DefaultUni.given_Tree_DefaultUni": null,
+  "object uplc.DefaultUni": null
+ },
+ "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/DefaultUni.scala"
+}

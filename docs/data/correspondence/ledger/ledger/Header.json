@@ -1,0 +1,116 @@
+{
+ "baseline": {
+  "class ledger.Header.Byron": null,
+  "class ledger.Header.ByronMain": null,
+  "class ledger.Header.OpCert": null,
+  "class ledger.Header.Shelley": null,
+  "class ledger.Header.UnsizedByron": null,
+  "class ledger.VrfCert": null,
+  "def ledger.Header#blockNo": null,
+  "def ledger.Header#era": null,
+  "def ledger.Header#hash": null,
+  "def ledger.Header#isBoundary": null,
+  "def ledger.Header#point": null,
+  "def ledger.Header#prevHash": null,
+  "def ledger.Header#prevPoint": null,
+  "def ledger.Header#raw": null,
+  "def ledger.Header#slot": null,
+  "def ledger.Header.Byron#era": null,
+  "def ledger.Header.Byron#isBoundary": null,
+  "def ledger.Header.Byron#namesGenesis": null,
+  "def ledger.Header.Byron#slot": null,
+  "def ledger.Header.Byron#slotEpoch": null,
+  "def ledger.Header.Byron#withoutSizeHint": null,
+  "def ledger.Header.UnsizedByron#slot": null,
+  "def ledger.Header.UnsizedByron#withSizeHint": null,
+  "def ledger.Header.array": null,
+  "def ledger.Header.byronFromRaw": null,
+  "def ledger.Header.byronSizeHint": null,
+  "def ledger.Header.byronSlot": null,
+  "def ledger.Header.bytes": [
+   {
+    "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+    "lines": [
+     355,
+     373
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "decodeBytes"
+   }
+  ],
+  "def ledger.Header.fail": null,
+  "def ledger.Header.fromEnvelope": null,
+  "def ledger.Header.fromNtN": null,
+  "def ledger.Header.fromRaw": null,
+  "def ledger.Header.optHash": null,
+  "def ledger.Header.praosVrf": null,
+  "def ledger.Header.protocolVersion": null,
+  "def ledger.Header.record": null,
+  "def ledger.Header.uint": null,
+  "def ledger.Header.vrfCert": null,
+  "def ledger.Header.word32": null,
+  "enum ledger.Header.ByronSignature": null,
+  "enum ledger.HeaderVrf": null,
+  "object ledger.Header": null,
+  "trait ledger.Header": null,
+  "val ledger.Header.headerLimits": null
+ },
+ "entries": {
+  "def ledger.Header#blockPoint": {
+   "class": "Mirror",
+   "digest": "42a2f8de72ad1bfc",
+   "note": "the header's point typed as a block point; computed once with point",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/Block.hs",
+     "lines": [
+      249,
+      252
+     ],
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "symbol": "blockPoint"
+    }
+   ]
+  },
+  "def ledger.Header#predecessor": {
+   "class": "Mirror",
+   "digest": "af97aa3c77420880",
+   "note": "the predecessor chain selection and the processed forest read, None for GenesisHash: the header's previous hash, which every header but a Byron boundary block naming the genesis holds as it is (#1505)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Block/Abstract.hs",
+     "lines": [
+      149,
+      154
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "headerPrevHash"
+    }
+   ]
+  },
+  "def ledger.Header.Byron#predecessor": {
+   "class": "Mirror",
+   "digest": "24c212bb1e5648c8",
+   "note": "headerPrevHash of a Byron header: GenesisHash for a boundary block that names the genesis (abobHdrPrevHash's Nothing), whatever bytes its header holds there (#1505)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Ledger/Block.hs",
+     "lines": [
+      240,
+      246
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "fromByronPrevHash"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/Header.scala"
+}

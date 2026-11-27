@@ -1,0 +1,18 @@
+{
+ "baseline": {
+  "def ledger.BlockFailure#reason": null,
+  "def ledger.BlockFailure#rule": null,
+  "def ledger.BlockFailure.stateOutOfRange": null,
+  "def ledger.HandoverProblem#message": null,
+  "enum ledger.BlockFailure": null,
+  "enum ledger.BlockRule": null,
+  "enum ledger.HandoverProblem": null,
+  "given ledger.BlockFailure.given_Eq_BlockFailure": null,
+  "given ledger.BlockFailure.given_Show_BlockFailure": null,
+  "given ledger.BlockRule.given_Eq_BlockRule": null,
+  "given ledger.BlockRule.given_Show_BlockRule": null,
+  "object ledger.BlockFailure": null,
+  "object ledger.BlockRule": null
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/BlockFailure.scala"
+}

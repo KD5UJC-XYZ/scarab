@@ -1,0 +1,328 @@
+{
+ "entries": {
+  "class ledger.era.PParamUpdate": {
+   "class": "Mirror",
+   "digest": "9c7a37d1cd509adf",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite",
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "the tag, the lens and the Leios build's era codec (`ppuEraCodec`), which f649f975's update does not have",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      839,
+      848
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "PParamUpdate"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      801,
+      805
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PParamUpdate"
+    }
+   ]
+  },
+  "def ledger.era.PParam#decCBOR": {
+   "class": "Mirror",
+   "digest": "a3098bc4c1025c9e",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "the `DecCBOR t` the constructor packs",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      828,
+      837
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "PParam"
+    }
+   ]
+  },
+  "def ledger.era.PParam#encCBOR": {
+   "class": "Mirror",
+   "digest": "ecbe012c6cf1da2d",
+   "evidence": [
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "the `EncCBOR t` the constructor packs",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      828,
+      837
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "PParam"
+    }
+   ]
+  },
+  "def ledger.era.PParam#plutusData": {
+   "class": "Mirror",
+   "digest": "63a830084b4505b3",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "note": "the `ToPlutusData t` dictionary the reference's constructor packs",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      789,
+      789
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ToPlutusData t"
+    }
+   ]
+  },
+  "def ledger.era.PParam#ppLens": {
+   "class": "Mirror",
+   "digest": "ae30e132f94d7edb",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      792,
+      792
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppLens"
+    }
+   ]
+  },
+  "def ledger.era.PParam#ppName": {
+   "class": "Mirror",
+   "digest": "819f990a37558aaf",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      790,
+      791
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppName"
+    }
+   ]
+  },
+  "def ledger.era.PParam#ppUpdate": {
+   "class": "Mirror",
+   "digest": "c4ee00355bb66dab",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      796,
+      797
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppUpdate"
+    }
+   ]
+  },
+  "def ledger.era.PParam.apply": {
+   "class": "Mirror",
+   "digest": "09c19ddc514470ba",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite",
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      828,
+      837
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "PParam"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      787,
+      799
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PParam"
+    }
+   ]
+  },
+  "def ledger.era.PParam.field": {
+   "class": "Mirror",
+   "digest": "207a436e09a42b12",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite",
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "a description of a field the update sets: the field's lens at `Identity` under `ppLensHKD` and at `StrictMaybe` under `ppuLensHKD`, which is each reference `pp…L` and `ppu…L` the descriptions name",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      507,
+      511
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppLensHKD"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      338,
+      345
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppTxFeePerByte"
+    }
+   ]
+  },
+  "trait ledger.era.PParam": {
+   "class": "Gap",
+   "digest": "18f6b23906f857b4",
+   "evidence": [
+    "EraPParamsSuite",
+    "EraConwaySuite",
+    "ConwayUpdatePlutusDataSuite",
+    "RecordedScriptContextsSuite",
+    "DijkstraPParamsSuite",
+    "DijkstraPlutusContextSuite",
+    "EraPParamsCborSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "the name, the lens, the update and the Plutus data and CBOR instances of the hidden type; the JSON instances the constructor also packs are not here yet. The era decoder of f649f975 (`ppEraDecoder`, which no Conway description has) is, as at the Leios build's pin, the update's `ppuEraCodec`",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6969689140",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      828,
+      837
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "PParam"
+    },
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      787,
+      799
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PParam"
+    }
+   ]
+  },
+  "type ledger.era.PParam#T": {
+   "class": "Mirror",
+   "digest": "73fd743ef044b649",
+   "note": "the type the reference's constructor hides",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "lines": [
+      787,
+      799
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PParam"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.PParam"
+   ],
+   "reason": "companion objects that only hold an era's instances, constructors or the Scala `Ordering` of a type whose order the reference derives"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/PParam.scala"
+}

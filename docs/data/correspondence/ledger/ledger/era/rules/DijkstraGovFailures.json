@@ -1,0 +1,57 @@
+{
+ "entries": {
+  "def ledger.era.rules.DijkstraGovPredFailure.conwayToDijkstraGovPredFailure": {
+   "class": "Mirror",
+   "digest": "f386af7fd6076be1",
+   "evidence": [
+    "DijkstraGovSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Gov.hs",
+     "lines": [
+      222,
+      243
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "conwayToDijkstraGovPredFailure"
+    }
+   ]
+  },
+  "enum ledger.era.rules.DijkstraGovPredFailure": {
+   "class": "Gap",
+   "digest": "35aca8d2555a8a65",
+   "evidence": [
+    "DijkstraRulesOracleSuite",
+    "DijkstraGovSuite"
+   ],
+   "note": "a type of its own with Conway's constructors under their names, in tag order (0 to 18, :135-155), with ConwayGovPredFailure's fields: a voter and a voter's hot credential are the flat voter's until the votes carry the reference's typed voter; an account is AccountAddress; a mismatch carries the reference's relation (Mismatch r a); compared with the reference's bytes through the oracle suite's test-side encoder of Dijkstra's era failures (DijkstraEraFailureCbor), which writes a Mismatch as one item (To mm)",
+   "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023870",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Rules/Gov.hs",
+     "lines": [
+      73,
+      114
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraGovPredFailure"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "given ledger.era.rules.DijkstraGovPredFailure.given_CanEqual_DijkstraGovPredFailure_E_DijkstraGovPredFailure_E",
+    "object ledger.era.rules.DijkstraGovPredFailure"
+   ],
+   "reason": "the companion of Dijkstra's GOV failure type, with its equality with itself only"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/DijkstraGovFailures.scala"
+}

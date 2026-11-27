@@ -1,0 +1,168 @@
+{
+ "baseline": {
+  "class ledger.TxChecks.Collateral": null,
+  "def ledger.TxChecks.auxiliaryChecks": null,
+  "def ledger.TxChecks.bootstrapOutputs": null,
+  "def ledger.TxChecks.checkedPhase2": null,
+  "def ledger.TxChecks.collateral": null,
+  "def ledger.TxChecks.collateralInputs": null,
+  "def ledger.TxChecks.datumChecks": null,
+  "def ledger.TxChecks.failedNativeScripts": [
+   {
+    "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Utxow.hs",
+    "lines": [
+     366,
+     377
+    ],
+    "repository": "IntersectMBO/cardano-ledger",
+    "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+    "symbol": "validateFailedNativeScripts"
+   }
+  ],
+  "def ledger.TxChecks.integrityCheck": null,
+  "def ledger.TxChecks.maxOutputValueSize": null,
+  "def ledger.TxChecks.minUTxO": null,
+  "def ledger.TxChecks.neededWitnesses": null,
+  "def ledger.TxChecks.phase2": null,
+  "def ledger.TxChecks.plutusFieldsDefect": null,
+  "def ledger.TxChecks.providedKeyHashes": null,
+  "def ledger.TxChecks.providedScripts": null,
+  "def ledger.TxChecks.scriptsWellFormed": null,
+  "def ledger.TxChecks.supplementalDatumHashes": null,
+  "def ledger.TxChecks.verifiedWits": null,
+  "object ledger.RefScripts": null,
+  "object ledger.TxChecks": null,
+  "object ledger.TxChecks.Collateral": null,
+  "type ledger.TxChecks.Env": null,
+  "type ledger.TxChecks.Pointer": null,
+  "val ledger.RefScripts.MaxRefScriptSizePerBlock": null,
+  "val ledger.RefScripts.MaxRefScriptSizePerTx": null,
+  "val ledger.TxChecks.Collateral.none": null
+ },
+ "entries": {
+  "def ledger.TxChecks.redeemerChecks": {
+   "class": "Mirror",
+   "digest": "4c7f9d731cbcb081",
+   "note": "the redeemers needed are TxChecks.redeemersNeeded; the extra redeemers in the order of the redeemers' map keys, then the missing purposes in the order of the scripts needed, duplicates kept",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs",
+     "lines": [
+      239,
+      262
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hasExactSetOfRedeemers"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs",
+     "lines": [
+      378,
+      383
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "extSymmetricDifference"
+    }
+   ]
+  },
+  "def ledger.TxChecks.redeemersNeeded": {
+   "class": "Mirror",
+   "digest": "4b08c7f9fafdac24",
+   "evidence": [
+    "ContextCollectionSuite",
+    "RecordedScriptContextsSuite"
+   ],
+   "note": "the redeemersNeeded comprehension of hasExactSetOfRedeemers (a provided script that is not native), which resolveNeededPlutusScriptsWithPurpose also applies to the scripts needed; one function for both, keeping the purposes' order",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxow.hs",
+     "lines": [
+      246,
+      252
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hasExactSetOfRedeemers"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      442,
+      450
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "resolveNeededPlutusScriptsWithPurpose"
+    }
+   ]
+  },
+  "def ledger.TxChecks.scriptsNeeded": {
+   "class": "Mirror",
+   "digest": "25081dee4fa1d5cc",
+   "evidence": [
+    "ContextCollectionSuite",
+    "RecordedScriptContextsSuite"
+   ],
+   "note": "the era chosen by its ShelleyBasedEra, as the reference chooses getScriptsNeeded by its EraUTxO instance; the purposes come from Purpose.collection, which indexes every purpose by position, keeps a repeated certificate at its first index before Conway and regroups them in the reference order, and those with no script credential are dropped here, where the reference builds one list per kind with only the purposes that need a script",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      313,
+      361
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getAlonzoScriptsNeeded"
+    },
+    {
+     "file": "eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs",
+     "lines": [
+      62,
+      105
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getConwayScriptsNeeded"
+    }
+   ]
+  },
+  "def ledger.TxChecks.valueWords": {
+   "class": "Mirror",
+   "digest": "2ee54b799eb63e73",
+   "evidence": [
+    "EraValueSuite"
+   ],
+   "note": "MaryValue's `size`, with `repOverhead` and `roundupBytesToWords` (264-282); the distinct policies counted as the map's keys, which a canonical value's are",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      226,
+      244
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "size"
+    },
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      714,
+      728
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "representationSize"
+    }
+   ]
+  }
+ },
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/TxChecks.scala"
+}

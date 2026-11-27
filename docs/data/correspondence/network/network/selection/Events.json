@@ -1,0 +1,10 @@
+{
+ "baseline": {
+  "def network.selection.Events.asSeconds": null,
+  "def network.selection.Events.completed": null,
+  "def network.selection.Events.fromSeconds": null,
+  "def network.selection.Events.observed": null,
+  "object network.selection.Events": null
+ },
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/selection/Events.scala"
+}

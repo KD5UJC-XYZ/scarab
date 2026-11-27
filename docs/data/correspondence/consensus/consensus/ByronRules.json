@@ -1,0 +1,42 @@
+{
+ "baseline": {
+  "class consensus.ByronRules.State": null,
+  "class consensus.ByronRulesConfig": null,
+  "class consensus.ByronTip": null,
+  "def consensus.ByronCheck#label": null,
+  "def consensus.ByronRules.scheduledLeader": null,
+  "def consensus.ByronRules.update": null,
+  "def consensus.ByronRules.validateHeader": null,
+  "def consensus.ByronRules.windowThreshold": null,
+  "enum consensus.ByronCheck": null,
+  "object consensus.ByronRules": null,
+  "object consensus.ByronRulesConfig": null,
+  "type consensus.ByronRules.Config": null,
+  "type consensus.ByronRulesConfig.Verifier": null,
+  "val consensus.ByronRulesConfig.ByronSignatures": null
+ },
+ "entries": {
+  "def consensus.ByronRulesConfig#windowThreshold": {
+   "class": "Mirror",
+   "digest": "c9f223416cf6a663",
+   "evidence": [
+    "ByronWindowThresholdSuite"
+   ],
+   "note": "the threshold field of pbftWindowParams, for the configured signature threshold and a window its caller gives (ByronRules.update gives k, as pbftWindowSize does); the reference builds the window size and the threshold together from its configuration, and the floor into a Word64 is ByronRules.windowThreshold's, whose results the suite compares with values measured on GHC 9.10.3",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Protocol/PBFT.hs",
+     "lines": [
+      403,
+      413
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "symbol": "pbftWindowParams"
+    }
+   ]
+  }
+ },
+ "source": "consensus/src/main/scala/xyz/kd5ujc/scarab/consensus/ByronRules.scala"
+}

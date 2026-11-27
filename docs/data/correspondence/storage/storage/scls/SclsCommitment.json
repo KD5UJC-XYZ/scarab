@@ -1,0 +1,20 @@
+{
+ "baseline": {
+  "class storage.scls.SclsCommitment.ChunkHash": null,
+  "class storage.scls.SclsCommitment.Merkle": null,
+  "def storage.scls.SclsCommitment.ChunkHash#addEntry": null,
+  "def storage.scls.SclsCommitment.ChunkHash#digest": null,
+  "def storage.scls.SclsCommitment.Digest.bytes": null,
+  "def storage.scls.SclsCommitment.Digest.fromBytes": null,
+  "def storage.scls.SclsCommitment.Merkle#addEntry": null,
+  "def storage.scls.SclsCommitment.Merkle#addNamespace": null,
+  "def storage.scls.SclsCommitment.Merkle#root": null,
+  "def storage.scls.SclsCommitment.entry": null,
+  "object storage.scls.SclsCommitment": null,
+  "object storage.scls.SclsCommitment.Digest": null,
+  "type storage.scls.SclsCommitment.Digest": null,
+  "val storage.scls.SclsCommitment.empty": null,
+  "val storage.scls.SclsCommitment.emptyChunk": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/scls/SclsCommitment.scala"
+}

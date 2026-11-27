@@ -1,0 +1,12 @@
+{
+ "baseline": {
+  "def protocol.LayoutPart#stateLayout": null,
+  "def protocol.StateLayout.of": null,
+  "enum protocol.StateLayout": null,
+  "given protocol.StateLayout.given_Eq_StateLayout": null,
+  "given protocol.StateLayout.given_Show_StateLayout": null,
+  "object protocol.StateLayout": null,
+  "trait protocol.LayoutPart": null
+ },
+ "source": "protocol/src/main/scala/xyz/kd5ujc/scarab/protocol/StateLayout.scala"
+}

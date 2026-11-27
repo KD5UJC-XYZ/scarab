@@ -1,0 +1,240 @@
+{
+ "baseline": {
+  "class ledger.EbAnnouncement": null,
+  "class ledger.HeaderVersionInfo": null,
+  "class ledger.LeiosBlock": null,
+  "class ledger.LeiosBlock.CertificateBytes": null,
+  "class ledger.LeiosHeader": null,
+  "class ledger.LeiosHeaderFields": null,
+  "def ledger.LeiosBlock#faults": null,
+  "def ledger.LeiosBlock.decode": null,
+  "def ledger.LeiosBlock.read": null,
+  "def ledger.LeiosHeader#dijkstraView": null,
+  "def ledger.LeiosHeader#point": null,
+  "def ledger.LeiosHeader#praosView": null,
+  "def ledger.LeiosHeader.byEra": null,
+  "def ledger.LeiosHeader.decode": null,
+  "enum ledger.LeiosBlock.Fault": null,
+  "object ledger.LeiosBlock": null,
+  "object ledger.LeiosHeader": null
+ },
+ "entries": {
+  "class ledger.LeiosBlockBody": {
+   "class": "Mirror",
+   "digest": "3b3efa8066509195",
+   "evidence": [
+    "LeiosEncodingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      100,
+      106
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraBlockBodyRaw"
+    }
+   ]
+  },
+  "class ledger.LeiosHeaderBody": {
+   "class": "Mirror",
+   "digest": "d43ecba70e13742a",
+   "evidence": [
+    "LeiosEncodingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
+     "lines": [
+      112,
+      137
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "HeaderBodyRaw"
+    }
+   ]
+  },
+  "def ledger.LeiosBlock.encode": {
+   "class": "Mirror",
+   "digest": "afa72954cdceab00",
+   "evidence": [
+    "LeiosEncodingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Block.hs",
+     "lines": [
+      27,
+      29
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "Block"
+    },
+    {
+     "file": "ouroboros-consensus-cardano/src/ouroboros-consensus-cardano/Ouroboros/Consensus/Cardano/Node.hs",
+     "lines": [
+      173,
+      173
+     ],
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "2416493bfdbe93b761b3a4bb1ccf2b4a913e5e4b",
+     "symbol": "BlockDijkstra"
+    }
+   ]
+  },
+  "def ledger.LeiosBlockBody#hash": {
+   "class": "Mirror",
+   "digest": "2a9e77fca0c120c4",
+   "evidence": [
+    "LeiosEncodingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      120,
+      120
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "hashBlockBody"
+    }
+   ]
+  },
+  "def ledger.LeiosBlockBody#size": {
+   "class": "Mirror",
+   "digest": "d5805db2cad894e8",
+   "evidence": [
+    "LeiosEncodingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      121,
+      121
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "blockBodySize"
+    }
+   ]
+  },
+  "def ledger.LeiosHeader#body": {
+   "class": "Mirror",
+   "digest": "3899eaf44f37ca7d",
+   "evidence": [
+    "LeiosEncodingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
+     "lines": [
+      260,
+      261
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "headerBody"
+    }
+   ]
+  },
+  "def ledger.LeiosHeader.signed": {
+   "class": "Mirror",
+   "digest": "e0ecb2becb87d19c",
+   "evidence": [
+    "LeiosEncodingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
+     "lines": [
+      335,
+      337
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "HeaderRaw"
+    }
+   ]
+  },
+  "def ledger.LeiosHeaderBody#encode": {
+   "class": "Mirror",
+   "digest": "ccc1de7e505d2fe9",
+   "evidence": [
+    "LeiosEncodingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-protocol/src/Cardano/Protocol/Leios/BlockHeader.hs",
+     "lines": [
+      214,
+      220
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "mkHeaderBody"
+    }
+   ]
+  },
+  "val ledger.LeiosBlockBody#encode": {
+   "class": "Mirror",
+   "digest": "e1e48e8d0fcd981d",
+   "evidence": [
+    "LeiosEncodingSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/BlockBody/Internal.hs",
+     "lines": [
+      184,
+      189
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "DijkstraBlockBodyRaw"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.LeiosBlock.header"
+   ],
+   "reason": "the header of a whole block read without decoding its body's contents, for the node's ChainSync server, through the envelope and header code Block.decode and LeiosBlock.read use: the reference's ChainSync server reads a stored block's header bytes alone, at the offset and size its storage indexes keep (getBinaryBlockInfo, ouroboros-consensus Cardano/Node.hs getHfcBinaryBlockInfo; readHeader, ImmutableDB/Impl/Iterator.hs), which Scarab's immutable index does not keep"
+  },
+  {
+   "definitions": [
+    "object ledger.LeiosBlockBody"
+   ],
+   "reason": "the minimal CBOR writer of the header body encoders (shortest heads, definite lists), shared with the Leios block encoders; the reference's Encoding primitives (cardano-ledger-binary Encoding/Encoder.hs) have no single counterpart here"
+  },
+  {
+   "definitions": [
+    "class ledger.LeiosBlock.OutsideEra",
+    "class ledger.LeiosBlock.Unread",
+    "def ledger.LeiosBlock#firstUnheld",
+    "def ledger.LeiosBlock#transactionCount",
+    "def ledger.LeiosBlock.Defect#error",
+    "def ledger.LeiosBlock.decodeWith",
+    "enum ledger.LeiosBlock.Defect"
+   ],
+   "reason": "the ranking block's transactions whose one-pass reading met a value the decoder's own bounds rule out, kept apart by whose the failure is: the node's defect, typed as one of the era errors that are defects only (LeiosBlock.Unread, LeiosBlock.Defect), or a field Dijkstra does not have, the bytes' fault (LeiosBlock.OutsideEra), the first of them the failure of the block's application (LeiosBlock#firstUnheld, LeiosBlock#transactionCount), so that the block decodes, passes the fetch checks (BlockTransport.matches, the checks of a decoded block split from its decoding) and is withheld by its application, as the flat decoder and its projection routed it; and the decoders taking the transaction reader (LeiosBlock.decodeWith, DijkstraBlock.decodeWith), so that a test forces that path, which the decoder's bounds make unreachable (#85); the reference's decoder has no such value and no counterpart"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/LeiosBlock.scala"
+}

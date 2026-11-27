@@ -1,0 +1,16 @@
+{
+ "baseline": {
+  "class storage.LedgerSnapshotExport.Config": null,
+  "class storage.LedgerSnapshotExport.Report": null,
+  "def storage.LedgerSnapshotExport.DirectorySync#apply": null,
+  "def storage.LedgerSnapshotExport.DirectorySync.native": null,
+  "def storage.LedgerSnapshotExport.Error#message": null,
+  "def storage.LedgerSnapshotExport.publish": null,
+  "def storage.LedgerSnapshotExport.run": null,
+  "enum storage.LedgerSnapshotExport.Error": null,
+  "object storage.LedgerSnapshotExport": null,
+  "object storage.LedgerSnapshotExport.DirectorySync": null,
+  "trait storage.LedgerSnapshotExport.DirectorySync": null
+ },
+ "source": "storage/src/main/scala/xyz/kd5ujc/scarab/storage/LedgerSnapshotExport.scala"
+}

@@ -1,0 +1,57 @@
+{
+ "baseline": {
+  "class ledger.era.dijkstra.DijkstraNativeScript": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript#equals": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript#getRequireAllOf": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript#getRequireAnyOf": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript#getRequireGuard": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript#getRequireMOf": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript#getRequireSignature": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript#getTimeExpire": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript#getTimeStart": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript#hashCode": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript#raw": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript#toString": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript.decode": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript.read": null,
+  "def ledger.era.dijkstra.DijkstraNativeScript.translate": null,
+  "enum ledger.era.dijkstra.DijkstraNativeScript.Form": null,
+  "enum ledger.era.dijkstra.DijkstraNativeScript.Memo": null,
+  "given ledger.era.dijkstra.DijkstraNativeScript.given_CanEqual_DijkstraNativeScript_DijkstraNativeScript": null,
+  "object ledger.era.dijkstra.DijkstraNativeScript": null,
+  "val ledger.era.dijkstra.DijkstraNativeScript#form": null,
+  "val ledger.era.dijkstra.DijkstraNativeScript#hash": null,
+  "val ledger.era.dijkstra.DijkstraNativeScript#memo": null
+ },
+ "entries": {
+  "def ledger.era.dijkstra.DijkstraNativeScript#eval": {
+   "class": "Mirror",
+   "digest": "775daadb09dab1ce",
+   "evidence": [
+    "DijkstraNativeScriptEvalSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/Scripts.hs",
+     "lines": [
+      594,
+      615
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "evalDijkstraNativeScript"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.dijkstra.DijkstraNativeScript#timelock"
+   ],
+   "reason": "the conversions between Dijkstra's output and the output the store keeps, and the flat time-lock tree of a native reference script that holds no guard, which the stored output keeps beside its bytes; the reference keeps the era's output itself, its script as its bytes (`MemoBytes`), and has no counterpart (#85, #54)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/dijkstra/DijkstraNativeScript.scala"
+}

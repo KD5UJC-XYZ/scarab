@@ -1,0 +1,51 @@
+{
+ "baseline": {
+  "class network.NodeToNode.Settings": null,
+  "class network.NodeToNodeConnection": null,
+  "class network.WarmConnection": null,
+  "def network.NodeToNode.Settings#pipelining": null,
+  "def network.NodeToNode.attach": null,
+  "def network.NodeToNode.clients": null,
+  "def network.NodeToNode.connect": null,
+  "def network.NodeToNode.connectWarm": null,
+  "def network.NodeToNode.negotiate": null,
+  "def network.NodeToNode.over": null,
+  "def network.NodeToNode.protocolEnd": null,
+  "def network.NodeToNode.warm": null,
+  "def network.NodeToNode.warmOver": null,
+  "def network.NodeToNode.warmOverWithResults": null,
+  "def network.NodeToNodeConnection#finish": null,
+  "def network.NodeToNodeConnection#finishAfterChainSync": null,
+  "def network.NodeToNodeConnection#finishGracefully": null,
+  "def network.WarmConnection#activate": null,
+  "def network.WarmConnection#startHotProtocols": null,
+  "object network.NodeToNode": null,
+  "val network.NodeToNodeConnection#blockFetch": null,
+  "val network.NodeToNodeConnection#chainSync": null,
+  "val network.NodeToNodeConnection#chainSyncPipeline": null,
+  "val network.NodeToNodeConnection#fetchPerformance": null,
+  "val network.NodeToNodeConnection#mux": null,
+  "val network.NodeToNodeConnection#transactions": null,
+  "val network.NodeToNodeConnection#version": null,
+  "val network.WarmConnection#applications": null,
+  "val network.WarmConnection#duplex": null,
+  "val network.WarmConnection#fetchPerformance": null,
+  "val network.WarmConnection#mux": null,
+  "val network.WarmConnection#peerSharing": null,
+  "val network.WarmConnection#stopEstablished": null,
+  "val network.WarmConnection#version": null
+ },
+ "glue": [
+  {
+   "definitions": [
+    "class network.StopLatch",
+    "def network.StopLatch#fire",
+    "def network.StopLatch#register",
+    "def network.StopLatch.create",
+    "object network.StopLatch"
+   ],
+   "reason": "the latch by which a hot activation's clean end stops its LeiosFetch client, standing for the Terminate of the control message the reference's client reads in STM (nextLeiosFetchClientCommand), its stop reached even when registered after it fires (#54)"
+  }
+ ],
+ "source": "network/src/main/scala/xyz/kd5ujc/scarab/network/NodeToNode.scala"
+}
