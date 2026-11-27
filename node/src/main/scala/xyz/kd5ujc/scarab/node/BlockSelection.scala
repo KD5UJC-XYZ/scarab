@@ -90,7 +90,7 @@ private[node] final class BlockSelection[F[_]: Async] private (
       released <- cause match
         case BlockSelection.Cause.Reselection =>
           pool.noVerdictBlocks
-            .release(now, hash => bodies.get(hash).flatMap(_.delivered.header.prevHash))
+            .release(now, hash => bodies.get(hash).flatMap(_.delivered.header.predecessor))
         case BlockSelection.Cause.Admitted(_) | BlockSelection.Cause.Forged(_) |
             BlockSelection.Cause.LeiosEbAcquired(_, _) =>
           F.pure(None)

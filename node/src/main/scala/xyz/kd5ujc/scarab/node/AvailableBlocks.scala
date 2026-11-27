@@ -174,10 +174,10 @@ private[node] object AvailableBlocks:
       */
     private def back(found: Back, target: Header): Back =
       @tailrec def go(header: Header, paths: Map[Bytes, List[Header]], roots: Vector[Root]): Back =
-        val rooted = bases(header.prevHash) match
+        val rooted = bases(header.predecessor) match
           case Vector() => roots
           case places   => roots ++ places.map((place, base) => Root(place, base, header))
-        header.prevHash.flatMap(open) match
+        header.predecessor.flatMap(open) match
           case Some(parent) =>
             val joined =
               paths.updated(parent.hash, header :: paths.getOrElse(parent.hash, Nil))

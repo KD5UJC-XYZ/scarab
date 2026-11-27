@@ -13,7 +13,10 @@ import xyz.kd5ujc.scarab.ledger.Header
   * (`Storage/VolatileDB/Impl.hs:436,518-543`, `Storage/VolatileDB/Impl/Util.hs:107-136`), and
   * `filterByPredecessor` reads (`Storage/VolatileDB/Impl.hs:545-551`). It holds every processed
   * block, hidden or not: what chain selection does not see is filtered where it reads, as the
-  * reference wraps the index (`ignoreInvalidSuc`, `Storage/ChainDB/Impl/ChainSel.hs:1406-1417`).
+  * reference wraps the index (`ignoreInvalidSuc`, `Storage/ChainDB/Impl/ChainSel.hs:1406-1417`). A
+  * block's predecessor is the one chain selection reads ([[Header.predecessor]], the reference's
+  * `biPrevHash`): a Byron boundary block that names the genesis is after genesis, whatever bytes
+  * its header holds there (#1505).
   *
   * Two invariants hold by construction, since a forest is only built by the operations below: a
   * block's key is its header's hash, and no block's predecessors lead back to it (a block that
@@ -57,19 +60,19 @@ private[node] final class ProcessedForest[A] private (
       case Some(found) if found == hash => true
       case Some(found) =>
         byHash.get(found) match
-          case Some(known) => reaches(block.header(known).prevHash)
+          case Some(known) => reaches(block.header(known).predecessor)
           case None        => false
       case None => false
     if byHash.contains(hash) then Right(this)
-    else if header.prevHash.contains(hash) || (index.contains(Some(hash)) && reaches(
-        header.prevHash
+    else if header.predecessor.contains(hash) || (index.contains(Some(hash)) && reaches(
+        header.predecessor
       ))
     then Left(Cycle(hash))
     else
       Right(
         new ProcessedForest(
           byHash.updated(hash, value),
-          index.updated(header.prevHash, successors(header.prevHash) + hash),
+          index.updated(header.predecessor, successors(header.predecessor) + hash),
           bySlot.updated(header.slot, bySlot.getOrElse(header.slot, Set.empty[Bytes]) + hash)
         )
       )
@@ -100,7 +103,7 @@ private[node] final class ProcessedForest[A] private (
       val header = block.header(value)
       new ProcessedForest(
         byHash - hash,
-        deleteMapSet(index, header.prevHash, hash),
+        deleteMapSet(index, header.predecessor, hash),
         deleteSlot(bySlot, header.slot, hash)
       )
     }

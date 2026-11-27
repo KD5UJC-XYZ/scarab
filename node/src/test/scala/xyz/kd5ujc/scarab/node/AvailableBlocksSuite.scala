@@ -18,10 +18,14 @@ class AvailableBlocksSuite extends FunSuite:
       parent: Option[Bytes],
       number: Int,
       slot: Int,
-      boundary: Boolean = false
+      boundary: Boolean = false,
+      namesGenesis: Boolean = false
   ): Header.Byron =
+    // a boundary block of epoch 0 names the genesis whatever its previous hash holds (#1505); one
+    // of a later epoch names its parent
+    val epoch = if boundary && !namesGenesis then 1 else 0
     Header
-      .UnsizedByron(hash(id), hash(id), boundary, 0, slot, 100000, number, parent)
+      .UnsizedByron(hash(id), hash(id), boundary, epoch, slot, 100000, number, parent)
       .withSizeHint(FetchTesting.sizeHint(1))
   private def chain(headers: Header*): Map[Bytes, Header] = headers.map(h => h.hash -> h).toMap
   private val origin =
@@ -144,13 +148,26 @@ class AvailableBlocksSuite extends FunSuite:
 
   test("Origin requires the exact configured Byron predecessor alias") {
     val genesis = hash(100)
-    val ebb = header(1, Some(genesis), 0, 0, boundary = true)
-    assertEquals(candidates(origin, chain(ebb)), Vector.empty)
+    val named = header(1, Some(genesis), 0, 0)
+    assertEquals(candidates(origin, chain(named)), Vector.empty)
     assertEquals(
-      candidates(origin, chain(ebb), genesis = Some(genesis)),
-      Vector(ChainSelection.Candidate(Point.Origin, Vector(ebb)))
+      candidates(origin, chain(named), genesis = Some(genesis)),
+      Vector(ChainSelection.Candidate(Point.Origin, Vector(named)))
     )
-    assertEquals(candidates(origin, chain(ebb), genesis = Some(hash(101))), Vector.empty)
+    assertEquals(candidates(origin, chain(named), genesis = Some(hash(101))), Vector.empty)
+  }
+
+  test(
+    "a boundary block that names the genesis is after Origin, whatever its previous hash holds"
+  ) {
+    val a = header(1, None, 0, 1)
+    for previous <- Vector(Some(hash(100)), Some(a.hash), Some(hash(101))) do
+      val ebb = header(2, previous, 0, 0, boundary = true, namesGenesis = true)
+      for alias <- Vector(None, Some(hash(100)), Some(hash(101))) do
+        assertEquals(
+          candidates(origin, chain(a, ebb), containing = Some(Set(ebb.hash)), genesis = alias),
+          Vector(ChainSelection.Candidate(Point.Origin, Vector(ebb)))
+        )
   }
 
   test("a block is keyed by its own hash, and one that closes a cycle is refused") {

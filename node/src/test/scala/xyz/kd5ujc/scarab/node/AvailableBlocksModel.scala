@@ -55,7 +55,7 @@ private[node] object AvailableBlocksModel:
       val selected = local.anchor +: local.blocks.map(_.point)
       val selectedHashes = selected.flatMap(hashOf).toSet
       val successors = visible.valuesIterator.toVector
-        .groupBy(_.prevHash)
+        .groupBy(_.predecessor)
         .view
         .mapValues(_.sortBy(_.hash)(using hashOrder))
         .toMap
@@ -116,7 +116,7 @@ private[node] object AvailableBlocksModel:
       current match
         case Some(hash) if path(hash) => Left(Error.Cycle(hash))
         case Some(hash) if !done(hash) && available.contains(hash) =>
-          predecessors(available.get(hash).flatMap(_.prevHash), path + hash, done)
+          predecessors(available.get(hash).flatMap(_.predecessor), path + hash, done)
         case _ => Right(done ++ path)
     ordered
       .foldLeft[Either[Error, Set[Bytes]]](Right(Set.empty)) { (state, hash) =>

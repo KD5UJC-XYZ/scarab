@@ -52755,6 +52755,42 @@
    ],
    "note": "the class's default, the withdrawing purpose's under its earlier name, which the reference deprecates in its favour; final, as no instance overrides it",
    "digest": "e9ac9d9ce799fb4f"
+  },
+  "def ledger.Header#predecessor": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Block/Abstract.hs",
+     "symbol": "headerPrevHash",
+     "lines": [
+      149,
+      154
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the predecessor chain selection and the processed forest read, None for GenesisHash: the header's previous hash, which every header but a Byron boundary block naming the genesis holds as it is (#1505)",
+   "digest": "af97aa3c77420880"
+  },
+  "def ledger.Header.Byron#predecessor": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-consensus",
+     "revision": "82ecba329d7d054340bf707d44fe6e9ac27cec40",
+     "file": "ouroboros-consensus-cardano/src/byron/Ouroboros/Consensus/Byron/Ledger/Block.hs",
+     "symbol": "fromByronPrevHash",
+     "lines": [
+      240,
+      246
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "headerPrevHash of a Byron header: GenesisHash for a boundary block that names the genesis (abobHdrPrevHash's Nothing), whatever bytes its header holds there (#1505)",
+   "digest": "24c212bb1e5648c8"
   }
  },
  "glue": [

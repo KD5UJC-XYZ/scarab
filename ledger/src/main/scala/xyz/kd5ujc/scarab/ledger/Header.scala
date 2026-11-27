@@ -39,6 +39,17 @@ sealed trait Header:
     new ChainSync.Point.Block(ChainSync.UInt64.saturating(slot), hash)
   def prevPoint: Option[Bytes] = prevHash
 
+  /** The predecessor chain selection reads, consensus's `headerPrevHash` (`None` for its
+    * `GenesisHash`): [[prevHash]], but none for a Byron boundary block that names the genesis
+    * ([[Header.Byron.namesGenesis]]), whatever bytes its header holds there (`fromByronPrevHash`,
+    * `Byron/Ledger/Block.hs:240-246`, ouroboros-consensus 82ecba32). The VolatileDB files a block
+    * under it (`biPrevHash = blockPrevHash blk`, `Storage/VolatileDB/Impl/Parser.hs:117-123`, and
+    * `insertMapSet biPrevHash`, `Storage/VolatileDB/Impl.hs:436`), and only the ledger reads the
+    * bytes themselves (`updateChainBoundary`, `Chain/Block/Validation.hs:276-287`, cardano-ledger
+    * f649f975), #1505.
+    */
+  def predecessor: Option[Bytes] = prevHash
+
   /** A Byron epoch-boundary block: it shares its slot with the epoch's first slot and its block
     * number with the previous block.
     */
@@ -148,6 +159,7 @@ object Header:
       * block.
       */
     def namesGenesis: Boolean = boundary && (epoch == 0 || genesisTag)
+    override def predecessor: Option[Bytes] = if namesGenesis then None else prevHash
     def withoutSizeHint: UnsizedByron = UnsizedByron(
       raw,
       hash,
