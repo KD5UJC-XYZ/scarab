@@ -73,8 +73,7 @@ trait AllegraEraScript[E <: EraTag] extends ShelleyEraScript[E]:
   * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:139-225`, cardano-ledger f649f975): the
   * era's Plutus scripts, `hoistPlutusPurpose` and the builders and readers of the spending,
   * minting, certifying and withdrawing purposes, in any form `F` of a purpose, with a `Word32`
-  * index. The reference's `mkRewardingPurpose` and `toRewardingPurpose`, defaults that are the
-  * withdrawing ones, and `upgradePlutusPurposeAsIx` are not here: nothing reads them yet.
+  * index. The reference's `upgradePlutusPurposeAsIx` is not here: nothing reads it yet.
   */
 trait AlonzoEraScript[E <: EraTag] extends AllegraEraScript[E]:
   /** The newest language of the era (`eraMaxLanguage`), one of the reference's `Language`. */
@@ -136,6 +135,22 @@ trait AlonzoEraScript[E <: EraTag] extends AllegraEraScript[E]:
   def toWithdrawingPurpose[F[_, _]](
       purpose: PlutusPurpose[F, E]
   ): Option[F[Unsigned[Unsigned.Width.W32], AccountAddress]]
+
+  /** `mkRewardingPurpose` (`Alonzo/Scripts.hs:221-222`, cardano-ledger f649f975; `:223-224` at
+    * 9df9f98c), the class's default, which no instance overrides: the withdrawing purpose's
+    * builder, under its earlier name, which the reference deprecates in its favour (`:232`).
+    */
+  final def mkRewardingPurpose[F[_, _]](
+      account: F[Unsigned[Unsigned.Width.W32], AccountAddress]
+  ): PlutusPurpose[F, E] = mkWithdrawingPurpose(account)
+
+  /** `toRewardingPurpose` (`Alonzo/Scripts.hs:224-225`, cardano-ledger f649f975; `:226-227` at
+    * 9df9f98c), the class's default: the withdrawing purpose's reader, under its earlier name,
+    * which the reference deprecates in its favour (`:234`).
+    */
+  final def toRewardingPurpose[F[_, _]](
+      purpose: PlutusPurpose[F, E]
+  ): Option[F[Unsigned[Unsigned.Width.W32], AccountAddress]] = toWithdrawingPurpose(purpose)
 
 /** Alonzo's functions of scripts (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs`,
   * cardano-ledger f649f975).

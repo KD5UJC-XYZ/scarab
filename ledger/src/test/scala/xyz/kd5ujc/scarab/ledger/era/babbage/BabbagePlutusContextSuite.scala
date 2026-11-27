@@ -256,11 +256,22 @@ class BabbagePlutusContextSuite extends munit.FunSuite:
       flat.body.referenceInputs.map(_ -> standIn).toMap,
       flat.body.collateral.map(_ -> standIn).toMap,
       8,
-      Map.empty,
+      standInCostModels,
       slot => Right(slot * 1000),
       Json.Null,
       standIn = true
     )
+
+  /** The cost models of a stand-in case: Plutus V1's and V2's of the matrix rows at version 8, each
+    * of which names one, so that its scripts' contexts are built.
+    */
+  private lazy val standInCostModels: Map[Int, Vector[BigInt]] =
+    val models = oracleCases
+      .filter(c => c.name.startsWith("matrix/") && c.major == 8)
+      .flatMap(_.costModels)
+      .toMap
+    assertEquals(models.keySet, Set(0, 1))
+    models
 
   private lazy val standInCases: Vector[Case] =
     blockTxs.map((n, p) => withStandIns(n, readParts(p, n))) ++
@@ -488,16 +499,21 @@ class BabbagePlutusContextSuite extends munit.FunSuite:
     val outcomes = cases.map(sameCollection)
     val requests = outcomes.collect { case Right(rs) => rs }.flatten
     val failures = outcomes.collect { case Left(es) => es }.flatten
-    // the requests of each language, and the failures the cases reach, each by its kind
+    // the requests of each language, the stand-in cases' among them, and the failures the cases
+    // reach, each by its kind
     assertEquals(
-      requests.groupMapReduce(_.language)(_ => 1)(_ + _).keySet,
-      Set(PlutusLanguage.V1, PlutusLanguage.V2)
+      (
+        requests.groupMapReduce(_.language)(_ => 1)(_ + _),
+        failures.groupMapReduce(_.productPrefix)(_ => 1)(_ + _)
+      ),
+      (Map(PlutusLanguage.V1 -> 37, PlutusLanguage.V2 -> 223), Map("BadTranslation" -> 20))
     )
+    // 191 of the recorded contexts, 46 of the matrix and 23 of the stand-in cases
     assertEquals(
-      failures.map(_.productPrefix).toSet,
-      Set("BadTranslation", "NoCostModel"),
-      failures
+      cases.filter(_.standIn).map(sameCollection).collect { case Right(rs) => rs.size }.sum,
+      23
     )
+
   }
 
   private def sha256(bytes: Bytes): String =
@@ -668,11 +684,10 @@ class BabbagePlutusContextSuite extends munit.FunSuite:
         flatWitsNeeded(c, Map.empty),
         c.name
       )
-      (needed.size, datums.count(identity))
+      (needed.size, if c.standIn then 0 else datums.count(identity))
     }
-    // what the cases exercise: scripts needed and spending datums
-    assert(counts.map(_._1).sum > 0)
-    assert(counts.map(_._2).sum > 0)
+    // what the cases exercise: scripts needed and the spending datums of the cases with their outputs
+    assertEquals((counts.map(_._1).sum, counts.map(_._2).sum), (282, 194))
   }
 
   test("the annotated transaction holds what its members compute, on every case") {
@@ -818,6 +833,36 @@ class BabbagePlutusContextSuite extends munit.FunSuite:
     val missing = crafted("missing", plain).copy(spent = Map.empty)
     Vector(PlutusLanguage.V1, PlutusLanguage.V2).foreach(l =>
       assertEquals(sameTxInfo(missing, 8, l), Left(TranslationError.UnresolvedInput(key0)))
+    )
+  }
+
+  test("reference inputs refuse a V1 context before a clock that cannot translate a slot") {
+    val c = crafted(
+      "reference input and clock",
+      plain.copy(validityStart = Some(BigInt(9)), referenceInputs = Vector(TestLedger.txIn(1))),
+      posix = slot => Left(TranslationError.NoClockSample(slot))
+    )
+    assertEquals(
+      sameTxInfo(c, 8, PlutusLanguage.V1),
+      Left(TranslationError.ReferenceInputsNotSupported(Set(TestLedger.txIn(1))))
+    )
+    assertEquals(
+      sameTxInfo(c, 8, PlutusLanguage.V2),
+      Left(TranslationError.NoClockSample(BigInt(9)))
+    )
+  }
+
+  test("the rewarding purpose's builder and reader are the withdrawing purpose's") {
+    val item = AsIx[Unsigned[Unsigned.Width.W32], xyz.kd5ujc.scarab.ledger.state.AccountAddress](
+      Unsigned.wrapping[Unsigned.Width.W32](BigInt(3))
+    )
+    assertEquals(s.mkRewardingPurpose(item), s.mkWithdrawingPurpose(item))
+    assertEquals(s.toRewardingPurpose(s.mkWithdrawingPurpose(item)), Some(item))
+    assertEquals(
+      s.toRewardingPurpose(
+        s.mkMintingPurpose(AsIx[Unsigned[Unsigned.Width.W32], Bytes](item.ix))
+      ),
+      None
     )
   }
 

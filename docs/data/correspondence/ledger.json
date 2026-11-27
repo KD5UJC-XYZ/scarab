@@ -52571,8 +52571,8 @@
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
      "symbol": "Inject (AlonzoContextError era) (BabbageContextError era)",
      "lines": [
-      284,
-      285
+      285,
+      286
      ]
     }
    ],
@@ -52583,6 +52583,68 @@
     "BabbagePlutusContextRefusalsSuite"
    ],
    "digest": "44f004df5a189361"
+  },
+  "def ledger.era.AlonzoEraScript#mkRewardingPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "mkRewardingPurpose",
+     "lines": [
+      221,
+      222
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "mkRewardingPurpose",
+     "lines": [
+      223,
+      224
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite"
+   ],
+   "note": "the class's default, the withdrawing purpose's under its earlier name, which the reference deprecates in its favour; final, as no instance overrides it",
+   "digest": "35f56a02a550d84b"
+  },
+  "def ledger.era.AlonzoEraScript#toRewardingPurpose": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "toRewardingPurpose",
+     "lines": [
+      224,
+      225
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "symbol": "toRewardingPurpose",
+     "lines": [
+      226,
+      227
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "evidence": [
+    "BabbagePlutusContextSuite"
+   ],
+   "note": "the class's default, the withdrawing purpose's under its earlier name, which the reference deprecates in its favour; final, as no instance overrides it",
+   "digest": "e9ac9d9ce799fb4f"
   }
  },
  "glue": [

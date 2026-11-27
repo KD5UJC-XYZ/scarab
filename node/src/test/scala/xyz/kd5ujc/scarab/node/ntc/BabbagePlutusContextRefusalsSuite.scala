@@ -218,7 +218,7 @@ class BabbagePlutusContextRefusalsSuite extends FunSuite:
   ) {
     // the Babbage cases of the corpora: a loader that loses one fails here
     assertEquals(refused.size, 32)
-    val outcomes = refused.flatMap { s =>
+    val outcomes = refused.map { s =>
       val result = ctx.mkTxInfoResult(s.lti)
       val v1 = ctx
         .lookupTxInfoResult[Language.PlutusV1](result)
@@ -234,7 +234,7 @@ class BabbagePlutusContextRefusalsSuite extends FunSuite:
         .map(ToData[PV2.TxInfo].toBuiltinData)
       assertEquals(v1, ScriptContexts.txInfo(PlutusLanguage.V1, s.flat, s.env), s.label)
       assertEquals(v2, ScriptContexts.txInfo(PlutusLanguage.V2, s.flat, s.env), s.label)
-      sameCollection(s)
+      val collected = sameCollection(s)
       val ann = FlatStAnnTx(s.flat, Utxo(s.known))
       assertEquals(
         needed(s).map((p, h) => (asIx(p).tag, asIx(p).ix.value, h)),
@@ -254,9 +254,22 @@ class BabbagePlutusContextRefusalsSuite extends FunSuite:
         flatWitsNeeded(s),
         s.label
       )
-      Vector(v1, v2)
+      (Vector(v1, v2), collected, needed(s).size)
     }
-    assert(outcomes.exists(_.isRight))
+    // what the cases reach: 64 TxInfos, 59 built and five refused; seven requests and one redeemer
+    // missing; nine scripts needed
+    val infos = outcomes.flatMap(_._1)
+    assertEquals(infos.count(_.isRight), 59)
+    assertEquals(
+      infos.collect { case Left(e) => e.productPrefix }.groupMapReduce(identity)(_ => 1)(_ + _),
+      Map("ReferenceScriptsNotSupported" -> 1, "ByronTxOutInContext" -> 2, "UnresolvedInput" -> 2)
+    )
+    assertEquals(outcomes.map(_._2).collect { case Right(rs) => rs.size }.sum, 7)
+    assertEquals(
+      outcomes.map(_._2).collect { case Left(es) => es.map(_.productPrefix) }.flatten,
+      Vector("NoRedeemer")
+    )
+    assertEquals(outcomes.map(_._3).sum, 9)
     // the genesis delegations are in force, and a case proposes an update they must sign
     assert(refused.exists(s => s.genDelegs.nonEmpty && s.flat.body.update.isDefined))
   }

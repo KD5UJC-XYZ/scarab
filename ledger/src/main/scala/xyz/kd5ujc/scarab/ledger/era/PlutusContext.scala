@@ -23,7 +23,7 @@ object Inject:
   given self[A]: Inject[A, A] = a => a
 
   /** `instance Inject (AlonzoContextError era) (BabbageContextError era)`
-    * (`Babbage/TxInfo.hs:284-285`, cardano-ledger 9df9f98c), Babbage's context error being its own.
+    * (`Babbage/TxInfo.hs:285-286`, cardano-ledger 9df9f98c), Babbage's context error being its own.
     */
   given babbageAlonzo: Inject[AlonzoContextError[Babbage], ContextError[Babbage]] =
     BabbageContextError.AlonzoContextError(_)
