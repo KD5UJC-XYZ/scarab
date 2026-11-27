@@ -243,3 +243,17 @@ object Curve25519Gen:
       nonNegativeRoot(w) match
         case Some(r) => (1, r)
         case None    => (0, nonNegativeRoot((w * sqrtM1).mod(p)).get)
+
+  /** What breaks the invariants of the extended coordinates (X : Y : Z : T) of the point (X/Z,
+    * Y/Z): Z is not zero, X Y = Z T, and -X^2 + Y^2 = Z^2 + d T^2, the curve equation. None when
+    * they hold. A point with the right encoding and a wrong T compresses correctly and breaks the
+    * next operation that reads T. `EdwardsPointSuite` checks every point an operation returns with
+    * it, and so does the `curve25519-arithmetic` fuzz target.
+    */
+  def extendedFailure(e: EdwardsPoint): Option[String] =
+    def value(f: FieldElement): BigInt = limbValue(VendoredOps.limbs(f)).mod(p)
+    val (x, y, z, t) = (value(e.X), value(e.Y), value(e.Z), value(e.T))
+    if z == 0 then Some("Z is zero")
+    else if (x * y - z * t).mod(p) != 0 then Some("X Y is not Z T")
+    else if (-x * x + y * y - z * z - d * t * t).mod(p) != 0 then Some("not on the curve")
+    else None
