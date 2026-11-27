@@ -387,90 +387,152 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
   // `updateDormantDRepExpiries`, 257-267), which the ratification enacted at the next boundary must
   // not see (blinklabs-io/dingo#6789). The boundary into epoch 6 is dormant because the only
   // proposal lapsed after epoch 5 (`updateNumDormantEpochs`, `Epoch.hs:195-201`), so a proposal in
-  // epoch 6 bumps the DRep that voted for the motion from expired to active, after the pulser saw it
-  // expired. Only a yes vote turns on that expiry: whether the DRep is left out or counted, a no, an
-  // abstention or silence leaves the motion unratified.
-  test("RATIFY reads the DRep expiries of the boundary, not the ones a later proposal bumps") {
-    // the motion lapses after epoch 5, and the vote sets the voter's expiry to 5 + `drepActivity`;
-    // the other two DReps expired long before and stay expired through the bump, so the voter
-    // holds all the active DRep stake when it is counted; the SPOs have no say on the motion
-    def run(activity: Int): (World, Step, Step, Step, GovActionId) =
-      val w = World(
-        10,
-        _.copy(
+  // epoch 6 bumps the DRep that voted on the motion from expired to active, after the pulser saw it
+  // expired.
+  //
+  // The motion of no confidence lapses after epoch 5, and the vote sets the voter's expiry to
+  // 5 + `drepActivity`; the other two DReps expired long before and stay expired through the bump;
+  // the SPOs have no say on the motion. Both proposals' deposits go to the account of a lapsed
+  // DRep, so they move no stake that is counted. With `alwaysNoConfidence` the account of the
+  // second DRep delegates to AlwaysNoConfidence instead, which counts as yes on the motion
+  // (`Ratify.hs:276-278`), and the motion needs two thirds of the DRep stake. `vote` is the voter's
+  // vote, none for silence.
+  private final case class BoundaryExpiry(
+      voter: Key,
+      e6: Step,
+      bumped: Step,
+      e7: Step,
+      motion: GovActionId
+  )
+
+  private def boundaryExpiry(
+      activity: Int,
+      vote: Option[Vote],
+      alwaysNoConfidence: Boolean
+  ): BoundaryExpiry =
+    val w = World(
+      10,
+      p =>
+        p.copy(
           drepActivity = activity,
           govActionLifetime = 0,
-          poolVotingThresholds = PoolVotingThresholds.zero
-        )
-      )
-      val voter = w.dreps(0)
-      val lapsed = w.dreps.drop(1).map(drepCredential)
-      val s0 = w.initial
-      val start = s0.copy(nes =
-        native.ConwayNewEpochState.dreps.modify(dreps =>
-          lapsed.foldLeft(dreps)((m, c) =>
-            m.updated(c, m(c).copy(expiry = EpochNo.fromUnsigned(3L)))
+          poolVotingThresholds = PoolVotingThresholds.zero,
+          drepVotingThresholds = p.drepVotingThresholds.copy(motionNoConfidence =
+            if alwaysNoConfidence then Rational(2, 3) else half
           )
-        )(s0.nes)
-      )
-      val proposed = ok(
-        submit(
-          w,
-          start,
-          Vector.empty,
-          proposals = Vector(proposal(w, GovAction.NoConfidence(None))),
-          deposits = 1000 * ada
         )
-      )
-      val motion = idOf(proposed, 0)
-      val voted =
-        ok(submit(w, proposed, Vector(voter), votes = Vector(drepVote(voter, motion, Vote.Yes))))
-      val e6 = boundary(voted)
-      // epoch 6: an information action bumps the live expiries by the dormant epochs
-      val bumped = ok(
-        submit(
-          w,
-          e6,
-          Vector.empty,
-          proposals = Vector(proposal(w, GovAction.Info)),
-          deposits = 1000 * ada
-        )
-      )
-      val e7 = boundary(bumped)
-      Vector(
-        start -> "start",
-        voted -> "voted",
-        e6 -> "epoch 6",
-        bumped -> "bumped",
-        e7 -> "epoch 7"
-      )
-        .foreach(assertInvariants.tupled)
-      (w, e6, bumped, e7, motion)
-
-    val (w, e6, bumped, e7, motion) = run(activity = 0)
+    )
     val voter = w.dreps(0)
-    // the boundary into epoch 6 is dormant, and the pulser started there took the voter expired
-    assertEquals(e6.vState.numDormantEpochs.toBigInt, BigInt(1))
-    assertEquals(e6.drepState(voter).expiry.toBigInt, BigInt(5))
+    val lapsed = w.dreps.drop(1).map(drepCredential)
+    val s0 = w.initial
+    // the voter's expiry is the one its vote sets under `drepActivity = 0`, so that it is the same
+    // when it is silent
+    val expired = native.ConwayNewEpochState.dreps.modify(dreps =>
+      lapsed
+        .foldLeft(dreps)((m, c) => m.updated(c, m(c).copy(expiry = EpochNo.fromUnsigned(3L))))
+        .updated(
+          drepCredential(voter),
+          dreps(drepCredential(voter)).copy(expiry = EpochNo.fromUnsigned(5L))
+        )
+    )(s0.nes)
+    val delegated =
+      if !alwaysNoConfidence then expired
+      else
+        val noConfidence = staking(w.stakes(1))
+        val accounts = native.ConwayNewEpochState.accounts.modify(a =>
+          a.copy(states =
+            a.states.updated(
+              noConfidence,
+              a.states(noConfidence).copy(drep = Some(native.DRep.DRepAlwaysNoConfidence))
+            )
+          )
+        )(expired)
+        native.ConwayNewEpochState.dreps.modify(dreps =>
+          dreps.updated(
+            lapsed(0),
+            dreps(lapsed(0)).copy(delegators = dreps(lapsed(0)).delegators - noConfidence)
+          )
+        )(accounts)
+    val start = s0.copy(nes = delegated)
+    val proposed = ok(
+      submit(
+        w,
+        start,
+        Vector.empty,
+        proposals = Vector(proposal(w, GovAction.NoConfidence(None), 2)),
+        deposits = 1000 * ada
+      )
+    )
+    val motion = idOf(proposed, 0)
+    val voted = vote.fold(proposed)(v =>
+      ok(submit(w, proposed, Vector(voter), votes = Vector(drepVote(voter, motion, v))))
+    )
+    val e6 = boundary(voted)
+    // epoch 6: an information action bumps the live expiries by the dormant epochs
+    val bumped = ok(
+      submit(
+        w,
+        e6,
+        Vector.empty,
+        proposals = Vector(proposal(w, GovAction.Info, 2)),
+        deposits = 1000 * ada
+      )
+    )
+    val e7 = boundary(bumped)
+    Vector(start -> "start", voted -> "voted", e6 -> "epoch 6", bumped -> "bumped", e7 -> "epoch 7")
+      .foreach(assertInvariants.tupled)
+    BoundaryExpiry(voter, e6, bumped, e7, motion)
+
+  /** The pulser started at the boundary into epoch 6 took the voter expired, and the proposal in
+    * epoch 6 made it active again in the live state.
+    */
+  private def assertBumpedAfterTheSnapshot(r: BoundaryExpiry): Unit =
+    assertEquals(r.e6.vState.numDormantEpochs.toBigInt, BigInt(1))
     assertEquals(
-      e6.gov.drepPulsing.snapshot.drepState.get(voter.credential).map(_.expiry),
+      r.e6.gov.drepPulsing.snapshot.drepState.get(r.voter.credential).map(_.expiry),
       Some(BigInt(5))
     )
-    assertEquals(e6.gov.drepPulsing.ratify.enacted.map(_.id), Vector.empty)
-    // the proposal in epoch 6 makes it active again in the live state, and resets the counter
-    assertEquals(bumped.drepState(voter).expiry.toBigInt, BigInt(6))
-    assertEquals(bumped.vState.numDormantEpochs.toBigInt, BigInt(0))
-    // so the motion is not enacted: it lapsed and is removed, and the committee is as it was
-    assertEquals(e7.gov.committee, e6.gov.committee)
-    assert(e6.gov.committee.isDefined)
-    assert(!e7.gov.proposals.actions.exists(_.id == motion), "the lapsed motion is still stored")
+    assertEquals(r.bumped.drepState(r.voter).expiry.toBigInt, BigInt(6))
+    assertEquals(r.bumped.vState.numDormantEpochs.toBigInt, BigInt(0))
 
+  test("RATIFY reads the DRep expiries of the boundary, not the ones a later proposal bumps") {
+    val r = boundaryExpiry(activity = 0, Some(Vote.Yes), alwaysNoConfidence = false)
+    assertBumpedAfterTheSnapshot(r)
+    // the voter was left out, so the motion is not enacted: it lapsed and is removed, and the
+    // committee is as it was
+    assertEquals(r.e6.gov.drepPulsing.ratify.enacted.map(_.id), Vector.empty)
+    assert(r.e6.gov.committee.isDefined)
+    assertEquals(r.e7.gov.committee, r.e6.gov.committee)
+    assert(
+      !r.e7.gov.proposals.actions.exists(_.id == r.motion),
+      "the lapsed motion is still stored"
+    )
     // the control: with the voter active at the boundary into epoch 6, the same vote carries the
     // motion, so the outcome above turns on the expiry the pulser read alone
-    val (control, activeIn6, _, enacted, carried) = run(activity = 1)
-    assertEquals(activeIn6.drepState(control.dreps(0)).expiry.toBigInt, BigInt(6))
-    assertEquals(activeIn6.gov.drepPulsing.ratify.enacted.map(_.id), Vector(carried))
-    assertEquals(enacted.gov.committee, None)
+    val control = boundaryExpiry(activity = 1, Some(Vote.Yes), alwaysNoConfidence = false)
+    assertEquals(control.e6.drepState(control.voter).expiry.toBigInt, BigInt(6))
+    assertEquals(control.e6.gov.drepPulsing.ratify.enacted.map(_.id), Vector(control.motion))
+    assertEquals(control.e7.gov.committee, None)
+  }
+
+  test(
+    "a DRep that a later proposal bumps does not hold back a motion by voting no, or by silence"
+  ) {
+    // a DRep that votes no, or does not vote, counts against the motion only while it is active
+    // (`Ratify.hs:269-275`); left out, the AlwaysNoConfidence stake alone carries the motion
+    Vector(Some(Vote.No), None).foreach { vote =>
+      val r = boundaryExpiry(activity = 0, vote, alwaysNoConfidence = true)
+      assertBumpedAfterTheSnapshot(r)
+      assertEquals(r.e6.gov.drepPulsing.ratify.enacted.map(_.id), Vector(r.motion), s"$vote")
+      assertEquals(r.e7.gov.committee, None, s"$vote")
+    }
+    // the control: with the voter active at the boundary into epoch 6, its no holds the motion
+    // to half of the stake, short of two thirds
+    val control = boundaryExpiry(activity = 1, Some(Vote.No), alwaysNoConfidence = true)
+    assertEquals(control.e6.drepState(control.voter).expiry.toBigInt, BigInt(6))
+    assertEquals(control.e6.gov.drepPulsing.ratify.enacted.map(_.id), Vector.empty)
+    assert(control.e6.gov.committee.isDefined)
+    assertEquals(control.e7.gov.committee, control.e6.gov.committee)
   }
 
   test("a treasury withdrawal that the DReps accept is enacted two boundaries after the vote") {
