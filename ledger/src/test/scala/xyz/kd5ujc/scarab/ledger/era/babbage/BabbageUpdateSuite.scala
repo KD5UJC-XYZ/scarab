@@ -236,13 +236,16 @@ class BabbageUpdateSuite extends ScalaCheckSuite:
     val compared = java.nio.file.Files
       .readString(java.nio.file.Path.of("fixtures/eras/blocks.hex"))
       .linesIterator
-      .filter(_.nonEmpty)
-      .map(l => xyz.kd5ujc.scarab.ledger.Block.decode(hex(l), BigInt(50)))
-      .map(right("block")(_))
+      .zipWithIndex
+      .filter(_._1.nonEmpty)
+      .map((l, i) =>
+        (i + 1) -> right("block")(xyz.kd5ujc.scarab.ledger.Block.decode(hex(l), BigInt(50)))
+      )
       .collect {
-        case b: xyz.kd5ujc.scarab.ledger.Block.Shelley if b.era == ProtocolEra.Babbage => b
+        case (line, b: xyz.kd5ujc.scarab.ledger.Block.Shelley) if b.era == ProtocolEra.Babbage =>
+          line -> b
       }
-      .flatMap(b =>
+      .flatMap((line, b) =>
         b.transactions.flatMap { t =>
           val flatTx = right(s"${t.id.hex} flat")(xyz.kd5ujc.scarab.ledger.Tx.fromBlock(t, b.era))
           val key6 = right("body")(CborRead.decode(t.body)).value match
@@ -258,9 +261,10 @@ class BabbageUpdateSuite extends ScalaCheckSuite:
               KeptUpdate.fromStored[Babbage](kept.stored).map(_.update),
               Right(kept.update)
             )
-            t.id.hex
+            line
           }
         }
       )
       .toVector
-    assert(clue(compared).nonEmpty)
+    // the walk's two Babbage update proposals, at these lines of the fixture
+    assertEquals(compared, Vector(543, 633))

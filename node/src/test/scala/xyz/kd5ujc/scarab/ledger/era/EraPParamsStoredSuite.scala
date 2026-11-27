@@ -158,7 +158,8 @@ class EraPParamsStoredSuite extends FunSuite:
       era: ShelleyBasedEra[E],
       size: Int,
       at: DecoderVersion,
-      govRecords: Node => Vector[Node] = governance
+      govRecords: Node => Vector[Node] = governance,
+      toStored: Option[PParams[E] => ProtocolParams] = None
   )(fromStored: ProtocolParams => PParams[E])(using EraPParams[E]): Int =
     val codec = Params.codecIn(layout, era)
     val root = stateOf(path)
@@ -175,6 +176,8 @@ class EraPParamsStoredSuite extends FunSuite:
       assertEquals(PParams.decodePParams[E](n), Right(expected), path)
       assertEquals(PParams.encodePParams(expected).bytes, n.original, path)
       assertEquals(codec.write(stored), Right(n.original), path)
+      // the era's record written back over parameters that hold none of it
+      toStored.foreach(back => assertEquals(codec.write(back(expected)), Right(n.original), path))
     }
     found.size
 
@@ -198,7 +201,8 @@ class EraPParamsStoredSuite extends FunSuite:
       ShelleyBasedEra.SBabbage,
       22,
       version(8),
-      shelleyGovernance
+      shelleyGovernance,
+      Some(pp => BabbagePParams.toStored(pp.hkd, ProtocolParams.empty))
     )(babbageParams)
     // the current (version 7), the previous (6) and the future, voted for (8)
     assertEquals(count, 3)
