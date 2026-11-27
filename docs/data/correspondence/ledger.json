@@ -51423,7 +51423,7 @@
     "BabbageTxSuite"
    ],
    "note": "a body read in one pass at Babbage's decoder version, 7, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 7; held to the flat decoder's verdicts, ids, bytes and values on every recorded Babbage transaction, every Babbage row of the reference's decoder corpora and byte mutants, and to the reference's recorded refusals (BabbageTxDifferentialSuite)",
-   "digest": "f492aa066964b295"
+   "digest": "f121c82716c8d727"
   },
   "val ledger.era.babbage.BabbageTxBody.instance": {
    "upstream": [

@@ -152,15 +152,19 @@ object BabbageTxBody:
     DetachedRecords
       .read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.body(Era.Babbage, version))(e =>
         EraTxError.Decode(LedgerDecodeError.Syntax(e))
-      )(read(_, layout))
+      )(read(raw, _, layout))
 
   /** [[decode]] of a body's item, parsed already with no detached record in it
     * ([[BabbageTx.fromEnvelope]]).
     */
   private[babbage] def fromItem(n: Node, layout: StateLayout): Either[EraTxError, BabbageTxBody] =
-    read(n, layout)
+    read(n.original, n, layout)
 
-  private def read(root: Node, layout: StateLayout): Either[EraTxError, BabbageTxBody] =
+  private def read(
+      raw: Bytes,
+      root: Node,
+      layout: StateLayout
+  ): Either[EraTxError, BabbageTxBody] =
     val what = DecodeField.TransactionBody
     def decode[A](r: Either[LedgerDecodeError, A]): Either[EraTxError, A] =
       r.leftMap(EraTxError.Decode(_))
@@ -195,7 +199,7 @@ object BabbageTxBody:
       outputs <- required(fields.outputs, DecodeField.Outputs)
       fee <- required(fields.fee, DecodeField.Fee)
     yield BabbageTxBody(
-      root.original,
+      raw,
       inputs,
       fields.collateral,
       fields.references,
