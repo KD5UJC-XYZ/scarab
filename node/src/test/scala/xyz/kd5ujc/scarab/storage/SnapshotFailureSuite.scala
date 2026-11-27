@@ -51,7 +51,8 @@ class SnapshotFailureSuite extends FailsOnUncaught:
       Handle[IO, NodeError]
   ): IO[Unit] =
     val (ref, raw) = StorageTestKit.block(n)
-    recovered.persistence.extended(ref, raw, Vector(ref), Anchor(Some(ref), n))
+    recovered.persistence.extended(ref, raw, Vector(ref), Anchor(Some(ref), n)) *>
+      recovered.persistence.published
 
   private def typed[A](body: Handle[IO, NodeError] ?=> IO[A]): IO[A] =
     Handle.allow[NodeError](body).rescue(error => IO(fail(error.message)))
@@ -135,7 +136,7 @@ class SnapshotFailureSuite extends FailsOnUncaught:
                 case _ => if defect then IO.raiseError(cause) else error.raise[IO, Unit]
               }),
               every = 1000
-            ).use(recovered => extend(recovered, 1))
+            ).use(recovered => extend(recovered, 1) *> recovered.copied)
           }
           observed <- events.get
           failures = observed.collect { case StorageEvent.SnapshotFailed(failure) => failure }

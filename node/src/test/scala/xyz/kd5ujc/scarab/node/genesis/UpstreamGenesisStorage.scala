@@ -57,6 +57,7 @@ object UpstreamGenesisStorage:
       chain,
       received,
       new ChainPersistence[IO, Ledger]:
+        def published = IO.unit
         def extended(
             ref: BlockRef,
             raw: Bytes,

@@ -202,6 +202,7 @@ class LeiosEbGateSuite extends FailsOnUncaught:
                   None,
                   BigInt(-1),
                   new ChainPersistence[IO, BigInt]:
+                    def published = IO.unit
                     def extended(
                         ref: BlockRef,
                         raw: Bytes,
@@ -218,7 +219,8 @@ class LeiosEbGateSuite extends FailsOnUncaught:
                   _ => IO.unit,
                   received,
                   IO.unit,
-                  IO.never[ChainStorage.CollectionStopped]
+                  IO.unit,
+                  IO.never[ChainStorage.BackgroundStopped]
                 ) -> cuts
               }
             )

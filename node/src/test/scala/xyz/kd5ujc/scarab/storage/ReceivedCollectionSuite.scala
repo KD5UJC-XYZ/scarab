@@ -222,18 +222,21 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
   private def put(is: Int*)(recovered: ChainStorage.Recovered[IO, Int]): IO[Unit] =
     StorageTestKit.ok(is.toList.traverse_(i => recovered.received.put(block(i)._1, block(i)._2)))
 
-  /** Block `i` applied and made immutable at once: copied to the immutable store. */
+  /** Blocks `is` applied, each made immutable at once, in one commit of the chain: published once
+    * they are all applied, so the copy runner copies them in one round.
+    */
   private def copied(is: Int*)(recovered: ChainStorage.Recovered[IO, Int]): IO[Unit] =
     typed(is.toList.traverse_ { i =>
       val (ref, raw) = block(i)
       recovered.persistence.extended(ref, raw, Vector(ref), Anchor(Some(ref), i))
-    })
+    } *> recovered.persistence.published)
 
   test("the received log is collected 60 s after blocks are copied to the immutable store") {
     node { (_, n) =>
       for
         _ <- n.act(put(1, 2, 3))
-        // both copies at 0 s: one collection, at 60 s, below block 2's slot
+        // both blocks aged in one commit at 0 s: one copy, one collection, at 60 s, below block
+        // 2's slot
         _ <- n.act(copied(1, 2))
         start <- n.hashes
         _ <- n.advance(60.seconds - 1.nanosecond)
@@ -245,17 +248,18 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
         assertEquals(start, hashesOf(1, 2, 3))
         assertEquals(early, hashesOf(1, 2, 3), "nothing is collected before 60 s")
         assertEquals(due, hashesOf(2, 3), "block 1's file, wholly below block 2's slot, at 60 s")
-        // as the reference's ChainDB traces `ScheduledGC` for each copy and `PerformedGC` for each
-        // collection (`scheduleGC`, `garbageCollectBlocks`, `Storage/ChainDB/Impl/Background.hs`
-        // 443-448 and 567-580, ouroboros-consensus 82ecba329)
+        // as the reference's copy runner copies the whole prefix then eligible and schedules one
+        // collection for it, its ChainDB traces one `ScheduledGC` for each copy and `PerformedGC`
+        // for each collection (`copyToImmutableDBRunner`, `scheduleGC`, `garbageCollectBlocks`,
+        // `Storage/ChainDB/Impl/Background.hs` 257-296, 443-448 and 557-576, ouroboros-consensus
+        // 82ecba329)
         assertEquals(
           traced,
           Vector(
-            StorageEvent.ScheduledGC(block(1)._1.slot, 60.seconds),
             StorageEvent.ScheduledGC(block(2)._1.slot, 60.seconds),
             StorageEvent.PerformedGC(block(2)._1.slot)
           ),
-          "each copy's schedule, then the one collection"
+          "the copy's schedule, then the one collection"
         )
     }
   }
@@ -278,7 +282,7 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
           _ <- n.act(recovered =>
             typed(
               recovered.persistence.extended(ref2, raw2, Vector(ref1, ref2), Anchor(Some(ref2), 2))
-            )
+            ) *> recovered.persistence.published
           )
           // the copy is done and the backing store is at work: 7 s pass
           _ <- n.advance(7.seconds)
@@ -341,7 +345,7 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
     node { (dir, n) =>
       for
         failed <- Ref.of[IO, Option[NodeError]](None)
-        reported <- Ref.of[IO, Option[ChainStorage.CollectionStopped]](None)
+        reported <- Ref.of[IO, Option[ChainStorage.BackgroundStopped]](None)
         waiter <- Ref.of[IO, Option[cats.effect.FiberIO[Unit]]](None)
         observed <- (for
           _ <- n.act(put(1, 2, 3))
@@ -349,7 +353,7 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
           // the wait for the report is started before the failure, in a fiber of its own the test
           // keeps, so it never holds up the steps, the stop among them (TST-5)
           _ <- n.act(recovered =>
-            recovered.collectionsStopped
+            recovered.backgroundStopped
               .flatMap(stopped => reported.set(Some(stopped)))
               .start
               .flatMap(fiber => waiter.set(Some(fiber)))
@@ -388,7 +392,7 @@ class ReceivedCollectionSuite extends FailsOnUncaught:
         )
         stopped match
           case Some(
-                ChainStorage.CollectionStopped.Failed(StorageError.Io(_, _: NoSuchFileException))
+                ChainStorage.BackgroundStopped.Failed(StorageError.Io(_, _: NoSuchFileException))
               ) =>
             ()
           case other =>

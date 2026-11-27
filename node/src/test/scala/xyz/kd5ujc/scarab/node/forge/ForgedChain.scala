@@ -353,6 +353,7 @@ class ForgedChainSetup(val geometry: EpochGeometry):
             _ => IO.unit,
             geometry,
             persistence = Some(new xyz.kd5ujc.scarab.storage.ChainPersistence[IO, MirrorState]:
+              def published = IO.unit
               def extended(
                   ref: BlockRef,
                   raw: Bytes,

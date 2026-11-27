@@ -1842,14 +1842,16 @@ object Main extends IOApp:
           run.leios,
           run.leios.as(run.txCache.evictOlderThan)
         )(ReceivedBlockRecovery.startUp(genesis.geometry.byron.epochSlots))
-        // a failed collection of the received log stops the node, as the failure of the
-        // reference's collection ends the thread it is linked to (consensus 82ecba329
-        // Storage/ChainDB/Impl/Background.hs:116-121,140-142)
+        // a failed copy to the immutable store or collection of the received log stops the node,
+        // as the failure of the reference's copy runner or collection ends the thread it is linked
+        // to (consensus 82ecba329 Storage/ChainDB/Impl/Background.hs:116-125,140-142)
         .flatTap(r =>
-          r.collectionsStopped.flatMap {
-            case ChainStorage.CollectionStopped.Failed(error) =>
+          r.backgroundStopped.flatMap {
+            case ChainStorage.BackgroundStopped.Failed(error) =>
               instruments.fatalSink(Fatal.Storage(error))
-            case ChainStorage.CollectionStopped.Defect(cause) =>
+            case ChainStorage.BackgroundStopped.Undecodable(problem) =>
+              instruments.fatalSink(Fatal.of(problem))
+            case ChainStorage.BackgroundStopped.Defect(cause) =>
               instruments.fatalSink(Fatal.Defect(cause))
           }.background
         )

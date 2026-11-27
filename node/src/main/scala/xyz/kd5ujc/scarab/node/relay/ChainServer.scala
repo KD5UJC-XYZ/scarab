@@ -54,8 +54,13 @@ final class ChainServer[F[_]: Async] private (
     */
   private[relay] def publishable: F[Boolean] = publishing.available.map(_ > 0)
 
-  /** The node's chain updates, to be composed with the storage persistence. The block must be
-    * stored (by the persistence that runs before this one) before it leaves the volatile chain.
+  /** The node's chain updates, to be composed with the storage persistence. A block leaves the
+    * served chain only once the store holds it: with a store, the blocks up to the store's tip are
+    * dropped at each extension, so the blocks aged past `k` that the copy runner has not copied yet
+    * are still served from here, as the reference's followers read the whole of `cdbChain`, whose
+    * blocks its copy runner removes only once it has appended them to the ImmutableDB
+    * (`Storage/ChainDB/Impl/Follower.hs` 462-465 and `Background.hs` 199-206, ouroboros-consensus
+    * 82ecba329). Without a store, the blocks the extension aged past `k` are dropped.
     */
   def persistence[S]: ChainPersistence[F, S] =
     new ChainPersistence[F, S]:
@@ -65,11 +70,20 @@ final class ChainServer[F[_]: Async] private (
       ) =
         for
           header <- headerOf(raw).fold(_.raise[F, NtNHeader], F.pure)
+          stored <- store.traverse(_.tip)
+          served = Served(ref, header, raw)
           _ <- publishing.permit.surround(
-            state.update(_.extend(Served(ref, header, raw), immutable.size, anchor.block))
+            state.update(chain =>
+              stored.fold(chain.extend(served, immutable.size, anchor.block))(
+                chain.extendStored(served, _)
+              )
+            )
           )
           _ <- version.update(_ + 1)
         yield ()
+
+      // the served chain is trimmed by the store's tip, read at each extension
+      def published = F.unit
 
       def rolledBack(to: Point)(using Raise[F, StorageError], Raise[F, ChainError]) =
         publishing.permit

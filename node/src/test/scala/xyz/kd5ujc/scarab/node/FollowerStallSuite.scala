@@ -521,6 +521,7 @@ class FollowerStallSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               def emit(event: FollowerEvent) = seen.update(_ :+ event)
             stored <- Ref.of[IO, Int](0)
             failing = new ChainPersistence[IO, MirrorState]:
+              def published = IO.unit
               def extended(
                   ref: BlockRef,
                   raw: Bytes,

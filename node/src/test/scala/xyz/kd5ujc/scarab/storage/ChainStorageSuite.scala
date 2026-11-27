@@ -18,7 +18,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.protocol.ChainSync
 import xyz.kd5ujc.scarab.consensus.Anchor
 import xyz.kd5ujc.scarab.consensus.BlockRef
-import xyz.kd5ujc.scarab.consensus.FollowerEvents
+import xyz.kd5ujc.scarab.consensus.{FollowerEvent, FollowerEvents}
 import xyz.kd5ujc.scarab.consensus.state.{MirrorState, MirrorStep}
 import xyz.kd5ujc.scarab.consensus.VolatileChain
 import xyz.kd5ujc.scarab.consensus.state.ConsensusMirrorEnv
@@ -144,7 +144,10 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       store: Option[String],
       keep: Int = 4,
       migrate: Boolean = false,
-      rollback: Option[Rollback] = None
+      rollback: Option[Rollback] = None,
+      beforeCopy: Option[ChainStorage.CopyStep => IO[Unit]] = None,
+      followed: FollowerEvents[IO] = noEvents,
+      finished: IO[Unit] = IO.unit
   ): IO[
     (
         Option[BlockRef],
@@ -192,7 +195,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                 storageEvents(log),
                 backing,
                 _ => IO.unit,
-                snapshotMigration = Option.when(migrate)(SnapshotMigration.toCurrent[IO])
+                snapshotMigration = Option.when(migrate)(SnapshotMigration.toCurrent[IO]),
+                beforeCopyStep = beforeCopy
               )(ReceivedBlockRecovery.startUp(geometry.byron.epochSlots))
               .use { recovered =>
                 for
@@ -235,7 +239,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                       IO.pure(bodies(header.hash))
                   follower <- Follower.create[IO, MirrorState](
                     rules,
-                    noEvents,
+                    followed,
                     geometry,
                     persistence = Some(recovered.persistence)
                   )
@@ -243,7 +247,10 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                     .pool(follower)
                     .flatMap(blocks => WorkerTesting.follow(follower, blocks, peer, done.get))
                     .timeout(60.seconds)
-                  // snapshots are written in the background: they land before the state is read
+                  _ <- finished
+                  // the copy runner and the snapshots it starts work in the background: they
+                  // land before the state is read
+                  _ <- recovered.copied.timeout(60.seconds)
                   _ <- recovered.snapshotsWritten.timeout(60.seconds)
                   chain <- chainRef.get
                   all <- utxoStore.fold(IO.pure(chain.state.utxo.toMap))(s =>
@@ -472,6 +479,65 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         yield ()
       }
     }
+
+  test(
+    "the copy runner's pace changes nothing: the same chain, ledger, UTxO set, immutable blocks " +
+      "and follower events whether it keeps up or copies only once the follower is done (#1499)"
+  ) {
+    // The worker reads the UTxO store while the copy runner writes it (`UtxoStore.advance`), and
+    // trims each state to the store's stamp, so a run with the runner held until the end (every
+    // read from a store at its start, every diff whole) and one where it keeps up (reads racing
+    // its writes) exercise the two extremes. The peer also rolls back a block on the way.
+    def once(hold: Boolean) = tempDir.use { dir =>
+      for
+        log <- events(dir)
+        followed <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
+        gate <- Deferred[IO, Unit]
+        out <- runWith(
+          dir,
+          731,
+          120,
+          log,
+          Some("rocksdb"),
+          rollback = Some(Rollback(600, 2)),
+          beforeCopy = Option.when(hold)(_ => gate.get),
+          followed = event => followed.update(_ :+ event),
+          finished = gate.complete(()).void
+        )
+        stored <- StorageTestKit.ok(
+          FileImmutableStore
+            .open[IO](dir / "immutable", 100L)
+            .use((store, _) => store.stream(ChainSync.Point.Origin).compile.toVector)
+        )
+        seen <- followed.get
+        storage <- log.get
+      yield (out, stored.map(s => s.ref -> s.raw), seen, storage)
+    }
+    for
+      eager <- once(hold = false)
+      held <- once(hold = true)
+    yield
+      val ((_, chain, utxo), stored, seen, storage) = eager
+      val ((_, heldChain, heldUtxo), heldStored, heldSeen, heldStorage) = held
+      assertState(chain.state, states(731))
+      assertState(heldChain.state, states(731))
+      assertEquals(heldChain.tip, chain.tip)
+      assertEquals(heldChain.blocks.map(_._1), chain.blocks.map(_._1))
+      assertEquals(utxo, states(731).utxo.toMap)
+      assertEquals(heldUtxo, utxo)
+      // every block aged past `k`, in order, with the bytes the chain has
+      assertEquals(stored, (0 until 731 - k).toVector.map(i => ref(i) -> raws(i)))
+      assertEquals(heldStored, stored)
+      assertEquals(heldSeen, seen)
+      // the held runner copied in two rounds, one collection scheduled for each, as the reference
+      // copies the whole prefix then eligible: the round held at its first block, and one with
+      // every block aged meanwhile
+      def scheduled(events: Vector[StorageEvent]) =
+        events.collect { case e: StorageEvent.ScheduledGC => e.slot }
+      assertEquals(scheduled(heldStorage).size, 2, scheduled(heldStorage).toString)
+      assertEquals(scheduled(heldStorage).lastOption, Some(stored.last._1.slot))
+      assert(scheduled(storage).size > 2, scheduled(storage).toString)
+  }
 
   test("a snapshot whose UTxO checkpoint is missing stops the start, and nothing is deleted") {
     // the reference's missing tables file raises from readIncremental (82ecba32 Util/CBOR.hs:206),
@@ -718,7 +784,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       copies: Option[SnapshotCopies] = None,
       adoptLegacy: Boolean = false,
       selectionOnStartup: Boolean = false,
-      wrapRules: BlockRules[IO, MirrorState] => BlockRules[IO, MirrorState] = identity
+      wrapRules: BlockRules[IO, MirrorState] => BlockRules[IO, MirrorState] = identity,
+      beforeCopy: Option[ChainStorage.CopyStep => IO[Unit]] = None
   ): IO[Session] =
     Ref.of[IO, Vector[StorageEvent]](Vector.empty).flatMap { log =>
       Handle
@@ -744,7 +811,8 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
               setup.mirrorStart,
               events,
               backing,
-              _ => IO.unit
+              _ => IO.unit,
+              beforeCopyStep = beforeCopy
             )(ReceivedBlockRecovery.startUp(geometry.byron.epochSlots))
             .use { recovered =>
               for
@@ -819,6 +887,9 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
                   .pool(follower)
                   .flatMap(blocks => WorkerTesting.follow(follower, blocks, peer, done.get))
                   .timeout(60.seconds)
+                // the copy runner keeps up with the follower before a stop, as it does in a node
+                // that is not syncing
+                _ <- recovered.copied.timeout(60.seconds)
                 chain <- chainRef.get
                 offers <- offered.get
               yield (resumed, recovered.anchor, chain, offers, startupReplayed)
@@ -903,6 +974,7 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         underlying: ChainPersistence[IO, MirrorState]
     ): ChainPersistence[IO, MirrorState] =
       new ChainPersistence[IO, MirrorState]:
+        def published = underlying.published
         def extended(
             ref: BlockRef,
             raw: Bytes,
@@ -1109,6 +1181,86 @@ class ChainStorageSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         }
         // some of the copies resumed volatile blocks, so the log really was in use
         _ <- IO(assert(results.exists(_._2.resumed > 0)))
+      yield ()
+    }
+  }
+
+  test(
+    "a kill at each step of the copy runner's round restarts at the same chain and state"
+  ) {
+    // The copy runner works behind the follower: a kill can find blocks the published chain aged
+    // past `k` not yet copied, a round half copied, its collection not scheduled, the backing
+    // store not brought to it, or the selected-chain log not collected. A copy of the database
+    // taken at a step, the follower held off (`SnapshotCopies.quiet`), is what a kill there leaves.
+    // From block event 300 the runner is first held until the follower is 4 extensions ahead, so
+    // the next round copies several blocks, and the next 12 steps are each cut. Every restart
+    // reaches the chain and state of a run that was never stopped (the reference recovers the
+    // same way: blocks the ImmutableDB lacks are still in the VolatileDB, `copyToImmutableDB`,
+    // Storage/ChainDB/Impl/Background.hs:148-159, ouroboros-consensus 82ecba329).
+    tempDir.use { root =>
+      val live = root / "live"
+      enum Phase:
+        case Waiting
+        case Cutting(left: Int)
+      for
+        _ <- files.createDirectories(live)
+        copies <- SnapshotCopies.create
+        progress <- fs2.concurrent.SignallingRef[IO, Int](0)
+        phase <- Ref.of[IO, Phase](Phase.Waiting)
+        taken <- Ref.of[IO, Vector[ChainStorage.CopyStep]](Vector.empty)
+        cut = (step: ChainStorage.CopyStep) =>
+          taken.get.flatMap(done =>
+            copies.quiet(copyTree(live, root / s"cut-${done.size}")) *> taken.update(_ :+ step)
+          )
+        beforeCopy = (step: ChainStorage.CopyStep) =>
+          phase.get.flatMap {
+            case Phase.Waiting =>
+              progress.get.flatMap { at =>
+                IO.whenA(at >= 300)(
+                  phase.set(Phase.Cutting(12)) *> progress.waitUntil(_ >= at + 4) *> cut(step)
+                )
+              }
+            case Phase.Cutting(left) if left > 0 => phase.set(Phase.Cutting(left - 1)) *> cut(step)
+            case Phase.Cutting(_)                => IO.unit
+          }
+        liveSession <- session(
+          live,
+          731,
+          tap = progress.set,
+          copies = Some(copies),
+          beforeCopy = Some(beforeCopy)
+        )
+        steps <- taken.get
+        _ <- IO {
+          assertEquals(steps.size, 13, steps.toString)
+          assertEquals(
+            liveSession.events.collect { case StorageEvent.SnapshotFailed(failure) => failure },
+            Vector.empty
+          )
+          // a round of more than one block was cut between two of its appends
+          assert(
+            steps.sliding(2).exists {
+              case Vector(ChainStorage.CopyStep.Append(_), ChainStorage.CopyStep.Append(_)) => true
+              case _                                                                        => false
+            },
+            steps.toString
+          )
+          assert(steps.exists(_.isInstanceOf[ChainStorage.CopyStep.Schedule]), steps.toString)
+          assert(steps.exists(_.isInstanceOf[ChainStorage.CopyStep.Advance]), steps.toString)
+          assert(steps.contains(ChainStorage.CopyStep.Collect), steps.toString)
+        }
+        results <- steps.indices.toVector.traverse(i =>
+          session(root / s"cut-$i", 731).map(s => (steps(i), s))
+        )
+        _ <- results.traverse_ { (step, s) =>
+          IO {
+            assertState(s.chain.state, states(731), s"restart from the cut before $step")
+            assertEquals(s.chain.tip, headers(730).point, s"restart from the cut before $step")
+          }
+        }
+        // some cut left the immutable store behind the selected chain's anchor: the log held more
+        // than `k` blocks after its tip, the first `k` resumed and the rest fetched again
+        _ <- IO(assert(results.exists(_._2.dropped > 0), results.map(_._2.dropped).toString))
       yield ()
     }
   }

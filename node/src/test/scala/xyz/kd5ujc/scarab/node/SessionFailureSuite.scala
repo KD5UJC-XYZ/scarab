@@ -134,6 +134,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         stored <- Ref.of[IO, Vector[BlockRef]](Vector.empty)
         emitted <- Ref.of[IO, Vector[FollowerEvent]](Vector.empty)
         persistence = new ChainPersistence[IO, BigInt]:
+          def published = IO.unit
           def extended(
               block: BlockRef,
               raw: Bytes,

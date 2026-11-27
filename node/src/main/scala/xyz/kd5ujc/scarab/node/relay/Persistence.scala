@@ -25,3 +25,4 @@ object Persistence:
       first.extended(ref, raw, immutable, anchor) *> second.extended(ref, raw, immutable, anchor)
     def rolledBack(to: ChainSync.Point)(using Raise[F, StorageError], Raise[F, ChainError]) =
       first.rolledBack(to) *> second.rolledBack(to)
+    def published = first.published *> second.published
