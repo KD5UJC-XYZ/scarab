@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import monocle.Lens
+import monocle.{Getter, Lens}
 import scala.collection.immutable.SortedMap
+import xyz.kd5ujc.scarab.ledger.Ptr
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
   Accounts,
+  Babbage,
   Coin,
   CompactCoin,
   Conway,
@@ -15,6 +17,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   DRep,
   EraTag,
   KeyHash,
+  ShelleyAccountState,
   StakePool,
   Staking,
   Withdrawals
@@ -24,9 +27,11 @@ import xyz.kd5ujc.scarab.ledger.era.Relation.*
 /** The state of one stake account in era `E` (`type AccountState era`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/State/Account.hs:89`): one case per era that has
   * its instance of [[EraAccounts]]. The accounts themselves are the state's family
-  * ([[xyz.kd5ujc.scarab.ledger.state.Accounts]], `Account.hs:90`).
+  * ([[xyz.kd5ujc.scarab.ledger.state.Accounts]], `Account.hs:90`). Babbage's is Shelley's
+  * (`eras/babbage/impl/src/Cardano/Ledger/Babbage/State/Account.hs:12`, cardano-ledger f649f975).
   */
 type AccountState[E <: EraTag] = E match
+  case Babbage  => ShelleyAccountState
   case Conway   => ConwayAccountState
   case Dijkstra => ConwayAccountState
 
@@ -58,6 +63,8 @@ trait EraAccounts[E <: EraTag]:
   * functions of `State/Account.hs` (cardano-ledger f649f975) over the class.
   */
 object EraAccounts:
+  given babbage: ShelleyEraAccounts[Babbage] =
+    xyz.kd5ujc.scarab.ledger.era.babbage.BabbageState.accounts
   given conway: ConwayEraAccounts[Conway] =
     xyz.kd5ujc.scarab.ledger.era.conway.ConwayState.accounts
   given dijkstra: ConwayEraAccounts[Dijkstra] =
@@ -186,6 +193,79 @@ object EraAccounts:
         account.id.credential,
         acc
       )
+    )
+
+/** The stake accounts of the eras before Conway, each registered by a certificate its pointer names
+  * (`class ShelleyEraAccounts`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/State/
+  * Account.hs:158-193`, cardano-ledger f649f975).
+  */
+trait ShelleyEraAccounts[E <: EraTag] extends EraAccounts[E]:
+  /** `mkShelleyAccountState`: an account with no balance and no delegation, holding `deposit`,
+    * registered by the certificate `ptr` names.
+    */
+  def mkShelleyAccountState(ptr: Ptr, deposit: CompactCoin): AccountState[E]
+
+  /** `accountsPtrsMapL`, which the reference does not export (`Account.hs:173-179`, cardano-ledger
+    * f649f975): writing a pointer apart from its account breaks the accounts' invariant, so only
+    * the functions below write it, and others read it by [[accountsPtrsMapG]].
+    */
+  private[era] def accountsPtrsMapL: Lens[Accounts[E], SortedMap[Ptr, Credential[Staking]]]
+
+  /** `accountsPtrsMapG` (`Account.hs:181-183`, cardano-ledger f649f975): each pointer with the
+    * credential it registered.
+    */
+  final def accountsPtrsMapG: Getter[Accounts[E], SortedMap[Ptr, Credential[Staking]]] =
+    accountsPtrsMapL.asGetter
+
+  /** `ptrAccountStateG` (`Account.hs:185-193`, cardano-ledger f649f975): the pointer of the
+    * certificate that registered the account, which does not change once it is registered.
+    */
+  def ptrAccountStateG: Getter[AccountState[E], Ptr]
+
+/** The functions of `Shelley/State/Account.hs` (cardano-ledger f649f975) over the class. */
+object ShelleyEraAccounts:
+  /** `shelleyAddAccountState` (`Shelley/State/Account.hs:195-204`, cardano-ledger f649f975): the
+    * account added, and its pointer with it.
+    */
+  def shelleyAddAccountState[E <: EraTag](
+      credential: Credential[Staking],
+      accountState: AccountState[E],
+      accounts: Accounts[E]
+  )(using a: ShelleyEraAccounts[E]): Accounts[E] =
+    a.accountsPtrsMapL.modify(_.updated(a.ptrAccountStateG.get(accountState), credential))(
+      a.accountsMapL.modify(_.updated(credential, accountState))(accounts)
+    )
+
+  /** `registerShelleyAccount` (`Shelley/State/Account.hs:206-219`, cardano-ledger f649f975): a new
+    * account of `credential`, registered by the certificate `ptr` names, holding `deposit` and
+    * delegating to `stakePool`, added by the class's `addAccountState`.
+    */
+  def registerShelleyAccount[E <: EraTag](
+      credential: Credential[Staking],
+      ptr: Ptr,
+      deposit: CompactCoin,
+      stakePool: Option[KeyHash[StakePool]],
+      accounts: Accounts[E]
+  )(using a: ShelleyEraAccounts[E]): Accounts[E] =
+    a.addAccountState(
+      credential,
+      a.stakePoolDelegationAccountStateL.replace(stakePool)(a.mkShelleyAccountState(ptr, deposit)),
+      accounts
+    )
+
+  /** `unregisterShelleyAccount` (`Shelley/State/Account.hs:221-237`, cardano-ledger f649f975): the
+    * account as it was, if it was registered, and the accounts without it and without its pointer.
+    */
+  def unregisterShelleyAccount[E <: EraTag](
+      credential: Credential[Staking],
+      accounts: Accounts[E]
+  )(using a: ShelleyEraAccounts[E]): (Option[AccountState[E]], Accounts[E]) =
+    val map = a.accountsMapL.get(accounts)
+    val found = map.get(credential)
+    val without = a.accountsMapL.replace(map - credential)(accounts)
+    (
+      found,
+      found.fold(without)(s => a.accountsPtrsMapL.modify(_ - a.ptrAccountStateG.get(s))(without))
     )
 
 /** The stake accounts from Conway, which delegate their votes too (`class ConwayEraAccounts`,

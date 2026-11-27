@@ -78,6 +78,15 @@ trait StoredTxOut[E <: EraTag]:
   private[ledger] def fromStored(out: xyz.kd5ujc.scarab.ledger.TxOut): Either[EraTxError, TxOut[E]]
 
 object StoredTxOut:
+  given babbage: StoredTxOut[Babbage] with
+    def toStored(out: TxOut[Babbage]): xyz.kd5ujc.scarab.ledger.TxOut =
+      xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxOut.toStored(out)
+    private[ledger] def fromStored(
+        out: xyz.kd5ujc.scarab.ledger.TxOut
+    ): Either[EraTxError, TxOut[Babbage]] =
+      xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxOut.fromStored(out)
+    def storedValue(value: Value[Babbage]): xyz.kd5ujc.scarab.ledger.Value = value.stored
+
   given conway: StoredTxOut[Conway] with
     def toStored(out: TxOut[Conway]): xyz.kd5ujc.scarab.ledger.TxOut =
       xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut.toStored(out)
