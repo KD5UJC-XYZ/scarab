@@ -2,14 +2,25 @@
 package xyz.kd5ujc.scarab.ledger.era.babbage
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Node}
-import xyz.kd5ujc.scarab.ledger.{Address, ByteStrings, LedgerDecodeError, ScriptKind}
+import xyz.kd5ujc.scarab.codec.{Bytes, Node, Value as CborValue}
+import xyz.kd5ujc.scarab.ledger.{
+  Address,
+  ByteStrings,
+  CborRead,
+  Datum as FlatDatum,
+  DecodeField,
+  DecodeSite,
+  LedgerDecodeError,
+  ScriptKind,
+  Value as FlatValue
+}
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraScript,
   AlonzoScriptRep,
   BabbageEraTxOut,
   BabbageTxOutRep,
   BabbageTxOuts,
+  BinaryData,
   Data,
   Datum,
   EraTxError,
@@ -82,13 +93,6 @@ object BabbagePlutusScript:
 opaque type BabbageScript = AlonzoScriptRep[BabbageTimelock, BabbagePlutusScript]
 
 object BabbageScript:
-  /** A native script as a Babbage script (`fromNativeScript`). */
-  private[babbage] def native(t: BabbageTimelock): BabbageScript = AlonzoScriptRep.NativeScript(t)
-
-  /** A Plutus script as a Babbage script (`fromPlutusScript`). */
-  private[babbage] def plutus(p: BabbagePlutusScript): BabbageScript =
-    AlonzoScriptRep.PlutusScript(p)
-
   /** Babbage's script decoder (`decodeAlonzoScript` at `eraMaxLanguage = PlutusV2`,
     * `Babbage/Scripts.hs:63`, cardano-ledger f649f975).
     */
@@ -150,17 +154,159 @@ object BabbageTxOut:
   ): Either[EraTxError, BabbageTxOut] =
     inverse(out)(BabbageTxOutRep.fromStored(out)(n => BabbageScript.read(n)))
 
-  /** An output the flat decoder read at Babbage from a block or a transaction, as a Babbage output:
-    * its inline datum read as data, as the reference's `DecCBOR` of `BinaryData` reads it
-    * (`makeBinaryData`), and its reference script read as a Babbage script. It is held to the flat
-    * output it came from, with the size of the encoding it was read from (`Sized`, the flat
-    * output's `ledgerSize`).
+  /** An output of a Babbage body read from its item: `decodeBabbageTxOut` below decoder version 12
+    * (`eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs:549-662`, cardano-ledger f649f975), at
+    * Babbage's version. A list of two or three is read in its order; the map form (`SparseKeyed
+    * "TxOut"` of `bodyFields`), chosen by `peekTokenType` for a map whose length is not written in
+    * eight bytes (#701), has its keys read as written, as `decodeSparse` reads them: a key read
+    * before is refused, then a key the output does not know, then its value; after the last a
+    * missing address, then a missing value, is refused. Each value is read by the flat output
+    * reader's reader of its field ([[xyz.kd5ujc.scarab.ledger.TxOut.decode]]), with its refusal;
+    * the inline datum is read as data (`makeBinaryData`) and the reference script as a Babbage
+    * script. The output is held to the form the store keeps of it, the flat output those fields
+    * make ([[EraTxError.StoredOutputDiffers]]), with the size of the encoding it was read from
+    * (`Sized`).
     */
-  private[babbage] def fromDecoded(
-      out: xyz.kd5ujc.scarab.ledger.TxOut
+  private[babbage] def read(n: Node, mode: Address.Mode, values: FlatValue.Decoding)(using
+      ByteStrings
   ): Either[EraTxError, Sized[BabbageTxOut]] =
-    inverse(out)(BabbageTxOutRep.fromDecoded(out)(n => BabbageScript.read(n)))
-      .map(Sized(_, out.ledgerSize.toLong))
+    val forms = xyz.kd5ujc.scarab.ledger.TxOut.Forms.PairDatumHashOrMap
+    def address(x: Node) =
+      CborRead.bytes(x, DecodeField.OutputAddress).flatMap(Address.decode(_, mode))
+    def value(x: Node) = FlatValue.decode(x, DecodeField.OutputValue, values, forms.records)
+    def made(f: Fields): Either[EraTxError, Sized[BabbageTxOut]] =
+      (f.address, f.value) match
+        case (Some(a), Some((v, item))) =>
+          val (flatDatum, datum) = f.datum.getOrElse((FlatDatum.NoDatum, Datum.NoDatum))
+          val out = BabbageTxOutRep(
+            n.original,
+            a,
+            MultiAssetValue.of(v),
+            item.original.size,
+            datum,
+            f.script.map(_._2)
+          )
+          val flat = xyz.kd5ujc.scarab.ledger
+            .TxOut(n.original, a, v, flatDatum, f.script.map(_._1), item.original.size)
+          Either.cond(
+            toStored(out) == flat,
+            Sized(out, flat.ledgerSize.toLong),
+            EraTxError.StoredOutputDiffers
+          )
+        case (None, _) =>
+          Left(
+            EraTxError.Decode(
+              LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.Address)
+            )
+          )
+        case (Some(_), None) =>
+          Left(
+            EraTxError.Decode(LedgerDecodeError.MissingField(DecodeField.Output, DecodeField.Value))
+          )
+    n.value match
+      case CborValue.Arr(xs) if forms.arities.contains(xs.size) =>
+        (for
+          a <- address(xs(0))
+          v <- value(xs(1))
+          d <- xs
+            .lift(2)
+            .traverse(
+              CborRead
+                .bytesN(_, 32, DecodeField.DatumHash)
+                .map(h => (FlatDatum.Hash(h), Datum.DatumHash(h)))
+            )
+        yield Fields(Some(a), Some((v, xs(1))), d, None))
+          .leftMap(EraTxError.Decode(_))
+          .flatMap(made)
+      case CborValue.Map(_) if !CborRead.mapLength64(n) =>
+        val what = DecodeField.Output
+        CborRead
+          .map(n, what)
+          .flatMap(_.foldM((Fields(None, None, None, None), Set.empty[Int])) {
+            case ((f, seen), (k, v)) =>
+              for
+                key <- CborRead
+                  .uint(k, what / DecodeSite.Qualifier.Key)
+                  .flatMap(key =>
+                    Either.cond(key.isValidInt, key.toInt, LedgerDecodeError.UnknownKey(what, key))
+                  )
+                _ <- Either.cond(!seen.contains(key), (), LedgerDecodeError.DuplicateKey(what))
+                _ <- Either.cond(
+                  outputKeys.contains(key),
+                  (),
+                  LedgerDecodeError.UnknownFields(what, Set(key))
+                )
+                set <- key match
+                  case 0 => address(v).map(a => f.copy(address = Some(a)))
+                  case 1 => value(v).map(x => f.copy(value = Some((x, v))))
+                  case 2 => datumOption(v).map(d => f.copy(datum = Some(d)))
+                  case _ => referenceScript(v).map(s => f.copy(script = Some(s)))
+              yield (set, seen + key)
+          })
+          .leftMap(EraTxError.Decode(_))
+          .flatMap(r => made(r._1))
+      case _ => Left(EraTxError.Decode(LedgerDecodeError.OutputForm(forms, n.value)))
+
+  // `bodyFields` of the output's map, `Babbage/TxOut.hs:643-662`, cardano-ledger f649f975
+  private val outputKeys: Set[Int] = Set(0, 1, 2, 3)
+
+  /** What an output's keys read so far set, each field as the era's and as the flat output's. */
+  private final case class Fields(
+      address: Option[Address],
+      value: Option[(FlatValue, Node)],
+      datum: Option[(FlatDatum, Datum)],
+      script: Option[(xyz.kd5ujc.scarab.ledger.Script, BabbageScript)]
+  )
+
+  // `datum_option = [0, hash] / [1, #6.24(bytes .cbor plutus_data)]`, the inline datum read as
+  // data once, with the flat reader's refusal (`Data.readBytes`)
+  private def datumOption(n: Node)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, (FlatDatum, Datum)] =
+    CborRead.arrayN(n, 2, DecodeField.DatumOption).flatMap { xs =>
+      CborRead.uint(xs(0), DecodeField.DatumOptionTag).flatMap {
+        case t if t == 0 =>
+          CborRead
+            .bytesN(xs(1), 32, DecodeField.DatumHash)
+            .map(h => (FlatDatum.Hash(h), Datum.DatumHash(h)))
+        case t if t == 1 =>
+          xs(1).value match
+            case CborValue.Tag(g, inner) if g == 24 =>
+              CborRead
+                .bytes(inner, DecodeField.InlineDatum)
+                .flatMap(b =>
+                  BinaryData
+                    .makeBinaryData(b)
+                    .bimap(
+                      LedgerDecodeError.PlutusData(DecodeField.InlineDatum, _),
+                      d => (FlatDatum.Inline(b), Datum.Datum(d))
+                    )
+                )
+            case _ => Left(LedgerDecodeError.ExpectedTag(DecodeField.InlineDatum, 24, xs(1).value))
+        case t => Left(LedgerDecodeError.UnknownTag(DecodeField.DatumOption, t))
+      }
+    }
+
+  // `#6.24(bytes .cbor script)` (`decodeCIC "Script"`), read once as a Babbage script; the flat
+  // output keeps it by its kind, hash and native tree
+  private def referenceScript(n: Node)(using
+      ByteStrings
+  ): Either[LedgerDecodeError, (xyz.kd5ujc.scarab.ledger.Script, BabbageScript)] =
+    n.value match
+      case CborValue.Tag(t, inner) if t == 24 =>
+        CborRead
+          .bytes(inner, DecodeField.ReferenceScript)
+          .flatMap(CborRead.decode(_))
+          .flatMap(BabbageScript.read)
+          .map(s => (flatScript(s), s))
+      case _ => Left(LedgerDecodeError.ExpectedTag(DecodeField.ReferenceScript, 24, n.value))
+
+  // the reference script as the flat reader keeps it (`Script.decodeWrapped`), without its bytes
+  private def flatScript(s: BabbageScript): xyz.kd5ujc.scarab.ledger.Script = s match
+    case AlonzoScriptRep.NativeScript(t) =>
+      xyz.kd5ujc.scarab.ledger.Script.nativeOf(t.raw, t.script).withoutBytes
+    case AlonzoScriptRep.PlutusScript(p) =>
+      xyz.kd5ujc.scarab.ledger.Script.plutus(p.kind, p.binary).withoutBytes
 
   // the output written back is the one read, so `toStored` is its inverse
   private def inverse(out: xyz.kd5ujc.scarab.ledger.TxOut)(

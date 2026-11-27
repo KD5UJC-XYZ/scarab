@@ -66,56 +66,69 @@ object BabbageTx:
     ).mapN((body, wits, aux) => BabbageTx(body, wits, IsPhase2Valid.of(t.isValid), aux))
 
   /** A whole Babbage transaction as a client or a peer submits it (`decodeRecordNamed "AlonzoTx"`,
-    * `Alonzo/Tx.hs:536-554`, cardano-ledger f649f975): a record of the body, the witness set, the
-    * phase-two flag when its token is a boolean (`peekTokenType`), and the auxiliary data or null,
-    * of four items with the flag and three without. Bytes that hold no empty indefinite list hold
-    * no detached record ([[DetachedRecords.mayHold]]), and each part is then read from its item;
-    * otherwise the parts are split as the flat decoder splits them
-    * ([[xyz.kd5ujc.scarab.ledger.Tx.envelopeParts]]) and each is parsed again from its bytes.
+    * `Alonzo/Tx.hs:526-554`, cardano-ledger f649f975), read as the reference reads it ([[record]]).
+    * Bytes that hold no empty indefinite list hold no detached record
+    * ([[DetachedRecords.mayHold]]), and each part is then read from its item in the transaction's
+    * tree; otherwise each part is parsed again from its bytes, with the records its own walk finds,
+    * as the flat decoder reads it ([[xyz.kd5ujc.scarab.ledger.Tx.envelopeParts]]).
     */
   def fromEnvelope(bytes: Bytes, layout: StateLayout): Either[EraTxError, BabbageTx] =
+    def syntax(e: Cbor.Error) = EraTxError.Decode(LedgerDecodeError.Syntax(e))
     if DetachedRecords.mayHold(bytes) then
       DetachedRecords
         .read(bytes, Cbor.Limits.Unbounded, DetachedRecords.Shapes.transaction(Era.Babbage))(
-          LedgerDecodeError.Syntax(_)
-        )(xyz.kd5ujc.scarab.ledger.Tx.envelopeParts(_, Era.Babbage))
-        .leftMap(EraTxError.Decode(_))
-        .flatMap(decode(_, layout))
+          syntax
+        )(
+          record(_)(
+            n => BabbageTxBody.decode(n.original, layout),
+            n => BabbageTxWits.decode(n.original),
+            n => BabbageTxAuxData.decode(n.original)
+          )
+        )
     else
       Cbor
         .decode(bytes, Cbor.Limits.Unbounded)
-        .leftMap(e => EraTxError.Decode(LedgerDecodeError.Syntax(e)))
-        .flatMap(root => items(root).leftMap(EraTxError.Decode(_)))
-        .flatMap((body, wits, aux, valid) =>
-          (
-            BabbageTxBody.fromItem(body, layout),
-            BabbageTxWits.fromItem(wits),
-            aux.traverse(BabbageTxAuxData.fromItem)
-          ).mapN((b, w, a) => BabbageTx(b, w, IsPhase2Valid.of(valid), a))
+        .leftMap(syntax)
+        .flatMap(
+          record(_)(
+            BabbageTxBody.fromItem(_, layout),
+            BabbageTxWits.fromItem,
+            BabbageTxAuxData.fromItem
+          )
         )
 
-  /** The parts of a whole transaction's item, as the flat decoder splits them from Alonzo on
-    * ([[xyz.kd5ujc.scarab.ledger.Tx.envelopeParts]]): a list of four with a boolean third, or of
-    * three whose third, the auxiliary data or null, is not a boolean, the transaction then valid.
+  /** `decodeRecordNamed "AlonzoTx"` of a whole transaction's item (`Alonzo/Tx.hs:538-553`,
+    * cardano-ledger f649f975), its items read in order: the body, the witness set, the phase-two
+    * flag when the third item is a boolean (`peekTokenType`), the transaction valid otherwise, and
+    * then the auxiliary data or null (`decodeNullStrictMaybe`). Only then is the record's size
+    * checked: four items with the flag, three without. An item missing before the record's end is
+    * refused at its turn, as the reference runs out of input there.
     */
-  private def items(
-      node: Node
-  ): Either[LedgerDecodeError, (Node, Node, Option[Node], Boolean)] =
-    def aux(n: Node) = n.value match
-      case Value.Null => None
-      case _          => Some(n)
+  private def record(node: Node)(
+      body: Node => Either[EraTxError, BabbageTxBody],
+      wits: Node => Either[EraTxError, BabbageTxWits],
+      aux: Node => Either[EraTxError, BabbageTxAuxData]
+  ): Either[EraTxError, BabbageTx] =
     def length(expected: Int, actual: Int) =
-      Left(LedgerDecodeError.ArrayLength(DecodeField.Transaction, expected, actual))
-    CborRead.array(node, DecodeField.Transaction).flatMap {
-      case Vector(body, wits, flag, auxiliary) =>
-        CborRead.bool(flag, DecodeField.IsValid).map((body, wits, aux(auxiliary), _))
-      case Vector(body, wits, auxiliary) =>
-        auxiliary.value match
-          // read as the flag, the auxiliary data after it missing
-          case Value.Bool(_) => length(4, 3)
-          case _             => Right((body, wits, aux(auxiliary), true))
-      case xs => length(if xs.sizeIs < 3 then 3 else 4, xs.size)
-    }
+      EraTxError.Decode(LedgerDecodeError.ArrayLength(DecodeField.Transaction, expected, actual))
+    CborRead
+      .array(node, DecodeField.Transaction)
+      .leftMap(EraTxError.Decode(_))
+      .flatMap { xs =>
+        // the record's items in order, each refused at its turn when the list ends before it
+        def at(i: Int, expected: Int) = xs.lift(i).toRight(length(expected, xs.size))
+        for
+          b <- at(0, 3).flatMap(body)
+          w <- at(1, 3).flatMap(wits)
+          flag = xs.lift(2).map(_.value).collect { case Value.Bool(v) => v }
+          size = if flag.isDefined then 4 else 3
+          auxItem <- at(size - 1, size)
+          a <- auxItem.value match
+            case Value.Null => Right(None)
+            case _          => aux(auxItem).map(Some(_))
+          _ <- Either.cond(xs.sizeIs == size, (), length(size, xs.size))
+        yield BabbageTx(b, w, IsPhase2Valid.of(flag.getOrElse(true)), a)
+      }
 
   /** `EraTx BabbageEra` and `AlonzoEraTx BabbageEra` (`Babbage/Tx.hs:36-76`, cardano-ledger
     * f649f975): Alonzo's transaction, of the top level only.

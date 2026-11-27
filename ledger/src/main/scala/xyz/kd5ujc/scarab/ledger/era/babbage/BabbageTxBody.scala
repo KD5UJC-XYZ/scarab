@@ -15,7 +15,6 @@ import xyz.kd5ujc.scarab.ledger.{
   DetachedRecords,
   LedgerDecodeError,
   RewardAccount,
-  ScriptKind,
   TxIn,
   Value as FlatValue
 }
@@ -146,7 +145,7 @@ object BabbageTxBody:
     * refuses, with its error. The bytes are parsed once; an input that holds an empty indefinite
     * list and that the plain parse refuses is parsed again with the detached records a walk finds,
     * as the flat decoder parses it ([[DetachedRecords.read]]). A pool's parameters are read in
-    * `layout`, the layout of the build that reads it ([[BabbageTxCert.decode]]).
+    * `layout`, the layout of the build that reads it ([[BabbageTxCert.fromFlat]]).
     */
   def decode(raw: Bytes, layout: StateLayout): Either[EraTxError, BabbageTxBody] =
     DetachedRecords
@@ -237,16 +236,7 @@ object BabbageTxBody:
       r.leftMap(EraTxError.Decode(_))
     def txIns(what: DecodeField) =
       decode(CborRead.set(n, what, version)(TxIn.decode)).map(SortedSet.from(_))
-    def output(x: Node) =
-      decode(
-        xyz.kd5ujc.scarab.ledger.TxOut.decode(
-          x,
-          mode,
-          xyz.kd5ujc.scarab.ledger.TxOut.Forms.of(Era.Babbage),
-          ScriptKind.newest(Era.Babbage),
-          values
-        )
-      ).flatMap(BabbageTxOut.fromDecoded)
+    def output(x: Node) = BabbageTxOut.read(x, mode, values)
     def coin(site: DecodeField) = decode(CborRead.uint(n, site)).map(Coin(_))
     def hash(site: DecodeField) = decode(CborRead.bytesN(n, 32, site))
     key match

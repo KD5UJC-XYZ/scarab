@@ -50902,28 +50902,6 @@
    "structure": "same",
    "digest": "860ffecd910cc4f8"
   },
-  "def ledger.era.babbage.BabbageTxCert.decode": {
-   "upstream": [
-    {
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs",
-     "symbol": "DecCBOR (ShelleyTxCert era)",
-     "lines": [
-      469,
-      488
-     ]
-    }
-   ],
-   "class": "Mirror",
-   "structure": "differs",
-   "evidence": [
-    "BabbageTxDifferentialSuite",
-    "BabbageTxSuite"
-   ],
-   "note": "the flat decoder's certificate reader at Babbage, then the certificate it reads made Babbage's (fromFlat)",
-   "digest": "1437a38f6c684307"
-  },
   "val ledger.era.babbage.BabbageTxCert.instance": {
    "upstream": [
     {
@@ -51422,7 +51400,7 @@
     "BabbageTxDifferentialSuite",
     "BabbageTxSuite"
    ],
-   "note": "a body read in one pass at Babbage's decoder version, 7, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 7; held to the flat decoder's verdicts, ids, bytes and values on every recorded Babbage transaction, every Babbage row of the reference's decoder corpora and byte mutants, and to the reference's recorded refusals (BabbageTxDifferentialSuite)",
+   "note": "a body read in one pass at Babbage's decoder version, 7, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 7; its outputs by Babbage's output reader (BabbageTxOut.read); held to the flat decoder's verdicts on every Babbage transaction the repository holds (the recorded blocks, the reference's refusal, v1-context and Plutus admission corpora) and on byte mutants of them, and on 576 Babbage rows of the reference's decoder corpora (three of them witness sets at protocol version 8, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (BabbageTxDifferentialSuite), and to its written order on crafted cases (BabbageTxSuite)",
    "digest": "f121c82716c8d727"
   },
   "val ledger.era.babbage.BabbageTxBody.instance": {
@@ -51498,8 +51476,8 @@
     "BabbageTxDifferentialSuite",
     "BabbageTxSuite"
    ],
-   "note": "a witness set read in one pass at Babbage's decoder version, 7, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 7; held to the flat decoder's verdicts, ids, bytes and values on every recorded Babbage transaction, every Babbage row of the reference's decoder corpora and byte mutants, and to the reference's recorded refusals (BabbageTxDifferentialSuite)",
-   "digest": "39afeb5dc8e41ad3"
+   "note": "a witness set read in one pass at Babbage's decoder version, 7, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 7; a list of PlutusV3 scripts refused at its first item; held to the flat decoder's verdicts on every Babbage transaction the repository holds (the recorded blocks, the reference's refusal, v1-context and Plutus admission corpora) and on byte mutants of them, and on 576 Babbage rows of the reference's decoder corpora (three of them witness sets at protocol version 8, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (BabbageTxDifferentialSuite), and to its written order on crafted cases (BabbageTxSuite)",
+   "digest": "9ebe4f3abaa3cd00"
   },
   "val ledger.era.babbage.BabbageTxWits.instance": {
    "upstream": [
@@ -51571,7 +51549,7 @@
     "BabbageTxDifferentialSuite",
     "BabbageTxSuite"
    ],
-   "note": "auxiliary data in any of its three forms, the tagged map read in one pass at Babbage's decoder version, 7, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 7; held to the flat decoder's verdicts, ids, bytes and values on every recorded Babbage transaction, every Babbage row of the reference's decoder corpora and byte mutants, and to the reference's recorded refusals (BabbageTxDifferentialSuite); PlutusV4's key 5 is refused as the reference refuses it (`guardPlutus`), where the flat reader refuses it as unknown",
+   "note": "auxiliary data in any of its three forms, the tagged map read in one pass at Babbage's decoder version, 7, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 7; PlutusV4's key 5 is refused as the reference refuses it (`guardPlutus`), where the flat reader refuses it as unknown; held to the flat decoder's verdicts on every Babbage transaction the repository holds (the recorded blocks, the reference's refusal, v1-context and Plutus admission corpora) and on byte mutants of them, and on 576 Babbage rows of the reference's decoder corpora (three of them witness sets at protocol version 8, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (BabbageTxDifferentialSuite), and to its written order on crafted cases (BabbageTxSuite); and to the reference's 140 recorded verdicts on Babbage auxiliary data",
    "digest": "42875deb5801458e"
   },
   "val ledger.era.babbage.BabbageTxAuxData.instance": {
@@ -51775,8 +51753,8 @@
     "BabbageTxDifferentialSuite",
     "BabbageTxSuite"
    ],
-   "note": "a whole transaction, its parts split as the flat decoder splits them, each read by Babbage's decoders",
-   "digest": "f4dacf2cbe89866f"
+   "note": "a whole transaction read as the reference's record is: its body, witness set, the flag when the third item is a boolean, the auxiliary data or null, and then the record's size; each part read by Babbage's decoders; held to the flat decoder's verdicts on every Babbage transaction the repository holds (the recorded blocks, the reference's refusal, v1-context and Plutus admission corpora) and on byte mutants of them, and on 576 Babbage rows of the reference's decoder corpora (three of them witness sets at protocol version 8, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (BabbageTxDifferentialSuite), and to its written order on crafted cases (BabbageTxSuite)",
+   "digest": "dc0100c3623c8261"
   },
   "val ledger.era.babbage.BabbageTx.instance": {
    "upstream": [
@@ -51814,6 +51792,49 @@
    "class": "Mirror",
    "structure": "same",
    "digest": "12968c13ffe522bd"
+  },
+  "def ledger.era.babbage.BabbageTxOut.read": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs",
+     "symbol": "decodeBabbageTxOut",
+     "lines": [
+      549,
+      662
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbageTxDifferentialSuite",
+    "BabbageTxSuite"
+   ],
+   "note": "a list of two or three read in order, the map form's keys as written, as `decodeSparse` reads them, each value by the flat output reader's reader of its field; the output held to the form the store keeps of it. held to the flat decoder's verdicts on every Babbage transaction the repository holds (the recorded blocks, the reference's refusal, v1-context and Plutus admission corpora) and on byte mutants of them, and on 576 Babbage rows of the reference's decoder corpora (three of them witness sets at protocol version 8, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (BabbageTxDifferentialSuite), and to its written order on crafted cases (BabbageTxSuite)",
+   "digest": "f6af369638b91244"
+  },
+  "def ledger.era.babbage.BabbageTxWits.decodeAt": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "symbol": "DecCBOR (Annotator (AlonzoTxWitsRaw era))",
+     "lines": [
+      603,
+      703
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbageTxDifferentialSuite"
+   ],
+   "note": "the witness set's decoder at a version of Babbage's, 7 or 8, as `decodeFull'` reads at any version: the reference's recordings at protocol version 8 are read at it",
+   "digest": "1186e8719b1383e4"
   }
  },
  "glue": [
@@ -53343,11 +53364,9 @@
    ]
   },
   {
-   "reason": "Babbage's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives, and the index of a purpose; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Babbage's (fromFlat), the certificate's and the script's representation and constructors read only in Babbage's files, and an output the flat output reader read made Babbage's and held to it (BabbageTxOut.fromDecoded). Scala containers and helpers with no counterpart of their own",
+   "reason": "Babbage's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives, and the index of a purpose; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Babbage's (fromFlat), and the certificate's representation read only in Babbage's files. Scala containers and helpers with no counterpart of their own",
    "definitions": [
     "def ledger.era.AlonzoPlutusPurpose.ix",
-    "def ledger.era.babbage.BabbageScript.native",
-    "def ledger.era.babbage.BabbageScript.plutus",
     "def ledger.era.babbage.BabbageTx#equals",
     "def ledger.era.babbage.BabbageTx#hashCode",
     "def ledger.era.babbage.BabbageTx#toString",
@@ -53358,7 +53377,6 @@
     "def ledger.era.babbage.BabbageTxBody.fromItem",
     "def ledger.era.babbage.BabbageTxCert.fromFlat",
     "def ledger.era.babbage.BabbageTxCert.rep",
-    "def ledger.era.babbage.BabbageTxOut.fromDecoded",
     "def ledger.era.babbage.BabbageTxWits.fromItem",
     "given ledger.era.AlonzoPlutusPurpose.given_canEqual_E_EraTag",
     "given ledger.era.babbage.BabbageTx.given_CanEqual_BabbageTx_BabbageTx",

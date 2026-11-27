@@ -2,7 +2,7 @@
 package xyz.kd5ujc.scarab.ledger.era.babbage
 
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Node}
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{Certificate, DecoderVersion, Pot}
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.era.{
@@ -40,8 +40,8 @@ import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 /** A Babbage certificate: `ShelleyTxCert BabbageEra` (`type TxCert BabbageEra = ShelleyTxCert
   * BabbageEra`, cardano-ledger f649f975
   * `eras/babbage/impl/src/Cardano/Ledger/Babbage/TxCert.hs:12`), the representation the reference
-  * shares from Shelley ([[ShelleyTxCertRep]]), a type of its own. Made only by Babbage's decoder
-  * ([[BabbageTxCert.decode]]) and the builders of its classes.
+  * shares from Shelley ([[ShelleyTxCertRep]]), a type of its own. Made only by Babbage's body
+  * decoder ([[BabbageTxBody.decode]], through [[fromFlat]]) and the builders of its classes.
   */
 opaque type BabbageTxCert = ShelleyTxCertRep
 
@@ -54,23 +54,15 @@ object BabbageTxCert:
     /** The shared representation, read only. */
     def rep: ShelleyTxCertRep = c
 
-  /** A certificate as Babbage's decoder reads it (`DecCBOR (ShelleyTxCert era)`,
-    * `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs:469-488`, cardano-ledger f649f975), at
-    * Babbage's decoder version: the flat reader's tags 0 to 6 ([[Certificate.decode]] at Babbage),
-    * each made the certificate it is ([[fromFlat]]). A pool registration's parameters are in
-    * `layout`, the layout of the build that reads them.
-    */
-  def decode(n: Node, layout: StateLayout): Either[EraTxError, BabbageTxCert] =
-    Certificate
-      .decode(n, Era.Babbage, version)
-      .leftMap(EraTxError.Decode(_))
-      .flatMap(fromFlat(_, layout))
-
-  /** The Babbage certificate of a flat one that Babbage's decoder read: refused if it is one Conway
-    * brought, which that decoder never reads. A pool registration's parameters are the state's, in
-    * `layout`, as Conway's are ([[xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert]]); its
-    * metadata's hash is read with it. The key hashes and the epoch were read at their widths, so
-    * the vocabulary refuses none of them.
+  /** The Babbage certificate of a flat one that the flat certificate reader read at Babbage
+    * (`DecCBOR (ShelleyTxCert era)`,
+    * `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs:469-488`, cardano-ledger f649f975).
+    * The flat certificate holds every era's, so one Conway brought is refused, which that reader,
+    * reading tags 0 to 6 alone, never gives: the case keeps the conversion total until the flat
+    * type goes (stage 6a). A pool registration's parameters are the state's, in `layout`, as
+    * Conway's are ([[xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert]]); its metadata's hash is
+    * read with it. The key hashes and the epoch were read at their widths, so the vocabulary
+    * refuses none of them.
     */
   private[babbage] def fromFlat(
       c: Certificate,

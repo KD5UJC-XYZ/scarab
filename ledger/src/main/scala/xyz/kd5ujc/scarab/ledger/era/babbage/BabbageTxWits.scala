@@ -51,7 +51,7 @@ object BabbageTxWits
     ]:
   given CanEqual[BabbageTxWits, BabbageTxWits] = CanEqual.derived
 
-  private val version = DecoderVersion.of(Era.Babbage)
+  private val blockVersion = DecoderVersion.of(Era.Babbage)
 
   // `txWitnessField`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs:650-675`,
   // cardano-ledger f649f975
@@ -94,20 +94,29 @@ object BabbageTxWits
     * are parsed once; an input that holds an empty indefinite list and that the plain parse refuses
     * is parsed again with the detached records a walk finds ([[DetachedRecords.read]]).
     */
-  def decode(raw: Bytes): Either[EraTxError, BabbageTxWits] =
+  def decode(raw: Bytes): Either[EraTxError, BabbageTxWits] = decodeAt(raw, blockVersion)
+
+  /** [[decode]] at `version`, one of Babbage's ([[DecoderVersion.at]]), as `decodeFull'` reads a
+    * type at any version: the reference's recordings of witness sets at Babbage's protocol version
+    * 8 are read at it. A block's and a submission's are read at 7 ([[decode]]).
+    */
+  private[babbage] def decodeAt(
+      raw: Bytes,
+      version: DecoderVersion
+  ): Either[EraTxError, BabbageTxWits] =
     DetachedRecords
       .read(raw, Cbor.Limits.Unbounded, DetachedRecords.Shapes.witnesses(Era.Babbage, version))(
         LedgerDecodeError.Syntax(_)
-      )(read)
+      )(read(_, version))
       .bimap(EraTxError.Decode(_), project(raw, _))
 
   /** [[decode]] of a witness set's item, parsed already with no detached record in it
     * ([[BabbageTx.fromEnvelope]]).
     */
   private[babbage] def fromItem(n: Node): Either[EraTxError, BabbageTxWits] =
-    read(n).bimap(EraTxError.Decode(_), project(n.original, _))
+    read(n, blockVersion).bimap(EraTxError.Decode(_), project(n.original, _))
 
-  private def read(root: Node): Either[LedgerDecodeError, Fields] =
+  private def read(root: Node, version: DecoderVersion): Either[LedgerDecodeError, Fields] =
     val what = DecodeField.WitnessSet
     CborRead
       .map(root, what)
@@ -120,7 +129,7 @@ object BabbageTxWits
             )
           _ <- Either.cond(!seen.contains(key), (), LedgerDecodeError.DuplicateKey(what))
           _ <- Either.cond(keys.contains(key), (), LedgerDecodeError.UnknownFields(what, Set(key)))
-          set <- field(key, v, fields)
+          set <- field(key, v, fields, version)
         yield (set, seen + key)
       })
       .map(_._1)
@@ -134,7 +143,12 @@ object BabbageTxWits
     * witnesses, native scripts and datums alike the first is kept, of the bootstrap witnesses of
     * one root the last ([[BootstrapWitness.set]]), and of the redeemers of one purpose the last.
     */
-  private def field(key: Int, n: Node, fields: Fields): Either[LedgerDecodeError, Fields] =
+  private def field(
+      key: Int,
+      n: Node,
+      fields: Fields,
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, Fields] =
     given ByteStrings = ByteStrings.of(version)
     def list(what: DecodeField) = CborRead.list(n, what, version)
     def witnessSet[A, K: Ordering](what: DecodeField)(
@@ -144,7 +158,7 @@ object BabbageTxWits
     def plutus(make: Bytes => BabbagePlutusScript) =
       CborRead
         .set(n, DecodeField.PlutusScripts, version)(CborRead.bytes(_, DecodeField.PlutusScript))
-        .map(_.map(b => hashed(BabbageScript.plutus(make(b)))))
+        .map(_.map(b => hashed(BabbageScript.instance.fromPlutusScript(make(b)))))
     key match
       case 0 =>
         witnessSet(DecodeField.VkeyWitnesses) { w =>
@@ -159,7 +173,7 @@ object BabbageTxWits
         }(identity).map(v => fields.copy(vkeys = v))
       case 1 =>
         witnessSet(DecodeField.NativeScripts)(x =>
-          BabbageTimelock.read(x).map(t => hashed(BabbageScript.native(t)))
+          BabbageTimelock.read(x).map(t => hashed(BabbageScript.instance.fromNativeScript(t)))
         )(_._1).map(s => fields.copy(native = s))
       case 2 =>
         // every witness is kept for `BootstrapWitness.set`, which keeps the last of a root
@@ -179,25 +193,25 @@ object BabbageTxWits
       case 3 => plutus(b => BabbagePlutusScript.V1(Plutus(b))).map(s => fields.copy(v1 = s))
       case 6 => plutus(b => BabbagePlutusScript.V2(Plutus(b))).map(s => fields.copy(v2 = s))
       case 7 =>
-        // PlutusV3 is newer than Babbage's languages: a list that holds a script is refused
-        // (`alonzoPlutusScriptDecoder`, `Alonzo/TxWits.hs:725-740`, cardano-ledger f649f975), as
-        // the flat reader refuses it, and an empty one sets nothing
-        CborRead
-          .set(n, DecodeField.PlutusScripts, version)(CborRead.bytes(_, DecodeField.PlutusScript))
-          .flatMap(scripts =>
-            Either.cond(
-              scripts.isEmpty,
-              fields,
-              LedgerDecodeError
-                .UnsupportedLanguage(ScriptKind.PlutusV3, ScriptKind.newest(Era.Babbage))
-            )
-          )
+        // PlutusV3 is newer than Babbage's languages (`scriptDecoder` of `decodePlutusScript`,
+        // `Alonzo/TxWits.hs:753-761`, `Alonzo/Scripts.hs:658-665`, cardano-ledger f649f975): each
+        // script's bytes are read and then refused as no Babbage script, so the first is refused
+        // as soon as it is read, and an empty list sets nothing
+        list(DecodeField.PlutusScripts).flatMap(_.headOption match
+          case None => Right(fields)
+          case Some(x) =>
+            CborRead.bytes(x, DecodeField.PlutusScript) *>
+              Left(
+                LedgerDecodeError
+                  .UnsupportedLanguage(ScriptKind.PlutusV3, ScriptKind.newest(Era.Babbage))
+              ))
       case 4 =>
         witnessSet(DecodeField.Datums)(x =>
           Data.read(x).leftMap(LedgerDecodeError.PlutusData(DecodeField.Datums, _))
         )(d => Blake2b.hash256.hash(d.originalBytes))
           .map(d => fields.copy(datums = Some(n), datumSet = d))
-      case 5 => redeemerList(n).map(r => fields.copy(redeemers = Some(n), redeemerList = r))
+      case 5 =>
+        redeemerList(n, version).map(r => fields.copy(redeemers = Some(n), redeemerList = r))
       // a key the witness set does not know was refused before its value is read
       case _ => Right(fields)
 
@@ -207,7 +221,10 @@ object BabbageTxWits
     * units; of the entries of one purpose the last read counts (`Map.fromList`), in the order of
     * the last ones.
     */
-  private def redeemerList(n: Node): Either[LedgerDecodeError, Vector[ReadRedeemer]] =
+  private def redeemerList(
+      n: Node,
+      version: DecoderVersion
+  ): Either[LedgerDecodeError, Vector[ReadRedeemer]] =
     CborRead
       .array(n, DecodeField.Redeemers)
       .flatMap(_.traverse { r =>
