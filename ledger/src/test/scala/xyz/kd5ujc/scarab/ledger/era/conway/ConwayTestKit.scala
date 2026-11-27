@@ -253,7 +253,8 @@ object ConwayTestKit extends munit.Assertions:
   // ---- the transaction --------------------------------------------------------------------------
 
   /** The fields of a Conway body that the kit writes. A voter that votes in several entries of
-    * `votes` casts all of their votes (a body's votes are a map by voter).
+    * `votes` casts all of their votes (a body's votes are a map by voter). The inputs are written
+    * in their order, or in the order given where `inputsInOrder`, which a decoder reads as well.
     */
   final case class Body(
       inputs: Vector[TxIn],
@@ -270,7 +271,8 @@ object ConwayTestKit extends munit.Assertions:
       collateral: Vector[TxIn] = Vector.empty,
       collateralReturn: Option[TxOut] = None,
       totalCollateral: Option[BigInt] = None,
-      referenceInputs: Vector[TxIn] = Vector.empty
+      referenceInputs: Vector[TxIn] = Vector.empty,
+      inputsInOrder: Boolean = false
   ):
     /** The votes by voter as the body's map holds them: the voters ascending, and each voter's
       * actions ascending.
@@ -291,7 +293,11 @@ object ConwayTestKit extends munit.Assertions:
     /** `transaction_body`, its keys in ascending order and an empty optional field left out. */
     def encode: Bytes =
       val fields = Vector(
-        Some(0 -> set(inputs.sortBy(i => (i.id, i.index)).map(txIn))),
+        Some(
+          0 -> set(
+            (if inputsInOrder then inputs else inputs.sortBy(i => (i.id, i.index))).map(txIn)
+          )
+        ),
         Some(1 -> arr(outputs.map(_.raw)*)),
         Some(2 -> uint(fee)),
         ttl.map(t => 3 -> uint(t)),

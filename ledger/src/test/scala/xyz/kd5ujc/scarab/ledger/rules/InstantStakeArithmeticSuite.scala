@@ -79,29 +79,22 @@ class InstantStakeArithmeticSuite extends FunSuite:
     }
   }
 
-  test("Conway's change of the state deletes the spent outputs in TxIn map order") {
-    // the body's inputs are a set, read in the order of `TxIn` (`Ord TxIn`): the output at the
-    // lesser input, 3, is deleted first and leaves nothing; the absent credential then takes 2
+  test("production cache deletion follows TxIn map order rather than signed input order") {
+    // the inputs are written and signed in the order (second, first), which Conway's decoder reads
+    // as a set; the outputs are deleted in the order of `TxIn` (`Ord TxIn`): the output at the
+    // lesser input, 3, first, which leaves nothing, then the absent credential takes 2
     val first = TxIn(Bytes(Vector.fill(32)(1.toByte)), 0)
     val second = TxIn(Bytes(Vector.fill(32)(2.toByte)), 0)
-    val held = NodeUtxo.fromMap(
-      Map(
-        first -> xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit.out(address, 3),
-        second -> xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit.out(address, 2)
-      )
-    )
+    val kit = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
+    val held = NodeUtxo.fromMap(Map(first -> kit.out(address, 3), second -> kit.out(address, 2)))
     val ls = Empty.ledgerState[Conway](TestLedger.params(10))
     val initial = ls.utxo.copy[Conway](utxo = UtxoTables(held), instantStake = cache(Some(3)))
-    val tx = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
-      .tx(
-        xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
-          .Body(Vector(second, first), Vector.empty, 0),
-        Vector.empty
-      )
+    val tx =
+      kit.tx(kit.Body(Vector(second, first), Vector.empty, 0, inputsInOrder = true), Vector.empty)
     val (next, _) =
       xyz.kd5ujc.scarab.ledger.era.EraUtxoRun
         .update(tx.typed, TestLedger.params(10), ls.cert, initial)
-    assertEquals(tx.flat.body.inputs, Vector(first, second))
+    assertEquals(tx.flat.body.inputs, Vector(second, first))
     assertEquals(next.instantStake, cache(Some(2)))
     assertEquals(next.utxo.utxo.count, 0L)
   }
