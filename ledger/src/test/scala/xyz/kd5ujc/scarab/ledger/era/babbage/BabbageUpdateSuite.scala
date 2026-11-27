@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era.babbage
 
 import munit.ScalaCheckSuite
 import org.scalacheck.Prop.forAll
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
 import xyz.kd5ujc.scarab.ledger.{
   CborRead,
   DecodeField,
@@ -121,8 +121,10 @@ class BabbageUpdateSuite extends ScalaCheckSuite:
       assert(flat(u).isLeft, s"$what: flat ${flat(u)}")
       assertEquals(typed(u).map(_.stored), flat(u), what)
     }
-    // The shared decoder of an update names the key a duplicate repeats, and the update, not the
-    // field, as the site of a value out of its width; the flat decoder does the reverse.
+    // Known diagnostic gap (#85), the flat decoder's as well: the shared decoder of an update names
+    // the key a duplicate repeats, as the reference's `duplicateKey` does, where the flat one does
+    // not; both name a range for a value out of its width, at another site each, where cborg's
+    // `decodeWord16` refuses the item as not a `word16`.
     val twice = one(uint(8) -> uint(1), uint(8) -> uint(2))
     assertEquals(flat(twice), Left(LedgerDecodeError.DuplicateKey(DecodeField.ParameterUpdate)))
     assertEquals(
@@ -132,6 +134,15 @@ class BabbageUpdateSuite extends ScalaCheckSuite:
           PParamsDecodeError.DuplicateKey(DecodeField.ParameterUpdate, 8)
         )
       )
+    )
+    // The reference reads a nonempty indefinite outer record as `RecD` does, with "Excess terms in
+    // array" (`decodeRecordNamed` under `RecD`, cardano-ledger f649f975 `Coders.hs:478-483`); both
+    // decoders here name its indefinite length.
+    val indefinite = "9f" + map(Seq(genesisKey(1) -> map(Seq(uint(8) -> uint(1))))) + uint(3) + "ff"
+    assertEquals(flat(indefinite), Left(LedgerDecodeError.IndefiniteLength(DecodeField.Update)))
+    assertEquals(
+      typed(indefinite).map(_.stored),
+      Left(LedgerDecodeError.IndefiniteLength(DecodeField.Update))
     )
     val wide = one(uint(8) -> uint(0x10000))
     assertEquals(
@@ -198,6 +209,19 @@ class BabbageUpdateSuite extends ScalaCheckSuite:
         case (Left(_), Left(_))   => ()
         case (f, t)               => fail(s"$what: flat $f, typed ${t.map(_.stored)}")
     }
+
+  test("only an era whose update sets the protocol version reads an update proposal"):
+    assertEquals(compileErrors("(n: Node) => KeptUpdate.decode[Babbage](n)"), "")
+    assert(
+      compileErrors(
+        "(n: Node) => KeptUpdate.decode[xyz.kd5ujc.scarab.ledger.state.Conway](n)"
+      ).nonEmpty
+    )
+    assert(
+      compileErrors(
+        "(n: Node) => KeptUpdate.decode[xyz.kd5ujc.scarab.ledger.state.Dijkstra](n)"
+      ).nonEmpty
+    )
 
   test("a ratio written as 2/4 is the same typed value as 1/2"):
     def one(r: String) = array(Seq(map(Seq(genesisKey(3) -> map(Seq(uint(10) -> r)))), uint(1)))

@@ -96,7 +96,7 @@ object CoinPerByte:
 opaque type Version = Int
 
 object Version:
-  val Max: Int = 13
+  val Max: Int = xyz.kd5ujc.scarab.ledger.DecoderVersion.MaxVersion
 
   /** `mkVersion`. */
   def mkVersion(n: BigInt): Option[Version] = Option.when(n >= 0 && n <= Max)(n.toInt)

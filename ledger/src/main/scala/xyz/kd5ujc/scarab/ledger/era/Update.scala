@@ -8,6 +8,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ByteStrings,
   CborRead,
   DecodeField,
+  DecoderVersion,
   LedgerDecodeError,
   ParamUpdate,
   Update as StoredUpdate
@@ -68,18 +69,27 @@ object KeptUpdate:
       )
       .map(fs => ParamUpdate(fs.toMap))
 
+  /** The decoder version of era `E` 's blocks, `eraProtVerLow` (`eraDecoder`, [[DecoderVersion]]),
+    * which an update of the era is read at.
+    */
+  private def at[E <: EraTag](using era: Era[E]): DecodeAt =
+    DecodeAt(DecoderVersion.ofVersion(era.eraProtVerLow), DecodeField.ParameterUpdate)
+
   /** `DecCBOR (Update era)` (`decode $ RecD Update <! From <! From`, `Shelley/PParams.hs:263-267`,
-    * cardano-ledger f649f975), the body's key 6 in the eras before Conway: a record of two, the
-    * proposed updates, a map of the delegates' key hashes to `DecCBOR (PParamsUpdate era)`
-    * ([[PParamsUpdate.decodePParamsUpdate]]), and the epoch, a `Word64`. A key hash proposed twice
-    * keeps its last update, as the map's decoder below version 9 does. Each update's fields are
-    * stored with the bytes of their values.
+    * cardano-ledger f649f975), the body's key 6 in the eras up to Babbage (`updateTxBodyL`,
+    * `Shelley/TxBody.hs:97-100`), whose parameters an update can set the protocol version of
+    * ([[EraPParamsToBabbage]]): a record of two, the proposed updates, a map of the delegates' key
+    * hashes to `DecCBOR (PParamsUpdate era)` ([[PParamsUpdate.decodePParamsUpdate]]), and the
+    * epoch, a `Word64`, read at the era's decoder version, below 9 at every such era. A key hash
+    * proposed twice keeps its last update, as the map's decoder below version 9 does. Each update's
+    * fields are stored with the bytes of their values.
     */
   def decode[E <: EraTag](n: Node)(using
-      era: EraPParams[E],
-      at: DecodeAt
+      pp: EraPParamsToBabbage[E],
+      era: Era[E]
   ): Either[LedgerDecodeError, KeptUpdate[E]] =
-    given ByteStrings = ByteStrings.of(at.version)
+    given DecodeAt = at[E]
+    given ByteStrings = ByteStrings.of(summon[DecodeAt].version)
     for
       xs <- CborRead.record(n, 2, DecodeField.Update)
       kvs <- CborRead.map(xs(0), DecodeField.ProposedUpdates)
@@ -97,26 +107,26 @@ object KeptUpdate:
       StoredUpdate(TreeMap.from(proposals.map((raw, _, _, kept) => raw -> kept)), epoch)
     )
 
-  /** The update the node keeps, read into the era: each stored field's bytes read by its field, as
-    * [[decode]] reads a value. A stored form [[decode]] did not give may be refused: a key that is
-    * not one of the era's, or a value an earlier build kept unread (ADR 0006) that its field does
-    * not read. The stored form is kept as it is.
+  /** The update the node keeps, read into the era at its decoder version: each stored field's bytes
+    * read by its field, as [[decode]] reads a value. A stored form [[decode]] did not give may be
+    * refused: a key that is not one of the era's, or a value an earlier build kept unread (ADR
+    * 0006) that its field does not read. The stored form is kept as it is.
     */
   def fromStored[E <: EraTag](u: StoredUpdate)(using
-      era: EraPParams[E],
-      at: DecodeAt
+      pp: EraPParamsToBabbage[E],
+      era: Era[E]
   ): Either[LedgerDecodeError, KeptUpdate[E]] =
+    given DecodeAt = at[E]
     for
       proposals <- u.proposals.toVector.traverse((raw, fields) =>
         for
           hash <- KeyHash
             .fromBytes[Genesis](raw)
             .leftMap(_ => LedgerDecodeError.ByteLength(DecodeField.GenesisKeyHash, 28, raw.size))
-          (update, _) <- PParamsUpdate.readFields[E](
-            fields.fields.toVector
-              .sortBy(_._1)
-              .map((k, bytes) => CborRead.decode(bytes).map(BigInt(k) -> _))
-          )
+          (update, _) <- PParamsUpdate.readFields[E, (Int, Bytes), Unit](
+            fields.fields.toVector.sortBy(_._1),
+            ()
+          )((k, bytes) => CborRead.decode(bytes).map(BigInt(k) -> _), (_, _, _) => ())
         yield hash -> update
       )
       epoch <- epochNo(u.epoch)

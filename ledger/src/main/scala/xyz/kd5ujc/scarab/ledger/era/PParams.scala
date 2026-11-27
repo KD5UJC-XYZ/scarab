@@ -154,7 +154,7 @@ object PParamsUpdate:
       era: EraPParams[E],
       at: DecodeAt
   ): Either[LedgerDecodeError, PParamsUpdate[E]] =
-    decodeFields(n).map(_._1)
+    decodeEntries(n, ())((_, _, _) => ()).map(_._1)
 
   /** [[decodePParamsUpdate]], with the node each field's value was read from, by tag: the bytes the
     * node keeps a pre-Conway update by are those values' ([[xyz.kd5ujc.scarab.ledger.ParamUpdate]],
@@ -164,40 +164,45 @@ object PParamsUpdate:
       era: EraPParams[E],
       at: DecodeAt
   ): Either[LedgerDecodeError, (PParamsUpdate[E], Vector[(BigInt, Node)])] =
+    decodeEntries(n, Vector.empty[(BigInt, Node)])((read, tag, v) => read :+ (tag -> v))
+
+  /** The entries of an update's map, each key read as it is reached ([[readFields]]). */
+  private def decodeEntries[E <: EraTag, K](n: Node, kept: K)(keep: (K, BigInt, Node) => K)(using
+      era: EraPParams[E],
+      at: DecodeAt
+  ): Either[LedgerDecodeError, (PParamsUpdate[E], K)] =
     val from12 = at.version.atLeast(12)
     val entries = if from12 then V12.entries(n, at.site) else CborRead.map(n, at.site)
     def key(k: Node): Either[LedgerDecodeError, BigInt] =
       if from12 then V12.word64(k, at.site / DecodeSite.Qualifier.Key)
       else Unsigned.read[W64](k, DecodeField.ParameterIndex).map(_.value)
-    entries.flatMap(es => readFields(es.map((k, v) => key(k).map(_ -> v))))
+    entries.flatMap(readFields(_, kept)((k, v) => key(k).map(_ -> v), keep))
 
-  /** The update of the fields `entries` give, in order, each a tag and the node of its value: a tag
-    * read before refused by the tag ([[PParamsDecodeError.DuplicateKey]]), then a tag of no field,
-    * then the value read by its field. An entry is read only after those before it are, so a
-    * refusal is the first entry's that fails, as the reference's decoders read the map in order.
+  /** The update of the fields `entries` give, in order, each read by `entry` into a tag and the
+    * node of its value when it is reached: a tag read before refused by the tag
+    * ([[PParamsDecodeError.DuplicateKey]]), then a tag of no field, then the value read by its
+    * field, and `keep` given each field read. The first entry that fails is the refusal, and no
+    * later one is read, as the reference's decoders read the map in order.
     */
-  private[era] def readFields[E <: EraTag](
-      entries: Vector[Either[LedgerDecodeError, (BigInt, Node)]]
-  )(using
-      era: EraPParams[E],
-      at: DecodeAt
-  ): Either[LedgerDecodeError, (PParamsUpdate[E], Vector[(BigInt, Node)])] =
+  private[era] def readFields[E <: EraTag, A, K](entries: Vector[A], kept: K)(
+      entry: A => Either[LedgerDecodeError, (BigInt, Node)],
+      keep: (K, BigInt, Node) => K
+  )(using era: EraPParams[E], at: DecodeAt): Either[LedgerDecodeError, (PParamsUpdate[E], K)] =
     val fields = updateFields(era)
     entries
-      .foldLeftM((Set.empty[BigInt], era.emptyPParamsUpdate, Vector.empty[(BigInt, Node)])) {
-        case ((seen, acc, read), entry) =>
-          for
-            (tag, v) <- entry
-            _ <- Either.cond(
-              !seen.contains(tag),
-              (),
-              LedgerDecodeError.PParamsCodec(PParamsDecodeError.DuplicateKey(at.site, tag))
-            )
-            field <- fields.get(tag).toRight(LedgerDecodeError.UnknownKey(at.site, tag))
-            next <- field.read(acc, v)
-          yield (seen + tag, next, read :+ (tag -> v))
+      .foldLeftM((Set.empty[BigInt], era.emptyPParamsUpdate, kept)) { case ((seen, acc, k), a) =>
+        for
+          (tag, v) <- entry(a)
+          _ <- Either.cond(
+            !seen.contains(tag),
+            (),
+            LedgerDecodeError.PParamsCodec(PParamsDecodeError.DuplicateKey(at.site, tag))
+          )
+          field <- fields.get(tag).toRight(LedgerDecodeError.UnknownKey(at.site, tag))
+          next <- field.read(acc, v)
+        yield (seen + tag, next, keep(k, tag, v))
       }
-      .map((_, u, read) => (u, read))
+      .map((_, u, k) => (u, k))
 
   /** [[decodePParamsUpdate]]. */
   given decCBOR[E <: EraTag](using EraPParams[E]): DecCBOR[PParamsUpdate[E]] with

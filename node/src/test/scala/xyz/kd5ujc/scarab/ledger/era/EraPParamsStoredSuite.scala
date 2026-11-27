@@ -205,7 +205,6 @@ class EraPParamsStoredSuite extends FunSuite:
 
   test("the recorded Babbage update proposal reads the typed way as the flat decoder stores it"):
     val loaded = right("the refusal corpus")(load(Path.of("fixtures/reference/refusals")))
-    given DecodeAt = DecodeAt(version(8), DecodeField.ParameterUpdate)
     val compared = loaded.corpora.filter(_.era == RefusalEra.Babbage).flatMap { c =>
       c.cases.flatMap { rc =>
         val what = s"${c.path}/${rc.label}"
