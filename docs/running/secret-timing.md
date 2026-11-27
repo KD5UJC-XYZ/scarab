@@ -247,7 +247,11 @@ check was built:
 
 - a return at once from `EdwardsPoint.multiplyRadix16` and the basepoint table's `multiplyRadix16` when the scalar's
   top digit is even: every secret target that multiplies was confirmed, and the evolution from period 0 to 1, which
-  does not, was not;
+  does not, was not. On GitHub-hosted runners (four jobs of three runs each on 2026-11-27, two on an Intel Xeon
+  6975P-C and one each on an AMD EPYC 9V45 and 9V74) every job ended in a confirmed leak, with the targets that
+  multiply reading 59.6 to 981.4, the evolution from period 0 to 1 reading 1.3 to 3.3 and the three controls that
+  must stay low 1.0 to 4.6; four jobs of the unchanged source beside them (three on the Xeon 6975P-C, one on a Xeon
+  Platinum 8573C) found no leak, every secret target and those controls reading 0.8 to 4.1;
 - a shortcut that returns the identity for a zero digit from the variable-base table's `select`, a change one might
   make for speed: proving, the output and the two `[k]H` targets were confirmed, and the targets that do not take that
   table were not;
