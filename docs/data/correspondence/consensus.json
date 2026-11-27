@@ -4903,7 +4903,7 @@
    ]
   },
   {
-   "reason": "the selection window's members its case class generated, written out now that it carries the index of its blocks; its blocks' points as a Genesis fragment reads them; and the newest point of a candidate on it, searched from the candidate's tip through that index as Follower.limitCandidate searched it before (#1499): Scala plumbing with no counterpart of its own",
+   "reason": "the Optimisation of #1499 item 3 (approved 2026-11-27): the selection window's members its case class generated, written out now that it carries the index of its blocks; its blocks' points as a Genesis fragment reads them; and the newest point of a candidate on it, searched from the candidate's tip through that index as Follower.limitCandidate searched it before, where the reference intersects its AnchoredFragments. Scala plumbing with no counterpart of its own; equivalence suite GenesisProjectionSuite",
    "definitions": [
     "val consensus.ChainSelection.Local#anchor",
     "val consensus.ChainSelection.Local#anchorView",
