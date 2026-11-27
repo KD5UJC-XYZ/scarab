@@ -119,6 +119,30 @@ object AlonzoTxInfo:
   def transValue(v: MultiAssetValue): PV1.Value =
     transCoinToValue(Coin(v.lovelace)) <> transMultiAsset(v.assets)
 
+  /** `transValidityInterval` (`Alonzo/Plutus/TxInfo.hs:319-341`, cardano-ledger 9df9f98c;
+    * `:252-274` at f649f975): the interval in POSIX time, an interval with an end alone closed at
+    * its end (`PV1.to`), unlike Conway's; a slot the clock cannot translate refused
+    * (`TimeTranslationPastHorizon`, with the clock's typed failure).
+    */
+  def transValidityInterval[E <: EraTag](
+      slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
+      vi: ValidityInterval
+  )(using
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], PV1.POSIXTimeRange] =
+    def transSlotToPOSIXTime(slot: BigInt): Either[ContextError[E], PV1.POSIXTime] =
+      slotToPOSIXTime(slot)
+        .bimap(e => inj.inject(AlonzoContextError.TimeTranslationPastHorizon(e)), PV1.POSIXTime(_))
+    vi match
+      case ValidityInterval(None, None)    => Right(PV1.Interval.always)
+      case ValidityInterval(Some(i), None) => transSlotToPOSIXTime(i).map(PV1.Interval.from)
+      case ValidityInterval(None, Some(i)) => transSlotToPOSIXTime(i).map(PV1.Interval.to)
+      case ValidityInterval(Some(i), Some(j)) =>
+        for
+          t1 <- transSlotToPOSIXTime(i)
+          t2 <- transSlotToPOSIXTime(j)
+        yield PV1.Interval(PV1.lowerBound(t1), PV1.strictUpperBound(t2))
+
   /** `transTxOut` (`Alonzo/Plutus/TxInfo.hs:276-286`, cardano-ledger f649f975): the output in the
     * V1 form, none at a Byron address.
     */
@@ -201,11 +225,26 @@ object AlonzoTxInfo:
       })
       .toRight(inj.inject(AlonzoContextError.CertificateNotSupported(txCert)))
 
+  /** `transTxCert` (`Alonzo/Plutus/TxInfo.hs:423-432`, cardano-ledger 9df9f98c; `:353-362` at
+    * f649f975, which tries the common form first, with the same results): a certificate of an era
+    * up to Babbage in the V1 form, a genesis delegation and a move of instantaneous rewards as
+    * their constants, the rest in the common form.
+    */
+  def transTxCert[E <: EraTag](txCert: TxCert[E])(using
+      c: ShelleyEraTxCertToBabbage[E],
+      inj: Inject[AlonzoContextError[E], ContextError[E]]
+  ): Either[ContextError[E], PV1.DCert] =
+    c.getGenesisDelegTxCert(txCert)
+      .map(_ => PV1.DCert.DCertGenesis)
+      .orElse(c.getMirTxCert(txCert).map(_ => PV1.DCert.DCertMir))
+      .fold(transTxCertCommon[E](txCert))(Right(_))
+
   /** `transPlutusPurpose` (`Alonzo/Plutus/TxInfo.hs:456-472`, cardano-ledger 9df9f98c): a purpose
     * in the V1 and V2 form, read through the script class's readers, a certificate's through the
     * language's `toPlutusTxCert`; another purpose refused (`PlutusPurposeNotSupported`). It
     * replaces f649f975's Conway `transPlutusPurposeV1V2` (`Conway/TxInfo.hs:724-739`), whose
-    * results are the same.
+    * results are the same, and is f649f975's (`Alonzo/Plutus/TxInfo.hs:381-392`) for Alonzo's
+    * purpose, the one of Babbage, which has no other.
     */
   def transPlutusPurpose[L <: Language, E <: EraTag](
       pv: ProtVer,
@@ -213,7 +252,7 @@ object AlonzoTxInfo:
   )(using
       t: EraPlutusTxInfo[L, E],
       cert: PlutusTxCert[L] =:= PV1.DCert,
-      s: ConwayEraScript[E],
+      s: AlonzoEraScript[E],
       inj: Inject[AlonzoContextError[E], ContextError[E]]
   ): Either[ContextError[E], PV1.ScriptPurpose] =
     s.toSpendingPurpose[AsIxItem](purpose)
@@ -281,7 +320,7 @@ object AlonzoTxInfo:
       plutusPurpose: PlutusPurpose[AsIxItem, E]
   )(using
       u: AlonzoEraUTxO[E],
-      s: ConwayEraScript[E],
+      s: AlonzoEraScript[E],
       inj: Inject[AlonzoContextError[E], ContextError[E]]
   ): Either[ContextError[E], Option[Data]] =
     u.getSpendingDatum[T](
@@ -304,7 +343,7 @@ object AlonzoTxInfo:
   )(using
       t: EraPlutusTxInfo[Language.PlutusV1, E],
       u: AlonzoEraUTxO[E],
-      s: ConwayEraScript[E],
+      s: AlonzoEraScript[E],
       inj: Inject[AlonzoContextError[E], ContextError[E]]
   ): Either[ContextError[E], PlutusV1Args] =
     for

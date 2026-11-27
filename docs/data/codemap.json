@@ -776,7 +776,7 @@
     {
       "module": "ledger",
       "path": "ledger/era/babbage",
-      "responsibility": "Babbage's own types: its native, Plutus and script types and its output, opaque outside their file; its protocol-parameter record; its certificate, witness set, auxiliary data, body and transaction, made by its decoders",
+      "responsibility": "Babbage's own types: its native, Plutus and script types and its output, opaque outside their file; its protocol-parameter record; its certificate, witness set, auxiliary data, body and transaction, made by its decoders; its UTxO classes and annotated transaction",
       "entryPoints": [
         "BabbageTx",
         "BabbageTxBody",
@@ -785,14 +785,17 @@
         "BabbageTxCert",
         "BabbageScript",
         "BabbageTxOut",
-        "BabbagePParams"
+        "BabbagePParams",
+        "BabbageEraUTxO"
       ],
       "suites": [
         "EraCoreSuite",
         "BabbagePParamsSuite",
         "BabbageUpdateSuite",
         "BabbageTxSuite",
-        "BabbageTxDifferentialSuite"
+        "BabbageTxDifferentialSuite",
+        "BabbagePlutusContextSuite",
+        "BabbagePlutusContextRefusalsSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"

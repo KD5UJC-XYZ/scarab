@@ -494,3 +494,35 @@ object BabbageTestKit extends munit.Assertions:
 
   def sameTx(era: BabbageTx, flat: Tx, what: String): Unit =
     assertEquals(txDifferences(era, flat), Vector.empty, what)
+
+  // ---- the flat path's oracles
+
+  /** The keys the flat UTXOW asks to sign `flat` (`TxChecks.neededWitnesses` with no witness
+    * provided), the outputs of its inputs and collateral those of `known` and the genesis
+    * delegations `genDelegs` (by genesis key).
+    */
+  def flatWitsNeeded(
+      flat: Tx,
+      known: Map[TxIn, TxOut],
+      genDelegs: Map[Bytes, xyz.kd5ujc.scarab.ledger.GenDelegPair]
+  ): Set[Bytes] =
+    val ann = xyz.kd5ujc.scarab.ledger.rules.StAnnTx(flat, xyz.kd5ujc.scarab.ledger.Utxo(known))
+    val collateral =
+      xyz.kd5ujc.scarab.ledger.TxChecks
+        .Collateral(flat.body.collateral.flatMap(ann.utxo.get), BigInt(0))
+    xyz.kd5ujc.scarab.ledger.rules.Test
+      .failures(
+        xyz.kd5ujc.scarab.ledger.TxChecks
+          .neededWitnesses(genDelegs, flat, ann.spent, collateral, Set.empty)
+      )
+      .map(_.toChain.toList) match
+      case None => Set.empty
+      case Some(
+            List(
+              xyz.kd5ujc.scarab.ledger.PredicateFailure.Utxow(
+                xyz.kd5ujc.scarab.ledger.UtxowFailure.MissingVKeyWitnesses(missing)
+              )
+            )
+          ) =>
+        missing
+      case Some(other) => fail(s"not the keys missing: $other")

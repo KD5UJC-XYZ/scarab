@@ -173,8 +173,14 @@ object PV1:
     /** `from` (`V1/Interval.hs:355-356`, plutus 507cab8c). */
     def from[A](s: A): Interval[A] = Interval(lowerBound(s), UpperBound(Extended.PosInf, true))
 
+    /** `to` (`V1/Interval.hs:361-362`, plutus 261766ad): up to `s`, closed. */
+    def to[A](s: A): Interval[A] = Interval(LowerBound(Extended.NegInf, true), upperBound(s))
+
   /** `lowerBound` (`V1/Interval.hs:298-299`, plutus 507cab8c): closed. */
   def lowerBound[A](a: A): LowerBound[A] = LowerBound(Extended.Finite(a), true)
+
+  /** `upperBound` (`V1/Interval.hs:304-305`, plutus 261766ad): closed. */
+  def upperBound[A](a: A): UpperBound[A] = UpperBound(Extended.Finite(a), true)
 
   /** `strictUpperBound` (`V1/Interval.hs:286-287`, plutus 507cab8c): open. */
   def strictUpperBound[A](a: A): UpperBound[A] = UpperBound(Extended.Finite(a), false)

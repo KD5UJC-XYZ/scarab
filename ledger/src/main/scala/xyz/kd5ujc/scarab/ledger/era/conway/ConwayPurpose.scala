@@ -43,7 +43,7 @@ object ConwayPlutusPurpose:
 
   /** `hoistPlutusPurpose` of Conway's instance (`Conway/Scripts.hs:111-117`, cardano-ledger
     * f649f975): the purpose in the form `F`, its item's form changed by `f`; Conway's instance of
-    * the class member ([[xyz.kd5ujc.scarab.ledger.era.ConwayEraScript.hoistPlutusPurpose]]).
+    * the class member ([[xyz.kd5ujc.scarab.ledger.era.AlonzoEraScript.hoistPlutusPurpose]]).
     */
   def hoistPlutusPurpose[G[_, _], F[_, _]](f: [ix, it] => G[ix, it] => F[ix, it])(
       purpose: ConwayPlutusPurpose[G]

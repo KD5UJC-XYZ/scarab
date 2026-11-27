@@ -85,6 +85,8 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
   * A corpus directory that is absent is an incomplete gate: the suite fails.
   */
 class PastHorizonReferenceSuite extends FunSuite:
+  import PastHorizonReferenceSuite.clockAt
+
   private val root = Path.of("fixtures/reference/plutus-forecast-horizon")
 
   private final case class Recorded(
@@ -135,46 +137,6 @@ class PastHorizonReferenceSuite extends FunSuite:
       "incomplete: no reference refusal for the eras missing here"
     )
   }
-
-  /** The era history of the cluster at `tip`, from its genesis: every era starts at the epoch the
-    * configuration gives it (`Test<Era>HardForkAtEpoch`), and the era's transition is known where
-    * the next era's epoch is configured.
-    */
-  private def clockAt(setup: NodeSetup, era: Era, epoch: BigInt, tip: BigInt): PosixClock =
-    val placement = Placement(setup.geometry, setup.byronHistory, setup.praos.forks)
-    val forks = setup.praos.forks
-    val starts: Vector[BigInt] = Era.values.toVector.take(era.index + 1).map {
-      case Era.Byron   => BigInt(0)
-      case Era.Shelley => setup.geometry.firstShelleyEpoch
-      case other =>
-        forks.triggers(other) match
-          case ForkTrigger.AtEpoch(e)   => e
-          case ForkTrigger.AtVersion(_) => fail(s"$other is not placed by an epoch")
-    }
-    val ends = starts.tail.zipWithIndex.map((e, i) => i -> placement.bound(e)).toMap
-    val past = (0 until era.index).toVector.map(i => Past(placement.bound(starts(i)), ends(i)))
-    val history = EraHistory.horizonHistory(
-      setup.geometry,
-      setup.byronHistory,
-      era,
-      past,
-      placement.bound(starts(era.index))
-    )
-    val transition = EraHistory.transition(
-      forks,
-      setup.geometry.k,
-      era,
-      epoch,
-      None,
-      0,
-      Some(tip)
-    )
-    PosixClock.forecast(
-      setup.globals.systemStart,
-      history,
-      transition,
-      Option.when(era == Era.Alonzo)(tip + 1)
-    )
 
   private def withUtxo[E <: EraTag](
       nes: NewEpochState[E],
@@ -515,3 +477,47 @@ class PastHorizonReferenceSuite extends FunSuite:
       assertEquals(ours.map(_.hex), r.reason.map(_.hex))
     }
   }
+
+/** What the suites of the recorded forecast-horizon corpora share: the clock of a corpus's era
+  * history at its recorded tip.
+  */
+object PastHorizonReferenceSuite extends munit.Assertions:
+  /** The era history of the cluster at `tip`, from its genesis: every era starts at the epoch the
+    * configuration gives it (`Test<Era>HardForkAtEpoch`), and the era's transition is known where
+    * the next era's epoch is configured.
+    */
+  def clockAt(setup: NodeSetup, era: Era, epoch: BigInt, tip: BigInt): PosixClock =
+    val placement = Placement(setup.geometry, setup.byronHistory, setup.praos.forks)
+    val forks = setup.praos.forks
+    val starts: Vector[BigInt] = Era.values.toVector.take(era.index + 1).map {
+      case Era.Byron   => BigInt(0)
+      case Era.Shelley => setup.geometry.firstShelleyEpoch
+      case other =>
+        forks.triggers(other) match
+          case ForkTrigger.AtEpoch(e)   => e
+          case ForkTrigger.AtVersion(_) => fail(s"$other is not placed by an epoch")
+    }
+    val ends = starts.tail.zipWithIndex.map((e, i) => i -> placement.bound(e)).toMap
+    val past = (0 until era.index).toVector.map(i => Past(placement.bound(starts(i)), ends(i)))
+    val history = EraHistory.horizonHistory(
+      setup.geometry,
+      setup.byronHistory,
+      era,
+      past,
+      placement.bound(starts(era.index))
+    )
+    val transition = EraHistory.transition(
+      forks,
+      setup.geometry.k,
+      era,
+      epoch,
+      None,
+      0,
+      Some(tip)
+    )
+    PosixClock.forecast(
+      setup.globals.systemStart,
+      history,
+      transition,
+      Option.when(era == Era.Alonzo)(tip + 1)
+    )
