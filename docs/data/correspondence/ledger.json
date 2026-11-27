@@ -51070,7 +51070,7 @@
    "evidence": [
     "BabbageStateStoredSuite"
    ],
-   "note": "the fields in the reference's order; each proposed update kept with the bytes the node stores it by (KeptProposedPPUpdates, ADR 0006)",
+   "note": "the fields in the reference's order; each proposed update kept with the bytes the node stores it by (KeptProposedPPUpdates, ADR 0006), which reproduce the stored record; the reference re-encodes the values, a difference visible in the Haskell-layout state answers for a non-canonical proposal (#85 item 7211463135)",
    "digest": "7a015b66009de3df"
   },
   "def ledger.era.ShelleyGovState.curPParamsShelleyGovStateL": {
@@ -51174,7 +51174,7 @@
    "evidence": [
     "BabbageStateStoredSuite"
    ],
-   "note": "each update kept with the bytes the node stores it by (ADR 0006); equal by the updates, as the reference's derived Eq",
+   "note": "each update kept with the bytes the node stores it by (ADR 0006), which reproduce the stored record; the reference re-encodes the values, a difference visible in the Haskell-layout state answers (DebugEpochState, DebugNewEpochState) for a non-canonical proposal (#85 item 7211463135); equal by the updates, as the reference's derived Eq",
    "digest": "5f3251087b08b1ca"
   },
   "def ledger.era.KeptProposedPPUpdates#proposed": {
@@ -54788,7 +54788,7 @@
    ]
   },
   {
-   "reason": "an update proposal of the eras before Conway, and each delegate's proposed update the governance state keeps (KeptPParamsUpdate), with the bytes of its values, as the node stores it (ADR 0006), and its reading from that stored form; the reference stores the typed update and writes it canonically, so it has no counterpart (#85)",
+   "reason": "an update proposal of the eras before Conway, and each delegate's proposed update the governance state keeps (KeptPParamsUpdate), with the bytes of its values, as the node stores it (ADR 0006), and its reading from that stored form; the reference stores the typed update and writes it canonically, so it has no counterpart; the kept bytes reproduce the stored record, and the reference's re-encoding differs from them in the Haskell-layout state answers for a non-canonical proposal (#85 item 7211463135); a stored proposal with a legacy unread field is refused (#85 item 7222565136)",
    "definitions": [
     "class ledger.era.KeptUpdate",
     "def ledger.era.KeptUpdate.fromStored",
@@ -54834,7 +54834,7 @@
    ]
   },
   {
-   "reason": "Babbage's governance state read from the node's flat record and written back over it, until the ledger state holds the era's record (#85): the era's parameter fields read from and written over the flat parameters, which hold every era's, and each proposed update read from and written as the bytes it keeps; the reference has no stored form to read, so it has no counterpart",
+   "reason": "Babbage's governance state read from the node's flat record and written back over it, until the ledger state holds the era's record (#85): the era's parameter fields read from and written over the flat parameters, which hold every era's, and each proposed update read from and written as the bytes it keeps; the reference has no stored form to read, so it has no counterpart; a record whose stored proposal holds a legacy field an earlier build kept unread is refused (#85 item 7222565136)",
    "definitions": [
     "trait ledger.era.ShelleyGovStateRecord",
     "object ledger.era.ShelleyGovStateRecord",
