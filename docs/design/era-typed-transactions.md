@@ -3530,6 +3530,47 @@ Conway's rules on the classes follow as the rest of stage 2.
     that move outputs and on an output at each registered account's pointer in each state (564).
   - Babbage's `EraCertState` instance is not here: its members name Babbage's body (`certsTotalDepositsTxBody`),
     which comes with Babbage's transaction. Nothing in the node uses these instances yet.
+- **Babbage's PPUP and UTXOS** (stage 4, fifth part; `era/rules/Ppup.scala`, `era/rules/Utxos.scala`,
+  `era/babbage/BabbageState.scala`; cardano-ledger f649f975 `Shelley/Rules/Ppup.hs:65-239`,
+  `Shelley/PParams.hs:299-316`, `Babbage/Rules/Utxos.hs:46-222`, `Babbage/State/CertState.hs:11-24`):
+  - Babbage's `EraCertState` is Shelley's, and Babbage's keys that must sign read the genesis delegations through it.
+  - PPUP's signal is the body's update proposal with the bytes the node stores it by (`ShelleyEraTxBody.keptUpdate`).
+    Each delegate's update is kept with its own bytes, made in the same read as the update (`KeptPParamsUpdate.decode`,
+    `KeptUpdate.proposed`), so the governance state records a proposal as it came. The rule mirrors the reference's
+    predicates in their order (`NonGenesisUpdatePPUP`, the first version in key-hash order that cannot follow,
+    `PPUpdateWrongEpoch`). The epoch, the point of no return and the quorum come from `Globals`. The version check is
+    `pvCanFollow`, whose minor is a wrapping `Word32` sum. It tells `PpupNewEpoch` and votes the next parameters
+    (`votedFuturePParams`).
+  - Babbage's UTXOS runs on the governance state: PPUP as a sub-rule before the scripts for a transaction flagged
+    valid, and the scripts alone for one flagged invalid. `InjectAlonzoUtxos[Babbage]` is the identity and
+    `EmbedPpupInUtxos[Babbage]` wraps PPUP's failures and events. Babbage's `updateUTxOState` runs on Babbage's
+    classes.
+  - Against the flat `ShelleyPpup`, `ShelleyUtxos` and `ShelleyUtxo.update` (`BabbageUtxosSuite`):
+    - the 22 V1-context submissions, each with what it spends, references and puts up: the same verdict and failures,
+      the reference's verdict (four accepted, two of them flagged invalid), and the same state after (UTxO set,
+      deposits, fees, instant stake, governance state), also under the policy that applies a transaction again;
+    - the 32 Babbage cases of the refusal corpora, each on the reference's state ticked to its slot and its UTxO set:
+      the same judgment and state after, three of them paying deposits. Four are refused by UTXOS. The three refused by
+      UTXOS alone (the PPUP case, `NonGenesisUpdatePPUP`, and two validation-tag mismatches) encode to the
+      reference's refusal bytes;
+    - PPUP on the 185 of the capture's 188 Babbage states that hold proposals, their recorded proposals proposed
+      again: 132 for this epoch before the point of no return, each voting the next parameters; 185 for the next epoch
+      from it; 185 for the wrong epoch. It is also run on the capture's two Babbage transactions that propose an
+      update, each read by Babbage's body decoder with the bytes the flat decoder stores, on the state before each;
+    - crafted cases for what the corpora lack: each failure, every failure at once, the slots either side of the point
+      of no return and a window that puts it at slot 0, the versions that follow and five that cannot, the first by
+      key hash among six delegates, a quorum met by one value written in two forms (its bytes kept per delegate, with
+      a mutant equal by value that writes back other bytes) and by a ratio written as 1/2 and as 2/4, a quorum less
+      one, two different updates, the size guard's edge, a delegate's proposal replaced. For UTXOS: an update in a body
+      whose PPUP fails (its scripts not run, a collection failure recorded beside it), one written wide (recorded as
+      written, also applied again), one flagged invalid (no PPUP), PPUP's event embedded before the scripts', and a
+      deregistration's refund. `BabbageUpdateSuite` checks that each delegate's kept update is the typed update's and
+      the stored form's, a delegate proposing twice among them.
+
+    Every comparison agrees. One crafted case differs from the flat path: at a minor version of 2^32 - 1, the era rule
+    lets `(major, 0)` follow, as the reference does, and the flat check refuses it
+    ([#1514](https://github.com/KD5UJC-XYZ/scarab/issues/1514)). The corpora hold no `PVCannotFollowPPUP`, no
+    `PPUpdateWrongEpoch` and no refund. Nothing in the node runs these rules yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
