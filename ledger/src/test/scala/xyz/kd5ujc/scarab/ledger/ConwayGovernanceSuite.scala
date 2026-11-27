@@ -519,7 +519,8 @@ class ConwayGovernanceSuite extends ScalaCheckSuite:
     "a DRep that a later proposal bumps does not hold back a motion by voting no, or by silence"
   ) {
     // a DRep that votes no, or does not vote, counts against the motion only while it is active
-    // (`Ratify.hs:266-275`); left out, the AlwaysNoConfidence stake alone carries the motion
+    // (`Ratify.hs:266-275`, cardano-ledger f649f975); left out, the AlwaysNoConfidence stake alone
+    // carries the motion
     Vector(Some(Vote.No), None).foreach { vote =>
       val r = boundaryExpiry(activity = 0, vote, alwaysNoConfidence = true)
       assertBumpedAfterTheSnapshot(r)

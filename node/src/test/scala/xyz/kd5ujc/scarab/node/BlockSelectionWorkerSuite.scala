@@ -403,7 +403,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
   // startup, reaches the invalid block inside the switch: startup selects from the anchor, so the
   // one-block chain is a rival candidate, and the truncated prefix, reinserted among the
   // candidates, ranks above it (the reference's `sortCandidates` over the reinserted prefix and
-  // the other candidates, `ChainSel.hs:1141-1183`).
+  // the other candidates, `ChainSel.hs:1141-1183`, ouroboros-consensus 82ecba32).
   test("a selection over a longer fork with an invalid middle block adopts its valid prefix") {
     for
       forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
