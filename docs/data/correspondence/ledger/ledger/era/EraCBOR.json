@@ -431,6 +431,27 @@
     }
    ]
   },
+  "given ledger.era.DecCBOR.coinPerWord": {
+   "class": "Mirror",
+   "digest": "4025b4baf52549c0",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "its coin's, a Word64, derived",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      403,
+      403
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR"
+    }
+   ]
+  },
   "given ledger.era.DecCBOR.compactCoin": {
    "class": "Mirror",
    "digest": "d8fe9d5c595b643e",
@@ -629,6 +650,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "DecCBOR (NonZero a)"
+    }
+   ]
+  },
+  "given ledger.era.DecCBOR.nonce": {
+   "class": "Mirror",
+   "digest": "1f43f5f5307c0387",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "the pre-12 Summands, as the node's decoder of a pre-Conway update reads the extra entropy; the decodeRecordSum of 12 is not here, as no era with the extra entropy reads at 12",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      579,
+      595
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR Nonce"
     }
    ]
   },
@@ -904,6 +946,27 @@
     }
    ]
   },
+  "given ledger.era.EncCBOR.coinPerWord": {
+   "class": "Mirror",
+   "digest": "f2a2defaf190d699",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "its coin's, derived",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      403,
+      403
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EncCBOR"
+    }
+   ]
+  },
   "given ledger.era.EncCBOR.compactCoin": {
    "class": "Mirror",
    "digest": "dbf5983ac82066b2",
@@ -1121,6 +1184,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "NonZero"
+    }
+   ]
+  },
+  "given ledger.era.EncCBOR.nonce": {
+   "class": "Mirror",
+   "digest": "75991063a1453014",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      574,
+      577
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EncCBOR Nonce"
     }
    ]
   },

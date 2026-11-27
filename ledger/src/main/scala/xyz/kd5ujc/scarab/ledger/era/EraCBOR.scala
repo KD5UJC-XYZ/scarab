@@ -169,6 +169,19 @@ object EncCBOR:
   /** `Coin`'s, `encodeInteger` of its integer (`Coin.hs:106-112`, cardano-ledger 9df9f98c). */
   given coin: EncCBOR[Coin] = c => encodeInteger(c.value)
 
+  /** `CoinPerWord` 's, its coin's (`deriving newtype EncCBOR`, `Alonzo/PParams.hs:401-403`,
+    * cardano-ledger f649f975).
+    */
+  given coinPerWord: EncCBOR[CoinPerWord] = c => coin.encCBOR(c.unCoinPerWord)
+
+  /** `instance EncCBOR Nonce` (`BaseTypes.hs:574-577`, cardano-ledger f649f975): `[0]` for the
+    * neutral nonce, `[1, hash]` for a hash.
+    */
+  given nonce: EncCBOR[xyz.kd5ujc.scarab.ledger.Nonce] =
+    case xyz.kd5ujc.scarab.ledger.Nonce.Neutral => encodeListLen(1) |+| encodeInteger(BigInt(0))
+    case xyz.kd5ujc.scarab.ledger.Nonce.Hash(h) =>
+      encodeListLen(2) |+| encodeInteger(BigInt(1)) |+| encodeBytes(h)
+
   /** `EpochInterval`'s, its `Word32` (cardano-slotting). */
   given epochInterval: EncCBOR[EpochInterval] = e => encodeInteger(BigInt(e.toLong))
 
@@ -363,6 +376,26 @@ object DecCBOR:
   given coin: DecCBOR[Coin] with
     def decCBOR(n: Node)(using at: DecodeAt): Result[Coin] =
       unsigned[W64].decCBOR(n).map(u => Coin(u.value))
+
+  /** `CoinPerWord` 's, its coin's, a `Word64` (`deriving newtype DecCBOR`,
+    * `Alonzo/PParams.hs:401-403`, cardano-ledger f649f975).
+    */
+  given coinPerWord: DecCBOR[CoinPerWord] with
+    def decCBOR(n: Node)(using at: DecodeAt): Result[CoinPerWord] =
+      coin.decCBOR(n).map(CoinPerWord(_))
+
+  /** `instance DecCBOR Nonce` (`BaseTypes.hs:579-595`, cardano-ledger f649f975): below version 12
+    * the `Summands` of `[0]` and `[1, hash]`, each tag's length checked, as the node's decoder of a
+    * pre-Conway update's extra entropy reads it ([[xyz.kd5ujc.scarab.ledger.Nonce.decode]]), the
+    * hash's byte string in the form the version's `ByteStrings` takes. The extra entropy is a field
+    * of the eras up to Alonzo only ([[EraPParamsToAlonzo]]), whose decoder versions are below 12,
+    * so the `decodeRecordSum` of 12 is not reached.
+    */
+  given nonce: DecCBOR[xyz.kd5ujc.scarab.ledger.Nonce] with
+    def decCBOR(n: Node)(using at: DecodeAt): Result[xyz.kd5ujc.scarab.ledger.Nonce] =
+      given xyz.kd5ujc.scarab.ledger.ByteStrings =
+        xyz.kd5ujc.scarab.ledger.ByteStrings.of(at.version)
+      xyz.kd5ujc.scarab.ledger.Nonce.decode(n, xyz.kd5ujc.scarab.ledger.Nonce.NeutralFields.Exact)
 
   given epochInterval: DecCBOR[EpochInterval] with
     def decCBOR(n: Node)(using at: DecodeAt): Result[EpochInterval] =

@@ -126,6 +126,29 @@ object ToPlutusData:
     * the fields the update sets, each under its tag, in the order of the era's descriptions
     * (`eraPParams`); a parameter an update cannot set has no tag and is left out.
     */
+  // `instance ToPlutusData Nonce` and `instance ToPlutusData CoinPerWord` are `error
+  // "unsupported"` (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs:159-161`,
+  // `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs:405-407`, cardano-ledger f649f975): they
+  // exist only because a description packs its value's `ToPlutusData` (`PParam`,
+  // `Core/PParams.hs:786-797`), and the one reader of it, an update shown as Plutus data
+  // ([[pparamsUpdate]]), asks for `ConwayEraPParams`, which no era with the extra entropy or the
+  // cost per UTxO word has. They are not givens: only the descriptions of those two parameters
+  // (`ppExtraEntropy`, `ppCoinsPerUTxOWord`) are given them.
+
+  /** `instance ToPlutusData Nonce` (`ToPlutusData.hs:159-161`, cardano-ledger f649f975). */
+  // Kept (ERR-4): the reference's instance fails when called; nothing here calls it, as its one
+  // reader asks for an era with `ConwayEraPParams` and the extra entropy is a parameter of the eras
+  // up to Alonzo only, so reaching it is a defect of the tree, not a domain error
+  // (`AlonzoPParamsSuite` holds that no update of Alonzo's can be shown).
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
+  private[era] val unsupportedNonce: ToPlutusData[xyz.kd5ujc.scarab.ledger.Nonce] = _ =>
+    sys.error("unsupported")
+
+  /** `instance ToPlutusData CoinPerWord` (`Alonzo/PParams.hs:405-407`, cardano-ledger f649f975). */
+  // Kept (ERR-4): as [[unsupportedNonce]]; the cost per UTxO word is a parameter of Alonzo alone.
+  @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
+  private[era] val unsupportedCoinPerWord: ToPlutusData[CoinPerWord] = _ => sys.error("unsupported")
+
   given pparamsUpdate[E <: EraTag](using p: ConwayEraPParams[E]): ToPlutusData[PParamsUpdate[E]] =
     ppu =>
       PlutusData.Map(p.eraPParams.flatMap { pp =>

@@ -105,6 +105,42 @@
     }
    ]
   },
+  "def ledger.era.CoinPerWord.apply": {
+   "class": "Mirror",
+   "digest": "e518e99dfa2197d2",
+   "note": "the newtype's constructor",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      401,
+      401
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CoinPerWord"
+    }
+   ]
+  },
+  "def ledger.era.CoinPerWord.unCoinPerWord": {
+   "class": "Mirror",
+   "digest": "141bfd18374a90e1",
+   "note": "the newtype's field",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      401,
+      401
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "unCoinPerWord"
+    }
+   ]
+  },
   "def ledger.era.CostModels.int64Model": {
    "class": "Mirror",
    "digest": "f4aa951a1a17a320",
@@ -275,6 +311,24 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "CoinPerByte"
+    }
+   ]
+  },
+  "type ledger.era.CoinPerWord": {
+   "class": "Mirror",
+   "digest": "7e7e609fb463b2f5",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      401,
+      403
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CoinPerWord"
     }
    ]
   },
@@ -584,6 +638,7 @@
    "definitions": [
     "given ledger.era.Version.given_Ordering_Version",
     "object ledger.era.CoinPerByte",
+    "object ledger.era.CoinPerWord",
     "object ledger.era.CostModels",
     "object ledger.era.ExUnits",
     "object ledger.era.MaxPledgeLeverage",

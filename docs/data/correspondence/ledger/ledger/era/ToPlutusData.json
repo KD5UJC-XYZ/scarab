@@ -572,6 +572,48 @@
      "symbol": "ToPlutusData"
     }
    ]
+  },
+  "val ledger.era.ToPlutusData.unsupportedCoinPerWord": {
+   "class": "Mirror",
+   "digest": "2abafc5cb99ceab4",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "the reference's `error \"unsupported\"`, a kept site (ERR-4), not a given: only the cost per UTxO word's description is given it, and its one reader asks for ConwayEraPParams, which Alonzo has not",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      405,
+      407
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "CoinPerWord"
+    }
+   ]
+  },
+  "val ledger.era.ToPlutusData.unsupportedNonce": {
+   "class": "Mirror",
+   "digest": "0ef5332ca93b9217",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "the reference's `error \"unsupported\"`, a kept site (ERR-4), not a given: only the extra entropy's description is given it, and its one reader asks for ConwayEraPParams, which Alonzo has not",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs",
+     "lines": [
+      159,
+      161
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Nonce"
+    }
+   ]
   }
  },
  "glue": [
