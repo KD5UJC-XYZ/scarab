@@ -27,8 +27,8 @@ The consequences:
 - **Dijkstra's rules decoded a Dijkstra transaction a second time, as a Conway one**, and checked that (the
   flat Dijkstra rules, which stage 3 deleted once the era rules judged every case).
 - **A field's era is checked only at run time.** A Shelley-only certificate in a Conway transaction was
-  refused by the decoder and again by the flat CERTS rule (`TxDefect.PreConwayCertificate`; stage 3 deleted
-  that rule), but nothing in the types prevented it. Nothing stops a rule from reading a field its era does not have.
+  refused by the decoder and again by the flat CERTS rule, as a defect of the transaction (stage 3 deleted
+  both), but nothing in the types prevented it. Nothing stops a rule from reading a field its era does not have.
 - **The candidate-nonce window is chosen by comparing eras** (`HeaderValidation`, `h.era.ordinal >=
   Era.Conway.ordinal`). That kind of choice goes wrong silently when an era is added.
 
@@ -1768,7 +1768,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     recorded state at 9, 10 and 11. A refusal carries no state, so crafted sequences the rules accept compare
     the states of delegations moved, pools re-registered and retired, and committee members. Until stage 3
     the flat CERTS was these judgments' oracle; it gave the same failures in the same order, or the same
-    state, on all 467 compared, which were recorded before it was deleted
+    state, on all 927 compared (467 ids), which were recorded before it was deleted
     (`fixtures/conway-flat-refusals/certs-judgments.jsonl`) and hold the era rules now: a refusal by its
     failures' bytes, an admission by the certificate state's encoding, checked to read back as the state, and
     by the relays and metadata it keeps as the certificates gave them, which the encoding writes anew.
@@ -3283,7 +3283,8 @@ Conway's rules on the classes follow as the rest of stage 2.
       of [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484), which went with the flat
       CERTS), the complete ordered list is
       the flat one with CERTS's refusal replaced, in its place, by the reference's LEDGER failure with its account,
-      amount and balance (`MovedWithdrawals.expected`, which `ConwayLedgerChecksSuite` also reads);
+      amount and balance (`MovedWithdrawals.expected`, since deleted; `ConwayLedgerChecksSuite` holds the cases to
+      `MovedWithdrawals.Cases`);
     - at the root, as the mempool runs it, `applyTx`'s refusal of 81 of the corpus's 84 Conway cases, each under its
       recorded build, encodes to the reference's refusal byte for byte (`all-inputs-spent`, MEMPOOL's own, among
       them); the three left out are those the measure refuses first (`tx-too-large`, `tx-too-large-spent-inputs` and
