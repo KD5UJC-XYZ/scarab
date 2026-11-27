@@ -3379,15 +3379,20 @@ Conway's rules on the classes follow as the rest of stage 2.
     flat decoder's fixed order instead. Each value is read by the flat decoder's reader of its field at decoder
     version 7, so each refuses what the flat decoder refuses, with its error.
   - Against the flat decoder at Babbage, at both layouts (`BabbageTxDifferentialSuite`): the 13 Babbage
-    transactions of the recorded blocks, the 32 transactions of the reference's Babbage refusal corpora, 573
-    Babbage rows of the reference's decoder corpora and 12,640 byte mutants of those transactions. The two accept
-    and refuse alike, and an accepted transaction has the flat id, body hash and original bytes and projects to the
-    flat values field by field. A refused row is refused with the case the recording names, except two repeated
-    parameter keys: there the era's refusal names the key, as the reference's does, and the recording names the
-    flat decoder's case. Three rows give a different first cause from the flat decoder's: those two, and a redeemer
-    whose units are a detached record that the walk does not find, refused at the units as the reference reads them
-    first. `fixtures/haskell-immutable/preview` holds Alonzo blocks only. Nothing in the node reads these types
-    yet.
+    transactions of the recorded blocks and the 86 of the reference's refusal (32), v1-context (22, six invalid)
+    and Plutus admission (32) corpora, 27,712 byte mutants of them, 573 Babbage rows of the reference's decoder
+    corpora and the reference's 140 verdicts on Babbage auxiliary data. The two accept and refuse alike, and as the
+    reference does where it recorded a verdict; an accepted transaction has the flat id, body hash and original
+    bytes and projects to the flat values field by field. Compared whole, 54 refusals differ from the flat
+    decoder's. In 51 the value of an update proposal is refused with the same case, at the update's site where
+    the flat decoder names the parameter: the typed update's decoder of stage 4's first part, and the reference
+    names neither. Two repeated parameter keys are refused with the key, as the reference's refusal names it.
+    One redeemer's units are a record that takes the next items as its fields, which the reference reads and
+    runs out of input on; the detached-record walk does not find it, so the era decoder refuses the units, read
+    first as the reference reads them, and the flat decoder the native scripts' key, which it reads first. Left
+    out are the rows recorded at other decoder versions (`bootstrap-duplicates` at 8 to 12) and the kinds that
+    are not a transaction's part (block bodies, single bootstrap witnesses, addresses, accounts).
+    `fixtures/haskell-immutable/preview` holds Alonzo blocks only. Nothing in the node reads these types yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

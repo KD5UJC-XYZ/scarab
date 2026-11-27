@@ -25,14 +25,15 @@ import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 /** Babbage's era decoders ([[BabbageTxBody.decode]], [[BabbageTxWits.decode]],
   * [[BabbageTxAuxData.decode]], [[BabbageTx.decode]] and [[BabbageTx.fromEnvelope]]) against the
   * flat decoder at Babbage (`Tx.fromBlock`, `TxBody.decode`, `Witnesses.decode`,
-  * `AuxiliaryScripts.read`, `Tx.fromEnvelope`), the path the node runs for Babbage: on every
-  * recorded Babbage transaction and on every Babbage row of the reference's decoder corpora, at
-  * every layout, the two accept and refuse alike; an accepted transaction has the same id, body
-  * hash and original bytes, and projects to the flat values field by field (a projection local to
-  * this suite); a refused row is refused with the case the reference's recording names, where it
-  * names one. The era decoders read a map's keys as the reference does, as written, where the flat
-  * decoder reads them in a fixed order; the rows whose cause differs between the two for that
-  * reason are listed, each with the reference's own failure.
+  * `AuxiliaryScripts.read`, `Tx.fromEnvelope`), the path the node runs for Babbage, at every
+  * layout: on every Babbage transaction the repository holds (the recorded blocks, the reference's
+  * refusal, v1-context and Plutus admission corpora) and byte mutants of them, on every Babbage row
+  * of the reference's decoder corpora and on the reference's verdicts on Babbage auxiliary data,
+  * the two accept and refuse alike; an accepted transaction has the same id, body hash and original
+  * bytes, and projects to the flat values field by field (the projection of [[BabbageTestKit]]); a
+  * refused row is refused with the case the reference's recording names, where it names one. The
+  * refusals that differ from the flat decoder's, compared whole, are listed, each with the
+  * reference's own failure.
   */
 class BabbageTxDifferentialSuite extends FunSuite:
   import BabbageTestKit.{sameAux, sameBody, sameWits}
@@ -125,16 +126,19 @@ class BabbageTxDifferentialSuite extends FunSuite:
     )
     txs
 
+  /** A whole transaction read both ways, at every layout. */
+  private def sameWhole(raw: Bytes, what: String): Unit =
+    val flat = FlatTx.fromEnvelope(raw, Era.Babbage).fold(e => fail(s"$what: $e"), identity)
+    layouts.foreach { l =>
+      val era = BabbageTx.fromEnvelope(raw, l).fold(e => fail(s"$what at $l: $e"), identity)
+      sameBody(era.body, flat.body, what)
+      sameWits(era.wits, flat.witnesses, what)
+      assertEquals(era.isValid, xyz.kd5ujc.scarab.ledger.era.IsPhase2Valid.of(flat.isValid), what)
+    }
+
   test("the Babbage transactions of the reference's refusal corpora read alike both ways") {
     val txs = refusalTxs
-    txs.foreach { (d, raw) =>
-      val flat = FlatTx.fromEnvelope(raw, Era.Babbage).fold(e => fail(s"$d: $e"), identity)
-      layouts.foreach { l =>
-        val era = BabbageTx.fromEnvelope(raw, l).fold(e => fail(s"$d at $l: $e"), identity)
-        sameBody(era.body, flat.body, d)
-        sameWits(era.wits, flat.witnesses, d)
-      }
-    }
+    txs.foreach((d, raw) => sameWhole(raw, d))
     assertEquals(
       txs.groupMapReduce(_._1)(_ => 1)(_ + _),
       Map(
@@ -145,6 +149,83 @@ class BabbageTxDifferentialSuite extends FunSuite:
         "babbage-ppup" -> 1
       )
     )
+  }
+
+  /** The Babbage transactions of the v1-context corpus (`fixtures/reference/v1-context`), their
+    * parts with their flags, at protocol versions 7 and 8, three of each marked invalid.
+    */
+  private lazy val contextTxs: Vector[Block.Transaction] =
+    Vector("babbage-pv7", "babbage-pv8").flatMap { f =>
+      val rows = parser
+        .parse(Files.readString(Path.of(s"fixtures/reference/v1-context/$f.json")))
+        .fold(e => fail(e.message), identity)
+        .asArray
+        .getOrElse(fail(s"$f: not an array"))
+      rows.map(j =>
+        Block.Transaction(
+          hex(str(j, "body")),
+          hex(str(j, "witnesses")),
+          j.hcursor.get[Option[String]]("auxiliary").fold(e => fail(e.message), identity).map(hex),
+          j.hcursor.get[Boolean]("isValid").fold(e => fail(e.message), identity)
+        )
+      )
+    }
+
+  /** The whole Babbage transactions the Plutus admission corpora submitted
+    * (`fixtures/reference/plutus-admission`), each once.
+    */
+  private lazy val admissionTxs: Vector[Bytes] =
+    Vector("admissions", "rebased-admissions")
+      .flatMap(f =>
+        parser
+          .parse(Files.readString(Path.of(s"fixtures/reference/plutus-admission/$f.json")))
+          .fold(e => fail(e.message), identity)
+          .hcursor
+          .downField("observations")
+          .as[Vector[Json]]
+          .fold(e => fail(e.message), identity)
+          .filter(j => str(j, "era") == "babbage")
+          .map(j => hex(str(j, "tx")))
+      )
+      .distinct
+
+  test(
+    "the Babbage transactions of the v1-context and Plutus admission corpora read alike both ways"
+  ) {
+    contextTxs.zipWithIndex.foreach((t, i) => sameTx(t, s"v1-context transaction $i"))
+    admissionTxs.zipWithIndex.foreach((raw, i) => sameWhole(raw, s"admission transaction $i"))
+    assertEquals(
+      (contextTxs.size, contextTxs.count(!_.isValid), admissionTxs.size),
+      (22, 6, 32)
+    )
+  }
+
+  /** The reference's verdicts on Babbage auxiliary data (`fixtures/reference/auxiliary-scripts`,
+    * the `oracle` 's `decoded`), at protocol versions 7 and 8: Babbage's decoder and the flat
+    * reader at the row's version agree with them.
+    */
+  test("every Babbage row of the auxiliary-data corpus is read as the reference reads it") {
+    given ByteStrings = ByteStrings.of(DecoderVersion.of(Era.Babbage))
+    val rows = parser
+      .parse(Files.readString(Path.of("fixtures/reference/auxiliary-scripts/auxiliary.json")))
+      .fold(e => fail(e.message), identity)
+      .asArray
+      .getOrElse(fail("not an array"))
+      .filter(j => str(j, "era") == "Babbage")
+    val verdicts = rows.map { j =>
+      val raw = hex(str(j, "auxiliary"))
+      val decoded =
+        j.hcursor.downField("oracle").get[Boolean]("decoded").fold(e => fail(e.message), identity)
+      val version = j.hcursor.get[Int]("protocolMajor").fold(e => fail(e.message), identity)
+      val era = BabbageTxAuxData.decode(raw)
+      val what = str(j, "name")
+      assertEquals(era.isRight, decoded, s"$what: $era")
+      assertEquals(AuxiliaryScripts.read(raw, Era.Babbage, version).isRight, decoded, what)
+      era.foreach(sameAux(_, raw, what))
+      decoded
+    }
+    // the rows, and those the reference decodes
+    assertEquals((verdicts.size, verdicts.count(identity)), (140, 46))
   }
 
   // ---- the decoder corpora
@@ -300,16 +381,45 @@ class BabbageTxDifferentialSuite extends FunSuite:
         )
     }
     // the rows whose cause the two ways name differently: the era's is the reference's order
+    // the refusals that differ from the flat decoder's, whole
     val differ = results.collect {
-      case (r, (Some(f), era)) if era.head.flatMap(cause).flatMap(Refusal.of) != Refusal.of(f) =>
-        r.name -> era.head.flatMap(cause)
+      case (r, (Some(f), era)) if era.head.flatMap(cause) != Some(f) =>
+        r.name -> (f, era.head.flatMap(cause))
     }.toMap
-    assertEquals(differ.keySet, updateKeys + countedUnits)
+    // an update proposal's value is read by the typed update's decoder, which names the site of a
+    // refused value as the update's or the units', where the flat decoder names the parameter; the
+    // reference names neither ("expected word"), and the refusal's case is the same
+    val sites = differ.filter((name, d) =>
+      !updateKeys.contains(name) && name != countedUnits && d._2.flatMap(Refusal.of) == Refusal.of(
+        d._1
+      )
+    )
+    assert(sites.keys.forall(_.startsWith("babbage update value: ")), sites.keys.toString)
+    assert(
+      sites.values.forall(d =>
+        d._2.exists {
+          case LedgerDecodeError.Expected(DecodeField.ParameterUpdate | DecodeField.ExUnits, _, _) |
+              LedgerDecodeError
+                .NumberOutOfRange(DecodeField.ParameterUpdate | DecodeField.ExUnits, _, _, _) |
+              LedgerDecodeError.RationalOutOfBounds(DecodeField.ParameterUpdate, _) |
+              LedgerDecodeError.ExpectedTag(DecodeField.ParameterUpdate, _, _) |
+              LedgerDecodeError.ZeroDenominator(DecodeField.ParameterUpdate) | LedgerDecodeError
+                .ArrayLength(DecodeField.ParameterUpdate | DecodeField.ExUnits, _, _) |
+              LedgerDecodeError.IndefiniteLength(DecodeField.ExUnits) =>
+            true
+          case _ => false
+        }
+      ),
+      sites.toString
+    )
+    assertEquals(differ.keySet -- sites.keySet, updateKeys + countedUnits)
+    assertEquals(sites.size, 51)
+    val differCause = differ.map((name, d) => name -> d._2)
     // the update's own decoder refuses a parameter written twice with the reference's key
     // ("Duplicate key: 0 while decoding type PParamsUpdate BabbageEra", 16 for the wide one), where
     // the flat decoder's refusal names no key
     assertEquals(
-      differ("babbage update: repeated key, same value"),
+      differCause("babbage update: repeated key, same value"),
       Some(
         LedgerDecodeError.PParamsCodec(
           PParamsDecodeError.DuplicateKey(DecodeField.ParameterUpdate, 0)
@@ -317,7 +427,7 @@ class BabbageTxDifferentialSuite extends FunSuite:
       )
     )
     assertEquals(
-      differ("babbage update: repeated key, other value, written wide"),
+      differCause("babbage update: repeated key, other value, written wide"),
       Some(
         LedgerDecodeError.PParamsCodec(
           PParamsDecodeError.DuplicateKey(DecodeField.ParameterUpdate, 16)
@@ -330,7 +440,7 @@ class BabbageTxDifferentialSuite extends FunSuite:
     // decoder at the redeemer's units, read first as the reference reads them, the flat one at the
     // native scripts' key, which it reads first
     assertEquals(
-      differ(countedUnits),
+      differCause(countedUnits),
       Some(LedgerDecodeError.IndefiniteLength(DecodeField.ExUnits))
     )
     // the rows read, by part and verdict
@@ -373,7 +483,8 @@ class BabbageTxDifferentialSuite extends FunSuite:
     * projects to the flat values.
     */
   test("mutants of every Babbage transaction are accepted and refused alike both ways") {
-    val seeds = recordedFiles.flatMap(babbageTxs).map(FlatTx.envelope) ++ refusalTxs.map(_._2)
+    val seeds = (recordedFiles.flatMap(babbageTxs) ++ contextTxs).map(FlatTx.envelope) ++
+      refusalTxs.map(_._2) ++ admissionTxs
     def mutants(raw: Bytes): Vector[Bytes] =
       val bytes = raw.value
       val step = math.max(1, bytes.size / 64)
@@ -399,7 +510,7 @@ class BabbageTxDifferentialSuite extends FunSuite:
         case _ => ()
       flat.isRight
     }
-    assertEquals(seeds.size, 45)
+    assertEquals(seeds.size, 99)
     // the mutants, and those both ways accept
-    assertEquals((outcomes.size, outcomes.count(identity)), (12640, 2798))
+    assertEquals((outcomes.size, outcomes.count(identity)), (27712, 5990))
   }
