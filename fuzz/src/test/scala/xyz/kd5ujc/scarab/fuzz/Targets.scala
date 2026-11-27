@@ -2656,4 +2656,5 @@ object Targets:
         injectionJson,
         genesisPoolFields
       ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity ++ volatileLog ++
-      nodeConfiguration ++ nodeTopologyFile ++ UplcTargets.all
+      nodeConfiguration ++ nodeTopologyFile ++ UplcTargets.all ++
+      CurveTargets.all
