@@ -24,12 +24,15 @@ import xyz.kd5ujc.scarab.ledger.{
   PoolParams,
   Pot,
   Redeemer,
+  TranslationError,
   Tx,
   TxBody as FlatTxBody,
   Update as FlatUpdate,
   Witnesses as FlatWitnesses
 }
 import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoContextError,
+  BabbageContextError,
   Data,
   IsPhase2Valid,
   KeptUpdate,
@@ -211,6 +214,30 @@ object BabbageTestKit extends munit.Assertions:
     )
 
   // ---- the projection onto the flat values
+
+  /** The flat failure a typed context failure of Babbage is, case by case. */
+  def flatContextError(e: BabbageContextError[Babbage]): TranslationError = e match
+    case BabbageContextError.AlonzoContextError(a) =>
+      a match
+        case AlonzoContextError.TranslationLogicMissingInput(in) =>
+          TranslationError.UnresolvedInput(in)
+        case AlonzoContextError.TimeTranslationPastHorizon(cause) => cause
+        case AlonzoContextError.Undecodable(site, _) => TranslationError.Undecodable(site)
+        case AlonzoContextError.CertificateNotSupported(cert) =>
+          TranslationError.CertificateNotSupported(flatCert(cert))
+        case AlonzoContextError.PlutusPurposeNotSupported(_) |
+            AlonzoContextError.ImpossibleContextError(_) =>
+          munit.Assertions.fail(s"no Babbage translation fails with $a")
+    case BabbageContextError.ByronTxOutInContext(source) =>
+      TranslationError.ByronTxOutInContext(source)
+    case BabbageContextError.RedeemerPointerPointsToNothing(ptr) =>
+      TranslationError.RedeemerPointerPointsToNothing(ptr.tag, ptr.ix.value)
+    case BabbageContextError.InlineDatumsNotSupported(source) =>
+      TranslationError.InlineDatumsNotSupported(source)
+    case BabbageContextError.ReferenceScriptsNotSupported(source) =>
+      TranslationError.ReferenceScriptsNotSupported(source)
+    case BabbageContextError.ReferenceInputsNotSupported(ins) =>
+      TranslationError.ReferenceInputsNotSupported(ins)
 
   def flatCert(c: BabbageTxCert): Certificate = c.rep match
     case ShelleyTxCertRep.ShelleyTxCertDelegCert(ShelleyDelegCert.ShelleyRegCert(cred)) =>

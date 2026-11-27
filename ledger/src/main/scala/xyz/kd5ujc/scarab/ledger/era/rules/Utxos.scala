@@ -3,25 +3,30 @@ package xyz.kd5ujc.scarab.ledger.era.rules
 
 import cats.{Applicative, Monad}
 import cats.data.{Chain, NonEmptyList}
-import cats.mtl.{Raise, Tell}
+import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.TxEnv
+import xyz.kd5ujc.scarab.ledger.{LedgerDefect, TxEnv}
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraTx,
   AlonzoEraUTxO,
   CollectError,
+  EraCertState,
+  EraPParamsToBabbage,
   IsPhase2Valid,
+  PParams,
   Phase2Deferral,
   PlutusEvaluation,
   PlutusWithContext,
   ScriptFailure,
   ScriptResult,
   ScriptVerdictUnavailable,
+  ShelleyEraTxBody,
+  ShelleyGovState,
   StAnnTx,
   TxLevel
 }
-import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts}
+import xyz.kd5ujc.scarab.ledger.state.{Babbage, CertState, Conway, Dijkstra, EraTag}
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScriptEvaluator}
 
 // UTXOS as the reference writes it (cardano-ledger f649f975, the `Rules/Utxos.hs` of Alonzo, Babbage
@@ -57,16 +62,23 @@ enum TagMismatchDescription:
   case FailedUnexpectedly(failures: NonEmptyList[FailureDescription])
 
 /** `EraRuleFailure "PPUP" era` (`Core/Era.hs`, cardano-ledger f649f975), of the eras whose UTXOS is
-  * typed: Conway has no PPUP, its failure is `VoidEraRule` (`Conway/Era.hs`), no value, and neither
-  * has Dijkstra (`Dijkstra/Era.hs:86-90`, cardano-ledger 9df9f98c). The eras before Conway, whose
-  * UTXOS runs PPUP, add their case with their PPUP.
+  * typed: Babbage's is Shelley's (`type instance EraRuleFailure "PPUP" BabbageEra =
+  * ShelleyPpupPredFailure BabbageEra`, `Babbage/Rules/Ppup.hs:12`); Conway has no PPUP, its failure
+  * is `VoidEraRule` (`Conway/Era.hs`), no value, and neither has Dijkstra (`Dijkstra/Era.hs:86-90`,
+  * cardano-ledger 9df9f98c).
   */
 type PpupPredFailure[E <: EraTag] = E match
+  case Babbage  => ShelleyPpupPredFailure[Babbage]
   case Conway   => Nothing
   case Dijkstra => Nothing
 
-/** `EraRuleEvent "PPUP" era`, as [[PpupPredFailure]]: Conway's and Dijkstra's are `VoidEraRule`. */
+/** `EraRuleEvent "PPUP" era`, as [[PpupPredFailure]]: Babbage's is Shelley's `PpupEvent`
+  * ([[ShelleyPpupEvent]]), the event of its PPUP (`EraRule "PPUP" BabbageEra = Shelley.PPUP
+  * BabbageEra`, `Babbage/Era.hs:106`, cardano-ledger f649f975); Conway's and Dijkstra's are
+  * `VoidEraRule`.
+  */
 type PpupEvent[E <: EraTag] = E match
+  case Babbage  => ShelleyPpupEvent[Babbage]
   case Conway   => Nothing
   case Dijkstra => Nothing
 
@@ -102,18 +114,22 @@ enum ConwayUtxosEvent[E <: EraTag]:
   case SuccessfulPlutusScriptsEvent(scripts: NonEmptyList[PlutusWithContext])
   case FailedPlutusScriptsEvent(scripts: NonEmptyList[PlutusWithContext])
 
-/** `EraRuleFailure "UTXOS" era`: Conway's is its own (`Conway/Rules/Utxos.hs:76`, cardano-ledger
-  * f649f975), and Dijkstra's is Conway's, as its UTXOS is (`Dijkstra/Rules/Utxos.hs:18`,
-  * cardano-ledger 9df9f98c). Each era adds its case with its rule.
+/** `EraRuleFailure "UTXOS" era`: Babbage's is Alonzo's (`Babbage/Rules/Utxos.hs:46`, cardano-ledger
+  * f649f975), Conway's is its own (`Conway/Rules/Utxos.hs:76`, cardano-ledger f649f975), and
+  * Dijkstra's is Conway's, as its UTXOS is (`Dijkstra/Rules/Utxos.hs:18`, cardano-ledger 9df9f98c).
+  * Each era adds its case with its rule.
   */
 type UtxosPredFailure[E <: EraTag] = E match
+  case Babbage  => AlonzoUtxosPredFailure[Babbage]
   case Conway   => ConwayUtxosPredFailure[Conway]
   case Dijkstra => ConwayUtxosPredFailure[Dijkstra]
 
-/** `EraRuleEvent "UTXOS" era`: Conway's is its own (`Conway/Rules/Utxos.hs:78`, cardano-ledger
-  * f649f975), and Dijkstra's is Conway's (`Dijkstra/Rules/Utxos.hs:20`, cardano-ledger 9df9f98c).
+/** `EraRuleEvent "UTXOS" era`: Babbage's is Alonzo's (`Babbage/Rules/Utxos.hs:48`, cardano-ledger
+  * f649f975), Conway's is its own (`Conway/Rules/Utxos.hs:78`, cardano-ledger f649f975), and
+  * Dijkstra's is Conway's (`Dijkstra/Rules/Utxos.hs:20`, cardano-ledger 9df9f98c).
   */
 type UtxosEvent[E <: EraTag] = E match
+  case Babbage  => AlonzoUtxosEvent[Babbage]
   case Conway   => ConwayUtxosEvent[Conway]
   case Dijkstra => ConwayUtxosEvent[Dijkstra]
 
@@ -127,6 +143,15 @@ trait InjectAlonzoUtxos[E <: EraTag]:
   def injectEvent(event: AlonzoUtxosEvent[E]): UtxosEvent[E]
 
 object InjectAlonzoUtxos:
+  /** Babbage's, whose UTXOS failures and events are Alonzo's (`instance InjectRuleFailure "UTXOS"
+    * AlonzoUtxosPredFailure BabbageEra` and its event's, `Babbage/Rules/Utxos.hs:50-52`,
+    * cardano-ledger f649f975, the class's default): each as it is.
+    */
+  given babbage: InjectAlonzoUtxos[Babbage] with
+    def injectFailure(failure: AlonzoUtxosPredFailure[Babbage]): UtxosPredFailure[Babbage] =
+      failure
+    def injectEvent(event: AlonzoUtxosEvent[Babbage]): UtxosEvent[Babbage] = event
+
   /** Conway's (`Conway/Rules/Utxos.hs:84-88`, cardano-ledger f649f975). */
   given conway: InjectAlonzoUtxos[Conway] with
     def injectFailure(failure: AlonzoUtxosPredFailure[Conway]): UtxosPredFailure[Conway] =
@@ -140,6 +165,29 @@ object InjectAlonzoUtxos:
       ConwayUtxos.alonzoToConwayUtxosPredFailure[Dijkstra](failure)
     def injectEvent(event: AlonzoUtxosEvent[Dijkstra]): UtxosEvent[Dijkstra] =
       ConwayUtxos.alonzoToConwayUtxosEvent[Dijkstra](event)
+
+/** `Embed (EraRule "PPUP" era) (UTXOS era)` (`Babbage/Rules/Utxos.hs:93-102`, cardano-ledger
+  * f649f975): how era `E` 's UTXOS reports PPUP's failures and events, the eras whose UTXOS runs
+  * Shelley's PPUP. One instance per era, in the companion.
+  */
+trait EmbedPpupInUtxos[E <: EraTag]:
+  def wrapFailed(failure: ShelleyPpupPredFailure[E]): UtxosPredFailure[E]
+  def wrapEvent(event: ShelleyPpupEvent[E]): UtxosEvent[E]
+
+object EmbedPpupInUtxos:
+  /** Babbage's: `wrapFailed = Alonzo.UpdateFailure`, `wrapEvent = Alonzo.AlonzoPpupToUtxosEvent`.
+    */
+  given babbage: EmbedPpupInUtxos[Babbage] with
+    def wrapFailed(failure: ShelleyPpupPredFailure[Babbage]): UtxosPredFailure[Babbage] =
+      AlonzoUtxosPredFailure.UpdateFailure(failure)
+    def wrapEvent(event: ShelleyPpupEvent[Babbage]): UtxosEvent[Babbage] =
+      AlonzoUtxosEvent.AlonzoPpupToUtxosEvent(event)
+
+/** `data UtxosEnv era = UtxosEnv {ueSlot, uePParams, ueCertState}`
+  * (`Alonzo/Rules/Utxos.hs:118-122`, cardano-ledger f649f975): the environment of the UTXOS of
+  * Alonzo and Babbage, whose PPUP reads it.
+  */
+final case class UtxosEnv[E <: EraTag](slot: BigInt, pp: PParams[E], certState: CertState[E])
 
 /** Alonzo's functions of UTXOS (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxos.hs`,
   * cardano-ledger f649f975).
@@ -214,6 +262,82 @@ object BabbageUtxos:
           Chain.one(inject.injectEvent(AlonzoUtxosEvent.SuccessfulPlutusScriptsEvent(ps)))
         )
       )
+
+  /** `utxosTransition` (`Babbage/Rules/Utxos.hs:104-126`, cardano-ledger f649f975): by the
+    * transaction's flag, PPUP and then the scripts expected to pass (`babbageEvalScriptsTxValid`),
+    * or the scripts expected to fail (`babbageEvalScriptsTxInvalid`), the governance state then
+    * left as it was. The state is the governance state ([[ShelleyGovState]]), the only part of the
+    * UTxO state the reference's UTXOS changes; UTXO changes the rest (`updateUTxOState`,
+    * [[BabbageUtxo.updateUTxOState]]).
+    */
+  def utxosTransition[F[_]: Monad, E <: EraTag](
+      env: UtxosEnv[E],
+      stAnnTx: StAnnTx[TxLevel.Top, E],
+      validation: TxEnv.Validation
+  )(using
+      t: AlonzoEraTx[E],
+      b: ShelleyEraTxBody[E],
+      u: AlonzoEraUTxO[E],
+      c: EraCertState[E],
+      p: EraPParamsToBabbage[E],
+      inject: InjectAlonzoUtxos[E],
+      embed: EmbedPpupInUtxos[E],
+      ask: Ask[F, Globals],
+      state: Stateful[F, ShelleyGovState[E]],
+      judge: Judge[F, UtxosPredFailure[E]],
+      events: Tell[F, Chain[UtxosEvent[E]]],
+      evaluator: ScriptEvaluator[F],
+      raise: Raise[F, ScriptVerdictUnavailable],
+      defect: Raise[F, LedgerDefect],
+      deferral: Phase2Deferral[F, E]
+  ): F[Unit] =
+    t.isValid(t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)) match
+      case IsPhase2Valid.Phase2Valid => babbageEvalScriptsTxValid[F, E](env, stAnnTx, validation)
+      case IsPhase2Valid.Phase2Invalid =>
+        babbageEvalScriptsTxInvalid[F, E](stAnnTx, validation)
+
+  /** `babbageEvalScriptsTxValid` (`Babbage/Rules/Utxos.hs:157-190`, cardano-ledger f649f975): PPUP
+    * as a sub-rule (`trans`) on the body's update proposal, with the slot, the parameters and the
+    * genesis delegations of the certificate state (`certDStateL . dsGenDelegsL`), its failures and
+    * events embedded ([[EmbedPpupInUtxos]]), before any script is evaluated; then
+    * `expectScriptsToPass`. The proposal is read with the bytes the node keeps it by
+    * ([[KeptUpdate]], the body's [[ShelleyEraTxBody.keptUpdate]]).
+    */
+  def babbageEvalScriptsTxValid[F[_]: Monad, E <: EraTag](
+      env: UtxosEnv[E],
+      stAnnTx: StAnnTx[TxLevel.Top, E],
+      validation: TxEnv.Validation
+  )(using
+      t: AlonzoEraTx[E],
+      b: ShelleyEraTxBody[E],
+      u: AlonzoEraUTxO[E],
+      c: EraCertState[E],
+      p: EraPParamsToBabbage[E],
+      inject: InjectAlonzoUtxos[E],
+      embed: EmbedPpupInUtxos[E],
+      ask: Ask[F, Globals],
+      state: Stateful[F, ShelleyGovState[E]],
+      judge: Judge[F, UtxosPredFailure[E]],
+      events: Tell[F, Chain[UtxosEvent[E]]],
+      evaluator: ScriptEvaluator[F],
+      raise: Raise[F, ScriptVerdictUnavailable],
+      defect: Raise[F, LedgerDefect],
+      deferral: Phase2Deferral[F, E]
+  ): F[Unit] =
+    val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)
+    val genDelegs = c.certDStateL.get(env.certState).genDelegs
+    val ppup =
+      given Judge[F, ShelleyPpupPredFailure[E]] = judge.contramap(embed.wrapFailed)
+      given Tell[F, Chain[ShelleyPpupEvent[E]]] = new Tell[F, Chain[ShelleyPpupEvent[E]]]:
+        val functor: cats.Functor[F] = events.functor
+        def tell(l: Chain[ShelleyPpupEvent[E]]): F[Unit] = events.tell(l.map(embed.wrapEvent))
+      judge.nest(
+        ShelleyPpup.ppupTransitionNonEmpty[F, E](
+          PpupEnv[E](env.slot, env.pp, genDelegs),
+          b.keptUpdate(t.body[TxLevel.Top](tx)(using t.bodyOf.top))
+        )
+      )
+    ppup *> expectScriptsToPass[F, E](stAnnTx, validation)
 
   /** `expectScriptsToPass` (`Babbage/Rules/Utxos.hs:130-155`, cardano-ledger f649f975): the scripts
     * of a transaction flagged valid must pass; a failure is `ValidationTagMismatch` with each
