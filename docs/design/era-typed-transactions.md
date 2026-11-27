@@ -3375,23 +3375,43 @@ Conway's rules on the classes follow as the rest of stage 2.
     brings: its builders and readers come with Babbage's Plutus side. The families `ScriptsNeeded`, `StAnnTx` and
     `StAnnTxCache` have Babbage's cases, because `EraTx` and the auxiliary data's instance name them.
   - The decoders read a map's keys as the reference's `decodeSparse` reads them: as written, a repeated key and then
-    an unknown one refused at its turn, and the required keys checked after the last. Conway's decoders keep the
-    flat decoder's fixed order instead. Each value is read by the flat decoder's reader of its field at decoder
-    version 7, so each refuses what the flat decoder refuses, with its error.
-  - Against the flat decoder at Babbage, at both layouts (`BabbageTxDifferentialSuite`): the 13 Babbage
-    transactions of the recorded blocks and the 86 of the reference's refusal (32), v1-context (22, six invalid)
-    and Plutus admission (32) corpora, 27,712 byte mutants of them, 573 Babbage rows of the reference's decoder
-    corpora and the reference's 140 verdicts on Babbage auxiliary data. The two accept and refuse alike, and as the
-    reference does where it recorded a verdict; an accepted transaction has the flat id, body hash and original
-    bytes and projects to the flat values field by field. Compared whole, 54 refusals differ from the flat
-    decoder's. In 51 the value of an update proposal is refused with the same case, at the update's site where
-    the flat decoder names the parameter: the typed update's decoder of stage 4's first part, and the reference
-    names neither. Two repeated parameter keys are refused with the key, as the reference's refusal names it.
-    One redeemer's units are a record that takes the next items as its fields, which the reference reads and
-    runs out of input on; the detached-record walk does not find it, so the era decoder refuses the units, read
-    first as the reference reads them, and the flat decoder the native scripts' key, which it reads first. Left
-    out are the rows recorded at other decoder versions (`bootstrap-duplicates` at 8 to 12) and the kinds that
-    are not a transaction's part (block bodies, single bootstrap witnesses, addresses, accounts).
+    an unknown one refused at its turn, and the required keys checked after the last. That holds for the body, an
+    output's map (`decodeBabbageTxOut`), the witness set and the tagged auxiliary data; Conway's decoders keep the
+    flat decoder's fixed order instead. A whole transaction is read as the reference's record is: the body, the
+    witness set, the flag when the third item is a boolean, the auxiliary data or null, and only then the record's
+    size. A witness set's list of PlutusV3 scripts is refused at its first item. Each value is read by the flat
+    decoder's reader of its field at decoder version 7, so each refuses what the flat decoder refuses, with its error.
+  - Against the flat decoder at Babbage, at both layouts (`BabbageTxDifferentialSuite`):
+    - every Babbage transaction the repository holds: the 13 of the recorded blocks and the 86 of the reference's
+      refusal (32), v1-context (22, six invalid) and Plutus admission (32) corpora. An accepted transaction is
+      compared whole: its body (the update proposal both as the bytes the node stores and as its values), witness
+      set, phase-two flag, fee size and auxiliary data (metadata by label, native and Plutus scripts), each against
+      the flat readers' reading of the same bytes. Three faults that the parts' comparison alone passes (lost
+      auxiliary data, a false flag read as true, a lost metadata label) are named by it;
+    - 27,712 byte mutants of those 99 transactions: alike in verdict, an accepted one compared whole, a refused one
+      by verdict only;
+    - 576 Babbage rows of the reference's decoder corpora, three of them witness sets recorded at protocol version 8
+      and read at it. Left out are the rows of later eras' versions (`bootstrap-duplicates` at 9 to 12) and the
+      kinds that are not a transaction's part (block bodies, single bootstrap witnesses, addresses, accounts);
+    - the reference's 140 verdicts on Babbage auxiliary data (`auxiliary-scripts`).
+
+    The two accept and refuse alike everywhere, and as the reference does where it recorded a verdict. A refused
+    row is refused with the case the recording names, except two repeated parameter keys, which the era's refusal
+    names as the reference's does. Compared whole, 57 refusals of the 576 rows differ from the flat decoder's:
+    - 51 refuse an update proposal's value with the flat decoder's refusal at the site of the typed update's
+      decoder of stage 4's first part (the update, or the execution units), where the flat decoder names the
+      parameter; the reference names neither;
+    - the two repeated parameter keys;
+    - three envelopes of four items whose third is not a flag, refused by the record's size as the reference
+      refuses them ("Size mismatch when decoding Record AlonzoTx"; "Excess terms in array" for the indefinite
+      one), where the flat decoder asks for a flag;
+    - one redeemer's units that are a record taking the next items as its fields, which the reference reads and runs
+      out of input on; the detached-record walk does not find it, so the era decoder refuses the units, read first
+      as the reference reads them, and the flat decoder the native scripts' key, which it reads first.
+
+    The tally leaves out PlutusV4's key 5 in tagged auxiliary data, which the era decoder refuses as the reference
+    does and the flat reader as an unknown key (`BabbageTxSuite`), as are the written orders no recording holds: an
+    output map's value refused before a later address, and a PlutusV3 list refused at its first item.
     `fixtures/haskell-immutable/preview` holds Alonzo blocks only. Nothing in the node reads these types yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
