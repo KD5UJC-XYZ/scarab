@@ -149,34 +149,69 @@ on the same inputs (`fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/SodiumTargets.sc
 
 - `sodium-ed25519`: `StrictEd25519.verify` against `crypto_sign_ed25519_verify_detached`, the verifier of
   cardano-base's `Ed25519DSIGN` (transaction witnesses from Shelley on, operational certificates, KES leaves).
-- `sodium-vrf-verify`: `StrictDraft03.verify` against `crypto_vrf_ietfdraft03_verify`, verdict and output; the
-  output of every proof that verifies against `crypto_vrf_ietfdraft03_proof_to_hash`; and
-  `PraosVrfCertificate.verifyAlpha` against the reference's verify-then-compare of a claimed output.
+- `sodium-vrf-verify`: `StrictDraft03.verify` against `crypto_vrf_ietfdraft03_verify`, verdict and output, and
+  `PraosVrfCertificate.verifyAlpha` against the reference's verify-then-compare of a claimed output. The output of
+  each proof that verifies is also compared with `crypto_vrf_ietfdraft03_proof_to_hash`, which the native verify
+  computes its output with: that checks the binding, and is no further evidence.
 - `sodium-vrf-prove`: for one seed and alpha, `Draft03Prover`'s public key, proof and output against
   `crypto_vrf_ietfdraft03_keypair_from_seed`, `_prove` and `_proof_to_hash` (proofs are deterministic), the
   output of alpha alone, and for the Praos input `PraosVrfCertificate.alpha` against Blake2b-256 of
   `crypto_generichash_blake2b` and the certificate verified.
 
 A fuzz input is read as the choices of one case: a mutation, two arguments and a mode, then the bytes the mode
-takes. The modes are bytes chosen by the fuzzer, a signature or proof the oracle makes from a seed, and one valid
-under a mixed-order key: the key plus a point T of small order, signed or proved with that key's bytes, the message
-or alpha extended until the equation leaves nothing of T (for Ed25519 the challenge h a multiple of T's order; for
-the VRF the challenge c congruent to L modulo it, since U is computed as [L - c]Y + [s]B, in libsodium's
-`crypto_vrf/ietfdraft03/verify.c:86-88` as in `Draft03Math.equation`). The mutations bring in what the two sides might
-decide differently: every small-order point in both signs, every non-canonical y, a small-order point added to a
-key, R or Gamma, flipped sign bits, scalars at and above L (S + kL, L, L - 1, 2^252, the top bits set) and bit flips.
-The seeds are those cases and the committed corpora of `fixtures/witness`, `fixtures/wycheproof-ed25519` and
-`fixtures/vrf`. A disagreement fails the target with the key, signature or proof and message in hex and both
-answers. Each run must see a case both sides accept, and each verifier's run one both refuse and one both accept
-under a mixed-order key; the line a target prints counts them. A case costs these targets up to two milliseconds
-against a decoder's microseconds, so they take a share of the run's cases (a half, an eighth and a twentieth); the
-printed count is what ran.
+takes. The modes are bytes chosen by the fuzzer, a signature or proof the oracle makes from a seed, and cases valid
+with a point T of small order, of order 2, 4 or 8, each as likely:
 
-Not compared: the batch-compatible draft-13 VRF (Scarab has none); `ByronEd25519`, because the reference verifies
-Byron signatures with ed25519-donna through cardano-crypto's `Cardano.Crypto.Wallet.verify`, not with libsodium
-(cardano-crypto-wrapper 1.7.0.0 and 1.8.0.0, at the commits CHaP records for them: `verifySignatureRaw` is
-`CC.verify`, `Cardano/Crypto/Signing/Signature.hs:233`; `ByronEd25519` cites the rest of the path);
-KES signing and the Sum6 tree; and the output of a proof that does not verify, which Scarab's main sources never
+- a mixed-order key, the key plus T, signed or proved by the oracle with that key's bytes, the message or alpha
+  extended until the equation leaves nothing of T: for Ed25519 the challenge h a multiple of T's order; for the VRF
+  the challenge c congruent to L modulo it, since U is computed as [L - c]Y + [s]B (libsodium's
+  `crypto_vrf/ietfdraft03/verify.c:86-88`, as Scarab's VRF math computes it);
+- for the VRF, a Gamma with a component of small order, [x]H + T, or such a Gamma under such a key: a proof made
+  with the oracle's group arithmetic (`crypto_core_ed25519_from_uniform`, `crypto_scalarmult_ed25519_noclamp`),
+  since the native prover's Gamma is [x]H; V is then [k]H + [L - c]T, so the nonce is drawn again until c is
+  congruent to L modulo T's order (modulo the larger order when both have a point added). Its output is that of
+  [8]Gamma, as without T.
+
+The mutations bring in what the two sides might decide differently: every small-order point in both signs, every
+non-canonical y, a small-order point added to a key, R or Gamma, flipped sign bits, scalars at and above L (S + kL,
+L, L - 1, 2^252, the top bits set) and bit flips. The seeds are those cases and the committed corpora of
+`fixtures/witness`, `fixtures/wycheproof-ed25519` and `fixtures/vrf`. A disagreement fails the target with the key,
+signature or proof and message in hex and both answers.
+
+A run checks the target's fixed cases, then every seed once, then its share of the run's cases at random. A case
+costs these targets up to two milliseconds against a decoder's microseconds, so they take a share of the run's
+cases (a half, an eighth and a twentieth). The run counts the cases both sides accept and both refuse, and the
+accepted ones built with a point of each order in the key and, for the VRF, in Gamma: counted from the
+construction (the point added, and no mutation changed that part since), not from a predicate of the oracle. Each
+run must count every one of those kinds (the prover only accepted cases), seeds included, and prints its tallies
+twice: as a line for the reader and as a `differential` line of JSON with the seeds' and the random run's counts.
+`scripts/check_differential_fuzz.py` reads those lines in the fuzz workflows and holds each target's floors, the one
+place they are kept: the most it may divide the run's cases by, and the least fraction of the cases that leaves each
+kind of the random run must reach.
+
+**A known difference, held as a fixed case.** `StrictDraft03.verify` refuses an alpha of more than
+`StrictDraft03.MaxAlphaBytes` (1 MiB) as `AlphaTooLarge`, before verifying, and the reference verifies a proof over
+an alpha of any length: cardano-base `060819b5` `cardano-crypto-praos/src/Cardano/Crypto/VRF/Praos.hs:502-512`
+passes its length to `crypto_vrf_ietfdraft03_verify` unchecked. The limit came with the research prototype's first
+publication (commit `58172e52d`, as "alpha exceeds 1 MiB research limit") and became its typed case in #188; no
+issue or [decisions register](../decisions.md) row records it. No caller reaches it: the node verifies only alphas it
+builds, of 32 bytes (`PraosVrfCertificate.alpha`, and `TPraos.seed` for the eras before Babbage), as the reference's
+`mkInputVRF` and `mkSeed` are Blake2b-256 hashes (cardano-ledger `f649f975`,
+`libs/cardano-protocol/src/Cardano/Protocol/Praos/VRF.hs:64-78` and
+`libs/cardano-protocol/src/Cardano/Protocol/TPraos/BlockHeader.hs:411-431`), and UPLC has no VRF builtin. The
+`sodium-vrf-verify` run first checks a proof over an alpha of exactly 1 MiB, which both verify to one output, and
+over one of a byte more, which the oracle verifies and `StrictDraft03.verify` refuses with
+`AlphaTooLarge(1048577)`, and fails if either side changes. The random cases keep alphas below 64 KiB.
+
+Not compared: the batch-compatible draft-13 VRF (Scarab has none); `ByronEd25519`, because no Byron signature goes
+through libsodium. Both kinds end in crypton's `Crypto.PubKey.Ed25519.verify`, its bundled ed25519-donna (crypton
+1.0.6 in cardano-node 11.1.3, 1.1.5 in 11.2.1, as the binaries' symbols name them): an ordinary witness through
+`verifySignatureRaw`, which is cardano-crypto's `Cardano.Crypto.Wallet.verify` (`CC.verify`,
+`Cardano/Crypto/Signing/Signature.hs:233`; cardano-crypto 1.3.0 `a7415016` `src/Cardano/Crypto/Wallet.hs:198-202`
+and 1.4.0 `ac2e12a4` `:197-201`), and a redeem witness directly, through `verifyRedeemSigRaw`
+(`Cardano/Crypto/Signing/Redeem/Signature.hs:98-104`). These cardano-crypto-wrapper files are those of 1.7.0.0 and
+1.8.0.0, at the commits CHaP records for them; `ByronEd25519` cites the rest of the path. Also not compared: KES
+signing and the Sum6 tree; and the output of a proof that does not verify, which Scarab's main sources never
 compute. The oracle is a source build of the pinned commit, not the release binary, so the agreement is with that
 source compiled by gcc, not with the shipped compiler's output.
 
@@ -205,16 +240,19 @@ Being static, the images hold no library to take out, so the oracle is built fro
 `scripts/sodium_oracle.py` fetches GitHub's archive of that commit (`codeload.github.com/IntersectMBO/libsodium`,
 2,073,757 bytes, SHA-256 `e4f29ae3c16037e484bb69e3fa22a5565c42adf497f8f88e61ff8d9486ab863e`, the archive
 `fixtures/witness/archive/pinned-source-oracle/provenance.json` records), verifies it before use, builds it with the
-configure flags and `CFLAGS` recorded there, checks that `open.c` was compiled without `ED25519_COMPAT`, and prints
-the library's SHA-256, which depends on the compiler and is not pinned. On loading it, the targets check the
-version (1.0.18) and a self-test: the RFC 8032 test-1 signature verifies and is refused with L added to S (a build
-with `ED25519_COMPAT` accepts that), and the draft-03 example 10 gives its key, proof and output. Nothing of
+configure flags and `CFLAGS` recorded there, checks that no compile command of `open.c` defines `ED25519_COMPAT`,
+and prints the library's SHA-256, which depends on the compiler and is not pinned. It follows redirects to HTTPS
+only, and extracts the very bytes whose digest it checked. On loading the library, the targets check the version
+(1.0.18) and a self-test, the decisive check of the build: the RFC 8032 test-1 signature verifies and is refused
+with L added to S (a build with `ED25519_COMPAT` accepts that), and the draft-03 example 10 gives its key, proof and
+output. Nothing of
 libsodium is vendored, and the node, `crypto` and every other suite never load it.
 
 **Where they run.** The variable `SCARAB_SODIUM_ORACLE` names the library. Without it the three targets are
 skipped, with that reason (CI's test shards list them in `scripts/ci_test_skips.json`); with it, a library that is
 missing, does not load or fails the self-test fails them. The fuzz gate and the nightly campaign build the library
-before the run and fail unless each of the three printed its count. To run them by hand, build the library in an
+before the run and then check its tallies with `scripts/check_differential_fuzz.py`, which fails the job when a
+target printed none (it was skipped) or fell under its floors. To run them by hand, build the library in an
 image whose C library is no newer than the JDK image's (the CI runner's Ubuntu 24.04, for example), mount it into
 the JDK container and name it there:
 
