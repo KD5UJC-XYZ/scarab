@@ -159,17 +159,19 @@ object FlatRecordings:
     case ConwayUtxoPredFailure.BabbageOutputTooSmallUTxO(os) => os.toList.toVector.map(_._1)
     case _                                                   => Vector.empty
 
-  /** Whether each output of `failures`, UTXO's under UTXOW, is written by the refusal's encoding as
-    * the bytes it came with, so that the refusal's digest holds it whole.
+  /** Whether each output of `failures`, UTXO's under UTXOW, is held whole by the refusal's digest:
+    * its stored form is the output its bytes read as, every field (the value's size among them,
+    * which the encoding does not write), and the encoding writes it as those bytes.
     */
   def outputsHeld(failures: Iterable[ConwayUtxowPredFailure[Conway]]): Boolean =
+    val codec = xyz.kd5ujc.scarab.storage.haskell.state.UtxoCodecs.txOut
     failures
       .collect { case ConwayUtxowPredFailure.UtxoFailure(f) => f }
       .flatMap(outputsOf)
       .forall { o =>
         val stored = xyz.kd5ujc.scarab.ledger.era.StoredTxOut.conway.toStored(o)
-        xyz.kd5ujc.scarab.storage.haskell.state.UtxoCodecs.txOut
-          .encodeUnchecked(stored) == stored.raw
+        codec.decodeBytes(stored.raw).toOption.contains(stored) &&
+        codec.encodeUnchecked(stored) == stored.raw
       }
 
   /** A UTXO or UTXOW admission's cell: `A:` and the digest of the UTxO state it leaves in the form

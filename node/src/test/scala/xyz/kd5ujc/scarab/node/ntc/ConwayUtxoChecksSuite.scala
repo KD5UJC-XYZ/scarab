@@ -1155,6 +1155,30 @@ class ConwayUtxoChecksSuite extends FunSuite:
       FlatRecordings.utxoJudgments.keySet.filter(_.startsWith("utxo-checks/"))
     )
 
+  /** A failure of a recorded predicate that carries an output. */
+  private lazy val refusalWithOutput: ConwayUtxoPredFailure[Conway] = recordedSeen
+    .flatMap(s => pairs(s).flatMap((_, t) => t.fold(_.toChain.toVector, _ => Vector.empty)))
+    .find(f => FlatRecordings.outputsOf(f).nonEmpty)
+    .getOrElse(fail("no recorded refusal carries an output"))
+
+  /** `f` with the output `out` it carries replaced by `by`. */
+  private def replaced(
+      f: ConwayUtxoPredFailure[Conway],
+      out: xyz.kd5ujc.scarab.ledger.era.TxOut[Conway],
+      by: xyz.kd5ujc.scarab.ledger.era.TxOut[Conway]
+  ): ConwayUtxoPredFailure[Conway] =
+    def swap(o: xyz.kd5ujc.scarab.ledger.era.TxOut[Conway]) = if o == out then by else o
+    f match
+      case ConwayUtxoPredFailure.OutputTooSmallUTxO(os) =>
+        ConwayUtxoPredFailure.OutputTooSmallUTxO[Conway](os.map(swap))
+      case ConwayUtxoPredFailure.OutputBootAddrAttrsTooBig(os) =>
+        ConwayUtxoPredFailure.OutputBootAddrAttrsTooBig[Conway](os.map(swap))
+      case ConwayUtxoPredFailure.OutputTooBigUTxO(os) =>
+        ConwayUtxoPredFailure.OutputTooBigUTxO[Conway](os.map((a, b, o) => (a, b, swap(o))))
+      case ConwayUtxoPredFailure.BabbageOutputTooSmallUTxO(os) =>
+        ConwayUtxoPredFailure.BabbageOutputTooSmallUTxO[Conway](os.map((o, c) => (swap(o), c)))
+      case other => fail(s"a failure this test does not rewrite: $other")
+
   test(
     "a refusal's cell writes an output from its fields, so each output is checked to be its bytes"
   ) {
@@ -1163,10 +1187,7 @@ class ConwayUtxoChecksSuite extends FunSuite:
     // the era's output keeps as the bytes it came with, has the same cell: each output a refusal
     // carries is checked to be written as its own bytes (`FlatRecordings.outputsHeld`), as the flat
     // comparison, through the output's stored form, held its bytes too
-    val failure = recordedSeen
-      .flatMap(s => pairs(s).flatMap((_, t) => t.fold(_.toChain.toVector, _ => Vector.empty)))
-      .find(f => FlatRecordings.outputsOf(f).nonEmpty)
-      .getOrElse(fail("no recorded refusal carries an output"))
+    val failure = refusalWithOutput
     val out = FlatRecordings.outputsOf(failure).head
     val raw = StoredTxOut.conway.toStored(out).raw
     val other = right("output")(Cbor.decode(raw)).value match
@@ -1184,23 +1205,38 @@ class ConwayUtxoChecksSuite extends FunSuite:
         )
       )
     ).unUTxO.values.head
-    val swapped = failure match
-      case ConwayUtxoPredFailure.OutputTooSmallUTxO(os) =>
-        ConwayUtxoPredFailure.OutputTooSmallUTxO[Conway](
-          os.map(o => if o == out then mutant else o)
-        )
-      case ConwayUtxoPredFailure.OutputBootAddrAttrsTooBig(os) =>
-        ConwayUtxoPredFailure.OutputBootAddrAttrsTooBig[Conway](
-          os.map(o => if o == out then mutant else o)
-        )
-      case ConwayUtxoPredFailure.BabbageOutputTooSmallUTxO(os) =>
-        ConwayUtxoPredFailure.BabbageOutputTooSmallUTxO[Conway](
-          os.map((o, c) => (if o == out then mutant else o, c))
-        )
-      case other => fail(s"a failure this test does not rewrite: $other")
+    val swapped = replaced(failure, out, mutant)
     // the era's output keeps the bytes it came with, which its equality and the encoding leave out
     assertEquals(swapped, failure)
     assertEquals(StoredTxOut.conway.toStored(mutant).raw, mutantRaw)
+    def under(f: ConwayUtxoPredFailure[Conway]) = Vector(underLedger(f))
+    assertEquals(
+      ConwayFailureCborCheck.direct(under(swapped)),
+      ConwayFailureCborCheck.direct(under(failure))
+    )
+    assert(FlatRecordings.outputsHeld(Vector(ConwayUtxowPredFailure.UtxoFailure(failure))))
+    assert(!FlatRecordings.outputsHeld(Vector(ConwayUtxowPredFailure.UtxoFailure(swapped))))
+  }
+
+  test(
+    "a refusal's cell does not hold an output's value size, which the output is checked to have"
+  ) {
+    // the encoding writes no output's value size, which the stored output and the flat comparison
+    // held: the same output, its bytes kept, with another size has the same cell, and is not the
+    // output its bytes read as (`FlatRecordings.outputsHeld`)
+    val failure = refusalWithOutput
+    val out = FlatRecordings.outputsOf(failure).head
+    val stored = StoredTxOut.conway.toStored(out)
+    val mutant = right("mutant")(
+      ConwayUTxO.fromStored(
+        Map(
+          TxIn(Bytes(Vector.fill(32)(0.toByte)), 0) -> stored.copy(valueSize = stored.valueSize + 1)
+        )
+      )
+    ).unUTxO.values.head
+    assertEquals(StoredTxOut.conway.toStored(mutant).raw, stored.raw)
+    assertEquals(StoredTxOut.conway.toStored(mutant).valueSize, stored.valueSize + 1)
+    val swapped = replaced(failure, out, mutant)
     def under(f: ConwayUtxoPredFailure[Conway]) = Vector(underLedger(f))
     assertEquals(
       ConwayFailureCborCheck.direct(under(swapped)),
@@ -1217,4 +1253,14 @@ class ConwayUtxoChecksSuite extends FunSuite:
       Vector("values", "predicates", "assembled", "utxo", "utxow", "crafted").map(count),
       Vector(84, 84, 84, 112, 112, 12)
     )
+  }
+
+  test("the UTXO recording holds the judgments of its three suites alone") {
+    // each suite holds its prefix's ids exactly (`ConwayUtxoChecksSuite`, `ConwayUtxowChecksSuite`,
+    // `EraUtxoSuite`), so the file is their union when no id is under another prefix
+    val prefixes = Vector("utxo-checks/", "utxow-checks/", "era-utxo/")
+    val ids = FlatRecordings.utxoJudgments.keySet
+    assertEquals(ids.filterNot(id => prefixes.exists(id.startsWith)), Set.empty[String])
+    assertEquals(prefixes.map(p => ids.count(_.startsWith(p))), Vector(488, 92, 455))
+    assertEquals(ids.size, 1035)
   }
