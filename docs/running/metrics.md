@@ -398,6 +398,8 @@ the operator's choice; a node whose metrics are public publishes its schedule.
 | `scarab_plutus_ahead_stale_total` | counter |  | Plutus scripts the block rules evaluated whose script and budget were evaluated ahead under another request. | none |
 | `scarab_plutus_ahead_evaluated_total` | counter |  | Plutus scripts of queued blocks evaluated ahead of the selection worker and kept. | none |
 | `scarab_plutus_ahead_skipped_total` | counter |  | Transactions with redeemers of queued blocks whose scripts were not evaluated ahead of the selection worker. | none |
+| `scarab_plutus_ahead_not_kept_total` | counter | `reason` | Plutus scripts of queued blocks not kept ahead of the selection worker, by reason: not started as the worker reached their block (`Abandoned`), the bounds full (`Full`), no verdict (`Unanswered`), a failure holding a term of the machine (`Retaining`). | none |
+| `scarab_plutus_ahead_blocks_unspeculated_total` | counter | `reason` | Queued blocks whose scripts were not speculated ahead of the selection worker, by reason: the speculator's queue full (`Dropped`), not a block of the tip's era with scripts to speculate (`Unread`), the speculation failed (`Failed`). | none |
 | `scarab_preverify_ahead_hit_total` | counter |  | Blocks the selection worker prepared whose signature checks were made ahead of it, while queued. | none |
 | `scarab_preverify_ahead_joined_total` | counter |  | Blocks the selection worker prepared while their signature checks were being made ahead of it. | none |
 | `scarab_preverify_ahead_miss_total` | counter |  | Blocks the selection worker prepared whose signature checks were not made ahead of it. | none |

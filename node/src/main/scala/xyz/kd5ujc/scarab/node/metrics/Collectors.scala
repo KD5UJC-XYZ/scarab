@@ -140,7 +140,14 @@ object Collectors:
         metrics.advance(plutusAheadMiss, found.miss.toDouble) *>
         metrics.advance(plutusAheadStale, found.stale.toDouble) *>
         metrics.advance(plutusAheadEvaluated, t.evaluated.toDouble) *>
-        metrics.advance(plutusAheadSkipped, t.skipped.toDouble)
+        metrics.advance(plutusAheadSkipped, t.skipped.toDouble) *>
+        metrics.advance(plutusAheadNotKept, AheadLabel.Abandoned, t.abandoned.toDouble) *>
+        metrics.advance(plutusAheadNotKept, AheadLabel.Full, t.full.toDouble) *>
+        metrics.advance(plutusAheadNotKept, AheadLabel.Unanswered, t.unanswered.toDouble) *>
+        metrics.advance(plutusAheadNotKept, AheadLabel.Retaining, t.retaining.toDouble) *>
+        metrics.advance(plutusAheadBlocks, AheadBlockLabel.Dropped, t.dropped.toDouble) *>
+        metrics.advance(plutusAheadBlocks, AheadBlockLabel.Unread, t.unread.toDouble) *>
+        metrics.advance(plutusAheadBlocks, AheadBlockLabel.Failed, t.failed.toDouble)
     )
 
   /** The bodies the block pool holds in memory. */

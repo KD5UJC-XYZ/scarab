@@ -81,6 +81,14 @@ given LabelValue[Churn.Step] = LabelValue.derived
 enum ChurnResultLabel derives LabelValue:
   case Reached, TimedOut
 
+/** Why a Plutus script evaluated ahead of the selection worker was not kept. */
+enum AheadLabel derives LabelValue:
+  case Abandoned, Full, Unanswered, Retaining
+
+/** Why a queued block's scripts were not speculated ahead of the selection worker. */
+enum AheadBlockLabel derives LabelValue:
+  case Dropped, Unread, Failed
+
 /** The two boards of the peer metrics. */
 enum MetricsBoardLabel derives LabelValue:
   case Headers, Blocks
@@ -638,6 +646,16 @@ object Catalogue:
   val plutusAheadSkipped = CounterDef(
     MetricName("scarab_plutus_ahead_skipped_total"),
     "Transactions with redeemers of queued blocks whose scripts were not evaluated ahead of the selection worker."
+  )
+  val plutusAheadNotKept = CounterDef(
+    MetricName("scarab_plutus_ahead_not_kept_total"),
+    "Plutus scripts of queued blocks not kept ahead of the selection worker, by reason: not started as the worker reached their block (`Abandoned`), the bounds full (`Full`), no verdict (`Unanswered`), a failure holding a term of the machine (`Retaining`).",
+    Labels.one[AheadLabel](LabelName("reason"))
+  )
+  val plutusAheadBlocks = CounterDef(
+    MetricName("scarab_plutus_ahead_blocks_unspeculated_total"),
+    "Queued blocks whose scripts were not speculated ahead of the selection worker, by reason: the speculator's queue full (`Dropped`), not a block of the tip's era with scripts to speculate (`Unread`), the speculation failed (`Failed`).",
+    Labels.one[AheadBlockLabel](LabelName("reason"))
   )
   val preverifyAheadHit = CounterDef(
     MetricName("scarab_preverify_ahead_hit_total"),
@@ -1368,6 +1386,8 @@ object Catalogue:
     plutusAheadStale,
     plutusAheadEvaluated,
     plutusAheadSkipped,
+    plutusAheadNotKept,
+    plutusAheadBlocks,
     preverifyAheadHit,
     preverifyAheadJoined,
     preverifyAheadMiss,

@@ -105,7 +105,7 @@ final class ScriptsAhead[F[_]: Async] private (
         .flatMap(fresh =>
           queue
             .tryOffer(Request(header, raw))
-            .flatMap(offered => slots.update(_ - hash).unlessA(offered))
+            .flatMap(offered => (slots.update(_ - hash) *> tallies.update(_.drop)).unlessA(offered))
             .whenA(fresh)
         )
     }
@@ -172,7 +172,7 @@ final class ScriptsAhead[F[_]: Async] private (
             .flatMap { started =>
               Fibers
                 .scoped[F, Fatal, Recent](Fatal.Defect(_))(speculated(request, recent, started))
-                .map(_.getOrElse(recent))
+                .flatMap(_.fold(_ => tallies.update(_.fail).as(recent), F.pure))
                 .guarantee(finished(hash).whenA(started))
             }
             .map(Left(_))
@@ -188,7 +188,7 @@ final class ScriptsAhead[F[_]: Async] private (
     val header = request.header
     speculator.tip.flatMap { tip =>
       tip.scripts(header, request.raw) match
-        case None => F.pure(recent)
+        case None => tallies.update(_.notRead).as(recent)
         case Some(scripts) =>
           val next = recent.recorded(header.hash, header.prevHash, scripts.created)
           val skip = tallies.update(_.skip(scripts.transactions))
@@ -308,7 +308,10 @@ object ScriptsAhead:
     * limit); scripts whose evaluation was not started because the worker reached or passed their
     * block (`abandoned`); scripts evaluated and not kept, the bounds being full (`full`), the
     * answer no verdict (`unanswered`) or a failure holding a term of the machine (`retaining`,
-    * [[Results.keeps]]).
+    * [[Results.keeps]]); and blocks not speculated at all: asked for with the queue full
+    * (`dropped`), not read as a block of the tip's era with scripts to speculate (`unread`: another
+    * era, Byron or Dijkstra, a block that does not decode, units beyond the block's limit), or
+    * whose speculation failed and was discarded (`failed`).
     */
   final case class Tallies(
       evaluated: Long,
@@ -316,16 +319,22 @@ object ScriptsAhead:
       abandoned: Long,
       full: Long,
       unanswered: Long,
-      retaining: Long
+      retaining: Long,
+      dropped: Long,
+      unread: Long,
+      failed: Long
   ):
     def skip(transactions: Int): Tallies = copy(skipped = skipped + transactions)
     def kept: Tallies = copy(evaluated = evaluated + 1)
     def overfull: Tallies = copy(full = full + 1)
     def noVerdict: Tallies = copy(unanswered = unanswered + 1)
     def retains: Tallies = copy(retaining = retaining + 1)
+    def drop: Tallies = copy(dropped = dropped + 1)
+    def notRead: Tallies = copy(unread = unread + 1)
+    def fail: Tallies = copy(failed = failed + 1)
 
   object Tallies:
-    val zero: Tallies = Tallies(0, 0, 0, 0, 0, 0)
+    val zero: Tallies = Tallies(0, 0, 0, 0, 0, 0, 0, 0, 0)
     val abandoned: Tallies = zero.copy(abandoned = 1)
     given cats.Monoid[Tallies] with
       def empty: Tallies = zero
@@ -336,7 +345,10 @@ object ScriptsAhead:
           a.abandoned + b.abandoned,
           a.full + b.full,
           a.unanswered + b.unanswered,
-          a.retaining + b.retaining
+          a.retaining + b.retaining,
+          a.dropped + b.dropped,
+          a.unread + b.unread,
+          a.failed + b.failed
         )
 
   /** Whether a result is kept ([[Results.keeps]]). */
@@ -441,7 +453,8 @@ object ScriptsAhead:
       block: Bytes,
       request: EvalRequest,
       result: EvalResult,
-      weight: Long
+      weight: Long,
+      shared: Vector[(Same.Kept, Long)]
   )
 
   /** The results kept, a value: by locator, with each block's entries in the order of their blocks'
@@ -454,27 +467,63 @@ object ScriptsAhead:
       next: Long,
       size: Int,
       bytes: Long,
-      counts: Counts
+      counts: Counts,
+      proven: Map[Same.Kept, PlutusData],
+      provenOf: Map[Bytes, Vector[Same.Kept]],
+      charged: Map[Bytes, Set[Same.Kept]]
   ):
-    def found(request: EvalRequest): Option[Either[Unit, EvalResult]] =
+    /** The entry kept for a request equal to `request` ([[Same.requests]]), if any; whether any is
+      * kept for its locator at all.
+      */
+    def found(request: EvalRequest): Option[Either[Unit, Entry]] =
       entries
         .get(Locator.of(request))
-        .map(kept => kept.find(_.request == request).map(_.result).toRight(()))
+        .map(kept => kept.find(e => Same.requests(request, e.request, proven)).toRight(()))
 
-    def counted(found: Option[Either[Unit, EvalResult]]): Held =
+    /** The pairs of `request` 's nodes and the kept `entry` 's that its hit proved equal, kept for
+      * the lookups of the same transaction's other scripts while the entry's block is.
+      */
+    def proved(request: EvalRequest, entry: Entry): Held =
+      // a pair of a block no longer kept would never be dropped
+      if proven.sizeIs >= Same.Proven || !blocks.contains(entry.block) then this
+      else
+        val pairs =
+          Same.pairs(request.args, entry.request.args).filterNot((k, _) => proven.contains(k))
+        if pairs.isEmpty then this
+        else
+          copy(
+            proven = proven ++ pairs,
+            provenOf = provenOf.updated(
+              entry.block,
+              provenOf.getOrElse(entry.block, Vector.empty) ++ pairs.map(_._1)
+            )
+          )
+
+    def counted(found: Option[Either[Unit, Entry]]): Held =
       copy(counts = found match
         case None           => counts.copy(miss = counts.miss + 1)
         case Some(Left(_))  => counts.copy(stale = counts.stale + 1)
         case Some(Right(_)) => counts.copy(hit = counts.hit + 1))
 
-    def put(limits: Limits, entry: Entry): Option[Held] =
-      val locator = Locator.of(entry.request)
-      val present = entries.get(locator).exists(_.exists(_.request == entry.request))
+    /** `entry` kept within `limits`, a node it shares with an entry of its block kept before (a
+      * transaction's information, which its scripts' contexts share) charged once, with the entry's
+      * weight as charged.
+      */
+    def put(limits: Limits, offered: Entry): Option[Held] =
+      val locator = Locator.of(offered.request)
+      val present = entries.get(locator).exists(_.exists(_.request == offered.request))
       if present then Some(this)
       else
         val room =
-          if blocks.contains(entry.block) || blocks.sizeIs < limits.blocks then this
+          if blocks.contains(offered.block) || blocks.sizeIs < limits.blocks then this
           else order.headOption.fold(this)(head => dropped(head._2))
+        val before = room.charged.getOrElse(offered.block, Set.empty)
+        val entry = offered.copy(weight =
+          offered.weight - offered.shared.iterator
+            .filter((k, _) => before.contains(k))
+            .map(_._2)
+            .sum
+        )
         Option.when(room.size < limits.entries && room.bytes + entry.weight <= limits.bytes)(
           room.copy(
             entries =
@@ -487,7 +536,8 @@ object ScriptsAhead:
               else room.order.updated(room.next, entry.block),
             next = room.next + 1,
             size = room.size + 1,
-            bytes = room.bytes + entry.weight
+            bytes = room.bytes + entry.weight,
+            charged = room.charged.updated(offered.block, before ++ offered.shared.map(_._1))
           )
         )
 
@@ -504,12 +554,167 @@ object ScriptsAhead:
           blocks = blocks - block,
           order = order - stamp,
           size = size - gone.size,
-          bytes = bytes - gone.iterator.map(_.weight).sum
+          bytes = bytes - gone.iterator.map(_.weight).sum,
+          proven = proven -- provenOf.getOrElse(block, Vector.empty),
+          provenOf = provenOf - block,
+          charged = charged - block
         )
       }
 
   private object Held:
-    val empty: Held = Held(Map.empty, Map.empty, TreeMap.empty, 0L, 0, 0L, Counts.zero)
+    val empty: Held =
+      Held(
+        Map.empty,
+        Map.empty,
+        TreeMap.empty,
+        0L,
+        0,
+        0L,
+        Counts.zero,
+        Map.empty,
+        Map.empty,
+        Map.empty
+      )
+
+  /** The comparison of a request with a kept one, as `==` compares them, made fast for the rules'
+    * hits (#1499): every field but the arguments by the request's own equality, so a field a later
+    * request gains is compared too; then the arguments by structure, with an explicit stack and no
+    * allocation per node beyond it, where `PlutusData` 's own equality walks a generic tree. A
+    * transaction's scripts share its information (`txInfo`, the context's first field, which the
+    * collection makes once a transaction and language): the pairs of nodes near the top of the
+    * arguments that one hit proved equal (`proven`, a kept node by identity and the rules' node it
+    * equals) answer for the same nodes in the next script's comparison by identity, so the shared
+    * information is walked once a transaction. A pair is only ever recorded once the whole of both
+    * nodes compared equal, and values are immutable, so a proven pair is equal by construction.
+    */
+  private[node] object Same:
+    /** The depth of the arguments down to which proven pairs are recorded: the arguments, the
+      * context's fields (the information among them) and theirs.
+      */
+    val Depth = 2
+
+    /** The proven pairs kept at most. */
+    val Proven = 4096
+
+    /** A kept node, by identity. */
+    final class Kept(val node: PlutusData):
+      override def equals(that: Any): Boolean = that match
+        case k: Kept => k.node eq node
+        case _       => false
+      override def hashCode(): Int = System.identityHashCode(node)
+
+    /** Whether `request` equals the kept `kept`, as `==` says. */
+    def requests(
+        request: EvalRequest,
+        kept: EvalRequest,
+        proven: Map[Kept, PlutusData]
+    ): Boolean =
+      request.copy(args = Vector.empty) == kept.copy(args = Vector.empty) &&
+        request.args.sizeIs == kept.args.size &&
+        request.args.indices.forall(i => near(request.args(i), kept.args(i), 0, proven))
+
+    /** A node of the rules' request and the kept one's at `depth`: the same node, a proven pair, or
+      * equal by structure, its children near the top compared the same way and last first, so that
+      * a context differing from a sibling's in its purpose (after the shared information) differs
+      * at once.
+      */
+    private def near(
+        a: PlutusData,
+        b: PlutusData,
+        depth: Int,
+        proven: Map[Kept, PlutusData]
+    ): Boolean =
+      (a eq b) || proven.get(Kept(b)).exists(_ eq a) || (
+        if depth >= Depth then data(a, b)
+        else
+          a match
+            case PlutusData.Constr(t, fs) =>
+              b match
+                case PlutusData.Constr(u, gs) =>
+                  t == u && fs.sizeIs == gs.size &&
+                  fs.indices.reverse.forall(i => near(fs(i), gs(i), depth + 1, proven))
+                case _ => false
+            case PlutusData.List(xs) =>
+              b match
+                case PlutusData.List(ys) =>
+                  xs.sizeIs == ys.size &&
+                  xs.indices.reverse.forall(i => near(xs(i), ys(i), depth + 1, proven))
+                case _ => false
+            case PlutusData.Map(kvs) =>
+              b match
+                case PlutusData.Map(lvs) =>
+                  kvs.sizeIs == lvs.size && kvs.indices.reverse.forall(i =>
+                    near(kvs(i)._1, lvs(i)._1, depth + 1, proven) &&
+                      near(kvs(i)._2, lvs(i)._2, depth + 1, proven)
+                  )
+                case _ => false
+            case _ => data(a, b)
+      )
+
+    /** `x == y` for data, by structure: walked with a stack of the pairs still to compare, stack
+      * safe (STK-1), stopping at the first difference.
+      */
+    def data(x: PlutusData, y: PlutusData): Boolean =
+      @tailrec def go(stack: List[PlutusData]): Boolean = stack match
+        case a :: b :: rest =>
+          if a eq b then go(rest)
+          else
+            a match
+              case PlutusData.Constr(t, fs) =>
+                b match
+                  case PlutusData.Constr(u, gs) =>
+                    t == u && fs.sizeIs == gs.size && go(pushed(fs, gs, rest))
+                  case _ => false
+              case PlutusData.List(xs) =>
+                b match
+                  case PlutusData.List(ys) => xs.sizeIs == ys.size && go(pushed(xs, ys, rest))
+                  case _                   => false
+              case PlutusData.Map(kvs) =>
+                b match
+                  case PlutusData.Map(lvs) =>
+                    kvs.sizeIs == lvs.size && go(
+                      kvs.indices.foldRight(rest)((i, s) =>
+                        kvs(i)._1 :: lvs(i)._1 :: kvs(i)._2 :: lvs(i)._2 :: s
+                      )
+                    )
+                  case _ => false
+              case PlutusData.I(i) =>
+                b match
+                  case PlutusData.I(j) => i == j && go(rest)
+                  case _               => false
+              case PlutusData.B(c) =>
+                b match
+                  case PlutusData.B(d) => c == d && go(rest)
+                  case _               => false
+        case _ => true
+      go(List(x, y))
+
+    /** The children `as` and `bs` paired, in order, in front of `rest`. */
+    private def pushed(
+        as: Vector[PlutusData],
+        bs: Vector[PlutusData],
+        rest: List[PlutusData]
+    ): List[PlutusData] =
+      as.indices.foldRight(rest)((i, s) => as(i) :: bs(i) :: s)
+
+    /** The pairs of non-leaf nodes of the kept arguments `cs` and the equal rules' arguments `ws`
+      * down to [[Depth]], the kept node by identity.
+      */
+    def pairs(ws: Vector[PlutusData], cs: Vector[PlutusData]): Vector[(Kept, PlutusData)] =
+      def children(d: PlutusData): Vector[PlutusData] = d match
+        case PlutusData.Constr(_, fs) => fs
+        case PlutusData.List(xs)      => xs
+        case PlutusData.Map(kvs)      => kvs.flatMap((k, v) => Vector(k, v))
+        case _                        => Vector.empty
+      def at(w: PlutusData, c: PlutusData, depth: Int): Vector[(Kept, PlutusData)] =
+        val (wk, ck) = (children(w), children(c))
+        if ck.isEmpty || wk.sizeIs != ck.size then Vector.empty
+        else
+          (Kept(c) -> w) +: (
+            if depth >= Depth then Vector.empty
+            else wk.indices.toVector.flatMap(i => at(wk(i), ck(i), depth + 1))
+          )
+      ws.indices.toVector.flatMap(i => at(ws(i), cs(i), 0))
 
   /** The results evaluated ahead, kept for the worker's rules: a value behind an atomic reference,
     * as the evaluator's own caches are (`BoundedCache`), so the rules' evaluator, which runs on the
@@ -520,8 +725,10 @@ object ScriptsAhead:
     /** The result kept for `request`, if one was kept for an equal request; the lookup counted. */
     def lookup(request: EvalRequest): Option[EvalResult] =
       val found = state.get.found(request)
-      val _ = state.updateAndGet(_.counted(found))
-      found.flatMap(_.toOption)
+      val _ = state.updateAndGet(held =>
+        found.flatMap(_.toOption).fold(held)(held.proved(request, _)).counted(found)
+      )
+      found.flatMap(_.toOption).map(_.result)
 
     /** `underlying` answering first from what was kept: a request equal to a kept one gets the kept
       * result, any other `underlying` 's.
@@ -531,7 +738,8 @@ object ScriptsAhead:
 
     /** `result` kept for `request`, of the block `block`; false where the bounds leave no room. */
     private[node] def put(block: Bytes, request: EvalRequest, result: EvalResult): Boolean =
-      val entry = Entry(block, request, result, Results.weight(request, result))
+      val entry =
+        Entry(block, request, result, Results.weight(request, result), Results.shared(request))
       @tailrec def go(): Boolean =
         val now = state.get
         now.put(limits, entry) match
@@ -564,6 +772,19 @@ object ScriptsAhead:
       ).iterator.map(_.length.toLong * 2 + 48).sum
       256L + request.script.size + request.costModel.size * 24L +
         request.args.iterator.map(data).sum + logs
+
+    /** The nodes of `request` 's arguments one level down (a context's information among them),
+      * with their estimated heap: what the scripts of one transaction share, charged once a block.
+      */
+    def shared(request: EvalRequest): Vector[(Same.Kept, Long)] =
+      request.args.flatMap {
+        case PlutusData.Constr(_, fs) =>
+          fs.collect {
+            case d @ (PlutusData.Constr(_, _) | PlutusData.List(_) | PlutusData.Map(_)) =>
+              Same.Kept(d) -> data(d)
+          }
+        case _ => Vector.empty
+      }
 
     /** Whether `result` is kept: an answer that is no verdict never is, as the evaluator's own
       * caches keep none; nor is a machine failure with the term it is about (`Cause`), which can
