@@ -9,8 +9,9 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.RecordedRequests
 import xyz.kd5ujc.scarab.plutus.ndc.UplcTurboMain
-import xyz.kd5ujc.scarab.uplc.{Program, ProtocolMajor}
+import xyz.kd5ujc.scarab.uplc.{Program, ProgramVersion, ProtocolMajor, Term}
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
+import xyz.kd5ujc.scarab.uplc.flat.FlatEncoder
 import xyz.kd5ujc.scarab.uplc.ledger.{
   EvaluationError,
   LedgerContext,
@@ -123,18 +124,24 @@ object EvaluatorSpeedMain:
     val budget = ExBudget.of(request.budget.steps.toLong, request.budget.mem.toLong)
     Ready(request, context, program, budget)
 
-  /** A result as one line: its verdict, the machine's error and the failure's cause as a term (a
-    * `Cause` is compared by identity and shows nothing of its term), the budget, and each log line
-    * quoted, so that two results are alike exactly when their lines are.
+  /** A result as one line: its verdict, the machine's error, the failure's cause as the hex of its
+    * Flat encoding (a `Cause` is compared by identity and shows nothing of its term, and a term's
+    * rendering shortens long constants), the budget and the log lines, all of it quoted as one JSON
+    * string, so that two results are alike exactly when their lines are and a line never breaks.
     */
   private def line(result: ScriptResult): String =
+    def flat(term: Term) =
+      FlatEncoder
+        .program(Program(ProgramVersion.V1_1_0, term))
+        .fold(e => s"not encodable ($e): $term", _.hex)
     def quoted(logs: Vector[String]) = logs.map(Json.fromString(_).noSpaces).mkString("[", ",", "]")
-    result match
+    val raw = result match
       case ScriptResult.Success(spent, logs) => s"success $spent ${quoted(logs)}"
       case ScriptResult.Failure(EvaluationError.Cek(failure), spent, logs) =>
-        s"failure ${failure.error} cause ${failure.cause.map(_.term)} $spent ${quoted(logs)}"
+        s"failure ${failure.error} cause ${failure.cause.map(c => flat(c.term))} $spent ${quoted(logs)}"
       case ScriptResult.Failure(error, spent, logs) => s"failure $error $spent ${quoted(logs)}"
       case ScriptResult.Unavailable(reason)         => s"unavailable $reason"
+    Json.fromString(raw).noSpaces
 
   private def digest(lines: Vector[String]): String =
     val md = MessageDigest.getInstance("SHA-256")
