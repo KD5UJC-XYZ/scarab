@@ -346,7 +346,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
   // A fork is applied block by block on an in-memory chain and committed only whole (`switchTo`);
   // the candidates are then truncated at the invalid block and decided again against the current
   // chain (ouroboros-consensus 82ecba32 `ChainSel.hs:1145-1186`), so the valid prefix of a fork is
-  // adopted only if it is preferred on its own (dingo#6048).
+  // adopted only if it is preferred on its own (blinklabs-io/dingo#6048).
   test(
     "a peer's longer fork with an invalid middle block: the chain and its state stay as they are"
   ) {
@@ -360,15 +360,28 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
           for
             _ <- add(sender, ours) *> n.pool.admissions.reprocess
             before <- n.state.get
+            committedBefore <- n.follower.committedChain.get
+            eventsBefore <- n.events.get
             // the fork is preferred only with its fourth block, so its switch reaches the third
             _ <- add(sender, fork) *> n.pool.admissions.reprocess
             after <- n.state.get
+            committedAfter <- n.follower.committedChain.get
+            eventsAfter <- n.events.get
             fatals <- n.fatals.get
             known <- n.pool.invalidBlocks.snapshot
             reports <- n.reports.get
             _ <- IO {
               assertEquals(before.tip, ours.last.header.point)
               assertEquals(after, before)
+              assertEquals(committedAfter, committedBefore, "the published chain moved")
+              assertEquals(
+                eventsAfter.drop(eventsBefore.size).collect {
+                  case e: FollowerEvent.Extended   => e
+                  case e: FollowerEvent.RolledBack => e
+                },
+                Vector.empty,
+                "the fork was committed in part"
+              )
               assertEquals(fatals, Vector.empty)
               assertEquals(known.entries, Map(bad.hash -> error(bad)))
               assertEquals(reports, Vector(error(bad)))
@@ -379,19 +392,22 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
     yield ()
   }
 
-  // One block at a time, a fork's valid prefix is adopted before its invalid block arrives; a
-  // selection over every block held at once, as at startup, reaches the invalid block inside the
-  // switch, and adopts the prefix because it is still preferred to our one block.
+  // With Scarab's admissions taken one block at a time and in order, a fork's valid prefix is
+  // adopted before its invalid block arrives. A selection over every block held at once, as at
+  // startup, reaches the invalid block inside the switch: startup selects from the anchor, so the
+  // one-block chain is a rival candidate, and the truncated prefix, reinserted among the
+  // candidates, ranks above it (the reference's `sortCandidates` over the reinserted prefix and
+  // the other candidates, `ChainSel.hs:1145-1186`).
   test("a selection over a longer fork with an invalid middle block adopts its valid prefix") {
     for
       forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
-      ours <- checked(forks._1, 1)
+      rival <- checked(forks._1, 1)
       fork <- checked(forks._2, 4)
       bad = fork(2).header
       validations <- Ref.of[IO, Vector[Bytes]](Vector.empty)
       _ <- node(
         Set(bad.hash),
-        recovered = ours ++ fork,
+        recovered = rival ++ fork,
         beforeRule = h => validations.update(_ :+ h.hash)
       ) { n =>
         for
