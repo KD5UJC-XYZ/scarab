@@ -100,7 +100,8 @@ object BabbageTxInfo:
             .transTxOut[E](txOut)
             .toRight(inj.inject(BabbageContextError.ByronTxOutInContext(txOutSource)))
 
-  /** `transTxInInfoV1` (`Babbage/TxInfo.hs:161-174`, cardano-ledger 9df9f98c): an input with the
+  /** `transTxInInfoV1` (`Babbage/TxInfo.hs:159-172`, cardano-ledger f649f975; `:161-174` at 9df9f98c, its
+    * lookup's failure injected directly): an input with the
     * output the UTxO set holds for it, in Babbage's V1 form.
     */
   def transTxInInfoV1[E <: EraTag](utxo: UTxO[E], txIn: TxIn)(using
@@ -194,8 +195,9 @@ object BabbageTxInfo:
       )
     yield PlutusV2Args(args)
 
-  /** `instance EraPlutusTxInfo 'PlutusV1 BabbageEra` (`Babbage/TxInfo.hs:359-396`, cardano-ledger
-    * 9df9f98c): reference inputs refused first, then the validity interval, the inputs, the outputs
+  /** `instance EraPlutusTxInfo 'PlutusV1 BabbageEra` (`Babbage/TxInfo.hs:319-359`, cardano-ledger
+    * f649f975, Babbage's behaviour; the shape of 9df9f98c, `:359-396`, whose translations take the
+    * transaction's information): reference inputs refused first, then the validity interval, the inputs, the outputs
     * and the certificates in Babbage's V1 forms.
     */
   val plutusV1: EraPlutusTxInfo[Language.PlutusV1, Babbage] =
@@ -283,8 +285,8 @@ object BabbageTxInfo:
           result: BabbageTxInfoResult
       ): PlutusTxInfoResult[Language.PlutusV1, Babbage] = result.tirPlutusV1
 
-  /** `instance EraPlutusTxInfo 'PlutusV2 BabbageEra` (`Babbage/TxInfo.hs:398-435`, cardano-ledger
-    * 9df9f98c).
+  /** `instance EraPlutusTxInfo 'PlutusV2 BabbageEra` (`Babbage/TxInfo.hs:361-401`, cardano-ledger
+    * f649f975, Babbage's behaviour; the shape of 9df9f98c, `:398-435`).
     */
   val plutusV2: EraPlutusTxInfo[Language.PlutusV2, Babbage] =
     new EraPlutusTxInfo[Language.PlutusV2, Babbage]:
@@ -374,7 +376,8 @@ object BabbageTxInfo:
           result: BabbageTxInfoResult
       ): PlutusTxInfoResult[Language.PlutusV2, Babbage] = result.tirPlutusV2
 
-  /** `instance EraPlutusContext BabbageEra` (`Babbage/TxInfo.hs:231-254`, cardano-ledger 9df9f98c):
+  /** `instance EraPlutusContext BabbageEra` (`Babbage/TxInfo.hs:228-251`, cardano-ledger f649f975;
+    * `:231-254` at 9df9f98c):
     * Plutus V1 and V2, each language's information computed when first looked up.
     */
   val context: EraPlutusContext[Babbage] = new EraPlutusContext[Babbage]:
@@ -400,7 +403,8 @@ object BabbageTxInfo:
       BabbageTxInfoResult(plutusV1.toPlutusTxInfo(lti), plutusV2.toPlutusTxInfo(lti))
 
 /** Babbage's memoised transaction information (`data TxInfoResult BabbageEra =
-  * BabbageTxInfoResult`, `Babbage/TxInfo.hs:233-236`, cardano-ledger 9df9f98c): Plutus V1's and
+  * BabbageTxInfoResult`, `Babbage/TxInfo.hs:230-233`, cardano-ledger f649f975; `:233-236` at
+  * 9df9f98c): Plutus V1's and
   * V2's, each computed when first looked up, as the reference keeps its fields lazy.
   */
 final class BabbageTxInfoResult(

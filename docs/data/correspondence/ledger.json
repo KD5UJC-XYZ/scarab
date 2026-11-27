@@ -51931,6 +51931,16 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "BabbageTxInfoResult",
+     "lines": [
+      230,
+      233
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
      "symbol": "BabbageTxInfoResult",
@@ -51953,6 +51963,16 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "lookupTxInfoResult SPlutusV1",
+     "lines": [
+      249,
+      249
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
      "symbol": "lookupTxInfoResult SPlutusV1",
@@ -51973,6 +51993,16 @@
   },
   "val ledger.era.BabbageTxInfoResult#tirPlutusV2": {
    "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "lookupTxInfoResult SPlutusV2",
+     "lines": [
+      250,
+      250
+     ]
+    },
     {
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
@@ -52225,6 +52255,16 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "transTxInInfoV1",
+     "lines": [
+      159,
+      172
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
      "symbol": "transTxInInfoV1",
@@ -52438,6 +52478,16 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 BabbageEra",
+     "lines": [
+      319,
+      359
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
      "symbol": "EraPlutusTxInfo 'PlutusV1 BabbageEra",
@@ -52458,6 +52508,16 @@
   },
   "val ledger.era.BabbageTxInfo.plutusV2": {
    "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 BabbageEra",
+     "lines": [
+      361,
+      401
+     ]
+    },
     {
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
@@ -52482,6 +52542,16 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "EraPlutusContext BabbageEra",
+     "lines": [
+      228,
+      251
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
      "symbol": "EraPlutusContext BabbageEra",
@@ -52502,6 +52572,16 @@
   },
   "given ledger.era.EraPlutusContext.babbage": {
    "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "EraPlutusContext BabbageEra",
+     "lines": [
+      228,
+      251
+     ]
+    },
     {
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
@@ -52525,6 +52605,16 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 BabbageEra",
+     "lines": [
+      319,
+      359
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
      "symbol": "EraPlutusTxInfo 'PlutusV1 BabbageEra",
@@ -52546,6 +52636,16 @@
    "upstream": [
     {
      "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "EraPlutusTxInfo 'PlutusV2 BabbageEra",
+     "lines": [
+      361,
+      401
+     ]
+    },
+    {
+     "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
      "symbol": "EraPlutusTxInfo 'PlutusV2 BabbageEra",
@@ -52565,6 +52665,16 @@
   },
   "given ledger.era.Inject.babbageAlonzo": {
    "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxInfo.hs",
+     "symbol": "Inject (AlonzoContextError era) (BabbageContextError era)",
+     "lines": [
+      272,
+      273
+     ]
+    },
     {
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
