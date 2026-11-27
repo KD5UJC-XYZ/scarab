@@ -638,6 +638,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
           @scala.annotation.unused header: Header,
           @scala.annotation.unused raw: Bytes
       ): IO[Unit] = IO.unit
+      def passed(@scala.annotation.unused header: Header): IO[Unit] = IO.unit
     for
       chain <- ForgedChain.forge(5000 until 5060)
       bodies <- checked(chain, 1)

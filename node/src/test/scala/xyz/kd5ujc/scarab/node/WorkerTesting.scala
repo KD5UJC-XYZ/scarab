@@ -30,14 +30,16 @@ private[scarab] object WorkerTesting extends munit.Assertions:
     * and every block a session delivers is adopted by the worker, not in the session. The
     * predecessor of the chain's first block is the chain's own origin, as `Main` passes the
     * setup's. Without `fatal`, a stop of the node fails the worker's fiber, which a
-    * `FailsOnUncaught` suite reports as a failed test.
+    * `FailsOnUncaught` suite reports as a failed test. `before` is what is done with a block before
+    * it is processed: nothing, unless a suite gives the node's.
     */
   def selection[S](
       follower: Follower[IO, S],
       pool: BlockPool[IO],
-      fatal: Fatal => IO[Unit] = unexpected
+      fatal: Fatal => IO[Unit] = unexpected,
+      before: BlockSelection.Before[IO] = BlockSelection.Before.noop[IO]
   )(using chain: Stateful[IO, VolatileChain[S]], raise: Raise[IO, NodeError]): Resource[IO, Unit] =
-    given BlockSelection.Before[IO] = BlockSelection.Before.noop[IO]
+    given BlockSelection.Before[IO] = before
     Resource
       .eval(
         follower.installFetchCoordinator(pool.fetchCoordinator) *>
@@ -136,13 +138,18 @@ private[scarab] object WorkerTesting extends munit.Assertions:
     * is raised as it is, once the worker, which outlives every session, has decided what the
     * session delivered before it ended; an end the worker's decisions make due is waited for.
     */
-  def run[S](follower: Follower[IO, S], blocks: BlockPool[IO], peer: Scripted[IO], done: IO[Unit])(
-      using
+  def run[S](
+      follower: Follower[IO, S],
+      blocks: BlockPool[IO],
+      peer: Scripted[IO],
+      done: IO[Unit],
+      before: BlockSelection.Before[IO] = BlockSelection.Before.noop[IO]
+  )(using
       Stateful[IO, VolatileChain[S]],
       Raise[IO, NodeError]
   ): IO[Option[Fatal]] =
     Deferred[IO, Fatal].flatMap { stopped =>
-      selection(follower, blocks, stopped.complete(_).void).surround {
+      selection(follower, blocks, stopped.complete(_).void, before).surround {
         val following = (blocks.session >>= (delivering(peer, _)))
           .use(fed =>
             IO.race(
@@ -174,12 +181,13 @@ private[scarab] object WorkerTesting extends munit.Assertions:
       follower: Follower[IO, S],
       blocks: BlockPool[IO],
       peer: Scripted[IO],
-      done: IO[Unit]
+      done: IO[Unit],
+      before: BlockSelection.Before[IO] = BlockSelection.Before.noop[IO]
   )(using
       Stateful[IO, VolatileChain[S]],
       Raise[IO, NodeError]
   ): IO[Unit] =
-    run(follower, blocks, peer, done).flatMap(
+    run(follower, blocks, peer, done, before).flatMap(
       _.traverse_(fault => IO(fail(s"the node was told to stop: $fault")))
     )
 

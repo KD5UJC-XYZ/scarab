@@ -42,7 +42,9 @@ import xyz.kd5ujc.scarab.protocol.StateLayout
   * validation makes decides. A provider defect ([[xyz.kd5ujc.scarab.ledger.ProviderDefect]]) met
   * ahead of time is no information: it is discarded, never kept or handed over, and the validation
   * that reaches the check asks the provider itself and meets its own answer. A verdict (accept or
-  * reject) computed ahead of time is a function of its key and is reused.
+  * reject) computed ahead of time is a function of its key and is reused. The checks of the blocks
+  * waiting in the add-block queue are made ahead of the selection worker the same way
+  * ([[VerifyAhead]], #1499), an Optimisation (REF-6) for which the same holds.
   *
   * @param direct
   *   the providers every verdict is computed with; [[Verdicts.Direct]] except in tests

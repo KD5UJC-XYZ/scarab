@@ -8,7 +8,8 @@ import cats.mtl.syntax.all.*
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import cats.data.NonEmptyVector
-import xyz.kd5ujc.scarab.consensus.{ChainSelection, LeiosCertGate, LeiosForestBlock}
+import xyz.kd5ujc.scarab.consensus.{BlockRef, ChainSelection, LeiosCertGate, LeiosForestBlock}
+import xyz.kd5ujc.scarab.storage.ReceivedBlocks
 import xyz.kd5ujc.scarab.protocol.EbHash
 import xyz.kd5ujc.scarab.ledger.{BlockPoolProblem, Header, NodeError, ValidationError}
 import xyz.kd5ujc.scarab.network.Fibers
@@ -161,10 +162,10 @@ private[node] final class BlockSelection[F[_]: Async] private (
             .processing(header.blockPoint)
             .surround(application.locked {
               pool.admissions.stage(AdmissionStage.Applying) *> application.admits(header).flatMap {
-                case false => F.unit
+                case false => before.passed(header)
                 case true =>
                   pool.processedForest.flatMap { processed =>
-                    if processed.contains(header.hash) then F.unit
+                    if processed.contains(header.hash) then before.passed(header)
                     else
                       before.prepare(header, admission.taken.block) *> pool
                         .processAdmission(admission)
@@ -304,15 +305,43 @@ private[node] object BlockSelection:
     * to the received log and its verification cache warmed (`prepare`); a block this node forged is
     * written to the received log only (`store`), since its rules ran or run when selection reaches
     * it ([[Follower.submitForged]]). When a delivered block enters the add-block queue, its store
-    * reads are asked for ahead of the worker (`ahead`, [[ReadAheadStore.ahead]]), which must not
-    * wait: it runs under the queue's publication.
+    * reads and its signature checks are asked for ahead of the worker (`ahead`,
+    * [[ReadAheadStore.ahead]], [[VerifyAhead.ahead]]), which must not wait: it runs under the
+    * queue's publication. A delivered block the worker takes from the queue and does not prepare
+    * (older than the immutable tip, or already processed) is `passed` by.
     */
   trait Before[F[_]]:
     def prepare(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
     def store(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit]
     def ahead(header: Header, raw: Bytes): F[Unit]
+    def passed(header: Header): F[Unit]
 
   object Before:
+    /** The node's: a delivered block is written to the received log (`received`, when the node
+      * keeps one) and its signature checks asked for (`preverify`), finding those made ahead of the
+      * worker ([[VerifyAhead]], #1499); when a Shelley-based block enters the queue its store reads
+      * (`reads`, #1484) and its signature checks are asked for ahead of the worker; one passed by
+      * is the verifier's no longer.
+      */
+    def delivered[F[_]: cats.Monad](
+        received: Option[ReceivedBlocks[F]],
+        preverify: Peer.Prepare[F],
+        verifyAhead: VerifyAhead[F],
+        reads: (Header, Bytes) => F[Unit]
+    ): Before[F] = new Before[F]:
+      def prepare(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit] =
+        store(header, raw) *> (header match
+          case _: Header.Shelley => verifyAhead.reached(header.hash).void
+          case _                 => cats.Monad[F].unit) *> preverify(Vector(raw))
+      def store(header: Header, raw: Bytes)(using Raise[F, NodeError]): F[Unit] =
+        received.traverse_(
+          _.put(BlockRef(header.slot, header.hash, header.blockNo, header.isBoundary), raw)
+        )
+      def ahead(header: Header, raw: Bytes): F[Unit] = header match
+        case _: Header.Shelley => reads(header, raw) *> verifyAhead.ahead(header, raw)
+        case _                 => cats.Monad[F].unit
+      def passed(header: Header): F[Unit] = verifyAhead.passed(header.hash)
+
     def noop[F[_]: cats.Applicative]: Before[F] = new Before[F]:
       def prepare(@scala.annotation.unused header: Header, @scala.annotation.unused raw: Bytes)(
           using Raise[F, NodeError]
@@ -324,6 +353,7 @@ private[node] object BlockSelection:
           @scala.annotation.unused header: Header,
           @scala.annotation.unused raw: Bytes
       ): F[Unit] = cats.Applicative[F].unit
+      def passed(@scala.annotation.unused header: Header): F[Unit] = cats.Applicative[F].unit
 
   /** What the worker applies a candidate from: the bodies the pool admitted, and where a refusal of
     * one is recorded against its original (issue 599). A peer session has no part in it.

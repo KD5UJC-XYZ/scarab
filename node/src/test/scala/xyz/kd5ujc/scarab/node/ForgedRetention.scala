@@ -139,6 +139,7 @@ private[node] object ForgedRetention extends munit.Assertions:
           @scala.annotation.unused header: Header,
           @scala.annotation.unused raw: Bytes
       ): IO[Unit] = IO.unit
+      def passed(@scala.annotation.unused header: Header): IO[Unit] = IO.unit
 
   /** The pool's view of `received`, as `Main` builds it; a storage failure fails the case. */
   private def recovered(received: ReceivedBlocks[IO]): BlockPool.Recovered[IO] =
