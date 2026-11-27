@@ -181,7 +181,9 @@ digits of the SHA-256 of the bytes it names.
     each transaction without sub-transactions that Conway's decoder reads, by its id.
 
   Recorded at Scarab commit `6448028a5`, the head of the flat CERTS's deletion with the case files pinned, with these
-  suites beside the ones that compared the two rules: every comparison agreed. The comparisons that had other
+  suites beside the ones that compared the two rules: every comparison agreed. The flat UTXO's deletion's parent,
+  `1ca5f3bff`, adds these recordings and the suites that read them; the suites of `6448028a5` were run again there
+  beside them, every comparison agreed, and the recordings written were these, byte for byte. The comparisons that had other
   oracles are not here: the reference's bytes where only UTXO or UTXOW refused, the reference's verdicts and script
   results, the expected values derived from the reference's source (a collateral count narrowed to a `Word16`, the
   forecast's branches, the order of failing keys), and the flat decoder's scripts needed and provided, which stay.
@@ -193,9 +195,11 @@ digits of the SHA-256 of the bytes it names.
   (`evaluated/`), with their collection failed by every context error and by a certificate's, a pointer's, the
   votes' and the proposals' where the transaction has them (`uncollected/`), and by no redeemer and no context for
   each purpose its scripts need (`purposes/`). The failures are named in the flat collection's vocabulary
-  (`ConwayPhase2.storedErrors`, through `ConwayUtxowPredFailure.storedPurposes` and `ConwayTxCert.toStored`), and
-  the flat observation of the same transaction wrote the same bytes (#85's item 7152417866). Recorded at Scarab
-  commit `c187e8b90`, before the flat Conway UTXO, UTXOW and UTXOS were deleted.
+  (`ConwayPhase2.storedErrors`, through the purposes' flat form, `ConwayUtxowPredFailure.storedPurposes` when recorded
+  and `ConwayPhase2`'s own since, and `ConwayTxCert.toStored`), and
+  the flat observation of the same transaction wrote the same bytes (#85's item 7152417866). Recorded on Scarab
+  commit `c187e8b90` with the suite that reads them, committed as `6448028a5`, before the flat Conway UTXO, UTXOW and
+  UTXOS were deleted.
 
 Commit `84bf3a1cd` is the base this work started from; `3aaa942aa` the last of it with the flat encoder. The
 tests that wrote these lines and their throwaway checkouts were removed after. The digests are Scarab's own,

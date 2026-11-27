@@ -600,8 +600,9 @@ Conway's rules on the classes follow as the rest of stage 2.
   order with every failure accumulated, the six it runs with `runTestOnSignal` skipped when the policy does
   not validate the signal, and the failures of Shelley's predicates injected as the era does
   (`ConwayUtxo.injectShelleyFailure11_1` at f649f975, `injectShelleyFailure11_2` at the 11.2 and Leios
-  pins). It equals the flat UTXO's verdict on every Conway case of the refusal corpus, under every build
-  and both policies; the corpus has cases with several failures and cases whose failure differs by build.
+  pins). It equalled the flat UTXO's verdict on every Conway case of the refusal corpus, under every build
+  and both policies, and is held to that verdict, recorded before the flat UTXO was deleted
+  (`fixtures/conway-flat-refusals/utxo-judgments.jsonl`, #85 stage 3, C10); the corpus has cases with several failures and cases whose failure differs by build.
   Where only UTXO failed and the mempool's measure let the transaction through (15 cases, both builds'
   bootstrap attributes among them), its failures encode to the reference's refusal byte for byte. The flat
   UTXO has no forecast check, so a crafted case pins its place after the validity interval.
@@ -640,8 +641,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     (`StoredTxOut.fromStored`) and those created are written back. `Map.union` stays left-biased. A damaged
     store or an output outside the state's vocabulary is a raised `UtxoStateDefect`. Nothing persisted
     changes.
-  - `EraUtxosSuite` compares the era rule with the flat one (`rules.Utxos`, `rules.Utxo.update`) and with
-    what the reference recorded. It checks these:
+  - `EraUtxosSuite` compared the era rule with the flat one (`rules.Utxos`, `rules.Utxo.update`) until those
+    were deleted, and now holds it to their recorded judgments (`utxos-judgments.jsonl`), and to what the
+    reference recorded. It checks these:
     - On the 70 Conway transactions the reference node was given (the Plutus V1 context submissions at
       protocol 9 and 10, the context-error and the Plutus boundary submissions), with each flag, each
       policy, a failure recorded before or not, and an evaluator that gives no verdict, both rules give the
@@ -701,12 +703,14 @@ Conway's rules on the classes follow as the rest of stage 2.
     (`ScriptVerdictUnavailable`) and a damaged store or an output outside the state's vocabulary
     (`UtxoStateDefect`) stay their own typed raises, as UTXOS's and the state change's are.
   - The era failures had no encoder at this stage (Conway's era failure encoder, below, came later).
-    `ConwayUtxoPredFailure.toStored` gives a failure's flat form, glue
-    that the comparisons with the flat rules read. It is one-way and not lossless. A failed script keeps the
+    `ConwayUtxoPredFailure.toStored` gave a failure's flat form, glue
+    that the comparisons with the flat rules read, until the flat UTXO was deleted. It was one-way and not
+    lossless. A failed script keeps the
     evaluator's request but not the runnable's script hash, which the typed `PlutusWithContext`'s equality also
     holds. UTXOS's `CollectErrors` are returned as they are, since the flat failure holds their purposes and
     context errors in its own vocabulary.
-  - `EraUtxoSuite` runs the whole rule and the flat UTXO (`rules.Utxo`) in one judgment from the same state on
+  - `EraUtxoSuite` ran the whole rule and the flat UTXO (`rules.Utxo`) in one judgment from the same state, until
+    the flat UTXO was deleted, and now holds the whole rule to the flat rule's recorded judgments, on
     the 70 Conway submissions of `EraUtxosSuite`, as submitted and with the flag the other way, under each build
     and each policy. The failures are the same in the same order, UTXO's own in the flat form, a script's failure
     by its error, trace and request, and a collection's as the incomplete item below says. An admitted
@@ -1096,9 +1100,10 @@ Conway's rules on the classes follow as the rest of stage 2.
     `Embed (UTXO era) (UTXOW era)` does (`EmbedUtxoInUtxow`). It reads the UTxO set as UTXO does. A signature
     check or a script decoding with no verdict is raised as the node's `LedgerDefect`, as the flat rule raises
     it.
-  - `ConwayUtxowPredFailure.toStored` gives a failure's flat form, a missing redeemer's purpose, of UTXOW's
-    `MissingRedeemers` or UTXOS's `NoRedeemer`, given its flat form, with its index and spent output, from the
-    transaction's scripts needed (`storedPurposes`). A context's failure to translate is left as it is.
+  - `ConwayUtxowPredFailure.toStored` gave a failure's flat form until the flat UTXOW was deleted, a missing
+    redeemer's purpose given its flat form, with its index and spent output, from the transaction's scripts
+    needed (`storedPurposes`, now `ConwayPhase2`'s, which the case files of `--plutus-cases` name their
+    failures through).
   - Evidence:
     - `AllegraTimelockSuite`: `evalTimelock` gives the flat evaluation's verdict on every form, each bound
       unbounded, inside and outside, and `m` of a list at, below and above the scripts that hold, zero and
@@ -1109,7 +1114,7 @@ Conway's rules on the classes follow as the rest of stage 2.
       flat check, with a needed script that no witness signs (`ScriptWitnessNotValidatingUTXOW`), one that a
       witness signs, and the failing one provided but not needed: no Conway case of the corpora has a failing
       native script.
-    - `EraUtxoSuite`: the whole UTXOW and the flat `rules.Utxow` on the 70 submissions, as submitted and with
+    - `EraUtxoSuite`: the whole UTXOW, against the flat `rules.Utxow`'s recorded judgments, on the 70 submissions, as submitted and with
       the flag the other way, under each build and each policy: the same failures in order, the same state where
       admitted, and the counters UTXOS's events give through UTXO's and UTXOW's embeddings. As submitted, each
       verdict is the reference's. With each admitted case's script integrity hash taken out, UTXOW's failures
@@ -1962,7 +1967,7 @@ Conway's rules on the classes follow as the rest of stage 2.
   reference's `HasEraTxLevel TxBody`, `TxBody.hs:1079-1084`).
   - `DijkstraStateSuite`, on the 217 transactions recorded on the Leios testnet's chain, which its ledger accepted, and
     of the reference's UTXOW cases: the 176 without sub-transactions that the Conway decoder reads have the flat rules'
-    deposits and refunds (`Deposits.of`, `DijkstraUtxo.declaredRefunds`); the 13 it refuses, for a field Dijkstra adds
+    deposits and refunds (`Deposits.of`, recorded before it was deleted, and `DijkstraUtxo.declaredRefunds`); the 13 it refuses, for a field Dijkstra adds
     or changes (a witness set's key 8, a parameter change of keys 45 to 48, the direct deposits' key 25 with the
     balance intervals' key 26, a guard where Conway has a signer), are counted by their typed refusal, and the 28
     batches have no flat computation. Every one
