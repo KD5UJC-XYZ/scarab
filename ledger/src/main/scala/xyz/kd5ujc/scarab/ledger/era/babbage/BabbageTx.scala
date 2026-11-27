@@ -100,33 +100,58 @@ object BabbageTx:
   /** `decodeRecordNamed "AlonzoTx"` of a whole transaction's item (`Alonzo/Tx.hs:538-553`,
     * cardano-ledger f649f975), its items read in order: the body, the witness set, the phase-two
     * flag when the third item is a boolean (`peekTokenType`), the transaction valid otherwise, and
-    * then the auxiliary data or null (`decodeNullStrictMaybe`). Only then is the record's size
-    * checked: four items with the flag, three without. An item missing before the record's end is
-    * refused at its turn, as the reference runs out of input there.
+    * then the auxiliary data or null (`decodeNullStrictMaybe`, `decodeTxAuxDataByTokenType`). Only
+    * then is the record's length checked (`decodeListLikeT`, `libs/cardano-ledger-binary/src/
+    * Cardano/Ledger/Binary/Decoding/Decoder.hs:691-709`): four items with the flag, three without.
+    *
+    * An item the list lacks is read where the reference reads it, from the token after the list's
+    * last item. After a definite list that is the end of the input, as a submitted transaction is
+    * the whole input ("end of input", [[Cbor.Error.UnexpectedEnd]]). In an indefinite list it is
+    * the break, which the part's reader refuses as no item of its shape: the auxiliary data's
+    * ("Failed to decode AlonzoTxAuxData"). The break is no value the parser gives, so its refusal
+    * names it as the token it is, major type 7 with additional information 31 (`Simple(31)`). A
+    * definite list longer than the record is refused by its length ("Size mismatch when decoding
+    * Record"), an indefinite one by the break the reference looks for after the last field ("Excess
+    * terms in array"), as the node's readers of a record refuse it
+    * ([[LedgerDecodeError.IndefiniteLength]], [[CborRead.record]]).
     */
   private def record(node: Node)(
       body: Node => Either[EraTxError, BabbageTxBody],
       wits: Node => Either[EraTxError, BabbageTxWits],
       aux: Node => Either[EraTxError, BabbageTxAuxData]
   ): Either[EraTxError, BabbageTx] =
-    def length(expected: Int, actual: Int) =
-      EraTxError.Decode(LedgerDecodeError.ArrayLength(DecodeField.Transaction, expected, actual))
+    def refused(e: LedgerDecodeError) = EraTxError.Decode(e)
+    // the item at `i`, or the refusal of the token after the list's last item by the reader of
+    // the part of `site` and `shape`
+    def at(xs: Vector[Node], i: Int, site: DecodeField, shape: LedgerDecodeError.Shape) =
+      xs.lift(i)
+        .toRight(
+          refused(
+            if node.isIndefinite then LedgerDecodeError.Expected(site, shape, Value.Simple(31))
+            else LedgerDecodeError.Syntax(Cbor.Error.UnexpectedEnd)
+          )
+        )
     CborRead
       .array(node, DecodeField.Transaction)
-      .leftMap(EraTxError.Decode(_))
+      .leftMap(refused)
       .flatMap { xs =>
-        // the record's items in order, each refused at its turn when the list ends before it
-        def at(i: Int, expected: Int) = xs.lift(i).toRight(length(expected, xs.size))
         for
-          b <- at(0, 3).flatMap(body)
-          w <- at(1, 3).flatMap(wits)
+          b <- at(xs, 0, DecodeField.TransactionBody, LedgerDecodeError.Shape.Map).flatMap(body)
+          w <- at(xs, 1, DecodeField.WitnessSet, LedgerDecodeError.Shape.Map).flatMap(wits)
           flag = xs.lift(2).map(_.value).collect { case Value.Bool(v) => v }
           size = if flag.isDefined then 4 else 3
-          auxItem <- at(size - 1, size)
+          auxItem <- at(xs, size - 1, DecodeField.AuxiliaryData, LedgerDecodeError.Shape.ArrayOrMap)
           a <- auxItem.value match
             case Value.Null => Right(None)
             case _          => aux(auxItem).map(Some(_))
-          _ <- Either.cond(xs.sizeIs == size, (), length(size, xs.size))
+          _ <- Either.cond(
+            xs.sizeIs == size,
+            (),
+            refused(
+              if node.isIndefinite then LedgerDecodeError.IndefiniteLength(DecodeField.Transaction)
+              else LedgerDecodeError.ArrayLength(DecodeField.Transaction, size, xs.size)
+            )
+          )
         yield BabbageTx(b, w, IsPhase2Valid.of(flag.getOrElse(true)), a)
       }
 
