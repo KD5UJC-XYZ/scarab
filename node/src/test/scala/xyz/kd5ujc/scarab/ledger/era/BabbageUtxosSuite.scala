@@ -1065,6 +1065,31 @@ class BabbageUtxosSuite extends FunSuite:
     // those refused by UTXOS alone: the era rule's failures are the reference's, byte for byte
     val alone = refusals.filter(_.families.forall(f => f == Family.UTXOS || f == Family.PPUP))
     assertEquals(alone.size, 3)
+    // the hash each failing script carries, which the reference prints (`plutusRunnableScriptHash`,
+    // `explainPlutusEvaluationError`, `Plutus/Evaluate.hs:405-420`, cardano-ledger f649f975) and the
+    // flat encoder computes again from the script: the recorded refusal's, read from its text
+    // before the failures are projected
+    val printedHash = "The script hash is:ScriptHash \"([0-9a-f]{56})\"".r
+    val carried = alone.map { r =>
+      val hashes = typedFailures(r.judged).toList.flatMap {
+        case AlonzoUtxosPredFailure.ValidationTagMismatch(
+              _,
+              TagMismatchDescription.FailedUnexpectedly(fs)
+            ) =>
+          fs.toList.map { case FailureDescription.PlutusFailure(_, pwc) =>
+            pwc.pwcScript.plutusRunnableScriptHash.hex
+          }
+        case _ => Nil
+      }
+      val recorded = printedHash
+        .findAllMatchIn(new String(r.reason.toArray, java.nio.charset.StandardCharsets.ISO_8859_1))
+        .map(_.group(1))
+        .toList
+      assertEquals(hashes, recorded, s"${r.judged.name}: the failing scripts' hashes")
+      hashes.size
+    }
+    // one script fails unexpectedly, in one of the three
+    assertEquals(carried.sum, 1)
     alone.foreach { r =>
       val failures = typedFailures(r.judged).map(flatOf)
       assertEquals(
