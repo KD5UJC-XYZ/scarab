@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.Anchor
 import xyz.kd5ujc.scarab.ledger.state.{
+  Babbage,
   ColdCommittee,
   Coin,
   Conway,
@@ -128,6 +129,18 @@ trait ShelleyEraTxCert[E <: EraTag] extends EraTxCert[E]:
   def mkDelegStakeTxCert(credential: Credential[Staking], pool: KeyHash[StakePool]): TxCert[E]
   def getDelegStakeTxCert(cert: TxCert[E]): Option[(Credential[Staking], KeyHash[StakePool])]
 
+/** The genesis-delegation and instantaneous-reward certificates, of the eras up to Babbage
+  * (`mkGenesisDelegTxCert`, `getGenesisDelegTxCert`, `mkMirTxCert` and `getMirTxCert`, each with
+  * `AtMostEra "Babbage"`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs:164-168`,
+  * cardano-ledger f649f975): a member the reference confines to a range of eras is a class of its
+  * own with instances at exactly those eras (#85, 2026-11-15), so Conway has none.
+  */
+trait ShelleyEraTxCertToBabbage[E <: EraTag] extends ShelleyEraTxCert[E]:
+  def mkGenesisDelegTxCert(cert: GenesisDelegCert): TxCert[E]
+  def getGenesisDelegTxCert(cert: TxCert[E]): Option[GenesisDelegCert]
+  def mkMirTxCert(cert: MIRCert): TxCert[E]
+  def getMirTxCert(cert: TxCert[E]): Option[MIRCert]
+
 /** The staking and governance certificates from Conway (`ConwayEraTxCert`,
   * `eras/conway/impl/src/Cardano/Ledger/Conway/TxCert.hs:171-214`, cardano-ledger f649f975).
   */
@@ -214,6 +227,8 @@ trait ConwayEraTxCert[E <: EraTag] extends EraTxCert[E]:
 
 /** The instances of each era, the one place that lists the eras having each certificate class. */
 object EraTxCert:
+  given babbage: ShelleyEraTxCertToBabbage[Babbage] =
+    xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxCert.instance
   given conway: (ConwayEraTxCert[Conway] & ShelleyEraTxCert[Conway]) =
     xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxCert.instance
   given dijkstra: ConwayEraTxCert[Dijkstra] =

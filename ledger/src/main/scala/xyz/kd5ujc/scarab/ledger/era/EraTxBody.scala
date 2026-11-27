@@ -330,6 +330,11 @@ enum EraField:
   case Update, CurrentTreasury, MultiAsset, Datum, ReferenceScript, NegativeValue,
     GenesisDelegation, InstantaneousRewards
 
+  /** A certificate Conway brought (a deposit, a vote delegation, a DRep's or a committee member's),
+    * which no decoder before Conway reads.
+    */
+  case ConwayCertificate
+
 /** The instances of each era, the one place that lists the eras having each body class. */
 object EraTxBody:
   given conway: ((ConwayEraTxBody[Conway] & AlonzoEraTxBodyToConway[Conway]) {

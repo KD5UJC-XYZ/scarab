@@ -40,6 +40,7 @@ type TxBody[L <: TxLevel, E <: EraTag] = E match
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxCert.hs:58`, cardano-ledger f649f975).
   */
 type TxCert[E <: EraTag] = E match
+  case Babbage  => babbage.BabbageTxCert
   case Conway   => conway.ConwayTxCert
   case Dijkstra => dijkstra.DijkstraTxCert
 
