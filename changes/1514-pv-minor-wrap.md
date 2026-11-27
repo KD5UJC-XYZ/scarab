@@ -7,3 +7,6 @@
   an update was refused, and the epoch boundary dropped proposals that the reference keeps.
 - The proposed version is read as the reference reads a `ProtVer`. A major version above 13 or a minor
   version above a `Word32` is unreadable, and is no longer compared as a number.
+- A Shelley genesis whose `protocolParams.protocolVersion.minor` is above a `Word32` is refused, at that
+  field, as the reference's `FromJSON ProtVer` refuses it (#1517). Scarab read any natural number there
+  before, so a node could start from a genesis the reference does not accept.
