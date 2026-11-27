@@ -372,6 +372,12 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
             reports <- n.reports.get
             _ <- IO {
               assertEquals(before.tip, ours.last.header.point)
+              assertEquals(committedBefore.tip, ours.last.header.point, "our chain was published")
+              assertEquals(
+                eventsBefore.collect { case e: FollowerEvent.Extended => e.block.point },
+                ours.map(_.header.point),
+                "our chain was committed"
+              )
               assertEquals(after, before)
               assertEquals(committedAfter, committedBefore, "the published chain moved")
               assertEquals(
@@ -397,7 +403,7 @@ class BlockSelectionWorkerSuite extends FailsOnUncaught:
   // startup, reaches the invalid block inside the switch: startup selects from the anchor, so the
   // one-block chain is a rival candidate, and the truncated prefix, reinserted among the
   // candidates, ranks above it (the reference's `sortCandidates` over the reinserted prefix and
-  // the other candidates, `ChainSel.hs:1145-1186`).
+  // the other candidates, `ChainSel.hs:1141-1186`).
   test("a selection over a longer fork with an invalid middle block adopts its valid prefix") {
     for
       forks <- ForgedChain.sameIssuerForks(5000 until 5060, 5060 until 5120)
