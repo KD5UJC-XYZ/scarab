@@ -56,6 +56,12 @@ jobs:
           key: sbt-${{ runner.os }}-${{ hashFiles('build.sbt', 'project/*.sbt', 'project/build.properties', 'project/repositories', 'project/*.scala', 'scripts/sbtw') }}
           restore-keys: |
             sbt-${{ runner.os }}-
+      # The oracle of the differential targets, as the fuzz gate builds it (scripts/sodium_oracle.py).
+      - name: Build the libsodium oracle
+        run: |
+          library=$(python3 scripts/sodium_oracle.py --download --download-dir "$RUNNER_TEMP/sodium-source" --out "$RUNNER_TEMP/sodium")
+          test -f "$library"
+          echo "SCARAB_SODIUM_ORACLE=$library" >> "$GITHUB_ENV"
       - name: Choose the seeds
         id: seeds
         env:
@@ -85,6 +91,12 @@ jobs:
           set -o pipefail
           mkdir -p "$RUNNER_TEMP/logs"
           bash scripts/sbtw "fuzz $CASES $FIRST $SEEDS" 2>&1 | tee "$RUNNER_TEMP/logs/fuzz.log"
+          for target in sodium-ed25519 sodium-vrf-verify sodium-vrf-prove; do
+            if ! grep -Eq " $target: [0-9]+ cases, [0-9]+ accepted" "$RUNNER_TEMP/logs/fuzz.log"; then
+              echo "::error::$target did not run against the libsodium oracle"
+              exit 1
+            fi
+          done
       - name: Upload the log
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
