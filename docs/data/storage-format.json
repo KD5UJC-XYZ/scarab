@@ -5,11 +5,11 @@
   "`approval` records that question and the owner's decision, in neutral words and never as a quotation, with their UTC times and the digest of the surface they admit. It is evidence of the approval, never an approval itself. `approval` is null only for the baseline: the surface of main (bc0e4995a, after #994 merged) on 2026-11-14, when the freeze began, which approves nothing."
  ],
  "approval": {
-  "question": "Asked 2026-11-25T15:38:31Z: storage format change (FMT-1): may the fix of #1448 write the Shelley state's stashed AVVM UTxO (nesStashedAVVMAddresses) into the state file, as its own pull request? The Haskell state codec wrote the stash as an empty map, so a node restored from a Shelley-era snapshot lost it and returned nothing to the reserves on entering Allegra; writing it changes the bytes the V10 state codec writes and reads for Shelley states. Confirmation asked 2026-11-25T16:52:03Z: V10's bytes change only for Shelley-era states with AVVM entries; an empty stash still writes a0; existing non-Shelley snapshots stay byte-identical and readable; Shelley snapshots written before read as before, with the empty stash they hold; only an older build reading a new Shelley snapshot refuses it. May the codec change be committed as its own pull request?",
-  "asked_at": "2026-11-25T15:38:31Z",
-  "decision": "Approved, as its own storage-format pull request: an in-place change of V10, with no new version and no migration, the stash written and read as the reference writes it, and the approval recorded here. The owner agreed to the update and asked whether it changes V10 and breaks the stores written so far (2026-11-25T16:51:05Z); after the confirmation of what changes, the owner approved committing it.",
-  "decided_at": "2026-11-25T16:53:09Z",
-  "surface_sha256": "f48c466b8de9b1830047d274ca24bdf581c01e1dd5545594c9c77a82837734f3"
+  "question": "Asked 2026-11-27T15:59:06Z: storage format change (FMT-1): may the state reader refuse a registered pool's metadata that the reference refuses, reading it as DecCBOR PoolMetadata does (a record of two items, the URL bounded by the version), with the function the future parameters' metadata already uses? The writer is unchanged and the node's own saved states pass. Which state layouts should it cover: both the Leios and the 11.1 layout, the Leios layout only, or neither for now?",
+  "asked_at": "2026-11-27T15:59:06Z",
+  "decision": "Approved for both layouts, as its own storage-format pull request: an in-place change of the V10 state codecs' reader for a registered pool's metadata (StakePoolState in the 11.1 and Leios layouts), with no new version and no migration and the writer unchanged; the approval is recorded here. Noted after the independent review, 2026-11-27: the question's premise that the node's own saved states pass holds for pools registered by certificates; a state holding a genesis pool whose metadata URL is over 64 bytes below version 9 or over 128 from it, which the writer accepts from the genesis JSON, is refused on reading, as the reference refuses it. No genesis of mainnet, preprod, preview or the Leios testnet gives a pool metadata.",
+  "decided_at": "2026-11-27T16:10:20Z",
+  "surface_sha256": "0bb04edbc12ee447b8339c6a5d4e52c19f7692bbb43fb52b434c4b0770a3a796"
  },
  "surface": {
   "fixtures": {
@@ -222,7 +222,7 @@
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV7.scala": "1db1c2781205f65ae9decbc835e34a1118a821bfc53be1128f48eb48224d1add",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV8.scala": "c56ee0253fd57be19c42d7d9f11e517b9a8130d0d79349a3e81db4230ccc2402",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/SnapshotV9.scala": "c137fed393e4dd5f96c9815d4e858fa1929e21bfce75ea9aaa90eb30608668f5",
-   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/CertStateCodecs.scala": "6cdebec042cb239e702bb38ab433438034af42d23f419151bbc9ef29b35b8fc3",
+   "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/CertStateCodecs.scala": "1109af63228772c4fa0f149abbced706c2604f6a403a073a00a7697b31866a90",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConsensusCodecs.scala": "ef22fd1b2d75680ec5e0071b8cff73a116a1e837a539a6845ebd63cd45a1e6d8",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/ConwayCodecs.scala": "050040f1e442e00fb448ef2a7c8296ff229413a41f46e7c79ad91e5d516aaa0e",
    "storage/src/main/scala/xyz/kd5ujc/scarab/storage/haskell/state/Envelope.scala": "e538ab5c49e0ee9f41cadff7029cdc514a790a753a8b7e547fe32654d6ca2f92",

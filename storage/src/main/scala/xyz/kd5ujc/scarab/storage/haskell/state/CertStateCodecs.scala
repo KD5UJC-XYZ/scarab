@@ -158,6 +158,31 @@ trait CertStateCodecs extends NodeTypeCodecs:
       case PoolBlsKey.Node11_1 =>
         Some(ConstraintViolation("PoolBlsKey", "a part of the Leios layout", "Node11_1"))
 
+  /** The decoder version of the state's protocol version, as the reference's `decodeRecordNamed`
+    * readers take it.
+    */
+  private def decoderVersionAt(n: Node)(using v: ProtVer): Decoded[DecoderVersion] =
+    DecoderVersion
+      .ofMajor(v.major.toBigInt)
+      .toRight(DecodeError.at(n, Kind.OutOfRange("a decoder version", v.major.toBigInt)))
+
+  /** A registered pool's metadata, `spsMetadata :: StrictMaybe PoolMetadata` (cardano-ledger
+    * f649f975 `State/StakePool.hs:207-236`, 9df9f98c `:236-267`), read with `DecCBOR PoolMetadata`
+    * at the state's version and in this layout's build ([[PoolMetadata.read]]: a record of a `Url`
+    * and a hash, f649f975 `:522-524`, 9df9f98c `:683-685`), as the future parameters' metadata is
+    * read ([[stakePoolParams]]). The term is kept as the bytes it was read from and written as
+    * [[poolMetadata]] writes it.
+    */
+  private def stakePoolMetadata(using ProtVer): Codec[Bytes] = new Codec[Bytes]:
+    def decode(n: Node): Decoded[Bytes] =
+      decoderVersionAt(n).flatMap(version =>
+        PoolMetadata
+          .read(n.original, version, stateLayout)
+          .bimap(e => DecodeError.at(n, Kind.Domain(e)), _.bytes)
+      )
+    def encode(a: Bytes, out: Writer): Unit = poolMetadata.encode(a, out)
+    override def check(a: Bytes): Option[ConstraintViolation] = poolMetadata.check(a)
+
   /** `StakePoolState` (`State/StakePool.hs:192-205`, cardano-ledger f649f975): the pool parameters
     * less its id, with the deposit and the delegators. Here the relays are a sequence and the
     * metadata a `StrictMaybe` (a list of zero or one), where `StakePoolParams` writes it `null`
@@ -175,7 +200,7 @@ trait CertStateCodecs extends NodeTypeCodecs:
           credential[Staking],
           setOf(keyHash[Staking]),
           relays,
-          strictMaybe(poolMetadata),
+          strictMaybe(stakePoolMetadata),
           compactCoin,
           setOf(credential[Staking])
         )
@@ -225,7 +250,7 @@ trait CertStateCodecs extends NodeTypeCodecs:
           credential[Staking],
           setOf(keyHash[Staking]),
           relays,
-          strictMaybe(poolMetadata),
+          strictMaybe(stakePoolMetadata),
           compactCoin,
           setOf(credential[Staking])
         )
@@ -251,11 +276,6 @@ trait CertStateCodecs extends NodeTypeCodecs:
     private val flat = poolParams
     private val keyed = poolParamsWithSlot(blsKey)
 
-    private def decoderVersion(n: Node): Decoded[DecoderVersion] =
-      DecoderVersion
-        .ofMajor(v.major.toBigInt)
-        .toRight(DecodeError.at(n, Kind.OutOfRange("a decoder version", v.major.toBigInt)))
-
     /** The parameters and their key, where `n` holds one: in the Leios layout from version 12, ten
       * items whose third is a list (`decodeBlsKeyBackwardsCompatible`, `:764-771`). Their relays,
       * the ninth item, are read as the reference reads them ([[PoolRelays.fromState]]), so that
@@ -270,7 +290,7 @@ trait CertStateCodecs extends NodeTypeCodecs:
               xs.lift(2).map(_.value).collect { case Value.Arr(_) =>
                 for
                   p <- keyed.decode(n)
-                  version <- decoderVersion(n)
+                  version <- decoderVersionAt(n)
                   _ <- xs
                     .lift(8)
                     .traverse(r =>
@@ -288,7 +308,7 @@ trait CertStateCodecs extends NodeTypeCodecs:
       withKey(n)
         .getOrElse(flat.decode(n).map((_, PoolParamsBlsKey.certified(stateLayout))))
         .flatMap { (p, key) =>
-          decoderVersion(n)
+          decoderVersionAt(n)
             .flatMap(version =>
               p.metadata
                 .traverse(PoolMetadata.read(_, version, stateLayout))

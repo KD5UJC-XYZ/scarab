@@ -670,8 +670,14 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     )
   }
 
-  test("state writers accept a genesis pool with a 1 MiB metadata URL") {
+  test(
+    "state writers accept a genesis pool with a 1 MiB metadata URL; the state reader refuses it"
+  ) {
     // cardano-ledger f649f975, BaseTypes.hs:674-676: Url's JSON reader and encoder are Text's.
+    // Its CBOR reader is bounded (`DecCBOR Url`, BaseTypes.hs:678-685 at f649f975, :679-686 at
+    // 9df9f98c: 128 bytes from version 9), and a pool's state reads its metadata with it
+    // (`DecCBOR StakePoolState`, State/StakePool.hs:207-236), so the reference writes this state
+    // and does not read it back.
     val url = "a" * (1024 * 1024)
     val genesis = io.circe.parser
       .parse(s"""{
@@ -700,9 +706,20 @@ class HaskellStateCodecSuite extends ScalaCheckSuite:
     assertEquals(readOk(poolParams, expectedParams), params)
     val expectedState =
       hex(s"8a $vrf $common 8200581c$key28 $owners 80 81") ++ metadata ++ hex(s"00 $owners")
-    val state = readOk(stakePoolState, expectedState)
-    assertEquals(state.metadata, params.metadata)
+    // the same pool read without metadata, then given the genesis metadata, as genesis gives it
+    val state =
+      readOk(stakePoolState, hex(s"8a $vrf $common 8200581c$key28 $owners 80 80 00 $owners"))
+        .copy(metadata = params.metadata)
     assertEquals(stakePoolState.write(state), Right(expectedState))
+    assertEquals(
+      stakePoolState.decodeBytes(expectedState, HaskellState.limits).left.map(_.kind),
+      Left(
+        DecodeError.Kind.Domain(
+          xyz.kd5ujc.scarab.ledger.LedgerDecodeError
+            .TextTooLong(xyz.kd5ujc.scarab.ledger.DecodeField.PoolMetadataURL, 128, url.length)
+        )
+      )
+    )
   }
 
   test("state writers canonicalize chunked relay DNS text without relaxing transaction checks") {

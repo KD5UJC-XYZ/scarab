@@ -1674,12 +1674,14 @@
           "LedgerSnapshotImportSuite",
           "LedgerSnapshotExportSuite",
           "StoredScriptKindSuite",
-          "ShelleyAvvmStashSuite"
+          "ShelleyAvvmStashSuite",
+          "StakePoolStateMetadataSuite"
         ],
         "issues": [
           826,
           85,
-          1448
+          1448,
+          1511
         ]
       },
       "limitations": {
