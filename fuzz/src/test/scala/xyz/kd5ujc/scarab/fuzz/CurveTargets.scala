@@ -22,11 +22,11 @@ import xyz.kd5ujc.scarab.crypto.witness.{
 }
 
 /** Differential targets of the vendored curve arithmetic (`com.weavechain.curve25519`) and of the
-  * Ed25519 verifiers, with oracles that are no dependency of the node: exact integer arithmetic
-  * (`BigInt` over `java.math.BigInteger`), the independent model of RFC 8032 (`Ed25519Model`), the
-  * JDK's Ed25519 and Bouncy Castle's. The fuzzer's bytes are operands, not an encoding to decode:
-  * every input reads as one operation and its operands, so a mutation changes a limb, a scalar, a
-  * point or a signature, and the shrunk input of a failure is still one.
+  * Ed25519 verifiers, with oracles that add no dependency: exact integer arithmetic (`BigInt` over
+  * `java.math.BigInteger`), the independent model of RFC 8032 (`Ed25519Model`), the JDK's Ed25519
+  * and Bouncy Castle's, which `crypto` already depends on. The fuzzer's bytes are operands, not an
+  * encoding to decode: every input reads as one operation and its operands, so a mutation changes a
+  * limb, a scalar, a point or a signature, and the shrunk input of a failure is still one.
   */
 object CurveTargets:
   private def hit(name: String): Unit =
@@ -57,6 +57,13 @@ object CurveTargets:
         )
       }
 
+    /** The encoding of a point an operation returned, once its extended coordinates hold their
+      * invariants (`Curve25519Gen.extendedFailure`): a wrong T would compress correctly.
+      */
+    def encoded(e: EdwardsPoint, what: => String): String =
+      G.extendedFailure(e).foreach(failure => apply(false, s"$what: $failure"))
+      encoding(e)
+
   // --- operands -----------------------------------------------------------------------------------
 
   /** The operands an operation reads, each of a fixed size at a fixed offset. */
@@ -75,6 +82,9 @@ object CurveTargets:
 
     /** A mode, a point encoding and a torsion index. */
     case Point extends Operand(34)
+
+    /** A mode and 64 bytes: radix-16 digits in [-8, 8]. */
+    case Digits extends Operand(65)
 
   private val moveSteps = Vector(-2, -1, 0, 0, 1, 2)
 
@@ -167,6 +177,16 @@ object CurveTargets:
         case _ => b
     )
 
+  /** 64 radix-16 digits over the whole of [-8, 8], the domain `multiplyRadix16` documents at every
+    * index: drawn uniformly, or each one of -8, 8, 0, 1, -1, 7 and -7. The recoder of `Scalar`
+    * writes 8 only at the last index, so these reach what its digits never do.
+    */
+  private def digits(in: Array[Byte], from: Int): Array[Byte] =
+    val payload = window(in, from + 1, 64)
+    unsigned(in, from) % 2 match
+      case 0 => payload.map(b => (Math.floorMod(b.toInt, 17) - 8).toByte)
+      case _ => payload.map(b => Vector(-8, 8, 0, 1, -1, 7, -7, 8)(b & 7).toByte)
+
   /** A point: the bytes the implementations read it from, the model's point of them, and whether it
     * is of prime order where its construction says so.
     */
@@ -178,6 +198,7 @@ object CurveTargets:
     def vendored(check: Check): EdwardsPoint =
       val decoded = new CompressedEdwardsY(encoding.clone()).decompress().toScala
       check(decoded.isDefined, s"decompress refuses ${hex(encoding)}, a point's encoding")
+      check.encoded(decoded.get, s"decompress of ${hex(encoding)}")
       decoded.get
 
   private def canonical(m: M.Point, primeOrder: Boolean): PointOperand =
@@ -192,13 +213,12 @@ object CurveTargets:
   private def point(in: Array[Byte], from: Int, check: Check): Option[PointOperand] =
     val raw = window(in, from + 1, 32)
     val model = M.decode(raw, M.Reading.Lenient)
-    val vendored = new CompressedEdwardsY(raw.clone()).decompress().toScala
+    val vendored = new CompressedEdwardsY(raw.clone())
+      .decompress()
+      .toScala
+      .map(p => check.encoded(p, s"decompress of ${hex(raw)}"))
     val expected = model.map(m => hex(m.encode))
-    check(
-      vendored.map(p => hex(p.compress().toByteArray)) == expected,
-      s"decompress of ${hex(raw)} is ${vendored.map(p => hex(p.compress().toByteArray))}, " +
-        s"expected $expected"
-    )
+    check(vendored == expected, s"decompress of ${hex(raw)} is $vendored, expected $expected")
     check(
       Ed25519KernelProbe.decoded(raw).map(hex) == expected,
       s"the verification kernel's decoding of ${hex(raw)} is ${Ed25519KernelProbe.decoded(raw).map(hex)}, " +
@@ -271,7 +291,9 @@ object CurveTargets:
     val inverse = V.invert(f)
     check.same(value(inverse), x.modPow(G.p - 2, G.p), s"invert, $clue")
     check.within(inverse, G.productBound, s"invert, $clue")
-    check.same(value(V.powP58(f)), x.modPow((G.p - 5) / 8, G.p), s"powP58, $clue")
+    val power = V.powP58(f)
+    check.same(value(power), x.modPow((G.p - 5) / 8, G.p), s"powP58, $clue")
+    check.within(power, G.productBound, s"powP58, $clue")
     true
 
   private def fieldSquareRoot(in: Array[Byte], at: Vector[Int], check: Check): Boolean =
@@ -282,6 +304,8 @@ object CurveTargets:
     val clue = s"u = ${hex(x)}, v = ${hex(y)}"
     check(wasSquare == square, s"sqrtRatioM1's wasSquare is $wasSquare, expected $square, $clue")
     check.same(value(result), root, s"sqrtRatioM1's root, $clue")
+    // a product, or its negation: `decompress` negates it, whose precondition is the reduced bounds
+    check.within(result, G.productBound, s"sqrtRatioM1's root, $clue")
     true
 
   // --- scalar operations: ScalarSuite's comparisons ---------------------------------------------
@@ -371,6 +395,7 @@ object CurveTargets:
       val (a, b) = (p.vendored(check), q.vendored(check))
       val (m, n) = (p.model, q.model)
       val clue = s"P ${hex(p.encoding)}, Q ${hex(q.encoding)}"
+      // each result, and the result plus Q, which reads all four of its coordinates (T among them)
       Vector(
         "add" -> (a.add(b), m + n),
         "subtract" -> (a.subtract(b), m - n),
@@ -378,9 +403,15 @@ object CurveTargets:
         "dbl" -> (a.dbl(), m + m),
         "multiplyByCofactor" -> (a.multiplyByCofactor(), m * 8)
       ).foreach { case (name, (got, model)) =>
+        val encoded = check.encoded(got, s"$name, $clue")
         check(
-          encoding(got) == hex(model.encode),
-          s"$name is ${encoding(got)}, expected ${hex(model.encode)}, $clue"
+          encoded == hex(model.encode),
+          s"$name is $encoded, expected ${hex(model.encode)}, $clue"
+        )
+        val next = check.encoded(got.add(b), s"$name, then add Q, $clue")
+        check(
+          next == hex((model + n).encode),
+          s"$name, then add Q, is $next, expected ${hex((model + n).encode)}, $clue"
         )
       }
       check(a.isSmallOrder() == m.isSmallOrder, s"isSmallOrder, $clue")
@@ -406,12 +437,17 @@ object CurveTargets:
     point(in, at(0), check).exists { p =>
       val a = ScalarOperand(scalar(in, at(1), 255))
       val point = p.vendored(check)
-      val expected = encoding(point.multiply(a.scalar))
       val clue = s"[${hex(a.value)}]P, P ${hex(p.encoding)}"
+      val expected = check.encoded(point.multiply(a.scalar), s"multiply, $clue")
       Vector(
-        "multiplyRadix16" -> Some(encoding(point.multiplyRadix16(a.digits))),
+        "multiplyRadix16" -> Some(
+          check.encoded(point.multiplyRadix16(a.digits), s"multiplyRadix16, $clue")
+        ),
         "vartimeDoubleScalarMultiplyBasepoint" -> Some(
-          encoding(EdwardsPoint.vartimeDoubleScalarMultiplyBasepoint(a.scalar, point, Scalar.ZERO))
+          check.encoded(
+            EdwardsPoint.vartimeDoubleScalarMultiplyBasepoint(a.scalar, point, Scalar.ZERO),
+            s"vartimeDoubleScalarMultiplyBasepoint, $clue"
+          )
         ),
         "the verification kernel" -> Ed25519KernelProbe
           .doubleScalarMultiplyBasepoint(a.bytes, p.encoding, zero32)
@@ -426,7 +462,7 @@ object CurveTargets:
   private def variableBaseModel(in: Array[Byte], at: Vector[Int], check: Check): Boolean =
     point(in, at(0), check).exists { p =>
       val a = ScalarOperand(scalar(in, at(1), 255))
-      val got = encoding(p.vendored(check).multiply(a.scalar))
+      val got = check.encoded(p.vendored(check).multiply(a.scalar), s"multiply, [${hex(a.value)}]P")
       val expected = hex((p.model * a.value).encode)
       check(
         got == expected,
@@ -442,20 +478,27 @@ object CurveTargets:
     */
   private def fixedBase(in: Array[Byte], at: Vector[Int], check: Check): Boolean =
     val b = ScalarOperand(scalar(in, at(0), 255))
-    val expected = encoding(Constants.ED25519_BASEPOINT_TABLE.multiply(b.scalar))
     val clue = s"[${hex(b.value)}]B"
+    val expected =
+      check.encoded(Constants.ED25519_BASEPOINT_TABLE.multiply(b.scalar), s"the table, $clue")
     Vector(
       "the basepoint table's multiplyRadix16" -> Some(
-        encoding(Constants.ED25519_BASEPOINT_TABLE.multiplyRadix16(b.digits))
+        check.encoded(
+          Constants.ED25519_BASEPOINT_TABLE.multiplyRadix16(b.digits),
+          s"the table's multiplyRadix16, $clue"
+        )
       ),
-      "multiply" -> Some(encoding(Constants.ED25519_BASEPOINT.multiply(b.scalar))),
+      "multiply" -> Some(
+        check.encoded(Constants.ED25519_BASEPOINT.multiply(b.scalar), s"multiply, $clue")
+      ),
       "vartimeDoubleScalarMultiplyBasepoint" -> Some(
-        encoding(
+        check.encoded(
           EdwardsPoint.vartimeDoubleScalarMultiplyBasepoint(
             Scalar.ZERO,
             EdwardsPoint.IDENTITY,
             b.scalar
-          )
+          ),
+          s"vartimeDoubleScalarMultiplyBasepoint, $clue"
         )
       ),
       "the verification kernel" -> Ed25519KernelProbe
@@ -469,7 +512,10 @@ object CurveTargets:
   /** [b]B by the basepoint table against the model's. */
   private def fixedBaseModel(in: Array[Byte], at: Vector[Int], check: Check): Boolean =
     val b = ScalarOperand(scalar(in, at(0), 255))
-    val got = encoding(Constants.ED25519_BASEPOINT_TABLE.multiply(b.scalar))
+    val got = check.encoded(
+      Constants.ED25519_BASEPOINT_TABLE.multiply(b.scalar),
+      s"the table, [${hex(b.value)}]B"
+    )
     val expected = hex((M.basepoint * b.value).encode)
     check(
       got == expected,
@@ -484,12 +530,17 @@ object CurveTargets:
     point(in, at(0), check).exists { p =>
       val (a, b) = (ScalarOperand(scalar(in, at(1), 255)), ScalarOperand(scalar(in, at(2), 255)))
       val point = p.vendored(check)
-      val expected =
-        encoding(point.multiply(a.scalar).add(Constants.ED25519_BASEPOINT_TABLE.multiply(b.scalar)))
       val clue = s"[${hex(a.value)}]P + [${hex(b.value)}]B, P ${hex(p.encoding)}"
+      val expected = check.encoded(
+        point.multiply(a.scalar).add(Constants.ED25519_BASEPOINT_TABLE.multiply(b.scalar)),
+        s"the constant-time sum, $clue"
+      )
       Vector(
         "vartimeDoubleScalarMultiplyBasepoint" -> Some(
-          encoding(EdwardsPoint.vartimeDoubleScalarMultiplyBasepoint(a.scalar, point, b.scalar))
+          check.encoded(
+            EdwardsPoint.vartimeDoubleScalarMultiplyBasepoint(a.scalar, point, b.scalar),
+            s"vartimeDoubleScalarMultiplyBasepoint, $clue"
+          )
         ),
         "the verification kernel" -> Ed25519KernelProbe
           .doubleScalarMultiplyBasepoint(a.bytes, p.encoding, b.bytes)
@@ -515,6 +566,37 @@ object CurveTargets:
       true
     }
 
+  /** [v]m in the model for any integer v. */
+  private def multiple(m: M.Point, v: BigInt): M.Point = if v >= 0 then m * v else -(m * -v)
+
+  /** [v]B by the basepoint table or [v]P by the point (bit 1 of the digits' mode chooses, so that a
+    * case multiplies once in the model), from digits over their whole domain ([[digits]]), against
+    * the model's multiple of v, the sum of the digits' place values.
+    */
+  private def radix16(in: Array[Byte], at: Vector[Int], check: Check): Boolean =
+    val e = digits(in, at(1))
+    val v = e.indices.map(i => BigInt(e(i).toInt) << (4 * i)).sum
+    val clue = s"digits ${e.mkString(",")}"
+    if (unsigned(in, at(1)) & 2) == 0 then
+      val table = check.encoded(
+        Constants.ED25519_BASEPOINT_TABLE.multiplyRadix16(e.clone()),
+        s"the table's multiplyRadix16, $clue"
+      )
+      val base = hex(multiple(M.basepoint, v).encode)
+      check(table == base, s"the table's multiplyRadix16 gives $table, the model $base, $clue")
+      true
+    else
+      point(in, at(0), check).exists { p =>
+        val got =
+          check.encoded(p.vendored(check).multiplyRadix16(e.clone()), s"multiplyRadix16, $clue")
+        val expected = hex(multiple(p.model, v).encode)
+        check(
+          got == expected,
+          s"multiplyRadix16 gives $got, the model $expected, $clue, P ${hex(p.encoding)}"
+        )
+        true
+      }
+
   /** One operation: its operands, in order from byte 1, its comparisons, and its share of the
     * inputs. Whether its comparisons ran (its points decoded) is what the target counts.
     */
@@ -530,7 +612,8 @@ object CurveTargets:
 
   // A point operation costs ten to a hundred times a field or scalar operation, and one against
   // the model (an exact multiplication over `BigInt`) ten times a point operation. The weights give
-  // the point operations a sixth of the inputs, the model's multiplications one in 24.
+  // the point operations 9 of the 49 slots, and those that multiply in the model 3 of them (the
+  // prime-order test does too, for a point as written).
   private val operations: Vector[Operation] = Vector(
     Operation("field decode", Vector(FieldBytes), fieldDecode, 4),
     Operation("field encode", Vector(Field), fieldEncode, 4),
@@ -553,7 +636,8 @@ object CurveTargets:
     Operation("fixed-base multiplication", Vector(Scalar32), fixedBase, 1),
     Operation("fixed-base multiplication, the model", Vector(Scalar32), fixedBaseModel, 1),
     Operation("double-base multiplication", Vector(Point, Scalar32, Scalar32), doubleBase, 1),
-    Operation("prime-order test", Vector(Point), order, 1)
+    Operation("prime-order test", Vector(Point), order, 1),
+    Operation("radix-16 multiplication from any digits", Vector(Point, Digits), radix16, 1)
   )
 
   /** Byte 0 of an input modulo this table's size chooses its operation. */
@@ -567,6 +651,7 @@ object CurveTargets:
     val modes = operand match
       case Field      => 5
       case FieldBytes => 3
+      case Digits     => 4
       case _          => 4
     for
       mode <- (0 until modes).toVector
@@ -588,14 +673,15 @@ object CurveTargets:
 
   private val arithmeticName = "curve25519-arithmetic"
 
-  private def runArithmetic(bytes: Array[Byte]): Unit =
+  /** Whether the input's operation ran its comparisons (its points decoded). */
+  private def runArithmetic(bytes: Array[Byte]): Boolean =
     val operation = slots(unsigned(bytes, 0) % slots.size)
-    if operation.run(bytes, operation.offsets, new Check(operation.name)) then hit(arithmeticName)
+    operation.run(bytes, operation.offsets, new Check(operation.name))
 
   // The first call of each operation loads the oracles' and the vendored classes and builds their
   // tables, more than the allocation bound of one input allows and not what it is for. The corpus is
   // read before any input is probed, so it runs each operation once on its first seed, outside the
-  // probe; the outcome is the probed runs' to report.
+  // probe and outside the tally of decoded inputs; the outcome is the probed runs' to report.
   private lazy val arithmeticWarmed: Vector[Array[Byte]] =
     operations
       .flatMap(o => arithmeticSeedList.find(s => slots(unsigned(s, 0) % slots.size) == o))
@@ -608,20 +694,22 @@ object CurveTargets:
   private val arithmetic: Target = Target(
     arithmeticName,
     () => arithmeticWarmed,
-    in => Probe.run(arithmeticName, in)(runArithmetic(in.bytes))
+    in => Probe.run(arithmeticName, in)(if runArithmetic(in.bytes) then hit(arithmeticName))
   )
 
   // --- Ed25519 verification ---------------------------------------------------------------------
 
-  /** A key, a signature and a message, and whether their construction makes A and R points of the
-    * prime-order subgroup and A not the identity: for such a triple Bouncy Castle refuses neither,
-    * and its cofactored equation is the exact one.
+  /** A key, a signature and a message; whether their construction makes A and R points of the
+    * prime-order subgroup and A not the identity (for such a triple Bouncy Castle refuses neither,
+    * and its cofactored equation is the exact one); and whether it is a signature of the signer's,
+    * or of the model's for A = [a]B and R = [r]B, that every verifier must accept.
     */
   private final case class Triple(
       key: Array[Byte],
       signature: Array[Byte],
       message: Array[Byte],
-      primeOrder: Boolean
+      primeOrder: Boolean,
+      valid: Boolean
   ):
     override def toString: String =
       s"key ${hex(key)} signature ${hex(signature)} message ${hex(message)}"
@@ -634,7 +722,7 @@ object CurveTargets:
   private def signed(seed: Array[Byte], message: Array[Byte]): Triple =
     val signature = new Array[Byte](64)
     Ed25519.sign(seed, 0, message, 0, message.length, signature, 0)
-    Triple(publicKey(seed), signature, message, true)
+    Triple(publicKey(seed), signature, message, true, true)
 
   private def flipped(bytes: Array[Byte], bit: Int): Array[Byte] =
     val out = bytes.clone()
@@ -662,21 +750,23 @@ object CurveTargets:
     val valid = signed(window(in, 1, 32), in.drop(36))
     val position = unsigned(in, 34) | unsigned(in, 35) << 8
     val (r, s) = (valid.signature.take(32), valid.signature.drop(32))
+    val changed = valid.copy(valid = false)
     unsigned(in, 33) % 8 match
       case 0 => valid
-      case 1 => valid.copy(key = flipped(valid.key, position % 256), primeOrder = false)
-      case 2 => valid.copy(signature = flipped(valid.signature, position % 256), primeOrder = false)
-      case 3 => valid.copy(signature = flipped(valid.signature, 256 + position % 256))
+      case 1 => changed.copy(key = flipped(valid.key, position % 256), primeOrder = false)
+      case 2 =>
+        changed.copy(signature = flipped(valid.signature, position % 256), primeOrder = false)
+      case 3 => changed.copy(signature = flipped(valid.signature, 256 + position % 256))
       case 4 =>
         if valid.message.isEmpty then valid
-        else valid.copy(message = flipped(valid.message, position % (8 * valid.message.length)))
-      case 5 => valid.copy(signature = r ++ plusMultipleOfL(G.fromLe(s), 1 + position % 15))
+        else changed.copy(message = flipped(valid.message, position % (8 * valid.message.length)))
+      case 5 => changed.copy(signature = r ++ plusMultipleOfL(G.fromLe(s), 1 + position % 15))
       case 6 =>
-        valid.copy(
+        changed.copy(
           signature = M.torsion(position & 7).encode ++ s,
           primeOrder = (position & 7) == 0
         )
-      case _ => valid.copy(key = aliases(position % aliases.size), primeOrder = false)
+      case _ => changed.copy(key = aliases(position % aliases.size), primeOrder = false)
 
   /** The families of `Ed25519CrossCheckSuite`, built with the model from two signing seeds (A =
     * [a]B and R = [r]B by Bouncy Castle's key derivation): A, R or both of mixed order, A or R of
@@ -696,27 +786,30 @@ object CurveTargets:
     unsigned(in, 1) % 8 match
       case 0 =>
         val key = mixed(aB, index)
-        Triple(key, rB ++ response(key, rB, r, a), message, (index & 7) == 0)
+        Triple(key, rB ++ response(key, rB, r, a), message, (index & 7) == 0, (index & 7) == 0)
       case 1 =>
         val rEncoding = mixed(rB, index)
-        Triple(aB, rEncoding ++ response(aB, rEncoding, r, a), message, (index & 7) == 0)
+        val plain = (index & 7) == 0
+        Triple(aB, rEncoding ++ response(aB, rEncoding, r, a), message, plain, plain)
       case 2 =>
         val (key, rEncoding) = (mixed(aB, index), mixed(rB, index >> 3))
-        Triple(key, rEncoding ++ response(key, rEncoding, r, a), message, (index & 0x3f) == 0)
-      case 3 => Triple(M.torsion(index & 7).encode, rB ++ le32(r), message, false)
+        val plain = (index & 0x3f) == 0
+        Triple(key, rEncoding ++ response(key, rEncoding, r, a), message, plain, plain)
+      case 3 => Triple(M.torsion(index & 7).encode, rB ++ le32(r), message, false, false)
       case 4 =>
         val rEncoding = M.torsion(index & 7).encode
-        Triple(aB, rEncoding ++ response(aB, rEncoding, 0, a), message, (index & 7) == 0)
-      case 5 => Triple(aliases(index % aliases.size), rB ++ le32(r), message, false)
+        Triple(aB, rEncoding ++ response(aB, rEncoding, 0, a), message, (index & 7) == 0, false)
+      case 5 => Triple(aliases(index % aliases.size), rB ++ le32(r), message, false, false)
       case 6 =>
         val rEncoding = aliases(index % aliases.size)
-        Triple(aB, rEncoding ++ response(aB, rEncoding, 0, a), message, false)
+        Triple(aB, rEncoding ++ response(aB, rEncoding, 0, a), message, false, false)
       case _ =>
         Triple(
           aB,
           rB ++ plusMultipleOfL(G.fromLe(response(aB, rB, r, a)), 1 + index % 15),
           message,
-          true
+          true,
+          false
         )
 
   /** The triple of an input: byte 0 chooses key, signature and message as given (32, 64 and the
@@ -724,7 +817,7 @@ object CurveTargets:
     */
   private def triple(in: Array[Byte]): Triple =
     unsigned(in, 0) % 3 match
-      case 0 => Triple(window(in, 1, 32), window(in, 33, 64), in.drop(97), false)
+      case 0 => Triple(window(in, 1, 32), window(in, 33, 64), in.drop(97), false, false)
       case 1 => mutatedSignature(in)
       case _ => family(in)
 
@@ -786,7 +879,8 @@ object CurveTargets:
     * of the JDK (or of Bouncy Castle, as above) for an A they decode, and the model's for an A only
     * a reading modulo p decodes. For any other triple Strict's refusal is Byron's.
     *
-    * Whether `StrictEd25519` accepted.
+    * A triple its construction makes valid must, besides, be accepted by all four
+    * ([[everyVerifierAccepts]]). Whether `StrictEd25519` accepted.
     */
   private def verdicts(t: Triple, check: Check): Boolean =
     val r = t.signature.take(32)
@@ -831,14 +925,38 @@ object CurveTargets:
       s"ByronEd25519 gives $byron where its rule gives " +
         s"${if byronAccepts then "acceptance" else "rejection"}, $t"
     )
+    if t.valid then everyVerifierAccepts(t, check, bc, strict, byron)
     strictAccepts
+
+  /** A signature its construction makes valid (`Ed25519CrossCheckSuite`'s family of the signer's
+    * signatures, there "Scarab SignatureVerified, JDK Verified, Bouncy Castle accepts"): all four
+    * verifiers must accept it, the JDK too, which the rules above consult only where Bouncy Castle
+    * accepts and the construction does not settle the equation.
+    */
+  private def everyVerifierAccepts(
+      t: Triple,
+      check: Check,
+      bc: Boolean,
+      strict: Either[?, VerificationResult],
+      byron: Either[?, VerificationResult]
+  ): Unit =
+    val jdk = Ed25519Verifiers.jdk(t.key, t.signature, t.message)
+    check(jdk == Jdk.Verified, s"the JDK gives $jdk for a valid signature, $t")
+    check(bc, s"Bouncy Castle rejects a valid signature, $t")
+    check(
+      strict == Right(SignatureVerified),
+      s"StrictEd25519 gives $strict for a valid signature, $t"
+    )
+    check(byron == Right(SignatureVerified), s"ByronEd25519 gives $byron for a valid signature, $t")
 
   private def hexBytes(text: String): Array[Byte] =
     Bytes.fromHex(text).fold(e => throw new IllegalStateException(e.toString), _.toArray)
 
-  /** Seeds: every twentieth row of the witness corpus (`fixtures/witness/vectors.tsv`) and the
+  /** Seeds: every twentieth row of the witness corpus (`fixtures/witness/vectors.tsv`), the
     * Wycheproof cases (`fixtures/wycheproof-ed25519`) with a key of 32 bytes and a signature of 64,
-    * as given; valid signatures with each mutation; and each family with each torsion index.
+    * and the four Byron cases whose key has x = 0 and the sign bit set and whose signature the
+    * reference's Byron path accepts (`fixtures/witness-byron`), as given; valid signatures with
+    * each mutation; and each family with each torsion index.
     */
   private val verificationSeeds: () => Vector[Array[Byte]] = () =>
     val raw = (key: Array[Byte], signature: Array[Byte], message: Array[Byte]) =>
@@ -872,6 +990,15 @@ object CurveTargets:
           )
         }
       }
+    val negativeZero = Files
+      .readAllLines(Path.of("fixtures/witness-byron/generated.tsv"))
+      .toArray(Array.empty[String])
+      .toVector
+      .filter(_.startsWith("a-x0-sign-"))
+      .map(_.split("\t", -1))
+      .flatMap(f => raw(hexBytes(f(1)), hexBytes(f(2)), hexBytes(f.lift(3).getOrElse(""))))
+    if negativeZero.size != 4 then
+      throw new IllegalStateException(s"${negativeZero.size} negative-zero Byron seeds, not 4")
     val seeds = Vector.tabulate(4)(i => Array.tabulate[Byte](32)(j => (i * 37 + j * 11 + 1).toByte))
     val messages = Vector(Array.emptyByteArray, Array[Byte](0x72), Array.fill[Byte](33)(0x5a))
     val mutations = for
@@ -884,15 +1011,16 @@ object CurveTargets:
       index <- (0 until 8).toVector
     yield Array[Byte](2, kind.toByte) ++ seeds(index % 4) ++ seeds((index + 1) % 4) ++
       Array((index * 9).toByte) ++ messages(index % messages.size)
-    witness ++ wycheproof ++ mutations ++ families
+    witness ++ wycheproof ++ negativeZero ++ mutations ++ families
 
   private val verificationName = "ed25519-verification"
 
-  private def runVerification(bytes: Array[Byte]): Unit =
-    if verdicts(triple(bytes), new Check("Ed25519 verification")) then hit(verificationName)
+  /** Whether `StrictEd25519` accepted the input's triple. */
+  private def runVerification(bytes: Array[Byte]): Boolean =
+    verdicts(triple(bytes), new Check("Ed25519 verification"))
 
-  // As the arithmetic's: one seed of each construction run outside the probe, when the corpus is
-  // read, loads the verifiers' and the oracles' classes.
+  // As the arithmetic's: one seed of each construction run outside the probe and the tally, when
+  // the corpus is read, loads the verifiers' and the oracles' classes.
   private lazy val verificationWarmed: Vector[Array[Byte]] =
     val seeds = verificationSeeds()
     (0 until 3)
@@ -908,7 +1036,7 @@ object CurveTargets:
   private val verification: Target = Target(
     verificationName,
     () => verificationWarmed,
-    in => Probe.run(verificationName, in)(runVerification(in.bytes)),
+    in => Probe.run(verificationName, in)(if runVerification(in.bytes) then hit(verificationName)),
     share = 4
   )
 
