@@ -140,20 +140,62 @@ object FlatRecordings:
     utxowRefused(failures.map(ConwayUtxowPredFailure.UtxoFailure[Conway](_)))
 
   /** A UTXOW refusal's cell: `R:` and the digest of the `ApplyTxErr` bytes of its failures in their
-    * order, each under LEDGER's `ConwayUtxowFailure`, as the node sends UTXOW's refusal.
+    * order, each under LEDGER's `ConwayUtxowFailure`, as the node sends UTXOW's refusal. The bytes
+    * write an output from its fields, so each output a failure carries is first checked to be
+    * written as the bytes it came with ([[outputsHeld]]), which the flat comparison held whole.
     */
   def utxowRefused(failures: Iterable[ConwayUtxowPredFailure[Conway]])(using Location): String =
+    Assertions.assert(outputsHeld(failures), "a failure's output is not written as its own bytes")
     refused(failures.map(ConwayLedgerPredFailure.ConwayUtxowFailure[Conway](_)))
+
+  /** The outputs a UTXO failure carries. */
+  def outputsOf(
+      f: ConwayUtxoPredFailure[Conway]
+  ): Vector[xyz.kd5ujc.scarab.ledger.era.TxOut[Conway]] = f match
+    case ConwayUtxoPredFailure.OutputTooSmallUTxO(os)        => os.toList.toVector
+    case ConwayUtxoPredFailure.OutputBootAddrAttrsTooBig(os) => os.toList.toVector
+    case ConwayUtxoPredFailure.OutputTooBigUTxO(os)          => os.toList.toVector.map(_._3)
+    case ConwayUtxoPredFailure.ScriptsNotPaidUTxO(os)        => os.toSortedMap.values.toVector
+    case ConwayUtxoPredFailure.BabbageOutputTooSmallUTxO(os) => os.toList.toVector.map(_._1)
+    case _                                                   => Vector.empty
+
+  /** Whether each output of `failures`, UTXO's under UTXOW, is written by the refusal's encoding as
+    * the bytes it came with, so that the refusal's digest holds it whole.
+    */
+  def outputsHeld(failures: Iterable[ConwayUtxowPredFailure[Conway]]): Boolean =
+    failures
+      .collect { case ConwayUtxowPredFailure.UtxoFailure(f) => f }
+      .flatMap(outputsOf)
+      .forall { o =>
+        val stored = xyz.kd5ujc.scarab.ledger.era.StoredTxOut.conway.toStored(o)
+        xyz.kd5ujc.scarab.storage.haskell.state.UtxoCodecs.txOut
+          .encodeUnchecked(stored) == stored.raw
+      }
 
   /** A UTXO or UTXOW admission's cell: `A:` and the digest of the UTxO state it leaves in the form
     * of `UtxoRecordings.state`, which holds the UTxO set whole (its diff and stamps among it), then
     * the counters of the scripts it ran: succeeded, failed, run.
     */
-  def utxoAdmitted(state: UTxOState[Conway], counters: (Long, Long, Long))(using
+  def utxoAdmitted(
+      state: UTxOState[Conway],
+      before: UTxOState[Conway],
+      counters: (Long, Long, Long)
+  )(using Location): String =
+    val (succeeded, failed, scripts) = counters
+    s"${utxoStateCell(state, before)}/$succeeded/$failed/$scripts"
+
+  /** A UTxO state's cell (`UtxoRecordings.stateCell`), which leaves the governance state out: it is
+    * first checked to be the one of the state `before`, which UTXO and UTXOW leave as it is and the
+    * flat comparison held with the rest.
+    */
+  def utxoStateCell(state: UTxOState[Conway], before: UTxOState[Conway])(using
       Location
   ): String =
-    val (succeeded, failed, scripts) = counters
-    s"${UtxoRecordings.stateCell(state)}/$succeeded/$failed/$scripts"
+    Assertions.assert(
+      summon[cats.Eq[UTxOState[Conway]]].eqv(state.copy[Conway](gov = before.gov), state),
+      "the governance state changed"
+    )
+    UtxoRecordings.stateCell(state)
 
   /** A CERTS refusal's cell: `R:` and the digest of the `ApplyTxErr` bytes of its failures in their
     * order, each under LEDGER's `ConwayCertsFailure`, as the node sends CERTS's refusal.

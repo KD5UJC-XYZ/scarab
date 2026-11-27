@@ -143,6 +143,14 @@ class DijkstraStateSuite extends FunSuite:
       assertEquals(refunds.value, declaredRefunds(flat.body), c.name)
       (deposits.value, refunds.value)
     }
+    // the recording holds the deposits of these transactions alone, each once
+    val recordedIds = xyz.kd5ujc.scarab.ledger.era.UtxoRecordings.utxos.keySet
+      .filter(_.startsWith("dijkstra-deposits/"))
+    assertEquals(
+      forms.collect { case (c, Right(_)) => s"dijkstra-deposits/${c.name}" }.toSet,
+      recordedIds
+    )
+    assertEquals(recordedIds.size, 182)
     // the transactions the Conway decoder refuses, each for a field Dijkstra adds or changes, are
     // not compared: a witness set's key 8 (seven), a parameter change of keys 45 to 48 (the two
     // proposals), the direct deposits' key 25 with the balance intervals' key 26 (one), a guard

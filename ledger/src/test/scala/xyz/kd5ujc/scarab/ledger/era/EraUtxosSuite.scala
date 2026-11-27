@@ -1058,3 +1058,11 @@ class EraUtxosSuite extends munit.FunSuite:
       UtxoRecordings.utxos.keySet.filter(id => id.startsWith("utxos/") || id.startsWith("state/"))
     )
   }
+
+  test("the recording holds each prefix's judgments, as many as were recorded") {
+    def count(prefix: String) = UtxoRecordings.utxos.keySet.count(_.startsWith(prefix))
+    assertEquals(
+      Vector("utxos/", "state/passing/", "state/returning/", "state/blocks/").map(count),
+      Vector(190, 68, 1, 128)
+    )
+  }

@@ -869,3 +869,8 @@ class ConwayUtxowChecksSuite extends FunSuite:
       ids.toSet,
       FlatRecordings.utxoJudgments.keySet.filter(_.startsWith("utxow-checks/"))
     )
+
+  test("the recording holds each prefix's judgments, as many as were recorded"):
+    def count(prefix: String) =
+      FlatRecordings.utxoJudgments.keySet.count(_.startsWith(s"utxow-checks/$prefix/"))
+    assertEquals(Vector("predicates", "crafted").map(count), Vector(84, 8))

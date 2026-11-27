@@ -17,8 +17,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   PParams,
   StoredTxOut,
   TxLevel,
-  UTxO,
-  UtxoRecordings
+  UTxO
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayUTxO}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
@@ -975,10 +974,10 @@ class ConwayUtxoChecksSuite extends FunSuite:
   /** A whole rule's cell: a refusal's, or `A:` and the digest of the UTxO state it leaves
     * (`UtxoRecordings.stateCell`).
     */
-  private def wholeCell[F](
-      refusal: Vector[F] => String
-  )(outcome: Either[Vector[F], UTxOState[Conway]]): String =
-    outcome.fold(refusal, UtxoRecordings.stateCell(_))
+  private def wholeCell[F](refusal: Vector[F] => String, before: UTxOState[Conway])(
+      outcome: Either[Vector[F], UTxOState[Conway]]
+  ): String =
+    outcome.fold(refusal, FlatRecordings.utxoStateCell(_, before))
 
   private lazy val wholeOutcomes
       : Vector[(String, Vector[Either[Vector[ConwayUtxoPredFailure[Conway]], UTxOState[Conway]]])] =
@@ -989,7 +988,9 @@ class ConwayUtxoChecksSuite extends FunSuite:
     )
 
   private lazy val wholeJudged: Vector[(String, Vector[String])] =
-    wholeOutcomes.map((id, os) => id -> os.map(wholeCell(FlatRecordings.utxoRefused)))
+    wholeSeen.zip(wholeOutcomes).map { case (s, (id, os)) =>
+      id -> os.map(wholeCell(FlatRecordings.utxoRefused, s.utxoState))
+    }
 
   test(
     "conwayUtxoTransition gives the flat UTXO's recorded failures, in order, or state, on every Conway case"
@@ -1091,7 +1092,9 @@ class ConwayUtxoChecksSuite extends FunSuite:
     )
 
   private lazy val utxowJudged: Vector[(String, Vector[String])] =
-    utxowOutcomes.map((id, os) => id -> os.map(wholeCell(FlatRecordings.utxowRefused)))
+    wholeSeen.zip(utxowOutcomes).map { case (s, (id, os)) =>
+      id -> os.map(wholeCell(FlatRecordings.utxowRefused, s.utxoState))
+    }
 
   test(
     "babbageUtxowTransition gives the flat UTXOW's recorded failures, in order, or state, on every Conway case"
@@ -1151,3 +1154,67 @@ class ConwayUtxoChecksSuite extends FunSuite:
       ids.toSet,
       FlatRecordings.utxoJudgments.keySet.filter(_.startsWith("utxo-checks/"))
     )
+
+  test(
+    "a refusal's cell writes an output from its fields, so each output is checked to be its bytes"
+  ) {
+    // the refusal's encoding writes an output from its fields (`UtxoCodecs.txOut`), so the same
+    // output in the other of its two forms (`[address, value]` and `{0: address, 1: value}`), which
+    // the era's output keeps as the bytes it came with, has the same cell: each output a refusal
+    // carries is checked to be written as its own bytes (`FlatRecordings.outputsHeld`), as the flat
+    // comparison, through the output's stored form, held its bytes too
+    val failure = recordedSeen
+      .flatMap(s => pairs(s).flatMap((_, t) => t.fold(_.toChain.toVector, _ => Vector.empty)))
+      .find(f => FlatRecordings.outputsOf(f).nonEmpty)
+      .getOrElse(fail("no recorded refusal carries an output"))
+    val out = FlatRecordings.outputsOf(failure).head
+    val raw = StoredTxOut.conway.toStored(out).raw
+    val other = right("output")(Cbor.decode(raw)).value match
+      case Value.Arr(Vector(address, value)) =>
+        Value.Map(Vector(key(0) -> address, key(1) -> value))
+      case Value.Map(Vector((k0, address), (k1, value))) if isKey(0)(k0) && isKey(1)(k1) =>
+        Value.Arr(Vector(address, value))
+      case other => fail(s"an output with more than an address and a value: $other")
+    val mutantRaw = right("re-encode")(Cbor.encode(other, Cbor.Limits.Unbounded))
+    assertNotEquals(mutantRaw, raw)
+    val mutant = right("mutant")(
+      ConwayUTxO.fromStored(
+        Map(
+          TxIn(Bytes(Vector.fill(32)(0.toByte)), 0) -> right("stored")(TxOut.fromBytes(mutantRaw))
+        )
+      )
+    ).unUTxO.values.head
+    val swapped = failure match
+      case ConwayUtxoPredFailure.OutputTooSmallUTxO(os) =>
+        ConwayUtxoPredFailure.OutputTooSmallUTxO[Conway](
+          os.map(o => if o == out then mutant else o)
+        )
+      case ConwayUtxoPredFailure.OutputBootAddrAttrsTooBig(os) =>
+        ConwayUtxoPredFailure.OutputBootAddrAttrsTooBig[Conway](
+          os.map(o => if o == out then mutant else o)
+        )
+      case ConwayUtxoPredFailure.BabbageOutputTooSmallUTxO(os) =>
+        ConwayUtxoPredFailure.BabbageOutputTooSmallUTxO[Conway](
+          os.map((o, c) => (if o == out then mutant else o, c))
+        )
+      case other => fail(s"a failure this test does not rewrite: $other")
+    // the era's output keeps the bytes it came with, which its equality and the encoding leave out
+    assertEquals(swapped, failure)
+    assertEquals(StoredTxOut.conway.toStored(mutant).raw, mutantRaw)
+    def under(f: ConwayUtxoPredFailure[Conway]) = Vector(underLedger(f))
+    assertEquals(
+      ConwayFailureCborCheck.direct(under(swapped)),
+      ConwayFailureCborCheck.direct(under(failure))
+    )
+    assert(FlatRecordings.outputsHeld(Vector(ConwayUtxowPredFailure.UtxoFailure(failure))))
+    assert(!FlatRecordings.outputsHeld(Vector(ConwayUtxowPredFailure.UtxoFailure(swapped))))
+  }
+
+  test("the recording holds each prefix's judgments, as many as were recorded") {
+    def count(prefix: String) =
+      FlatRecordings.utxoJudgments.keySet.count(_.startsWith(s"utxo-checks/$prefix/"))
+    assertEquals(
+      Vector("values", "predicates", "assembled", "utxo", "utxow", "crafted").map(count),
+      Vector(84, 84, 84, 112, 112, 12)
+    )
+  }

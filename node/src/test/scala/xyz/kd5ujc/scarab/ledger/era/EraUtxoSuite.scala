@@ -172,7 +172,13 @@ class EraUtxoSuite extends munit.FunSuite:
   private enum Outcome[+F]:
     case NoVerdict(reason: EvalFailure.Unsupported)
     case Refused(failures: Vector[F])
-    case Admitted(state: UTxOState[Conway], succeeded: Long, failed: Long, scripts: Long)
+    case Admitted(
+        state: UTxOState[Conway],
+        before: UTxOState[Conway],
+        succeeded: Long,
+        failed: Long,
+        scripts: Long
+    )
 
   /** An outcome's cell: `N` for no verdict, a refusal's cell by `refused`, or an admission's
     * ([[FlatRecordings.utxoAdmitted]]).
@@ -180,8 +186,8 @@ class EraUtxoSuite extends munit.FunSuite:
   private def cellOf[F](refused: Vector[F] => String)(o: Outcome[F]): String = o match
     case Outcome.NoVerdict(_) => "N"
     case Outcome.Refused(fs)  => refused(fs)
-    case Outcome.Admitted(state, s, f, scripts) =>
-      FlatRecordings.utxoAdmitted(state, (s, f, scripts))
+    case Outcome.Admitted(state, before, s, f, scripts) =>
+      FlatRecordings.utxoAdmitted(state, before, (s, f, scripts))
 
   /** The era UTXO's outcome on `c`. */
   private def outcome(
@@ -191,6 +197,7 @@ class EraUtxoSuite extends munit.FunSuite:
       evaluator: ScriptEvaluator[Id]
   ): Outcome[rules.ConwayUtxoPredFailure[Conway]] =
     val what = s"${c.name} under ${build.name}, $validation"
+    val before = LedgerState.utxo[Conway].get(ledger(c))
     eraRun(c, build, validation, evaluator) match
       case Left(Left(ScriptVerdictUnavailable(_, reason))) => Outcome.NoVerdict(reason)
       case Left(Right(defect))                             => fail(s"$what: era defect $defect")
@@ -202,7 +209,7 @@ class EraUtxoSuite extends munit.FunSuite:
         val (succeeded, failed, scripts) = EraUtxoRun
           .counters(t.isValid(c.typed) == IsPhase2Valid.Phase2Valid, events)
           .getOrElse(fail(s"$what: events $events"))
-        Outcome.Admitted(state, succeeded, failed, scripts)
+        Outcome.Admitted(state, before, succeeded, failed, scripts)
 
   /** The recorded judgment `id`, failing the test where none was recorded. */
   private def recorded(id: String): Vector[String] =
@@ -233,7 +240,8 @@ class EraUtxoSuite extends munit.FunSuite:
       recorded.map(c => c -> outcome(c, ReferenceBuild.Release11_1, TxEnv.Validation.All, scarab))
     outcomes.foreach { (c, o) =>
       o match
-        case Outcome.Admitted(_, _, _, _) => assert(c.accepted, s"${c.name}: the reference refused")
+        case Outcome.Admitted(_, _, _, _, _) =>
+          assert(c.accepted, s"${c.name}: the reference refused")
         case Outcome.Refused(_)        => assert(!c.accepted, s"${c.name}: the reference accepted")
         case Outcome.NoVerdict(reason) => fail(s"${c.name}: no verdict, $reason")
     }
@@ -271,8 +279,8 @@ class EraUtxoSuite extends munit.FunSuite:
       assertEquals(os.map(cellOf(FlatRecordings.utxoRefused)), recorded(id), id)
     )
     val outcomes = utxoJudged.flatMap(_._2)
-    assert(outcomes.exists { case Outcome.Admitted(_, _, _, n) => n > 0; case _ => false })
-    assert(outcomes.exists { case Outcome.Admitted(_, 0, 1, n) => n > 0; case _ => false })
+    assert(outcomes.exists { case Outcome.Admitted(_, _, _, _, n) => n > 0; case _ => false })
+    assert(outcomes.exists { case Outcome.Admitted(_, _, 0, 1, n) => n > 0; case _ => false })
   }
 
   test(
@@ -364,6 +372,7 @@ class EraUtxoSuite extends munit.FunSuite:
   ): Outcome[rules.ConwayUtxowPredFailure[Conway]] =
     val what = s"${c.name} under ${build.name}, $validation (UTXOW)"
     val ls = ledger(c)
+    val before = LedgerState.utxo[Conway].get(ls)
     EraUtxoRun.Utxow.run(
       UtxoEnv(env.slot, c.pp, ConwayLedgerState.cert.get(ls)),
       stAnnTx(c),
@@ -392,12 +401,13 @@ class EraUtxoSuite extends munit.FunSuite:
         val (succeeded, failed, scripts) = EraUtxoRun.Utxow
           .counters(t.isValid(c.typed) == IsPhase2Valid.Phase2Valid, events)
           .getOrElse(fail(s"$what: events $events"))
-        Outcome.Admitted(state, succeeded, failed, scripts)
+        Outcome.Admitted(state, before, succeeded, failed, scripts)
 
   test("UTXOW whole, as submitted: the reference's verdict") {
     recorded.foreach { c =>
       utxowOutcome(c, ReferenceBuild.Release11_1, TxEnv.Validation.All, scarab) match
-        case Outcome.Admitted(_, _, _, _) => assert(c.accepted, s"${c.name}: the reference refused")
+        case Outcome.Admitted(_, _, _, _, _) =>
+          assert(c.accepted, s"${c.name}: the reference refused")
         case Outcome.Refused(_)        => assert(!c.accepted, s"${c.name}: the reference accepted")
         case Outcome.NoVerdict(reason) => fail(s"${c.name}: no verdict, $reason")
     }
@@ -414,7 +424,7 @@ class EraUtxoSuite extends munit.FunSuite:
       assertEquals(os.map(cellOf(FlatRecordings.utxowRefused)), recorded(id), id)
     )
     val outcomes = utxowJudged.flatMap(_._2)
-    assert(outcomes.exists { case Outcome.Admitted(_, _, _, n) => n > 0; case _ => false })
+    assert(outcomes.exists { case Outcome.Admitted(_, _, _, _, n) => n > 0; case _ => false })
     assert(outcomes.exists { case Outcome.Refused(_) => true; case _ => false })
   }
 
@@ -674,4 +684,13 @@ class EraUtxoSuite extends munit.FunSuite:
     assertEquals(FlatRecordings.utxoRefused(mutant), FlatRecordings.utxoRefused(failures))
     assert(EraUtxoRun.causesHeld(failures, scarab))
     assert(!EraUtxoRun.causesHeld(mutant, scarab))
+  }
+
+  test("the recording holds each prefix's judgments, as many as were recorded") {
+    def count(prefix: String) =
+      FlatRecordings.utxoJudgments.keySet.count(_.startsWith(s"era-utxo/$prefix/"))
+    assertEquals(
+      Vector("utxo", "utxow", "max-tx-size", "utxow-no-integrity").map(count),
+      Vector(140, 140, 140, 35)
+    )
   }
