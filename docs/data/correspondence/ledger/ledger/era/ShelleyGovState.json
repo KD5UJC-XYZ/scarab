@@ -190,13 +190,14 @@
     "def ledger.era.KeptPParamsUpdate#equals",
     "def ledger.era.KeptPParamsUpdate#hashCode",
     "def ledger.era.KeptPParamsUpdate#toString",
+    "def ledger.era.KeptPParamsUpdate.decode",
     "def ledger.era.KeptPParamsUpdate.fromStored",
     "given ledger.era.KeptPParamsUpdate.given_CanEqual_KeptPParamsUpdate_E_KeptPParamsUpdate_E",
     "object ledger.era.KeptPParamsUpdate",
     "val ledger.era.KeptPParamsUpdate#stored",
     "val ledger.era.KeptPParamsUpdate#update"
    ],
-   "reason": "an update proposal of the eras before Conway, and each delegate's proposed update the governance state keeps (KeptPParamsUpdate), with the bytes of its values, as the node stores it (ADR 0006), and its reading from that stored form; the reference stores the typed update and writes it canonically, so it has no counterpart; the kept bytes reproduce the stored record, and the reference's re-encoding differs from them in the Haskell-layout state answers for a non-canonical proposal (#85 item 7211463135); a stored proposal with a legacy unread field is refused (#85 item 7222565136)"
+   "reason": "an update proposal of the eras before Conway, and each delegate's proposed update the governance state keeps (KeptPParamsUpdate), with the bytes of its values, as the node stores it (ADR 0006), and its reading from that stored form; the reference stores the typed update and writes it canonically, so it has no counterpart; the kept bytes reproduce the stored record, and the reference's re-encoding differs from them in the Haskell-layout state answers for a non-canonical proposal (#85 item 7211463135); a stored proposal with a legacy unread field is refused (#85 item 7222565136); each delegate's update kept with its bytes in the read of a body's proposal (KeptPParamsUpdate.decode, KeptUpdate.proposed) and a body's proposal in that form (ShelleyEraTxBody.keptUpdate), which PPUP records"
   },
   {
    "definitions": [

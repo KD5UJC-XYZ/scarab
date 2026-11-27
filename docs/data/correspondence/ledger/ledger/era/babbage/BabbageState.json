@@ -30,6 +30,26 @@
      "symbol": "ShelleyEraAccounts BabbageEra"
     }
    ]
+  },
+  "val ledger.era.babbage.BabbageState.certState": {
+   "class": "Mirror",
+   "digest": "15e35288e012d666",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/State/CertState.hs",
+     "lines": [
+      11,
+      24
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraCertState BabbageEra"
+    }
+   ]
   }
  },
  "glue": [

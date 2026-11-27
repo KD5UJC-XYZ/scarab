@@ -1,0 +1,137 @@
+{
+ "entries": {
+  "class ledger.era.rules.PpupEnv": {
+   "class": "Mirror",
+   "digest": "1cffbacc1c2f6d25",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "note": "the slot a SlotNo, as the reference's is",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Ppup.hs",
+     "lines": [
+      65,
+      65
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PpupEnv"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyPpup.hasLegalProtVerUpdate": {
+   "class": "Mirror",
+   "digest": "6feb1275b94bebc9",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "note": "through ConwayGov.pvCanFollow (Shelley/PParams.hs:299-307), whose minor is a Word32 sum that wraps, as the flat check's since #1514",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "lines": [
+      311,
+      316
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hasLegalProtVerUpdate"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyPpup.ppupTransitionNonEmpty": {
+   "class": "Mirror",
+   "digest": "ee936d44c173a686",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "note": "the slot of no return through EpochGeometry.slotOfNoReturn, whose doubled window does not wrap at 2^63 (the approved deviation of #825); the epoch, the window and the quorum from Globals (getTheSlotOfNoReturn, Slot.hs:106-114); the judgment, the events and the state are capabilities; the proposals keep the bytes the node stores each by (KeptUpdate.proposed); an epoch outside EpochNo is raised (LedgerFailure.Vocab)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Ppup.hs",
+     "lines": [
+      146,
+      200
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ppupTransitionNonEmpty"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyPpup.votedFuturePParams": {
+   "class": "Mirror",
+   "digest": "0895537a7756210a",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Ppup.hs",
+     "lines": [
+      205,
+      239
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "votedFuturePParams"
+    }
+   ]
+  },
+  "enum ledger.era.rules.ShelleyPpupEvent": {
+   "class": "Mirror",
+   "digest": "8abbe83acf6b71ea",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "note": "named for its era, as PpupEvent is the family EraRuleEvent \"PPUP\"",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Ppup.hs",
+     "lines": [
+      115,
+      115
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PpupEvent"
+    }
+   ]
+  },
+  "enum ledger.era.rules.ShelleyPpupPredFailure": {
+   "class": "Mirror",
+   "digest": "ce519ef3cd977aa5",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Ppup.hs",
+     "lines": [
+      85,
+      107
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ShelleyPpupPredFailure"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.rules.ShelleyPpup"
+   ],
+   "reason": "the companion of Babbage's embedding of PPUP in UTXOS, which holds its instance, and the module of PPUP's functions on the era types (#85): Scala containers with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/Ppup.scala"
+}

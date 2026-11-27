@@ -1,5 +1,26 @@
 {
  "entries": {
+  "class ledger.era.rules.UtxosEnv": {
+   "class": "Mirror",
+   "digest": "ff691872479b7924",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "note": "the slot a SlotNo, as the reference's is",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxos.hs",
+     "lines": [
+      118,
+      122
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "UtxosEnv"
+    }
+   ]
+  },
   "def ledger.era.rules.AlonzoUtxos.when2Phase": {
    "class": "Mirror",
    "digest": "37a308dfff0ab1e9",
@@ -42,6 +63,27 @@
     }
    ]
   },
+  "def ledger.era.rules.BabbageUtxos.babbageEvalScriptsTxValid": {
+   "class": "Mirror",
+   "digest": "bede1e25de99f92f",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "note": "PPUP run as a sub-rule (Judge.nest) on the body's update with the bytes the node keeps (keptUpdate), its failures and events wrapped (EmbedPpupInUtxos); the trace events (validBegin, validEnd) are not emitted",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs",
+     "lines": [
+      157,
+      190
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "babbageEvalScriptsTxValid"
+    }
+   ]
+  },
   "def ledger.era.rules.BabbageUtxos.expectScriptsToPass": {
    "class": "Mirror",
    "digest": "80c53e34c15053a8",
@@ -60,6 +102,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "expectScriptsToPass"
+    }
+   ]
+  },
+  "def ledger.era.rules.BabbageUtxos.utxosTransition": {
+   "class": "Mirror",
+   "digest": "db84d3d440b65767",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "note": "the state is Stateful over the governance state, the judgment, events and evaluator capabilities, the validation policy an argument, as the other UTXOS functions here (expectScriptsToPass)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs",
+     "lines": [
+      104,
+      126
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "utxosTransition"
     }
    ]
   },
@@ -144,6 +207,46 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "utxosTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedPpupInUtxos#wrapEvent": {
+   "class": "Mirror",
+   "digest": "1e711d6f873f6f8f",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs",
+     "lines": [
+      102,
+      102
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "wrapEvent"
+    }
+   ]
+  },
+  "def ledger.era.rules.EmbedPpupInUtxos#wrapFailed": {
+   "class": "Mirror",
+   "digest": "f1975ad8025e24c5",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs",
+     "lines": [
+      101,
+      101
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "wrapFailed"
     }
    ]
   },
@@ -330,6 +433,46 @@
     }
    ]
   },
+  "given ledger.era.rules.EmbedPpupInUtxos.babbage": {
+   "class": "Mirror",
+   "digest": "94379987b89daafe",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs",
+     "lines": [
+      93,
+      102
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Embed (Shelley.PPUP era) (UTXOS era)"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectAlonzoUtxos.babbage": {
+   "class": "Mirror",
+   "digest": "86136c84ad9bae0a",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs",
+     "lines": [
+      50,
+      52
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXOS\" Alonzo.AlonzoUtxosPredFailure BabbageEra"
+    }
+   ]
+  },
   "given ledger.era.rules.InjectAlonzoUtxos.conway": {
    "class": "Mirror",
    "digest": "3820e883ee5f0757",
@@ -367,6 +510,27 @@
     }
    ]
   },
+  "trait ledger.era.rules.EmbedPpupInUtxos": {
+   "class": "Mirror",
+   "digest": "3cc2542926cbb913",
+   "evidence": [
+    "BabbageUtxosSuite"
+   ],
+   "note": "the Embed instance of PPUP in UTXOS as a class per era",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs",
+     "lines": [
+      93,
+      102
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Embed (Shelley.PPUP era) (UTXOS era)"
+    }
+   ]
+  },
   "trait ledger.era.rules.InjectAlonzoUtxos": {
    "class": "Mirror",
    "digest": "1cbff8f500ca0319",
@@ -400,11 +564,12 @@
   },
   "type ledger.era.rules.PpupEvent": {
    "class": "Mirror",
-   "digest": "738cb8d4ca40f0fe",
+   "digest": "93b96035d140509d",
    "evidence": [
-    "EraUtxosSuite"
+    "EraUtxosSuite",
+    "BabbageUtxosSuite"
    ],
-   "note": "EraRuleEvent at PPUP as a match type; Conway's VoidEraRule is Nothing",
+   "note": "EraRuleEvent at PPUP as a match type; Conway's VoidEraRule is Nothing; Babbage's Shelley PpupEvent, the event of its EraRule \"PPUP\" (Babbage/Era.hs:106)",
    "structure": "differs",
    "upstream": [
     {
@@ -436,16 +601,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "EraRuleEvent \"PPUP\" DijkstraEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Era.hs",
+     "lines": [
+      106,
+      106
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRule \"PPUP\" BabbageEra"
     }
    ]
   },
   "type ledger.era.rules.PpupPredFailure": {
    "class": "Mirror",
-   "digest": "a6fbf194153717a2",
+   "digest": "3cae5b73d03a7b91",
    "evidence": [
-    "EraUtxosSuite"
+    "EraUtxosSuite",
+    "BabbageUtxosSuite"
    ],
-   "note": "EraRuleFailure at PPUP as a match type; Conway's VoidEraRule is Nothing",
+   "note": "EraRuleFailure at PPUP as a match type; Conway's VoidEraRule is Nothing; Babbage's ShelleyPpupPredFailure (Babbage/Rules/Ppup.hs:12)",
    "structure": "differs",
    "upstream": [
     {
@@ -477,16 +653,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "EraRuleFailure \"PPUP\" DijkstraEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Ppup.hs",
+     "lines": [
+      12,
+      12
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure \"PPUP\" BabbageEra"
     }
    ]
   },
   "type ledger.era.rules.UtxosEvent": {
    "class": "Mirror",
-   "digest": "65a3e3f20874bc93",
+   "digest": "bd28b4a9ce3acce7",
    "evidence": [
-    "EraUtxosSuite"
+    "EraUtxosSuite",
+    "BabbageUtxosSuite"
    ],
-   "note": "the type family EraRuleEvent at the rule UTXOS as a match type with the eras whose UTXOS is typed",
+   "note": "the type family EraRuleEvent at the rule UTXOS as a match type with the eras whose UTXOS is typed; Babbage's is Alonzo's",
    "structure": "differs",
    "upstream": [
     {
@@ -518,16 +705,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "EraRuleEvent \"UTXOS\" DijkstraEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs",
+     "lines": [
+      48,
+      48
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleEvent \"UTXOS\" BabbageEra"
     }
    ]
   },
   "type ledger.era.rules.UtxosPredFailure": {
    "class": "Mirror",
-   "digest": "1d59383e90d207df",
+   "digest": "610b7929916dcb6a",
    "evidence": [
-    "EraUtxosSuite"
+    "EraUtxosSuite",
+    "BabbageUtxosSuite"
    ],
-   "note": "the type family EraRuleFailure at the rule UTXOS as a match type with the eras whose UTXOS is typed",
+   "note": "the type family EraRuleFailure at the rule UTXOS as a match type with the eras whose UTXOS is typed; Babbage's is Alonzo's",
    "structure": "differs",
    "upstream": [
     {
@@ -559,11 +757,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "EraRuleFailure \"UTXOS\" DijkstraEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs",
+     "lines": [
+      46,
+      46
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure \"UTXOS\" BabbageEra"
     }
    ]
   }
  },
  "glue": [
+  {
+   "definitions": [
+    "object ledger.era.rules.EmbedPpupInUtxos"
+   ],
+   "reason": "the companion of Babbage's embedding of PPUP in UTXOS, which holds its instance, and the module of PPUP's functions on the era types (#85): Scala containers with no counterpart of their own"
+  },
   {
    "definitions": [
     "object ledger.era.rules.AlonzoUtxos",

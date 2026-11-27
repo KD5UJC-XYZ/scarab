@@ -16,6 +16,7 @@
     "def ledger.era.rules.ConwayPhase2.txId",
     "def ledger.era.rules.ScriptsTold.counted",
     "def ledger.era.rules.ScriptsTold.of",
+    "def ledger.era.rules.ScriptsTold.ofUtxos",
     "enum ledger.era.rules.ScriptsTold",
     "object ledger.era.rules.ConwayPhase2",
     "object ledger.era.rules.ScriptsTold"

@@ -36,12 +36,13 @@
   },
   "def ledger.era.KeptUpdate.decode": {
    "class": "Mirror",
-   "digest": "186d4ccc3a6c075f",
+   "digest": "41e9445e6a81b1fe",
    "evidence": [
     "BabbageUpdateSuite",
-    "EraPParamsStoredSuite"
+    "EraPParamsStoredSuite",
+    "BabbageUtxosSuite"
    ],
-   "note": "read only at an era whose update sets the protocol version (EraPParamsToBabbage, the range of `updateTxBodyL`), at its `eraProtVerLow`; each field's value kept as the bytes it was read from beside the typed update, the form the node stores a proposal in (ADR 0006); the same stored form as the flat decoder's, byte for byte. Known diagnostic gap at Babbage's versions 7 and 8, shared with the flat decoder that runs today (#85): a repeated update key is refused naming the key, as the reference's `duplicateKey` does, where the flat decoder names none; a value out of its word's width is a NumberOutOfRange, at the update's site here and the field's in the flat decoder, where cborg's `decodeWord16` refuses it as not a word16; a nonempty indefinite outer record is an IndefiniteLength, where `RecD` refuses it with \"Excess terms in array\" (`Coders.hs:478-483`). What is accepted and refused is the same.",
+   "note": "read only at an era whose update sets the protocol version (EraPParamsToBabbage, the range of `updateTxBodyL`), at its `eraProtVerLow`; each field's value kept as the bytes it was read from beside the typed update, the form the node stores a proposal in (ADR 0006); the same stored form as the flat decoder's, byte for byte. Known diagnostic gap at Babbage's versions 7 and 8, shared with the flat decoder that runs today (#85): a repeated update key is refused naming the key, as the reference's `duplicateKey` does, where the flat decoder names none; a value out of its word's width is a NumberOutOfRange, at the update's site here and the field's in the flat decoder, where cborg's `decodeWord16` refuses it as not a word16; a nonempty indefinite outer record is an IndefiniteLength, where `RecD` refuses it with \"Excess terms in array\" (`Coders.hs:478-483`). What is accepted and refused is the same.; each delegate's update read by KeptPParamsUpdate.decode in the same read",
    "structure": "differs",
    "upstream": [
     {
@@ -71,9 +72,10 @@
   {
    "definitions": [
     "class ledger.era.KeptUpdate",
-    "def ledger.era.KeptUpdate.fromStored"
+    "def ledger.era.KeptUpdate.fromStored",
+    "val ledger.era.KeptUpdate#proposed"
    ],
-   "reason": "an update proposal of the eras before Conway, and each delegate's proposed update the governance state keeps (KeptPParamsUpdate), with the bytes of its values, as the node stores it (ADR 0006), and its reading from that stored form; the reference stores the typed update and writes it canonically, so it has no counterpart; the kept bytes reproduce the stored record, and the reference's re-encoding differs from them in the Haskell-layout state answers for a non-canonical proposal (#85 item 7211463135); a stored proposal with a legacy unread field is refused (#85 item 7222565136)"
+   "reason": "an update proposal of the eras before Conway, and each delegate's proposed update the governance state keeps (KeptPParamsUpdate), with the bytes of its values, as the node stores it (ADR 0006), and its reading from that stored form; the reference stores the typed update and writes it canonically, so it has no counterpart; the kept bytes reproduce the stored record, and the reference's re-encoding differs from them in the Haskell-layout state answers for a non-canonical proposal (#85 item 7211463135); a stored proposal with a legacy unread field is refused (#85 item 7222565136); each delegate's update kept with its bytes in the read of a body's proposal (KeptPParamsUpdate.decode, KeptUpdate.proposed) and a body's proposal in that form (ShelleyEraTxBody.keptUpdate), which PPUP records"
   },
   {
    "definitions": [

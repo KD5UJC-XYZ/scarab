@@ -24,12 +24,12 @@
   },
   "val ledger.era.babbage.BabbageEraUTxO.instance": {
    "class": "Mirror",
-   "digest": "1f2da1538bd9f13f",
+   "digest": "3247d81b94150420",
    "evidence": [
     "BabbagePlutusContextSuite",
     "BabbagePlutusContextRefusalsSuite"
    ],
-   "note": "every member of the reference's EraUTxO and AlonzoEraUTxO instances; getWitsVKeyNeeded reads the genesis delegations from Babbage's certificate state itself",
+   "note": "every member of the reference's EraUTxO and AlonzoEraUTxO instances; getWitsVKeyNeeded reads the genesis delegations through Babbage's certificate-state class",
    "structure": "same",
    "upstream": [
     {

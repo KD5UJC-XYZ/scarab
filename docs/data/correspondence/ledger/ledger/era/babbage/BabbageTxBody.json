@@ -362,10 +362,12 @@
   },
   "val ledger.era.babbage.BabbageTxBody.instance": {
    "class": "Mirror",
-   "digest": "f340352bf18d2ee3",
+   "digest": "e169c852ca442f68",
    "evidence": [
-    "BabbageTxSuite"
+    "BabbageTxSuite",
+    "BabbageUtxosSuite"
    ],
+   "note": "its update lens gives the proposal with the bytes the node keeps (keptUpdate)",
    "structure": "same",
    "upstream": [
     {
