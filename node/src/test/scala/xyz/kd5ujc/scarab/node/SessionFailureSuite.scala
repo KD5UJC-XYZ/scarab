@@ -793,7 +793,7 @@ class SessionFailureSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   // era rules: the switch reclassifies nothing (#85)
   Vector[LedgerDefect](
     LedgerFailure.Vocab(pot),
-    LedgerFailure.Undecodable(Bytes.empty, TxDefect.DelegationWithoutDelegatee),
+    LedgerFailure.Undecodable(Bytes.empty, TxDefect.PlutusFieldsBeforeAlonzo),
     LedgerFailure.LayoutNotYet(ReferenceBuildNotYet.Layout(ReferenceBuild.Release11_2)),
     LedgerFailure.PoolParamsLayout(Bytes.empty, StateLayout.Leios, StateLayout.Node11_1),
     LedgerFailure.NativeScriptUnread(Bytes.empty, Bytes.empty)

@@ -19,7 +19,6 @@ import xyz.kd5ujc.scarab.ledger.{
   Purpose,
   ProtocolParams,
   RewardAccount,
-  Tx,
   TxDefect
 }
 import xyz.kd5ujc.scarab.ledger.state.*
@@ -27,8 +26,8 @@ import xyz.kd5ujc.scarab.ledger.state.*
 // What stays of the flat certificate rules: POOL (`Shelley/Rules/Pool.hs`), which the eras before
 // Conway run under their DELEGS (`ShelleyCerts`), with its environment and certificate; the pure
 // changes the certificates make to the certificate state (`CertOps`), which Shelley's DELEG and the
-// genesis injection (`GenesisStart`) make; what a delegation delegates to; and the withdrawals' and
-// the DReps' expiries' helpers. Conway's CERTS, CERT, DELEG and GOVCERT are the era rules'
+// genesis injection (`GenesisStart`) make; what a delegation delegates to; and the withdrawals'
+// checks the eras before Conway run. Conway's CERTS, CERT, DELEG and GOVCERT are the era rules'
 // (`era/rules/Certs.scala`, `conwayCertsTransition`,
 // `eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Certs.hs:203-246`, cardano-ledger f649f975).
 
@@ -355,20 +354,8 @@ object Pool extends JudgedSts[CertEnv, PState, PoolCert, PredicateFailure, Ledge
           _ <- st.set(s.copy(retiring = s.retiring.updated(pool, e)))
         yield ()
 
-  /** Conway's upstream POOL environment is `[epoch, PParams]` (`Shelley/Rules/Pool.hs:74-81`). */
-  private[scarab] final case class RuleEnv(caseId: Bytes, pp: ProtocolParams, epoch: BigInt)
-
-  private[scarab] object Adapter
-      extends JudgedSts[RuleEnv, PState, PoolCert, PredicateFailure, LedgerFailure]:
-    def transition[F[_]: Monad](env: RuleEnv, cert: PoolCert)(using
-        ask: Ask[F, Globals],
-        st: Stateful[F, PState],
-        raise: Raise[F, LedgerFailure],
-        judge: Judge[F, PredicateFailure]
-    ): F[Unit] = transitionAt(env.caseId, env.pp, env.epoch, cert)
-
 /** The withdrawals of a transaction against the accounts (`withdrawalsThatDoNotDrainAccounts`,
-  * `Shelley/Rules/Utxo.hs`) and their draining (`drainAccounts`).
+  * `Shelley/Rules/Utxo.hs`).
   */
 object Withdrawals:
   /** The withdrawals that name an account that is not registered or is on another network
@@ -380,13 +367,7 @@ object Withdrawals:
   ):
     def isEmpty: Boolean = missing.isEmpty && incomplete.isEmpty
 
-  def view(
-      accounts: SortedMap[Credential[Staking], ConwayAccountState],
-      withdrawals: Map[RewardAccount, Coin],
-      network: Int
-  ): Either[VocabError, View] = viewOf(accounts, withdrawals, network)(_.balance.toBigInt)
-
-  /** [[view]] over the accounts of any era, whose balance is `balance`. */
+  /** The withdrawals against the accounts of any era, whose balance is `balance`. */
   def viewOf[A](
       accounts: SortedMap[Credential[Staking], A],
       withdrawals: Map[RewardAccount, Coin],
@@ -422,76 +403,3 @@ object Withdrawals:
       Sts.failOnNonEmpty[F, Vector[(RewardAccount, Mismatch[BigInt])], PredicateFailure](
         view.incomplete
       )(_.isEmpty)(i => PredicateFailure.IncompleteWithdrawals(i.toMap))
-
-  /** `drainAccounts`: the withdrawn accounts have no balance left. */
-  def drain(s: ConwayCertState, tx: Tx): ConwayCertState =
-    tx.body.withdrawals.foldLeft(s) { (cs, w) =>
-      Convert
-        .credential[Staking](w._1.credential)
-        .fold(
-          _ => cs,
-          c =>
-            CertLens.accounts.modify(
-              _.updatedWith(c)(
-                _.map(ConwayAccountState.balance.replace(CompactCoin.fromUnsigned(0L)))
-              )
-            )(cs)
-        )
-    }
-
-/** `updateDormantDRepExpiries` and `updateVotingDRepExpiries` (`Certs.hs:257-316`), which the
-  * transaction makes of the DReps' expiries.
-  */
-object Expiry:
-  def update(
-      s: ConwayCertState,
-      tx: Tx,
-      epoch: BigInt,
-      pp: ProtocolParams
-  ): Either[VocabError, ConwayCertState] =
-    dormant(s, tx, epoch).flatMap(voting(_, tx, epoch, pp))
-
-  /** With a proposal in the transaction and dormant epochs counted, every DRep's expiry moves up by
-    * the dormant epochs (when that is not already in the past), and the count is reset.
-    */
-  private def dormant(
-      s: ConwayCertState,
-      tx: Tx,
-      epoch: BigInt
-  ): Either[VocabError, ConwayCertState] =
-    val v = s.vState
-    if tx.body.proposals.isEmpty || v.numDormantEpochs.word.isZero then Right(s)
-    else
-      val n = v.numDormantEpochs.toBigInt
-      v.dreps.toList
-        .traverse { (c, d) =>
-          val actual = d.expiry.toBigInt + n
-          if actual < epoch then Right(c -> d)
-          else EpochNo.fromBigInt(actual).map(e => c -> d.copy(expiry = e))
-        }
-        .flatMap { moved =>
-          EpochNo.fromBigInt(0).map { zero =>
-            ConwayCertState.vState.replace(
-              v.copy(dreps = Sorted.map(moved), numDormantEpochs = zero)
-            )(s)
-          }
-        }
-
-  /** The DReps that vote in the transaction are active until `epoch + drepActivity - dormant`. */
-  private def voting(
-      s: ConwayCertState,
-      tx: Tx,
-      epoch: BigInt,
-      pp: ProtocolParams
-  ): Either[VocabError, ConwayCertState] =
-    val voters = tx.body.votes.collect { case (node.Voter.DRepVoter(c), _) => c }
-    voters.foldM(s) { (cs, voter) =>
-      Convert.credential[DRepRole](voter).flatMap { c =>
-        CertLens.dreps.get(cs).get(c) match
-          case None => Right(cs)
-          case Some(d) =>
-            EpochNo
-              .fromBigInt(epoch + pp.drepActivity - cs.vState.numDormantEpochs.toBigInt)
-              .map(e => CertLens.dreps.modify(_.updated(c, d.copy(expiry = e)))(cs))
-      }
-    }

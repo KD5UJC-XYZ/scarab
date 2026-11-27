@@ -21,7 +21,7 @@ digits of the SHA-256 of the bytes it names.
   builds; under each, the application (`applyTx`) then the application again of the transaction held as
   validated in that state (`reapply`). The flat MEMPOOL and the era MEMPOOL gave the same failures in the same
   order, or the same ledger state (where the 11.2 and Leios builds refuse a withdrawal in LEDGER below version
-  11, the flat failures with CERTS's refusal of it replaced by LEDGER's, `MovedWithdrawals.expected`). A
+  11, the flat failures with CERTS's refusal of it replaced by LEDGER's, `MovedWithdrawals.expected`, since deleted). A
   refusal's cell is `R:` and the digest of its `ApplyTxErr` bytes, every failure in its order; an admission's
   is `A:` and the digest of the ledger state it leaves in the Haskell state's encoding at protocol version 9
   (`ledgerState` of the case's layout, `ReferenceRefusalSuite.stateCodecs`). 2,016 judgments: 1,884

@@ -175,7 +175,7 @@ class ConwayHeldSuite extends FunSuite:
     val ledgerDefects = Vector[LedgerDefect](
       LedgerFailure.Vocab(pot),
       LedgerFailure.StateOutOfRange(id, pot),
-      LedgerFailure.Undecodable(id, TxDefect.DelegationWithoutDelegatee),
+      LedgerFailure.Undecodable(id, TxDefect.PlutusFieldsBeforeAlonzo),
       LedgerFailure.NativeScriptUnread(id, Bytes.empty)
     )
     ledgerDefects.foreach(d =>
