@@ -3426,8 +3426,9 @@ Conway's rules on the classes follow as the rest of stage 2.
 - **Babbage's Plutus side** (stage 4, third part; `era/EraScript.scala`, `era/AlonzoPlutusPurpose.scala`,
   `era/EraUTxO.scala`, `era/babbage/BabbageEraUTxO.scala`, `era/BabbageTxInfo.scala`, `era/AlonzoTxInfo.scala`;
   cardano-ledger f649f975 `Alonzo/Scripts.hs:200-219`, `Babbage/Scripts.hs:74-98`, `Babbage/UTxO.hs:43-72`,
-  `Alonzo/UTxO.hs:313-429`, `Shelley/UTxO.hs:181-263`, `Babbage.hs:65`; cardano-ledger 9df9f98c
-  `Babbage/TxInfo.hs:112-435`, `Alonzo/Plutus/TxInfo.hs:319-472`):
+  `Alonzo/UTxO.hs:313-429`, `Shelley/UTxO.hs:181-263`, `Babbage.hs:65`, `Babbage/TxInfo.hs:110-401`, which
+  governs Babbage's behaviour; the contexts' shape of cardano-ledger 9df9f98c, `Babbage/TxInfo.hs:112-435`,
+  `Alonzo/Plutus/TxInfo.hs:319-472`):
   - `hoistPlutusPurpose` and the builders and readers of the spending, minting, certifying and withdrawing
     purposes are `AlonzoEraScript`'s members, as the reference's are, and Babbage's instance gives them over
     Alonzo's purpose; the rewarding purpose's pair, which the reference deprecates for the withdrawing one's, is
@@ -3449,38 +3450,48 @@ Conway's rules on the classes follow as the rest of stage 2.
     a move of instantaneous rewards as `DCertGenesis` and `DCertMir`, of the eras up to Babbage
     (`ShelleyEraTxCertToBabbage`). `ContextError` and `TxInfoResult` have Babbage's cases.
   - Against the flat path at Babbage (`BabbagePlutusContextSuite`, `BabbagePlutusContextRefusalsSuite`):
-    - the 80 Babbage rows of the recorded contexts (26) and of the context matrix (54, whose 22 retained rows are
-      the v1-context corpus's Babbage transactions), with the outputs each spends and references, and the 77
-      Babbage transactions of the recorded blocks (13), the refusal corpora (32) and the Plutus admission corpora
-      (32), each input and reference input given one stand-in output (a key's) and the matrix's cost models at
-      version 8, so these show no spending script or datum of their own. On all 157:
-      - at each case's version and at 7 and 8, the V1 and V2 `TxInfo`s are the flat ones as data, or both refuse
-        with the same typed cause (reference inputs, a reference script, an inline datum, a Byron output);
-      - at each case's version, the scripts with their contexts are the flat path's 260 requests in order (37 of
-        Plutus V1, 223 of V2, 23 of them of the stand-in cases), or its 20 refusals with the same typed cause;
-      - the 282 scripts needed with each purpose's index, the scripts provided, the supplemental datums, the
-        datums of the spent inputs (194 of them a datum, on the cases with their outputs) and the keys that must
-        sign are the flat `StAnnTx`'s and `TxChecks`'.
+    - The 80 Babbage rows of the recorded contexts (26) and of the context matrix (54, whose 22 retained rows are
+      the v1-context corpus's Babbage transactions), each with the outputs it spends and references and its cost
+      models.
+    - 77 more Babbage transactions without the outputs they spend: the 13 of the recorded blocks, the 32 of the
+      refusal corpora and the 32 of the Plutus admission corpora. Each input and reference input is given one
+      stand-in output, a key's at a Shelley address with no datum and no reference script, which replaces the
+      spent output's value, owner, datum and reference script; the cost models are the matrix's at version 8.
+      These show no spending script, spending datum or reference script of their own: their minting,
+      certifying and withdrawing scripts, their witnesses' scripts and datums, their outputs and the rest of the
+      body are compared.
+    - On those 157: at each case's version and at 7 and 8, the V1 and V2 `TxInfo`s are the flat ones as data, or
+      both refuse with the same typed cause (reference inputs, a reference script, an inline datum, a Byron
+      output); at each case's version, the scripts with their contexts are the flat path's 260 requests in order
+      (37 of Plutus V1, 223 of V2, 23 of them of the stand-in cases), or its 20 refusals with the same typed
+      cause; and the 282 scripts needed with each purpose's index, the scripts provided, the supplemental datums,
+      the datums of the spent inputs (194 of them a datum, on the cases with their outputs) and the keys that
+      must sign are the flat `StAnnTx`'s and `TxChecks`'.
     - The 32 Babbage cases of the refusal corpora again, with the UTxO set and the state each was refused on, its
       parameters' version and cost models and the state's genesis delegations, one of them proposing an update:
       the 64 `TxInfo`s (59 built, five refused), the seven requests and one missing redeemer, the nine scripts
       needed and the keys that must sign are the flat path's.
-    - The reference's own bytes: every Babbage request it collected (191 of the recorded contexts, 158 of them as
-      digests, and 46 of the matrix) is the era's, and each of the matrix's 20 refused collections is the era's,
-      its typed causes encoded as the reference's `CollectError` list.
+    - The three Babbage cases of the forecast-horizon corpora (`fixtures/reference/plutus-forecast-horizon`),
+      with their UTxO sets, states and the clock of their era history at the recorded tip: their `TxInfo`s and
+      collections are the flat path's, the one inside the horizon collected and the two past it refused with
+      the clock's `PastHorizon`.
+    - The reference's own bytes: every Babbage request it recorded collecting is the era's, every field of it
+      (the 33 recorded whole and the 46 of the matrix by their script, arguments, budget and cost model, the 158
+      recorded as digests by each digest), and each of the matrix's 20 refused collections is the era's, its
+      typed causes encoded as the reference's `CollectError` list.
     - Crafted cases for what the corpora do not reach: a redeemer that names nothing, a clock that cannot
-      translate a slot (after reference inputs, which refuse a V1 context first), a missing input, an end alone, a genesis delegation and a move of rewards, a repeated
-      script certificate, an update whose genesis delegates must sign, and a Plutus script needed with no
-      redeemer.
+      translate a slot (after reference inputs, which refuse a V1 context first), a missing input, an end alone,
+      a genesis delegation and a move of rewards, a repeated script certificate, an update whose genesis
+      delegates must sign, a Plutus script needed with no redeemer, and an annotated transaction with a warm
+      cache, whose runnable it keeps and carries into the contexts.
 
-    The era path and the flat path agree everywhere, and both agree with the reference where it recorded a
-    context. Not yet: Alonzo's own contexts and `PlutusTxInInfo`'s Alonzo case (`Maybe PV1.TxInInfo`), which come
-    with Alonzo's slices; the genesis delegations read through `EraCertState`, with Babbage's state classes; the
-    flat purpose of a Babbage purpose (`toStored`, for `MissingRedeemers`), with Babbage's UTXOW; and
-    `upgradePlutusPurposeAsIx`, which nothing reads yet. The admission corpora record no output of what their
-    transactions spend, so their spending scripts and datums are not compared; those of the matrix's and the
-    recorded rows are. Nothing in
-    the node reads these types yet.
+    The era path and the flat path agree on all of these, and both agree with the reference where it recorded a
+    context. Not compared: the spending scripts, spending datums and reference scripts of the 77 stand-in
+    transactions, as the corpora that hold them record no spent outputs. Not yet: Alonzo's own contexts and
+    `PlutusTxInInfo`'s Alonzo case (`Maybe PV1.TxInInfo`), which come with Alonzo's slices; the genesis
+    delegations read through `EraCertState`, with Babbage's state classes; the flat purpose of a Babbage purpose
+    (`toStored`, for `MissingRedeemers`), with Babbage's UTXOW; and `upgradePlutusPurposeAsIx`, which nothing
+    reads yet. Nothing in the node reads these types yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
