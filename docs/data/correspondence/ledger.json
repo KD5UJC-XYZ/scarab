@@ -51195,8 +51195,8 @@
    "evidence": [
     "BabbageStateStoredSuite"
    ],
-   "note": "the reference's value, the updates without their stored bytes",
-   "digest": "f45835ddf8bdd248"
+   "note": "the reference's value, the updates without their stored bytes, in the order of the key hashes",
+   "digest": "c7a6dfa9ee7aeddd"
   },
   "def ledger.era.KeptProposedPPUpdates.empty": {
    "upstream": [

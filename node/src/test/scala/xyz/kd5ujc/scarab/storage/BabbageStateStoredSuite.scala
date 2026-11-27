@@ -6,17 +6,21 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.consensus.state.MirrorStep
-import xyz.kd5ujc.scarab.ledger.{ParamUpdate, ProtocolParams}
+import scala.collection.immutable.TreeMap
+import xyz.kd5ujc.scarab.ledger.{ParamUpdate, ProtocolParams, Update as StoredUpdate}
 import xyz.kd5ujc.scarab.ledger.era.{
   EraAccounts,
   EraCertState,
   EraGov,
   EraPParams,
   KeptPParamsUpdate,
+  KeptUpdate,
   Obligations,
   PParamsUpdate,
   ShelleyEraAccounts,
-  ShelleyGovStateRecord
+  ShelleyGovStateReadError,
+  ShelleyGovStateRecord,
+  ShelleyProposals
 }
 import xyz.kd5ujc.scarab.ledger.era.babbage.BabbagePParams
 import xyz.kd5ujc.scarab.ledger.rules.{EraLedger, EraNes, ShelleyCertOps}
@@ -24,6 +28,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
   Babbage,
   CompactCoin,
   FuturePParams as StoredFuturePParams,
+  Genesis,
+  KeyHash,
   NewEpochState,
   ShelleyBasedEra,
   ShelleyGovState as StoredShelleyGovState,
@@ -156,6 +162,25 @@ class BabbageStateStoredSuite extends FunSuite:
 
   private val noUpdate = Counts(0, 0, 0, 0, 0)
 
+  /** The form of a state's future parameters. */
+  enum Prediction:
+    case NoUpdate, Definite, Potential, PotentialOfNone
+
+  private def prediction(f: StoredFuturePParams): Prediction = f match
+    case StoredFuturePParams.NoPParamsUpdate                 => Prediction.NoUpdate
+    case StoredFuturePParams.DefinitePParamsUpdate(_)        => Prediction.Definite
+    case StoredFuturePParams.PotentialPParamsUpdate(Some(_)) => Prediction.Potential
+    case StoredFuturePParams.PotentialPParamsUpdate(None)    => Prediction.PotentialOfNone
+
+  /** How many states hold each number of this epoch's proposals and each form of prediction. */
+  private def histograms(
+      states: Vector[NewEpochState[Babbage]]
+  ): (Map[Int, Int], Map[Prediction, Int]) =
+    (
+      states.groupMapReduce(_.es.ls.utxo.gov.curProposals.size)(_ => 1)(_ + _),
+      states.groupMapReduce(nes => prediction(nes.es.ls.utxo.gov.futurePParams))(_ => 1)(_ + _)
+    )
+
   private def plus(a: Counts, b: Counts): Counts =
     Counts(
       a.cur + b.cur,
@@ -164,6 +189,26 @@ class BabbageStateStoredSuite extends FunSuite:
       a.accounts + b.accounts,
       a.pointers + b.pointers
     )
+
+  /** The reference's proposed updates as ordered pairs, as `Map.toList` gives them. */
+  private def proposedPairs(
+      p: xyz.kd5ujc.scarab.ledger.era.ProposedPPUpdates[Babbage]
+  ): Vector[(KeyHash[Genesis], xyz.kd5ujc.scarab.ledger.era.PParamsUpdate[Babbage])] =
+    p.updates.toVector
+
+  /** The stored proposals read by the update proposal's own reader ([[KeptUpdate.fromStored]]), in
+    * the order of the delegates' key hashes.
+    */
+  private def storedPairs(
+      what: String,
+      stored: scala.collection.immutable.SortedMap[KeyHash[Genesis], ParamUpdate]
+  ): Vector[(KeyHash[Genesis], xyz.kd5ujc.scarab.ledger.era.PParamsUpdate[Babbage])] =
+    val read = right(s"$what KeptUpdate")(
+      KeptUpdate.fromStored[Babbage](
+        StoredUpdate(TreeMap.from(stored.map((k, u) => k.bytes -> u)), BigInt(0))
+      )
+    ).update.proposals.updates
+    stored.keys.toVector.map(k => k -> read.getOrElse(k, fail(s"$what: $k not read")))
 
   /** The governance state of `nes` read into Babbage's record and back, field by field against the
     * flat record; its counts.
@@ -217,7 +262,7 @@ class BabbageStateStoredSuite extends FunSuite:
     Vector(era.sgsCurProposals -> g.curProposals, era.sgsFutureProposals -> g.futureProposals)
       .foreach { (kept, stored) =>
         assertEquals(kept.updates.keySet, stored.keySet, what)
-        assertEquals(kept.proposed.updates.keySet, stored.keySet, what)
+        assertEquals(proposedPairs(kept.proposed), storedPairs(what, stored), what)
         kept.updates.foreach { (genesis, u) =>
           assertEquals(u.stored, stored(genesis), what)
           // a recorded state's updates were written by the reference, canonically
@@ -367,9 +412,21 @@ class BabbageStateStoredSuite extends FunSuite:
     val counts = states.zipWithIndex
       .map((nes, i) => plus(governance(s"state $i", nes), accounts(s"state $i", nes)))
     assertEquals(states.size, 188)
-    // 185 states hold the three delegates' proposal and the parameters it makes, the other three a
-    // potential update of no parameters; none holds a proposal for the next epoch
+    // 185 states hold the three delegates' proposal, the other three none; the future parameters are
+    // potential in 132 states, definite (past the slot of no return) in 53 and a potential update of
+    // no parameters in 3; none holds a proposal for the next epoch
     assertEquals(counts.foldLeft(noUpdate)(plus), Counts(555, 0, 188, 564, 564))
+    assertEquals(
+      histograms(states),
+      (
+        Map(3 -> 185, 0 -> 3),
+        Map(
+          Prediction.Potential -> 132,
+          Prediction.Definite -> 53,
+          Prediction.PotentialOfNone -> 3
+        )
+      )
+    )
   }
 
   /** The node's parameter records each with other eras' fields of their own: the recorded states
@@ -417,6 +474,82 @@ class BabbageStateStoredSuite extends FunSuite:
     )
   }
 
+  /** Five or more delegates, each with a proposal of its own: the reference's proposed updates keep
+    * the order of the key hashes, which a hash map of that size does not.
+    */
+  test("the proposed updates keep the delegates' order and each one's own update") {
+    val proposals = (1 to 7).toVector.map { i =>
+      val genesis = right("genesis key hash")(
+        KeyHash.fromBytes[Genesis](Bytes(Vector.fill[Byte](27)(0) :+ (40 - i).toByte))
+      )
+      genesis -> ParamUpdate(Map(0 -> Bytes(Vector(0x18.toByte, (30 + i).toByte))))
+    }
+    val stored = Sorted.map(proposals)
+    val g = StoredShelleyGovState(
+      stored,
+      Sorted.empty,
+      sentinel,
+      sentinel,
+      StoredFuturePParams.NoPParamsUpdate
+    )
+    val era = right("read")(ShelleyGovStateRecord.fromStored[Babbage](g))
+    val pairs = proposedPairs(era.sgsCurProposals.proposed)
+    assertEquals(pairs, storedPairs("seven", stored))
+    // built in descending order of the key hashes
+    assertEquals(
+      pairs.map(_._1),
+      proposals.map(_._1).sorted(using summon[cats.Order[KeyHash[Genesis]]].toOrdering)
+    )
+    assertNotEquals(pairs.map(_._1), proposals.map(_._1))
+    // each delegate's own update, none of them empty
+    assertEquals(pairs.map(_._2).distinct.size, 7)
+    assert(!pairs.map(_._2).contains(EraPParams.babbage.emptyPParamsUpdate))
+  }
+
+  /** A field an earlier build kept unread (key 17 before the Babbage translation,
+    * `ProtocolParamProposalTranslationGapSuite`), which the flat path keeps and never adopts: the
+    * era's read refuses the proposal and so the record, a known gap (#85,
+    * https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7222565136).
+    */
+  test("a stored proposal with a legacy unread field is refused, the record with it") {
+    val unread = ParamUpdate(
+      Map(0 -> right("hex")(Bytes.fromHex("01")), 17 -> right("hex")(Bytes.fromHex("6161")))
+    )
+    val refused = KeptPParamsUpdate.fromStored[Babbage](unread)
+    assert(refused.isLeft, refused.toString)
+    val genesis =
+      right("genesis key hash")(KeyHash.fromBytes[Genesis](Bytes(Vector.fill[Byte](28)(9))))
+    val g = StoredShelleyGovState(
+      Sorted.map(Vector(genesis -> unread)),
+      Sorted.empty,
+      sentinel,
+      sentinel,
+      StoredFuturePParams.NoPParamsUpdate
+    )
+    assertEquals(
+      ShelleyGovStateRecord.fromStored[Babbage](g),
+      Left(
+        ShelleyGovStateReadError.Proposal(
+          ShelleyProposals.Current,
+          genesis,
+          refused.left.getOrElse(fail("not refused"))
+        )
+      )
+    )
+  }
+
+  test("a delegate's proposal is read only at an era up to Babbage") {
+    assertEquals(
+      compileErrors("KeptPParamsUpdate.fromStored[Babbage](ParamUpdate(Map.empty))"),
+      ""
+    )
+    assert(
+      compileErrors(
+        "KeptPParamsUpdate.fromStored[xyz.kd5ujc.scarab.ledger.state.Conway](ParamUpdate(Map.empty))"
+      ).nonEmpty
+    )
+  }
+
   /** A proposal of a field in a form other than the canonical one: the bytes the node keeps are
     * kept, where a re-encoding of the update would write others.
     */
@@ -438,8 +571,7 @@ class BabbageStateStoredSuite extends FunSuite:
       right("canonical map")(HaskellStateCodecs.paramUpdate.write(canonical))
     )
     val genesis = right("genesis key hash")(
-      xyz.kd5ujc.scarab.ledger.state.KeyHash
-        .fromBytes[xyz.kd5ujc.scarab.ledger.state.Genesis](Bytes(Vector.fill[Byte](28)(7)))
+      KeyHash.fromBytes[Genesis](Bytes(Vector.fill[Byte](28)(7)))
     )
     val base = StoredShelleyGovState(
       Sorted.map(Vector(genesis -> wide)),

@@ -38,7 +38,11 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * that a field submitted in a form other than the canonical one is stored as it came, and the
   * update read from them is kept beside them. Two are equal when their updates are, as the
   * reference's `Eq` compares the values. Made only from the stored form ([[fromStored]]), so the
-  * bytes are always those the update was read from.
+  * bytes are always those the update was read from. The kept bytes reproduce the stored record; the
+  * reference re-encodes the values, which a client sees in the Haskell-layout state answers
+  * (`DebugEpochState`, `DebugNewEpochState`) for a proposal in a non-canonical form, a known
+  * difference of the stored form (#85,
+  * https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7211463135).
   */
 final class KeptPParamsUpdate[E <: EraTag] private (
     val update: PParamsUpdate[E],
@@ -54,11 +58,14 @@ object KeptPParamsUpdate:
   given [E <: EraTag]: CanEqual[KeptPParamsUpdate[E], KeptPParamsUpdate[E]] = CanEqual.derived
 
   /** The update the node keeps, read into the era at its decoder version: each stored field's bytes
-    * read by its field, as [[KeptUpdate.fromStored]] reads them. A stored form no decoder of the
-    * era gave is refused: a key that is not one of the era's, or a value its field does not read.
+    * read by its field, as [[KeptUpdate.fromStored]] reads them, and only at an era whose updates a
+    * genesis delegate proposes ([[EraPParamsToBabbage]]). A stored form no decoder of the era gave
+    * is refused: a key that is not one of the era's, or a value its field does not read, which a
+    * legacy field an earlier build kept unread is (key 17 of a record stored before the Babbage
+    * translation, #85, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7222565136).
     */
   def fromStored[E <: EraTag](stored: ParamUpdate)(using
-      p: EraPParams[E],
+      p: EraPParamsToBabbage[E],
       era: Era[E]
   ): Either[LedgerDecodeError, KeptPParamsUpdate[E]] =
     given DecodeAt =
@@ -77,8 +84,10 @@ object KeptPParamsUpdate:
 final case class KeptProposedPPUpdates[E <: EraTag](
     updates: SortedMap[KeyHash[Genesis], KeptPParamsUpdate[E]]
 ):
-  /** The reference's `ProposedPPUpdates era`: the updates without their stored form. */
-  def proposed: ProposedPPUpdates[E] = ProposedPPUpdates(updates.view.mapValues(_.update).toMap)
+  /** The reference's `ProposedPPUpdates era`: the updates without their stored form, in the order
+    * of the delegates' key hashes, as the reference's `Map` keeps them.
+    */
+  def proposed: ProposedPPUpdates[E] = ProposedPPUpdates(updates.transform((_, u) => u.update))
 
 object KeptProposedPPUpdates:
   given [E <: EraTag]: CanEqual[KeptProposedPPUpdates[E], KeptProposedPPUpdates[E]] =
@@ -138,8 +147,11 @@ enum ShelleyProposals:
   case Future
 
 /** Why the node's flat record of a governance state before Conway cannot be read into an era's
-  * [[ShelleyGovState]]: what only a damaged record gives, as [[GovStateReadError]] is. None is a
-  * verdict of the rules.
+  * [[ShelleyGovState]]. None is a verdict of the rules. A damaged record gives either; a record the
+  * node itself stored gives [[Proposal]] where a proposal holds a legacy field an earlier build
+  * kept unread (key 17 before the Babbage translation), which the flat path keeps and never adopts
+  * and this read refuses (#85,
+  * https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7222565136).
   */
 enum ShelleyGovStateReadError:
   /** A parameter record outside the era's types ([[PParamsError]]). */
@@ -162,8 +174,8 @@ sealed trait ShelleyGovStateRecord[E <: EraTag]:
   /** The node's parameters `base` with the era's fields those of `pp`. */
   def storedPParams(pp: PParams[E], base: ProtocolParams): ProtocolParams
 
-  /** The era's parameter and proposal classes. */
-  def pparamsOf: EraPParams[E]
+  /** The era's parameter and proposal classes: an era whose updates a genesis delegate proposes. */
+  def pparamsOf: EraPParamsToBabbage[E]
   def eraOf: Era[E]
 
 object ShelleyGovStateRecord:
@@ -176,7 +188,7 @@ object ShelleyGovStateRecord:
         pp: PParams[Babbage],
         base: ProtocolParams
     ): ProtocolParams = BabbagePParams.toStored(pp.hkd, base)
-    def pparamsOf: EraPParams[Babbage] = EraPParams.babbage
+    def pparamsOf: EraPParamsToBabbage[Babbage] = EraPParamsToBabbage.babbage
     def eraOf: Era[Babbage] = Era.babbage
 
   /** The node's flat record read into era `E` 's: each parameter record by the era's fields, each
@@ -213,7 +225,8 @@ object ShelleyGovStateRecord:
     * `base` 's of the same place, whose other eras' fields it keeps (the future parameters over
     * `base` 's future ones where it has them, else over its current ones, from which the flat rules
     * make them), and each proposed update as the bytes it keeps. The inverse of [[fromStored]]: a
-    * record read from `base` is written back as `base`.
+    * record read from `base` is written back as `base` (a record [[fromStored]] refuses, such as
+    * one with a legacy unread proposal field, has no era record to write back).
     */
   def toStored[E <: EraTag](g: ShelleyGovState[E], base: StoredShelleyGovState)(using
       r: ShelleyGovStateRecord[E]
