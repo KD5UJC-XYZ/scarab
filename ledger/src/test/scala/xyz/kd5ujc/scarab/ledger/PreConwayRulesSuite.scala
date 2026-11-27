@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   ShelleyInstantStakeOps,
   StakeDistribution,
   Test,
+  Upec,
   UtxoTests
 }
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -828,7 +829,14 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
   private def proposedIn[E <: EraTag](pp: ProtocolParams, update: ParamUpdate)(using
       ShelleyBasedEra[E],
       PreConway[E]
-  ): NewEpochState[E] =
+  ): NewEpochState[E] = proposingIn[E](pp, update).fold(f => fail(f.message), identity)
+
+  /** What PPUP says of the transaction [[proposedIn]] submits: the state after it, or its failure.
+    */
+  private def proposingIn[E <: EraTag](pp: ProtocolParams, update: ParamUpdate)(using
+      ShelleyBasedEra[E],
+      PreConway[E]
+  ): Either[LedgerFailure, NewEpochState[E]] =
     val genesis = Vector(key(), key())
     val delegates = Vector(key(), key())
     val (funded, in) = fundedIn[E](pp.protocolMajor.toInt)
@@ -847,7 +855,7 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val u = Update(genesis.map(_.hash -> update).toMap, 5)
     val b =
       body("up", Vector(in), Vector(out(alice.address(), 100 * ada - 200)), 200, update = Some(u))
-    run(s, tx(b, Vector(alice) ++ delegates)).fold(f => fail(f.message), _.state)
+    run(s, tx(b, Vector(alice) ++ delegates)).map(_.state)
 
   private def predicted[E <: EraTag](nes: NewEpochState[E])(using
       ShelleyBasedEra[E]
@@ -973,6 +981,122 @@ class PreConwayRulesSuite extends ScalaCheckSuite:
     val entered = as[Conway](afterLastBlock(s, globals))
     assertEquals(paramsOf(entered).protocolMajor, BigInt(9))
     assertEquals(entered.es.ls.cert.vState.numDormantEpochs.toBigInt, BigInt(1))
+  }
+
+  // ---- `pvCanFollow` (`eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs:299-307`,
+  // cardano-ledger f649f975): the next major version, by `succVersion`, at minor 0, or the next
+  // minor, a `Word32` (`libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs:211`) sum that wraps
+
+  private val word32Max = (BigInt(1) << 32) - 1
+
+  /** An update of the protocol version alone (key 14): `[major, minor]`, each in its shortest form.
+    */
+  private def versionUpdate(major: Int, minor: BigInt): ParamUpdate =
+    def uint(n: BigInt): Vector[Int] =
+      def bytes(k: Int) = (k - 1 to 0 by -1).map(i => ((n >> (8 * i)) & 0xff).toInt).toVector
+      if n < 24 then Vector(n.toInt)
+      else if n <= word32Max then 0x1a +: bytes(4)
+      else 0x1b +: bytes(8)
+    ParamUpdate(Map(14 -> cbor((Vector(0x82) ++ uint(major) ++ uint(minor))*)))
+
+  /** PPUP's failure when a proposed version cannot follow (`PVCannotFollowPPUP`, `Ppup.hs:170-175`,
+    * cardano-ledger f649f975).
+    */
+  private def cannotFollow(major: BigInt, minor: BigInt): Vector[PredicateFailure] =
+    Vector(PredicateFailure.utxo(UtxoFailure.Update(PpupFailure.PVCannotFollow(major, minor))))
+
+  private def rejected[E <: EraTag](r: Either[LedgerFailure, NewEpochState[E]]) = r match
+    case Left(LedgerFailure.Rejected(_, fs)) => fs.toChain.toVector
+    case other                               => fail(s"expected a rejection, got $other")
+
+  // Babbage at version 7, minor 4294967295: the largest minor a `Word32` holds
+  private val atWrap = params(7).copy(protocolMinor = word32Max)
+
+  test("PPUP: (7, 0) follows (7, 4294967295), as the Word32 minor wraps; (7, 1) does not") {
+    val wrapped = proposedIn[Babbage](atWrap, versionUpdate(7, 0))
+    assertEquals(wrapped.es.ls.utxo.gov.curProposals.size, 2)
+    assertEquals(predicted(wrapped).version, (BigInt(7), BigInt(0)), "the vote is for (7, 0)")
+    // the next major version at minor 0 follows as well
+    assertEquals(
+      predicted(proposedIn[Babbage](atWrap, versionUpdate(8, 0))).version,
+      (BigInt(8), BigInt(0))
+    )
+    assertEquals(rejected(proposingIn[Babbage](atWrap, versionUpdate(7, 1))), cannotFollow(7, 1))
+    assertEquals(rejected(proposingIn[Babbage](atWrap, versionUpdate(8, 1))), cannotFollow(8, 1))
+  }
+
+  test("PPUP: a minor of 4294967296 is no Word32, and the update is unreadable, not a follower") {
+    // the body's decoder refuses it (`NumberOutOfRange` of the minor, the oracle's update cases);
+    // a body built in memory reaches PPUP, which cannot read it as a `ProtVer` either
+    proposingIn[Babbage](atWrap, versionUpdate(7, word32Max + 1)) match
+      case Left(LedgerFailure.Undecodable(_, TxDefect.UnreadableProtocolVersion)) => ()
+      case other => fail(s"expected an unreadable protocol version, got $other")
+    assertEquals(
+      UpdateChecks.canFollow(params(7), versionUpdate(7, word32Max + 1)),
+      Left(UpdateChecks.Refusal.Unreadable)
+    )
+  }
+
+  test("PPUP: the ordinary followers of (7, 0) are (7, 1) and (8, 0), and nothing else") {
+    val at7 = params(7)
+    assertEquals(
+      predicted(proposedIn[Babbage](at7, versionUpdate(7, 1))).version,
+      (BigInt(7), BigInt(1))
+    )
+    assertEquals(
+      predicted(proposedIn[Babbage](at7, versionUpdate(8, 0))).version,
+      (BigInt(8), BigInt(0))
+    )
+    for (major, minor) <- Vector(7 -> 0, 7 -> 2, 8 -> 1, 9 -> 0, 6 -> 0) do
+      assertEquals(
+        rejected(proposingIn[Babbage](at7, versionUpdate(major, minor))),
+        cannotFollow(major, minor),
+        s"($major, $minor)"
+      )
+  }
+
+  test("pvCanFollow: no major follows 13 (`MaxVersion`), and a major of 14 is no version") {
+    // the era decoders cap the major below 13 before Conway, so only the check itself reaches these
+    def follows(pp: ProtocolParams, major: Int, minor: BigInt) =
+      UpdateChecks.canFollow(pp, versionUpdate(major, minor))
+    assertEquals(follows(params(12), 13, 0), Right(()))
+    assertEquals(follows(params(12).copy(protocolMinor = word32Max), 13, 0), Right(()))
+    assertEquals(follows(params(13), 13, 1), Right(()))
+    assertEquals(follows(params(13).copy(protocolMinor = word32Max), 13, 0), Right(()))
+    assertEquals(follows(params(13), 14, 0), Left(UpdateChecks.Refusal.Unreadable))
+    assertEquals(
+      follows(params(13), 13, 2),
+      Left(UpdateChecks.Refusal.Failed(PpupFailure.PVCannotFollow(13, 2)))
+    )
+  }
+
+  /** UPEC (`updatePpup`, `Shelley/Rules/Newpp.hs:97-111`, cardano-ledger f649f975) of a state whose
+    * two future proposals are `update`, from the parameters `pp`: the proposals it keeps.
+    */
+  private def keptAtBoundary(pp: ProtocolParams, update: ParamUpdate): Set[Bytes] =
+    val (s0, _) = fundedIn[Babbage](7)
+    val g = Vector(key(), key())
+    val gov = s0.es.ls.utxo.gov.copy(
+      curPParams = pp,
+      prevPParams = pp,
+      futurePParams = FuturePParams.DefinitePParamsUpdate(pp),
+      futureProposals = Sorted.map(g.map(k => genesisId(k) -> update))
+    )
+    Upec.step[Babbage](2, gov).curProposals.keySet.map(_.bytes)
+
+  test("UPEC keeps future proposals of (7, 0) over (7, 4294967295), and drops (7, 1)") {
+    assertEquals(keptAtBoundary(atWrap, versionUpdate(7, 0)).size, 2)
+    assertEquals(keptAtBoundary(atWrap, versionUpdate(8, 0)).size, 2)
+    assertEquals(keptAtBoundary(atWrap, versionUpdate(7, 1)), Set.empty[Bytes])
+    // the ordinary cases from (7, 0)
+    assertEquals(keptAtBoundary(params(7), versionUpdate(7, 1)).size, 2)
+    assertEquals(keptAtBoundary(params(7), versionUpdate(7, 2)), Set.empty[Bytes])
+  }
+
+  test("a quorum for (7, 0) over (7, 4294967295) is adopted at the boundary") {
+    val after = proposedIn[Babbage](atWrap, versionUpdate(7, 0))
+    val adopted = as[Babbage](afterLastBlock(after, boundaryGlobals))
+    assertEquals(paramsOf(adopted).version, (BigInt(7), BigInt(0)))
   }
 
   property("epoch boundaries conserve the supply however many blocks pools make") {
