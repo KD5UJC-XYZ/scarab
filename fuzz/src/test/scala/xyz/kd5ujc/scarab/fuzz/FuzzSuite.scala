@@ -18,9 +18,12 @@ class FuzzSuite extends FunSuite:
   for target <- Targets.all do
     test(s"fuzz ${target.name}") {
       val before = Option(Targets.accepted.get(target.name)).fold(0L)(_.sum())
-      Runner.run(target.name, Mutate.generator(target.corpus().toIndexedSeq))(target.check)
+      Runner.run(target.name, Mutate.generator(target.corpus().toIndexedSeq), target.share)(
+        target.check
+      )
       val accepted = Option(Targets.accepted.get(target.name)).fold(0L)(_.sum()) - before
-      println(s"  ${target.name}: ${FuzzConfig.cases * FuzzConfig.seeds} cases, $accepted decoded")
+      val cases = math.max(1, FuzzConfig.cases / target.share) * FuzzConfig.seeds
+      println(s"  ${target.name}: $cases cases, $accepted decoded")
     }
 
   test("differential target names are unique and are not decoder target names") {

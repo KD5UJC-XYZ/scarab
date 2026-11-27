@@ -29,8 +29,15 @@ import xyz.kd5ujc.scarab.node.AnnouncedHeaders
 import xyz.kd5ujc.scarab.node.ntc.NtcQuery
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
-/** One decoder entry point under test: the seeds its inputs are mutated from, and the property. */
-final case class Target(name: String, corpus: () => Vector[Array[Byte]], check: Input => Unit)
+/** One decoder entry point under test: the seeds its inputs are mutated from, and the property. A
+  * target whose case costs far more than a decoder's runs one `share` of the run's cases.
+  */
+final case class Target(
+    name: String,
+    corpus: () => Vector[Array[Byte]],
+    check: Input => Unit,
+    share: Int = 1
+)
 
 /** Registered decoder targets for peer, client, block and persisted inputs. Each probe checks
   * bounded time and allocation without unexpected exceptions; targets with writers also check
@@ -2656,4 +2663,5 @@ object Targets:
         injectionJson,
         genesisPoolFields
       ) ++ nativeSnapshots ++ ancillary ++ mithril ++ networkIdentity ++ volatileLog ++
-      nodeConfiguration ++ nodeTopologyFile ++ UplcTargets.all
+      nodeConfiguration ++ nodeTopologyFile ++ UplcTargets.all ++
+      CurveTargets.all

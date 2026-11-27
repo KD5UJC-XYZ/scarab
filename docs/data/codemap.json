@@ -13,7 +13,7 @@
     "models-gen": "CDDL parser and Scala generator (build time)",
     "models": "Generated CDDL models runtime and equivalence tests",
     "node": "The node: wiring, mempool, forging, relay, node-to-client, tools",
-    "fuzz": "Structured fuzzing of decoder entry points, and differential targets against the reference's libsodium (test only)",
+    "fuzz": "Structured fuzzing of decoder entry points, and differential fuzzing of the curve arithmetic and the Ed25519 verifiers and against the reference's libsodium (test only)",
     "tools": "Programs run by hand, never as tests and never shipped: benchmarks, probes against a live peer, and the writers of committed fixtures and goldens; they use the modules' test kits",
     "warts": "The design rules' own WartRemover warts, compiled against this Scala version's WartRemover and loaded by every module's compiler: build tooling, never shipped"
   },

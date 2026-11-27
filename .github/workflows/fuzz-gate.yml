@@ -40,8 +40,9 @@ jobs:
         run: python3 scripts/ci_changes.py
       # Everything the fuzz project reads or runs: its own sources; the decoders it calls (codec, protocol with the
       # mini-protocol and mux codecs, ledger with the block, header, transaction, witness and script decoders, plutus
-      # for Plutus scripts, uplc for Plutus data, crypto for hashing, storage for persisted formats, consensus for the
-      # mirrored chain state, and node for configuration, topology, node-to-client queries and mempool messages); the
+      # for Plutus scripts, uplc for Plutus data, crypto for hashing and for the curve arithmetic and Ed25519 verifiers
+      # that the differential targets check, storage for persisted formats, consensus for the mirrored chain state, and
+      # node for configuration, topology, node-to-client queries and mempool messages); the
       # CDDL schemas and overrides it samples (models, models-gen); every committed fixture and fuzz seed (fixtures);
       # the upstream codec vectors it reads from network's test resources; and the build, the launcher and this workflow.
       # Deliberately broad: a decoder missed here escapes the gate.

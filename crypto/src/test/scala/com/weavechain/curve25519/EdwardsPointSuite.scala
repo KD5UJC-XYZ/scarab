@@ -20,8 +20,6 @@ class EdwardsPointSuite extends munit.ScalaCheckSuite:
   override def scalaCheckTestParameters =
     super.scalaCheckTestParameters.withMinSuccessfulTests(200)
 
-  private def value(fe: FieldElement): BigInt = fromLe(fe.toByteArray)
-
   private def decompressed(encoding: Array[Byte]): Option[EdwardsPoint] =
     // an invalid encoding is none; an exception fails the test
     new CompressedEdwardsY(encoding.clone()).decompress().toScala
@@ -31,12 +29,9 @@ class EdwardsPointSuite extends munit.ScalaCheckSuite:
   private def encoding(e: EdwardsPoint): Vector[Byte] = e.compress().toByteArray.toVector
   private def encoding(m: M.Point): Vector[Byte] = m.encode.toVector
 
-  /** X Y = Z T and -X^2 + Y^2 = Z^2 + d T^2, the point being (X/Z, Y/Z) on the curve. */
+  /** Z is not zero, X Y = Z T and -X^2 + Y^2 = Z^2 + d T^2 (`Curve25519Gen.extendedFailure`). */
   private def extended(e: EdwardsPoint, what: String): Unit =
-    val (x, y, z, t) = (value(e.X), value(e.Y), value(e.Z), value(e.T))
-    assert(z != 0, s"$what: Z is zero")
-    assertEquals((x * y - z * t).mod(p), BigInt(0), s"$what: X Y = Z T")
-    assertEquals((-x * x + y * y - z * z - M.d * t * t).mod(p), BigInt(0), s"$what: curve equation")
+    extendedFailure(e).foreach(failure => fail(s"$what: $failure"))
 
   private val modelPoint: Gen[M.Point] =
     Gen.frequency(
