@@ -8,6 +8,7 @@ import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
+  ReferenceRequests,
   CollectError as FlatCollectError,
   Datum as FlatDatum,
   GenDelegPair,
@@ -39,7 +40,6 @@ import xyz.kd5ujc.scarab.ledger.state.{
 }
 import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusData, PlutusLanguage}
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
-import xyz.kd5ujc.scarab.uplc.builtin.core.DataSerialisation
 
 /** Babbage's Plutus side on the era types (`EraPlutusTxInfo 'PlutusV1` and `'PlutusV2 BabbageEra`,
   * `EraPlutusContext BabbageEra`, `EraUTxO` and `AlonzoEraUTxO BabbageEra`, `mkStAnnTx`) against
@@ -516,65 +516,31 @@ class BabbagePlutusContextSuite extends munit.FunSuite:
 
   }
 
-  private def sha256(bytes: Bytes): String =
-    Bytes.wrap(java.security.MessageDigest.getInstance("SHA-256").digest(bytes.toArray)).hex
-
-  /** The era's request against a reference request: its language, version and arguments' bytes
-    * against a request kept whole (`ToCBOR PlutusWithContext`), or every field, each argument and
-    * the script by the SHA-256 of its bytes, against one kept as digests.
-    */
-  private def sameAsReference(
-      ours: xyz.kd5ujc.scarab.plutus.EvalRequest,
-      script: Json,
-      at: String
-  ): Unit =
-    script.hcursor.downField("contextCbor").focus.flatMap(_.asString) match
-      case Some(encoding) =>
-        cbor(hex(encoding)).value match
-          case CborValue.Arr(Vector(pv, sc, arguments, _, _)) =>
-            assertEquals(pv.value, CborValue.UInt(BigInt(ours.protocolMajor)), s"$at: version")
-            sc.value match
-              case CborValue.Arr(Vector(l, _)) =>
-                assertEquals(l.value, CborValue.UInt(BigInt(ours.language.id)), s"$at: language")
-              case other => fail(s"$at: not a script: $other")
-            val args = arguments.value match
-              case CborValue.Arr(items) => items.map(_.original)
-              case _                    => Vector(arguments.original)
-            assertEquals(ours.args.map(DataSerialisation.serialise), args, s"$at: arguments")
-          case other => fail(s"$at: not a PlutusWithContext: $other")
-      case None =>
-        val request = field[Json](script, "request")
-        assertEquals(BigInt(ours.protocolMajor), field[BigInt](request, "protocolMajor"), at)
-        assertEquals(BigInt(ours.language.id), field[BigInt](request, "language"), at)
-        assertEquals(sha256(ours.script), field[String](request, "scriptSha256"), at)
-        assertEquals(
-          ours.args.map(a => sha256(DataSerialisation.serialise(a))),
-          field[Vector[String]](request, "argumentsSha256"),
-          at
-        )
-        val budget = field[Json](request, "budget")
-        assertEquals(
-          (ours.budget.mem, ours.budget.steps),
-          (field[BigInt](budget, "mem"), field[BigInt](budget, "steps")),
-          at
-        )
-        assertEquals(ours.costModel.map(BigInt(_)), field[Vector[BigInt]](request, "costModel"), at)
-
-  test("each Plutus V1 and V2 request the reference collected is the era's, byte for byte") {
+  test("each Plutus V1 and V2 request the reference collected is the era's, every field of it") {
     val matched = oracleCases.filter(c => field[Boolean](c.oracle, "collected")).flatMap { c =>
       val ours = eraCollect(c).fold(e => fail(s"${c.name}: $e"), identity)
       val references = field[Vector[Json]](c.oracle, "scripts")
       assertEquals(ours.size, references.size, c.name)
-      ours.zip(references).zipWithIndex.map { case ((pwc, reference), i) =>
+      ours.zip(references).zipWithIndex.map { case ((pwc, script), i) =>
         val request = PlutusWithContext.evalRequest(pwc)
-        sameAsReference(request, reference, s"${c.name} request $i")
-        request.language
+        val theirs = ReferenceRequests.reference(script)
+        // the script, the arguments, the budget and the cost model of a whole request; each of them
+        // by its SHA-256 of a request kept as digests
+        ReferenceRequests.sameRequest(request, theirs, s"${c.name} request $i")
+        val form = theirs match
+          case ReferenceRequests.Reference.Whole(_) =>
+            if c.name.startsWith("matrix/") then "matrix" else "whole"
+          case ReferenceRequests.Reference.Digested(_) => "digests"
+        (form, request.language)
       }
     }
-    // every request the reference collected of the Babbage rows: 191 recorded (158 of them as
-    // digests) and 46 of the matrix
-    assertEquals(matched.size, 191 + 46)
-    assertEquals(matched.toSet, Set(PlutusLanguage.V1, PlutusLanguage.V2))
+    // every request the reference collected of the Babbage rows: of the recorded contexts 158 kept as
+    // digests and 33 whole, and 46 of the matrix, whole
+    assertEquals(
+      matched.groupMapReduce(_._1)(_ => 1)(_ + _),
+      Map("digests" -> 158, "whole" -> 33, "matrix" -> 46)
+    )
+    assertEquals(matched.map(_._2).toSet, Set(PlutusLanguage.V1, PlutusLanguage.V2))
   }
 
   test(
