@@ -3546,12 +3546,15 @@ Conway's rules on the classes follow as the rest of stage 2.
     `EmbedPpupInUtxos[Babbage]` wraps PPUP's failures and events. Babbage's `updateUTxOState` runs on Babbage's
     classes.
   - Against the flat `ShelleyPpup`, `ShelleyUtxos` and `ShelleyUtxo.update` (`BabbageUtxosSuite`):
-    - the 22 V1-context submissions, each with what it spends, references and puts up: the same verdict and failures,
-      the reference's verdict (four accepted, two of them flagged invalid), and the same state after (UTxO set,
-      deposits, fees, instant stake, governance state), also under the policy that applies a transaction again;
+    - the 22 V1-context submissions, each with what it spends, references and puts up: the same verdict and failures
+      (a missing redeemer by its purpose's tag and index), the reference's verdict (four accepted, two of them flagged
+      invalid; each validation-tag mismatch with the description the reference recorded, two passed and two failed
+      unexpectedly), and the same state after (the UTxO record whole, its totals and stake among it, deposits, fees,
+      instant stake, governance state), also under the policy that applies a transaction again;
     - the 32 Babbage cases of the refusal corpora, each on the reference's state ticked to its slot and its UTxO set:
-      the same judgment and state after, three of them paying deposits. Four are refused by UTXOS. The three refused by
-      UTXOS alone (the PPUP case, `NonGenesisUpdatePPUP`, and two validation-tag mismatches) encode to the
+      the same judgment and state after, three of them paying deposits. Four are refused by UTXOS; the spend of a
+      script output without a redeemer names its script input's purpose. The era rule's failures of the three refused
+      by UTXOS alone (the PPUP case, `NonGenesisUpdatePPUP`, and two validation-tag mismatches) encode to the
       reference's refusal bytes;
     - PPUP on the 185 of the capture's 188 Babbage states that hold proposals, their recorded proposals proposed
       again: 132 for this epoch before the point of no return, each voting the next parameters; 185 for the next epoch
