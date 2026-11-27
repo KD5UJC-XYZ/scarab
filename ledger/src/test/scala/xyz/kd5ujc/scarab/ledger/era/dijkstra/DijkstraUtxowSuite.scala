@@ -11,7 +11,17 @@ import xyz.kd5ujc.scarab.ledger.{Horizon, TxEnv, TxIn, Unsigned, Utxo, Verdicts}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraCorpus.*
 import xyz.kd5ujc.scarab.ledger.era.rules.*
-import xyz.kd5ujc.scarab.ledger.state.{Coin, DeltaCoin, Dijkstra, EpochNo, Network, UtxoTables}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Coin,
+  Credential,
+  DeltaCoin,
+  Dijkstra,
+  EpochNo,
+  Guard,
+  KeyHash,
+  Network,
+  UtxoTables
+}
 import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage, ScarabEvaluator}
 
 /** Dijkstra's UTXO and UTXOW on the era types (`DijkstraUtxo`, `DijkstraUtxow`, cardano-ledger
@@ -30,7 +40,11 @@ import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage, ScarabEvaluator}
   *     "Impossible"`, `Dijkstra/Rules/Utxo.hs:572-573`): on every constructor Dijkstra's UTXO
   *     reports, each equals the reference's composition through Conway's failure
   *     (`conwayToDijkstraUtxoPredFailure . alonzoToConwayUtxoPredFailure` and the others), and the
-  *     two constructors the reference calls impossible have no injection: it does not compile.
+  *     two constructors the reference calls impossible have no injection: it does not compile;
+  *   - the top level under `NonStatic`, on transactions built as `DijkstraImpBatch` builds them:
+  *     the four checks the reference runs on the signal (`runTestOnSignal`,
+  *     `Dijkstra/Rules/Utxow.hs:294, 301, 305, 318`, cardano-ledger 9df9f98c) skipped, the others
+  *     run, and a transaction whose one fault is its signature admitted.
   *
   * Incomplete (CNF-2), not run here:
   *   - the 28 batches of the chain as the reference judges them: UTXOW reads the state after
@@ -41,9 +55,10 @@ import xyz.kd5ujc.scarab.plutus.{ExUnits, PlutusLanguage, ScarabEvaluator}
   *     accepts the recorded ends past the horizon (`PastHorizonReferenceSuite`, Alonzo to Conway)
   *     or refuses them in collection (`TimeTranslationPastHorizon`), its forecast predicate
   *     passing;
-  *   - a refusal of a guard (`MissingRequiredGuards`, `MalformedGuardDatums`), of the legacy mode's
-  *     value (`ValueNotConservedInLegacyMode`), of a pointer in the collateral return, of an input
-  *     a sub-transaction spent, and of a batch's collateral: no recording holds one (#85,
+  *   - a refusal by the reference of a guard (`MissingRequiredGuards`, `MalformedGuardDatums`; the
+  *     rules' own on a built transaction are above), of the legacy mode's value
+  *     (`ValueNotConservedInLegacyMode`), of a pointer in the collateral return, of an input a
+  *     sub-transaction spent, and of a batch's collateral: no recording holds one (#85,
   *     https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7056846371).
   */
 class DijkstraUtxowSuite extends FunSuite:
@@ -637,4 +652,136 @@ class DijkstraUtxowSuite extends FunSuite:
       case Right(Right((after, _))) =>
         assertEquals(after.utxo.utxo.keys.size, bodies.outputs[TxLevel.Top](devnetTx.body).size)
       case other => fail(s"not admitted: $other")
+  }
+
+  // ---- the top level under `NonStatic`, on built transactions (`DijkstraImpBatch`)
+
+  private val B = DijkstraImpBatch
+  private lazy val owner = xyz.kd5ujc.scarab.ledger.TestLedger.key()
+  private lazy val signer = xyz.kd5ujc.scarab.ledger.TestLedger.key()
+  private val builtIn = B.fresh(0x71)
+  private val builtFee: BigInt = 1000000
+
+  /** A top level spending `builtIn`, paying `builtFee` and the rest to the signer with the outputs
+    * `before`, with the body fields `fields`, whose witness set holds the signer's key with a
+    * signature of 32 zero bytes, not of the body's id.
+    */
+  private def badlySigned(
+      before: Vector[xyz.kd5ujc.scarab.codec.Node],
+      fields: (Int, xyz.kd5ujc.scarab.codec.Node)*
+  ): DijkstraTx[TxLevel.Top] =
+    val change = BigInt(20000000) - builtFee - BigInt(10000000) * before.size
+    val body = B.body(
+      (Vector(
+        0 -> B.set(builtIn.node),
+        1 -> B.arr((before :+ B.out(B.keyAddress(signer), change))*),
+        2 -> B.uint(builtFee)
+      ) ++ fields)*
+    )
+    val witness = B.arr(B.bytes(signer.vkey), B.bytes(signer.sign(Bytes(Vector.fill(32)(0)))))
+    B.topTx(body, B.cmap(B.uint(0) -> B.set(witness)))
+
+  /** The output `builtIn` names: 20 ada at `holder` 's address. */
+  private def held(holder: xyz.kd5ujc.scarab.ledger.TestLedger.Key): UTxO[Dijkstra] =
+    B.utxo(builtIn -> B.out(B.keyAddress(holder), 20000000))
+
+  /** UTXOW of Dijkstra on a built transaction from the outputs it spends, at the devnet's slot 225,
+    * under `validation`.
+    */
+  private def builtUtxow(
+      tx: DijkstraTx[TxLevel.Top],
+      spent: UTxO[Dijkstra],
+      validation: TxEnv.Validation
+  ) =
+    val ls = xyz.kd5ujc.scarab.ledger.state.Build
+      .dijkstra(EpochNo.fromBigInt(1).fold(e => fail(e.toString), identity), devnetStored)
+      .es
+      .ls
+    val env = DijkstraUtxoEnv[Dijkstra](225, era(devnetStored), ls.cert.pState, ls.cert, spent)
+    val params = Horizon.Params(100, 1000, 30, 30)
+    DijkstraUtxoRun.run(
+      env,
+      DijkstraUtxoRun.annotate(s => fail(s"the clock was read at $s"), env, tx),
+      DijkstraUtxoContext(
+        Network.Testnet,
+        xyz.kd5ujc.scarab.ledger.SystemStart(Instant.EPOCH),
+        Horizon
+          .History(Vector.empty, Horizon.Edge(0, 0, 0), params, Some(params))
+          .at(Horizon.Transition.Unknown(Some(BigInt(1000)))),
+        validation
+      ),
+      ls.utxo.copy[Dijkstra](utxo =
+        UtxoTables(Utxo(spent.unUTxO.view.mapValues(StoredTxOut.dijkstra.toStored).toMap))
+      ),
+      ScarabEvaluator.default,
+      Verdicts.Direct,
+      ScarabEvaluator.defaultDecoder
+    )
+
+  test("top-level UTXOW under NonStatic admits a transaction whose one fault is its signature") {
+    // `runTestOnSignal $ Shelley.validateVerifiedWits tx` (`Dijkstra/Rules/Utxow.hs:294`,
+    // cardano-ledger 9df9f98c): applied again, the signatures are not checked, and the input is
+    // spent as under `All` it would be
+    val tx = badlySigned(Vector.empty)
+    builtUtxow(tx, held(signer), TxEnv.Validation.All) match
+      case Right(Left(fs)) =>
+        assertEquals(
+          fs.toChain.toVector,
+          Vector[UtxowPredFailure[Dijkstra]](
+            DijkstraUtxowPredFailure.InvalidWitnessesUTXOW[Dijkstra](NonEmptyList.one(signer.vkey))
+          )
+        )
+      case other => fail(s"not refused: $other")
+    builtUtxow(tx, held(signer), TxEnv.Validation.NonStatic) match
+      case Right(Right((after, _))) =>
+        assertEquals(
+          after.utxo.utxo.keys.toSet,
+          Set(TxIn(bodies.id(tx.body), 0))
+        )
+        assertEquals(after.fees, Coin(builtFee))
+      case other => fail(s"not admitted: $other")
+  }
+
+  test("top-level UTXOW under NonStatic skips exactly the reference's four checks on the signal") {
+    // `dijkstraUtxowTransition` (`Dijkstra/Rules/Utxow.hs:216-325`, cardano-ledger 9df9f98c) runs
+    // four of its checks with `runTestOnSignal` (`:294`, `:301`, `:305`, `:318`): the signatures,
+    // the auxiliary data, the well-formed scripts and the required guards. A transaction failing
+    // all four, and two checks run with `runTest` beside them: the needed key witnesses (`:297`;
+    // its input is the owner's, whose key does not sign) and the required guards' datums
+    // (`:322`; a key's guard with a datum). Its auxiliary data hash names no auxiliary data, and
+    // its first output holds a reference script that is no Plutus program
+    val guardKey = Bytes(Vector.fill(28)(0x72.toByte))
+    val junk = Bytes(Vector(0.toByte))
+    val auxHash = Bytes(Vector.fill(32)(0x77.toByte))
+    val tx = badlySigned(
+      Vector(B.refScriptOut(B.keyAddress(signer), 10000000, junk)),
+      7 -> B.bytes(auxHash),
+      24 -> B.cmap(B.arr(B.uint(0), B.bytes(guardKey)) -> B.uint(0))
+    )
+    def judged(validation: TxEnv.Validation) =
+      builtUtxow(tx, held(owner), validation).map(_.left.map(_.toChain.toVector))
+    given cats.Order[Bytes] = cats.Order.fromOrdering
+    val guard = NonEmptySet.one[Credential[Guard]](
+      Credential.KeyHashObj[Guard](
+        KeyHash.fromBytes[Guard](guardKey).fold(e => fail(e.toString), identity)
+      )
+    )(using cats.Order[Credential[Guard]])
+    val signal = Vector[UtxowPredFailure[Dijkstra]](
+      DijkstraUtxowPredFailure.MissingRequiredGuards[Dijkstra](guard),
+      DijkstraUtxowPredFailure.MalformedReferenceScripts[Dijkstra](
+        NonEmptySet.one(B.scriptHash(3, junk))
+      ),
+      DijkstraUtxowPredFailure.MissingTxMetadata[Dijkstra](auxHash),
+      DijkstraUtxowPredFailure.InvalidWitnessesUTXOW[Dijkstra](NonEmptyList.one(signer.vkey))
+    )
+    val malformed = DijkstraUtxowPredFailure.MalformedGuardDatums[Dijkstra](guard)
+    val missing =
+      DijkstraUtxowPredFailure.MissingVKeyWitnessesUTXOW[Dijkstra](NonEmptySet.one(owner.hash))
+    // at the root the failures are in the reverse of the order the rule records them
+    // (`DijkstraUtxoRun.run`): the guards' datums last checked, the signatures first
+    assertEquals(
+      judged(TxEnv.Validation.All),
+      Right(Left(Vector(malformed, signal(0), signal(1), signal(2), missing, signal(3))))
+    )
+    assertEquals(judged(TxEnv.Validation.NonStatic), Right(Left(Vector(malformed, missing))))
   }
