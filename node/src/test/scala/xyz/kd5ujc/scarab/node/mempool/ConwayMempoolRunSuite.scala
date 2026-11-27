@@ -286,7 +286,7 @@ class ConwayMempoolRunSuite extends FunSuite:
     // the flat MEMPOOL, before it was deleted, judged each case at its recorded protocol version
     // and at 9, 10 and 11, under each build, applied and applied again, and the era MEMPOOL gave
     // the same failures in the same order, or the same ledger state (the moved withdrawals as
-    // `MovedWithdrawals.expected` has them); the era MEMPOOL's results were recorded. The corpora
+    // `MovedWithdrawals.expected`, since deleted, had them); the era MEMPOOL's results were recorded. The corpora
     // recorded after the flat MEMPOOL was gone (`ReferenceRefusalSuite.EraOnly`) have no such
     // recording; their reference bytes are checked above
     val recorded = FlatRecordings.mempoolRun

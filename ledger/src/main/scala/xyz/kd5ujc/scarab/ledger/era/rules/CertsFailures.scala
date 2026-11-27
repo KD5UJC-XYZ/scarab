@@ -1,16 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.rules
 
-import xyz.kd5ujc.scarab.ledger.{
-  CertFailure as FlatCertFailure,
-  CertsFailure as FlatCertsFailure,
-  DelegFailure as FlatDelegFailure,
-  GovCertFailure as FlatGovCertFailure,
-  Mismatch as FlatMismatch,
-  PoolFailure as FlatPoolFailure,
-  PredicateFailure
-}
-import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
   ColdCommittee,
@@ -453,86 +443,18 @@ object ConwayCertsPredFailure:
   given [E <: EraTag]: CanEqual[ConwayCertsPredFailure[E], ConwayCertsPredFailure[E]] =
     CanEqual.derived
 
-  /** The failure in the node's flat form (`PredicateFailure`), glue the comparisons with the flat
-    * rules read until the failures of the era types have their own encoders (#85). It is one-way;
-    * every failure has one.
-    */
-  def toStored(failure: ConwayCertsPredFailure[Conway]): PredicateFailure = failure match
-    case WithdrawalsNotInRewardsCERTS(ws) =>
-      PredicateFailure.Certs(
-        FlatCertsFailure.WithdrawalsNotInRewards(
-          ws.map((account, coin) => Convert.rewardAccountBack(account) -> coin.value)
-        )
-      )
-    case CertFailure(f) =>
-      PredicateFailure.Certs(FlatCertsFailure.Cert(ConwayCertPredFailure.toStored(f)))
-
 object ConwayCertPredFailure:
   given [E <: EraTag]: CanEqual[ConwayCertPredFailure[E], ConwayCertPredFailure[E]] =
     CanEqual.derived
-
-  /** CERT's failure in the node's flat form ([[ConwayCertsPredFailure.toStored]]). */
-  def toStored(failure: ConwayCertPredFailure[Conway]): FlatCertFailure = failure match
-    case DelegFailure(f)   => FlatCertFailure.Deleg(ConwayDelegPredFailure.toStored(f))
-    case PoolFailure(f)    => FlatCertFailure.Pool(ShelleyPoolPredFailure.toStored(f))
-    case GovCertFailure(f) => FlatCertFailure.GovCert(ConwayGovCertPredFailure.toStored(f))
 
 object ConwayDelegPredFailure:
   given [E <: EraTag]: CanEqual[ConwayDelegPredFailure[E], ConwayDelegPredFailure[E]] =
     CanEqual.derived
 
-  /** DELEG's failure in the node's flat form ([[ConwayCertsPredFailure.toStored]]), Conway's and
-    * Dijkstra's, whose DELEG is Conway's.
-    */
-  def toStored[E <: EraTag](failure: ConwayDelegPredFailure[E]): FlatDelegFailure = failure match
-    case IncorrectDepositDELEG(c)      => FlatDelegFailure.IncorrectDeposit(c.value)
-    case StakeKeyRegisteredDELEG(c)    => FlatDelegFailure.StakeKeyRegistered(Convert.back(c))
-    case StakeKeyNotRegisteredDELEG(c) => FlatDelegFailure.StakeKeyNotRegistered(Convert.back(c))
-    case StakeKeyHasNonZeroAccountBalanceDELEG(c) =>
-      FlatDelegFailure.StakeKeyHasNonZeroAccountBalance(c.value)
-    case DelegateeDRepNotRegisteredDELEG(c) =>
-      FlatDelegFailure.DelegateeDRepNotRegistered(Convert.back(c))
-    case DelegateeStakePoolNotRegisteredDELEG(p) =>
-      FlatDelegFailure.DelegateeStakePoolNotRegistered(p.bytes)
-    case DepositIncorrectDELEG(m) => FlatDelegFailure.DepositIncorrect(coins(m))
-    case RefundIncorrectDELEG(m)  => FlatDelegFailure.RefundIncorrect(coins(m))
-
 object ShelleyPoolPredFailure:
   given [E <: EraTag]: CanEqual[ShelleyPoolPredFailure[E], ShelleyPoolPredFailure[E]] =
     CanEqual.derived
 
-  /** POOL's failure in the node's flat form ([[ConwayCertsPredFailure.toStored]]). */
-  def toStored(failure: ShelleyPoolPredFailure[Conway]): FlatPoolFailure = failure match
-    case StakePoolNotRegisteredOnKeyPOOL(p) => FlatPoolFailure.StakePoolNotRegisteredOnKey(p.bytes)
-    case StakePoolRetirementWrongEpochPOOL(current, latest) =>
-      FlatPoolFailure.StakePoolRetirementWrongEpoch(epochs(current), epochs(latest))
-    case StakePoolCostTooLowPOOL(m) => FlatPoolFailure.StakePoolCostTooLow(coins(m))
-    case WrongNetworkPOOL(m, p) =>
-      FlatPoolFailure.WrongNetworkPool(m.storedBy(_.wire), p.bytes)
-    case PoolMedataHashTooBig(p, size) => FlatPoolFailure.PoolMedataHashTooBig(p.bytes, size)
-    case VRFKeyHashAlreadyRegistered(p, v) =>
-      FlatPoolFailure.VRFKeyHashAlreadyRegistered(p.bytes, v.bytes)
-
 object ConwayGovCertPredFailure:
   given [E <: EraTag]: CanEqual[ConwayGovCertPredFailure[E], ConwayGovCertPredFailure[E]] =
     CanEqual.derived
-
-  /** GOVCERT's failure in the node's flat form ([[ConwayCertsPredFailure.toStored]]). */
-  def toStored(failure: ConwayGovCertPredFailure[Conway]): FlatGovCertFailure = failure match
-    case ConwayDRepAlreadyRegistered(c) => FlatGovCertFailure.DRepAlreadyRegistered(Convert.back(c))
-    case ConwayDRepNotRegistered(c)     => FlatGovCertFailure.DRepNotRegistered(Convert.back(c))
-    case ConwayDRepIncorrectDeposit(m)  => FlatGovCertFailure.DRepIncorrectDeposit(coins(m))
-    case ConwayCommitteeHasPreviouslyResigned(c) =>
-      FlatGovCertFailure.CommitteeHasPreviouslyResigned(Convert.back(c))
-    case ConwayDRepIncorrectRefund(m) => FlatGovCertFailure.DRepIncorrectRefund(coins(m))
-    case ConwayCommitteeIsUnknown(c)  => FlatGovCertFailure.CommitteeIsUnknown(Convert.back(c))
-
-private[rules] def coins[R <: xyz.kd5ujc.scarab.ledger.era.Relation](
-    m: Mismatch[R, Coin]
-): FlatMismatch[BigInt] =
-  m.storedBy(_.value)
-
-private[rules] def epochs[R <: xyz.kd5ujc.scarab.ledger.era.Relation](
-    m: Mismatch[R, EpochNo]
-): FlatMismatch[BigInt] =
-  m.storedBy(_.toBigInt)

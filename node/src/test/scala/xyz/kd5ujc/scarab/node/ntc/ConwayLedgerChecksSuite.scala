@@ -244,7 +244,7 @@ class ConwayLedgerChecksSuite extends FunSuite:
     // version and at 9, 10 and 11, under each build and policy, and the era LEDGER gave the same
     // failures in the same order, or the same ledger state and counters (where the 11.2 and Leios
     // builds refuse a withdrawal in LEDGER below version 11, the flat failures with CERTS's refusal
-    // of it replaced by LEDGER's, `MovedWithdrawals.expected`); the era LEDGER's judgments were
+    // of it replaced by LEDGER's, `MovedWithdrawals.expected`, since deleted); the era LEDGER's judgments were
     // recorded (`fixtures/conway-flat-refusals`): 1,872 refusals and 144 admissions
     val recording = FlatRecordings.judgments("ledger-checks/")
     val judged = flatSeen.map { s0 =>

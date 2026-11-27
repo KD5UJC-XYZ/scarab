@@ -5,7 +5,7 @@ import cats.{Functor, Monad}
 import cats.data.{Chain, NonEmptyChain}
 import cats.mtl.{Raise, Stateful, Tell}
 import monocle.Lens
-import xyz.kd5ujc.scarab.ledger.{LedgerDefect, PredicateFailure, TxEnv}
+import xyz.kd5ujc.scarab.ledger.{LedgerDefect, TxEnv}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   CERT,
   CERTS,
@@ -46,16 +46,12 @@ import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Judgment, RuleT, contrama
 import xyz.kd5ujc.scarab.ledger.state.{CertState, Conway, Dijkstra, PState}
 
 /** Conway's certificate rules on the era types (`CERTS.conwayCertsTransition`, and CERT, DELEG,
-  * POOL and GOVCERT alone) run in one judgment, and the flat form their failures are compared in
-  * with the flat rules', for the suites that compare the two (`ConwayCertsChecksSuite` in the node,
-  * `CertsEpochWrapSuite` and `PoolParamsLayoutSuite`); and Dijkstra's CERTS, POOL and ENTITIES, and
-  * a sub-transaction's SUBCERTS and SUBENTITIES (`DijkstraCertsSuite`, and
-  * `DijkstraRulesOracleSuite` in the node).
+  * POOL and GOVCERT alone) run in one judgment, for the suites that judge them
+  * (`ConwayCertsChecksSuite` and the upstream conformance suites in the node, `CertsEpochWrapSuite`
+  * and `PoolParamsLayoutSuite`); and Dijkstra's CERTS, POOL and ENTITIES, and a sub-transaction's
+  * SUBCERTS and SUBENTITIES (`DijkstraCertsSuite`, and `DijkstraRulesOracleSuite` in the node).
   */
 object EraCertsRun:
-  /** A judgment of the flat rules' kind: a defect, the failures in the flat form, or the state. */
-  type Flat[S] = Either[LedgerDefect, Either[NonEmptyChain[PredicateFailure], S]]
-
   /** What a Dijkstra judgment of the certificate rules ends with, short of a verdict: POOL's
     * defect, or one of every rule.
     */
@@ -206,19 +202,6 @@ object EraCertsRun:
     govCertRun.run(globals, state, 0)(
       GOVCERT.conwayGovCertTransition[Conway, govCertRun.F](env, cert)
     )
-
-  /** A CERTS judgment in the flat rules' form: its failures put in the flat form
-    * (`ConwayCertsPredFailure.toStored`), its events dropped.
-    */
-  def flat(
-      judged: Either[
-        LedgerDefect,
-        Either[NonEmptyChain[
-          CertsPredFailure[Conway]
-        ], (CertState[Conway], Chain[CertsEvent[Conway]])]
-      ]
-  ): Flat[CertState[Conway]] =
-    judged.map(_.left.map(_.map(ConwayCertsPredFailure.toStored)).map(_._1))
 
   /** Dijkstra's CERTS (Conway's transition with Dijkstra's CERT) on `certificates` from `state`,
     * under `validation`, `depth` levels below the root.

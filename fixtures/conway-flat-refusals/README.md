@@ -1,11 +1,11 @@
 # Conway judgments as the flat rules wrote them
 
 Status: Current — the expected values of `ConwayLedgerChecksSuite`, `ConwayFailureCborSuite`,
-`ConwayMempoolRunSuite`, `EraUtxoSuite`, `PreviewConwayBlockLedgersSuite`, `PreviewConwayRulesSuite` and
-`ConwayGovChecksSuite` (#85). Licence: Apache-2.0, this project's (see `NOTICE`).
+`ConwayMempoolRunSuite`, `EraUtxoSuite`, `PreviewConwayBlockLedgersSuite`, `PreviewConwayRulesSuite`,
+`ConwayGovChecksSuite` and `ConwayCertsChecksSuite` (#85). Licence: Apache-2.0, this project's (see `NOTICE`).
 
-Before Scarab deleted its flat Conway rules (the flat MEMPOOL, then its LEDGER and LEDGERS, then its GOV) and the flat rules'
-Conway refusal encoder (`PredicateFailureCbor`), the suites that held Conway's era rules and their encoder (`ConwayFailureCbor`)
+Before Scarab deleted its flat Conway rules (the flat MEMPOOL, then its LEDGER and LEDGERS, then its GOV, then its CERTS) and
+the flat rules' Conway refusal encoder (`PredicateFailureCbor`), the suites that held Conway's era rules and their encoder (`ConwayFailureCbor`)
 to them ran once more, and each recorded, for every judgment it compared, what the era side gave after asserting
 that the flat side gave the same. The era side that stays must keep giving it. A digest is the first 16 hex
 digits of the SHA-256 of the bytes it names.
@@ -21,7 +21,7 @@ digits of the SHA-256 of the bytes it names.
   builds; under each, the application (`applyTx`) then the application again of the transaction held as
   validated in that state (`reapply`). The flat MEMPOOL and the era MEMPOOL gave the same failures in the same
   order, or the same ledger state (where the 11.2 and Leios builds refuse a withdrawal in LEDGER below version
-  11, the flat failures with CERTS's refusal of it replaced by LEDGER's, `MovedWithdrawals.expected`). A
+  11, the flat failures with CERTS's refusal of it replaced by LEDGER's, `MovedWithdrawals.expected`, since deleted). A
   refusal's cell is `R:` and the digest of its `ApplyTxErr` bytes, every failure in its order; an admission's
   is `A:` and the digest of the ledger state it leaves in the Haskell state's encoding at protocol version 9
   (`ledgerState` of the case's layout, `ReferenceRefusalSuite.stateCodecs`). 2,016 judgments: 1,884
@@ -99,6 +99,43 @@ digits of the SHA-256 of the bytes it names.
   flat GOV listed them in the body's order (#85's item 7054122427, closed with it), and the unelected voters'
   order, which keep their expected values from the reference's source; and the GOV-only refusals, held to the
   reference's bytes.
+
+- `certs-judgments.jsonl`: one line for each judgment of Conway's era CERTS that `ConwayCertsChecksSuite` compared with
+  the flat CERTS, 467 lines, each id once: `id`, the judgment's; and `r`, its cells separated by spaces. The flat
+  CERTS judged the same certificates from the same state, and the era CERTS gave the same failures in the same
+  order, or the same certificate state, compared whole (no judgment of either ended with a defect). A refusal's
+  cell is `R:` and the digest of the `ApplyTxErr` bytes of its failures in their order, each under LEDGER's
+  `ConwayCertsFailure`, as the node sends CERTS's refusal. An admission's cell is `A:`, the digest of the
+  certificate state it leaves in the Haskell state's encoding of its corpus's layout at protocol version 9, then
+  `/` and the digest of the bytes that state keeps as the certificates gave them and the encoding writes in its
+  own form: each pool's relays and metadata, then each waiting re-registration's, in key order, as a CBOR array of
+  byte strings. Each admission is first checked to be held whole by the encoding, those bytes aside: read back, it
+  is the state again. The prefixes:
+  - `corpus/`, 112 lines: the transaction's own certificates of each case of the twelve Conway corpora the flat
+    CERTS judged (`ConwayCertsChecksSuite.RecordedCorpora`, named), 4 cells each: at the version the case was
+    recorded at, then 9, 10 and 11 (117 refusals and 331 admissions);
+  - `blocks/`, 62 lines: the certificates of each transaction of the recorded Conway Preview blocks
+    (`fixtures/preview/conway.hex` and `conway-governance.hex`, `<file>:<line>#<index>`), from the state of the
+    case `conway-bootstrap-attributes/utxo-bootstrap-attributes-too-big`, 3 cells each: at 9, 10 and 11 (40
+    refusals and 146 admissions);
+  - `crafted/`, 293 lines: the crafted certificates and transactions, 1 cell each, by the label of the state they
+    are judged from and the case's name: the scenarios of DELEG, POOL, GOVCERT and the committee, from that same
+    case at 9, 10 and 11 (`<case>@v<version>/<name>`, 39), the base case of CERTS (withdrawals and the DReps'
+    expiries) from it and from each corpus case with proposals or votes, with the dormant epochs counted and
+    without (252), and a funded account unregistered at 10 and 11 (2) (34 refusals and 259 admissions).
+
+  Recorded at Scarab commit `78ad579a9`, the head of the pull request that deleted the flat GOV (#1487) before it
+  was squash-merged, which leaves that commit on no branch. The flat CERTS's deletion was then rebased onto the
+  merge, and its parent, `0a562efe7`, adds this recording and the suite that reads it and otherwise differs from
+  `78ad579a9` only outside the ledger: the read-ahead of queued blocks' store reads (#1484) and the fuzz job's
+  differential targets (#1418). The suite of `78ad579a9` was run again at `0a562efe7` with the flat CERTS beside the
+  era one: every comparison agreed, and the recording it wrote was this one, byte for byte. The comparisons that
+  had other oracles are not here: the refusals only the certificate rules give, held to the reference's bytes; the base case's withdrawals under each build, held to the reference's gate
+  (`hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule`); and POOL's events. The flat CERTS checked and
+  drained the withdrawals and moved the DReps' expiries in its base case below version 11 under every build, where
+  the reference's 11.2 and Leios builds do so in LEDGER (#85's item 7055304484, closed with it). One case here is
+  judged under a build other than 11.1, the Leios build's
+  `conway-bootstrap-attributes-leios-b004fe0c/utxo-bootstrap-attributes-too-big`, and on it the two rules agreed.
 
 Commit `84bf3a1cd` is the base this work started from; `3aaa942aa` the last of it with the flat encoder. The
 tests that wrote these lines and their throwaway checkouts were removed after. The digests are Scarab's own,

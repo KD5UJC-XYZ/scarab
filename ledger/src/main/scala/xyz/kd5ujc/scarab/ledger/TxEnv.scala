@@ -17,14 +17,6 @@ import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, ReferenceBuildNotYet, StateLa
   * the rules.
   */
 enum TxDefect:
-  /** A delegation certificate of Conway that names neither a pool nor a DRep. */
-  case DelegationWithoutDelegatee
-
-  /** A certificate of the eras before Conway (a genesis delegation, a MIR certificate) in a Conway
-    * transaction.
-    */
-  case PreConwayCertificate(certificate: Certificate)
-
   /** A certificate of Conway (a DRep or committee certificate) in a transaction of an earlier era.
     */
   case ConwayCertificate(certificate: Certificate)
@@ -44,8 +36,6 @@ enum TxDefect:
   case PoolMetadata(cause: LedgerDecodeError)
 
   def message: String = this match
-    case DelegationWithoutDelegatee   => "a delegation to nothing"
-    case PreConwayCertificate(c)      => s"a pre-Conway certificate in Conway: $c"
     case ConwayCertificate(c)         => s"certificate $c before Conway"
     case GovernanceFieldsBeforeConway => "governance fields before Conway"
     case PlutusFieldsBeforeAlonzo     => "Plutus fields before Alonzo"

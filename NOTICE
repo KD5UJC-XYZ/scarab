@@ -44,7 +44,7 @@ verdicts from the same reference CLI, under the project's Apache-2.0 license. No
 
 fixtures/conway-flat-refusals contains digests of the bytes Scarab's own former flat Conway encoders
 wrote for its test cases and the refusal corpus's Conway cases, and of the judgments of its former
-flat Conway LEDGER and GOV, recorded by this project's Apache-2.0 tests before those were removed. They
+flat Conway LEDGER, GOV and CERTS, recorded by this project's Apache-2.0 tests before those were removed. They
 are distributed under this project's Apache-2.0 license; no third-party material and no key is
 included.
 

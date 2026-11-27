@@ -361,9 +361,7 @@ object ConwayLedger:
           else test(validateWithdrawalsDelegated[E](accounts, withdrawals))
         // `hardforkConwayMoveWithdrawalsAndDRepChecksToLedgerRule` of the build the judgment
         // follows (`Conway/Era.hs:283-284`, cardano-ledger f649f975; at every version at 29a7d656
-        // and 9df9f98c, `Conway/Rules/Ledger.hs:397-403` at 29a7d656), which the flat rules gate
-        // at version 11 under every build
-        // (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484)
+        // and 9df9f98c, `Conway/Rules/Ledger.hs:397-403` at 29a7d656)
         _ <-
           if !WithdrawalsRule.of(globals.ledger.referenceBuild).inLedger(pv) then Monad[F].unit
           else
