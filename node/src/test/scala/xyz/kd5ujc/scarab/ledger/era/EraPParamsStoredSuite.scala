@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.annotation.tailrec
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   ConwayParamUpdate,
@@ -20,6 +20,7 @@ import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraPParams
 import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway, Dijkstra, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission
+import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.*
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, HaskellStateCodecs, Params}
@@ -190,6 +191,36 @@ class EraPParamsStoredSuite extends FunSuite:
     val gov = Vector(3, 1, 1, 3).foldLeft(nes)((n, i) => items(n)(i))
     Vector(items(gov)(2), items(gov)(3)) ++ lists(items(gov)(4), 22)
 
+  /** Parameters whose every Babbage field is a value no recorded record holds, each within its
+    * field's type.
+    */
+  private val babbageSentinel: ProtocolParams = ProtocolParams.empty.copy(
+    minFeeA = 987654321,
+    minFeeB = 987654323,
+    maxBlockBodySize = 987659,
+    maxTxSize = 98761,
+    maxBlockHeaderSize = 9871,
+    keyDeposit = 987654327,
+    poolDeposit = 987654329,
+    eMax = 9873,
+    nOpt = 9877,
+    a0 = Rational(7, 13),
+    rho = Rational(5, 17),
+    tau = Rational(3, 19),
+    protocolMajor = 13,
+    protocolMinor = 9879,
+    minPoolCost = 987654331,
+    coinsPerUTxOByte = 9883,
+    costModels = Map(1 -> Vector(BigInt(-7))),
+    priceMem = Rational(11, 23),
+    priceSteps = Rational(13, 29),
+    maxTxExUnits = ExUnits(9887, 9901),
+    maxBlockExUnits = ExUnits(9907, 9923),
+    maxValueSize = 9929,
+    collateralPercentage = 9931,
+    maxCollateralInputs = 9941
+  )
+
   private def babbageParams(p: ProtocolParams): PParams[Babbage] =
     PParams[Babbage](right("Babbage's parameters")(BabbagePParams.fromStored(p)))
 
@@ -202,7 +233,16 @@ class EraPParamsStoredSuite extends FunSuite:
       22,
       version(8),
       shelleyGovernance,
-      Some(pp => BabbagePParams.toStored(pp.hkd, ProtocolParams.empty))
+      Some(pp => {
+        // the base differs from the record in every field `toStored` sets, so a field it
+        // dropped keeps the base's value and the bytes differ
+        val base = right("sentinel")(BabbagePParams.fromStored(babbageSentinel))
+        pp.hkd.productIterator
+          .zip(base.productIterator)
+          .zipWithIndex
+          .foreach { case ((field, sentinel), i) => assertNotEquals(field, sentinel, s"field $i") }
+        BabbagePParams.toStored(pp.hkd, babbageSentinel)
+      })
     )(babbageParams)
     // the current (version 7), the previous (6) and the future, voted for (8)
     assertEquals(count, 3)
