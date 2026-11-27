@@ -225,7 +225,8 @@ class BabbageUtxosSuite extends FunSuite:
   // ---- what each side decided, compared as one type
 
   private enum Collect:
-    case NoRedeemer
+    /** The purpose that has no redeemer, by its tag and index. */
+    case NoRedeemer(tag: Int, ix: BigInt)
     case NoWitness(hash: Bytes)
     case NoCostModel(language: xyz.kd5ujc.scarab.plutus.PlutusLanguage)
     case BadTranslation(error: TranslationError)
@@ -249,31 +250,52 @@ class BabbageUtxosSuite extends FunSuite:
     case ShelleyPpupPredFailure.PVCannotFollowPPUP(pv) =>
       PpupFailure.PVCannotFollow(BigInt(pv.pvMajor.value), pv.pvMinor.value)
 
-  private def seenOf(f: URec): Seen = f match
-    case AlonzoUtxosPredFailure.UpdateFailure(p) => Seen.Ppup(flatPpupOf(p))
-    case AlonzoUtxosPredFailure.CollectErrors(es) =>
-      Seen.Collected(es.toList.map {
-        case CollectError.NoRedeemer(_)  => Collect.NoRedeemer
-        case CollectError.NoWitness(h)   => Collect.NoWitness(h)
-        case CollectError.NoCostModel(l) => Collect.NoCostModel(l)
-        case CollectError.BadTranslation(e) =>
-          Collect.BadTranslation(BabbageTestKit.flatContextError(e))
-      })
-    case AlonzoUtxosPredFailure.ValidationTagMismatch(
-          flag,
-          TagMismatchDescription.PassedUnexpectedly
-        ) =>
-      Seen.PassedUnexpectedly(flag == IsPhase2Valid.Phase2Valid)
-    case AlonzoUtxosPredFailure.ValidationTagMismatch(
-          flag,
-          TagMismatchDescription.FailedUnexpectedly(fs)
-        ) =>
-      Seen.FailedUnexpectedly(
-        flag == IsPhase2Valid.Phase2Valid,
-        fs.toList.map { case FailureDescription.PlutusFailure(cause, pwc) =>
-          EraUtxoRun.cause(cause) -> Some(PlutusWithContext.evalRequest(pwc))
-        }
+  /** A purpose's tag and index, of the scripts the body needs (`getScriptsNeeded`) whose item it
+    * names, as `BabbagePlutusContextRefusalsSuite` reads them.
+    */
+  private def purposeIx(
+      needed: Vector[AlonzoPlutusPurpose[AsIxItem, Babbage]],
+      purpose: AlonzoPlutusPurpose[AsItem, Babbage]
+  ): Collect.NoRedeemer =
+    val p = needed
+      .find(p =>
+        EraScript.babbage.hoistPlutusPurpose[AsIxItem, AsItem](
+          [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
+        )(p) == purpose
       )
+      .getOrElse(fail(s"$purpose is not needed"))
+    val ix = EraScript.babbage
+      .hoistPlutusPurpose[AsIxItem, AsIx]([ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsIx(a))(
+        p
+      )
+    Collect.NoRedeemer(ix.tag, ix.ix.value)
+
+  private def seenOf(needed: Vector[AlonzoPlutusPurpose[AsIxItem, Babbage]])(f: URec): Seen =
+    f match
+      case AlonzoUtxosPredFailure.UpdateFailure(p) => Seen.Ppup(flatPpupOf(p))
+      case AlonzoUtxosPredFailure.CollectErrors(es) =>
+        Seen.Collected(es.toList.map {
+          case CollectError.NoRedeemer(purpose) => purposeIx(needed, purpose)
+          case CollectError.NoWitness(h)        => Collect.NoWitness(h)
+          case CollectError.NoCostModel(l)      => Collect.NoCostModel(l)
+          case CollectError.BadTranslation(e) =>
+            Collect.BadTranslation(BabbageTestKit.flatContextError(e))
+        })
+      case AlonzoUtxosPredFailure.ValidationTagMismatch(
+            flag,
+            TagMismatchDescription.PassedUnexpectedly
+          ) =>
+        Seen.PassedUnexpectedly(flag == IsPhase2Valid.Phase2Valid)
+      case AlonzoUtxosPredFailure.ValidationTagMismatch(
+            flag,
+            TagMismatchDescription.FailedUnexpectedly(fs)
+          ) =>
+        Seen.FailedUnexpectedly(
+          flag == IsPhase2Valid.Phase2Valid,
+          fs.toList.map { case FailureDescription.PlutusFailure(cause, pwc) =>
+            EraUtxoRun.cause(cause) -> Some(PlutusWithContext.evalRequest(pwc))
+          }
+        )
 
   private def flatSeenOf(f: PredicateFailure): Seen = f match
     case PredicateFailure.Utxow(UtxowFailure.Utxo(UtxoFailure.Update(p))) => Seen.Ppup(p)
@@ -281,7 +303,7 @@ class BabbageUtxosSuite extends FunSuite:
       u match
         case UtxosFailure.CollectErrors(es) =>
           Seen.Collected(es.toVector.toList.map {
-            case FlatCollectError.NoRedeemer(_)     => Collect.NoRedeemer
+            case FlatCollectError.NoRedeemer(p)     => Collect.NoRedeemer(p.tag, BigInt(p.index))
             case FlatCollectError.NoWitness(h)      => Collect.NoWitness(h)
             case FlatCollectError.NoCostModel(l)    => Collect.NoCostModel(l)
             case FlatCollectError.BadTranslation(e) => Collect.BadTranslation(e)
@@ -399,8 +421,15 @@ class BabbageUtxosSuite extends FunSuite:
       evaluator,
       validation
     ) match
-      case Left(defect)          => fail(s"${j.name}: era defect $defect")
-      case Right(Left(failures)) => Outcome.Refused(failures.toList.map(seenOf))
+      case Left(defect) => fail(s"${j.name}: era defect $defect")
+      case Right(Left(failures)) =>
+        val needed = EraUTxO.babbage
+          .getScriptsNeeded[TxLevel.Top](utxo, t.body[TxLevel.Top](j.typed)(using t.bodyOf.top))(
+            using t.bodyOf.top
+          )
+          .unAlonzoScriptsNeeded
+          .map(_._1)
+        Outcome.Refused(failures.toList.map(seenOf(needed)))
       case Right(Right((after, events))) =>
         val withGov =
           j.state.copy[Babbage](gov = ShelleyGovStateRecord.toStored[Babbage](after, j.state.gov))
@@ -962,6 +991,31 @@ class BabbageUtxosSuite extends FunSuite:
         "utxow-spend-without-datum-or-redeemer",
         "ppup-non-genesis-proposer"
       )
+    )
+    // the spend of a script output with no redeemer: the purpose named is that output's input, by
+    // its index among the body's inputs in their order
+    val (spend, spendFailures) = refusals
+      .zip(outcomes.map(_._2))
+      .collectFirst {
+        case (r, Outcome.Refused(fs))
+            if r.judged.name.endsWith("/utxow-spend-without-datum-or-redeemer") =>
+          r -> fs
+      }
+      .getOrElse(fail("no spend without a redeemer"))
+    val inputs = spend.judged.flat.body.inputs.distinct.sorted
+    val scripted = inputs.indices.filter(i =>
+      spend.judged.known
+        .get(inputs(i))
+        .exists(_.address.kind match
+          case xyz.kd5ujc.scarab.ledger.Address.Kind
+                .Shelley(_, xyz.kd5ujc.scarab.ledger.Credential.Script(_), _, _) =>
+            true
+          case _ => false)
+    )
+    assertEquals((inputs.size, scripted.size), (2, 1))
+    assertEquals(
+      spendFailures,
+      List(Seen.Collected(List(Collect.NoRedeemer(0, BigInt(scripted.head)))))
     )
     // those refused by UTXOS alone: the flat rule's failures are the reference's, byte for byte
     val alone = refusals.filter(_.families.forall(f => f == Family.UTXOS || f == Family.PPUP))
