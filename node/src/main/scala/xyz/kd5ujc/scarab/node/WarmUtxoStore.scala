@@ -31,8 +31,10 @@ import xyz.kd5ujc.scarab.storage.UtxoStore.Coding
   *     [[WarmUtxoStore.Budget.readShare]] of the budget.
   *
   * Each entry is charged the bytes of its encoding and [[WarmUtxoStore.EntryBytes]], and the tier
-  * never holds more than its budget ([[WarmUtxoStore.Tier]]): its memory is fixed whatever the size
-  * of the UTxO set. A budget of 0 holds nothing (the node does not build the tier then).
+  * never holds more than its budget ([[WarmUtxoStore.Tier]]); a write stages at most a quarter of
+  * it on top while the store changes ([[WarmUtxoStore.Budget.staging]]). Its memory is fixed
+  * whatever the size of the UTxO set. A budget of 0 holds nothing (the node does not build the tier
+  * then).
   *
   * What it serves. [[read]] gives the entries of its keys the tier holds, decoded from the bytes
   * the store would have read (`Coding.encodeValue`, decoded by `Coding.decodeValue`, exactly as
@@ -125,10 +127,10 @@ final class WarmUtxoStore[F[_]: Async] private (
       Raise[F, StorageError]
   ): F[Unit] =
     val batch = changes.toVector
-    // A batch of more entries than the budget can hold (the hand-over from Byron, the upgrade of
+    // A batch of more entries than a write may stage (the hand-over from Byron, the upgrade of
     // the stored outputs on entering Dijkstra) empties the tier and adds nothing, so that what
-    // the tier stages for a write is bounded by its budget as well as what it keeps.
-    if batch.size.toLong * EntryBytes > budget.bytes then
+    // the tier stages for a write is bounded as well as what it keeps (`Budget.staging`).
+    if batch.size.toLong * EntryBytes > budget.staging then
       moving(Touched.Everything, store.write(batch, stamp))
     else
       val touched = Touched.Keys(batch.flatMap((in, _) => Key.of(in)))
@@ -139,7 +141,7 @@ final class WarmUtxoStore[F[_]: Async] private (
       }
       val created = Tier.staged(
         last.iterator.flatMap((key, out) => out.map(key -> _)),
-        budget.bytes
+        budget.staging
       )
       moving(touched, store.write(batch, stamp).flatMap(_ => tier.update(_.moved(created))))
 
@@ -183,6 +185,14 @@ object WarmUtxoStore:
       * is the span of the young.
       */
     def readShare: Long = bytes / 8
+
+    /** What one write may stage for the tier, beyond what it holds: a quarter. A write's creations
+      * are encoded before the store changes, while the entries they will push out are still held,
+      * so the tier's memory at its peak is its budget and this (a fill stages at most the read
+      * share, within what its read already holds decoded); a write of more entries than this holds
+      * empties the tier instead.
+      */
+    def staging: Long = bytes / 4
 
   object Budget:
     /** A budget of `mib` MiB; none below 0. */

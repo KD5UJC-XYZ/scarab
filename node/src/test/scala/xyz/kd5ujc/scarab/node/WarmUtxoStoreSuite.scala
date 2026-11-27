@@ -172,15 +172,24 @@ class WarmUtxoStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       Gen.choose(0, 40),
       Gen.frequency(2 -> Gen.const(None), 3 -> Gen.choose(0, 600).map(Some(_)))
     )
+    val keys = Gen.frequency(
+      9 -> Gen.choose(0, 3).flatMap(Gen.listOfN(_, Gen.choose(0, 40))),
+      1 -> Gen.listOf(Gen.choose(0, 40))
+    )
+    // mostly a budget of a few entries (one is charged about 290 bytes), sometimes 0 or larger
+    val budget = Gen.frequency(3 -> Gen.choose(1000L, 3000L), 1 -> Gen.choose(0L, 12000L))
     val op: Gen[Op] = Gen.frequency(
-      5 -> Gen.listOf(change).map(Op.Write.apply),
-      4 -> Gen.listOf(Gen.choose(0, 40)).map(Op.Read.apply),
-      2 -> Gen.listOf(Gen.choose(0, 40)).map(Op.Ahead.apply),
-      2 -> Gen.listOf(Gen.choose(0, 40)).map(Op.Use.apply),
+      // mostly the size of a flush the budget stages, sometimes one larger
+      6 -> Gen.choose(0, 2).flatMap(Gen.listOfN(_, change)).map(Op.Write.apply),
+      1 -> Gen.listOf(change).map(Op.Write.apply),
+      // reads of a few keys, as a block's, and sometimes of many
+      4 -> keys.map(Op.Read.apply),
+      2 -> keys.map(Op.Ahead.apply),
+      2 -> keys.map(Op.Use.apply),
       1 -> Gen.const(Op.Reset)
     )
     val cases = Gen
-      .listOfN(200, Gen.zip(Gen.choose(0L, 6000L), Gen.listOf(op)))
+      .listOfN(200, Gen.zip(budget, Gen.listOf(op)))
       .apply(Gen.Parameters.default, Seed(1484L))
       .toList
       .flatten
@@ -318,11 +327,11 @@ class WarmUtxoStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     }
   }
 
-  test("a write of more entries than the budget holds empties the tier and adds nothing") {
+  test("a write of more entries than a write may stage empties the tier and adds nothing") {
     ok {
       for
         memory <- MemoryUtxoStore[IO]
-        warm <- WarmUtxoStore[IO](memory, Budget.bytes(3 * EntryBytes + 100))
+        warm <- WarmUtxoStore[IO](memory, Budget.bytes(8 * EntryBytes))
         _ <- warm.write(Vector(in(12) -> Some(out(12))), 10)
         before <- warm.held
         _ <- warm.write((13 until 17).map(k => in(k) -> Some(out(k))), 11)
