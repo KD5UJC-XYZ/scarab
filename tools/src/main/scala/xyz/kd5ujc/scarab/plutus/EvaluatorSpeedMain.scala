@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
+import io.circe.Json
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
@@ -10,7 +11,13 @@ import xyz.kd5ujc.scarab.ledger.RecordedRequests
 import xyz.kd5ujc.scarab.plutus.ndc.UplcTurboMain
 import xyz.kd5ujc.scarab.uplc.{Program, ProtocolMajor}
 import xyz.kd5ujc.scarab.uplc.cost.ExBudget
-import xyz.kd5ujc.scarab.uplc.ledger.{LedgerContext, LedgerEval, ScriptResult, VerboseMode}
+import xyz.kd5ujc.scarab.uplc.ledger.{
+  EvaluationError,
+  LedgerContext,
+  LedgerEval,
+  ScriptResult,
+  VerboseMode
+}
 
 /** Development tool (#1499): the speed of the node's script evaluation on recorded scripts, and a
   * digest of every result, so that two builds can be compared on speed and on what they answer.
@@ -116,7 +123,18 @@ object EvaluatorSpeedMain:
     val budget = ExBudget.of(request.budget.steps.toLong, request.budget.mem.toLong)
     Ready(request, context, program, budget)
 
-  private def line(result: ScriptResult): String = result.toString
+  /** A result as one line: its verdict, the machine's error and the failure's cause as a term (a
+    * `Cause` is compared by identity and shows nothing of its term), the budget, and each log line
+    * quoted, so that two results are alike exactly when their lines are.
+    */
+  private def line(result: ScriptResult): String =
+    def quoted(logs: Vector[String]) = logs.map(Json.fromString(_).noSpaces).mkString("[", ",", "]")
+    result match
+      case ScriptResult.Success(spent, logs) => s"success $spent ${quoted(logs)}"
+      case ScriptResult.Failure(EvaluationError.Cek(failure), spent, logs) =>
+        s"failure ${failure.error} cause ${failure.cause.map(_.term)} $spent ${quoted(logs)}"
+      case ScriptResult.Failure(error, spent, logs) => s"failure $error $spent ${quoted(logs)}"
+      case ScriptResult.Unavailable(reason)         => s"unavailable $reason"
 
   private def digest(lines: Vector[String]): String =
     val md = MessageDigest.getInstance("SHA-256")
@@ -132,7 +150,9 @@ object EvaluatorSpeedMain:
     (System.nanoTime() - start, results)
 
   private def load(argument: String): Corpus =
-    if argument == "recorded" then recorded else turbo(Path.of(argument))
+    val corpus = if argument == "recorded" then recorded else turbo(Path.of(argument))
+    if corpus.requests.isEmpty then sys.error(s"$argument holds no script to evaluate")
+    corpus
 
   /** A corpus made ready, for [[EvaluatorCompareMain]], which loads two builds of the evaluator
     * into one JVM (each in a class loader of its own) and alternates their rounds: the digest of
@@ -140,13 +160,13 @@ object EvaluatorSpeedMain:
     */
   final class Session(argument: String):
     private val requests = load(argument).requests.map(ready)
-    private val first = round(requests)._2
-    val digest: String = EvaluatorSpeedMain.digest(first.map(line))
+    private val first = round(requests)._2.map(line)
+    val digest: String = EvaluatorSpeedMain.digest(first)
 
     /** The nanoseconds of one round. */
     def timed(): Long =
       val (ns, results) = round(requests)
-      if results != first then sys.error("a round gave other results than the first")
+      if results.map(line) != first then sys.error("a round gave other results than the first")
       ns
 
   def main(args: Array[String]): Unit =
@@ -160,7 +180,7 @@ object EvaluatorSpeedMain:
     (1 to warmUp).foreach(_ => round(requests))
     val times = (1 to rounds).map { i =>
       val (ns, results) = round(requests)
-      if results != first then sys.error(s"round $i gave other results than the first")
+      if results.map(line) != lines then sys.error(s"round $i gave other results than the first")
       ns
     }.sorted
     val median = times(times.size / 2)
