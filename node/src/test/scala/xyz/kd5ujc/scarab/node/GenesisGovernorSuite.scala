@@ -632,11 +632,11 @@ class GenesisGovernorSuite extends FailsOnUncaught:
             // state 1,000 times
             _ <- during.set(republish.replicateA_(1000))
             _ <- governor.setPhase(Gsm.Phase.Syncing)
-            before <- governor.limitAt(empty)
+            before <- governor.limitAt(empty.anchor)
             selection <- governor.selectionRevision
             after <- governor.run.background.use { _ =>
               (
-                governor.selectionChanged(selection) *> governor.limitAt(empty),
+                governor.selectionChanged(selection) *> governor.limitAt(empty.anchor),
                 disconnected.get *> killed.get,
                 evaluations.get
               ).tupled
@@ -693,7 +693,9 @@ class GenesisGovernorSuite extends FailsOnUncaught:
             // after the snapshot of each of the first six evaluations, the cap it finds is the
             // one the evaluation before committed, and the growing peer's chain gains a header
             _ <- during.set(n =>
-              governor.limitAt(empty).flatMap(cap => committed.update(_ :+ cap.map(_.tip))) *>
+              governor
+                .limitAt(empty.anchor)
+                .flatMap(cap => committed.update(_ :+ cap.map(_.tip))) *>
                 moving.publish(Some(growing(2 + n)), LatestSlot.At(2 + n), false).whenA(n <= 6)
             )
             _ <- governor.setPhase(Gsm.Phase.Syncing)
@@ -761,10 +763,10 @@ class GenesisGovernorSuite extends FailsOnUncaught:
               for
                 observation <- landed.get
                 first <- governor.selectionChanged(selection)
-                cap <- governor.limitAt(empty)
+                cap <- governor.limitAt(empty.anchor)
                 at <- IO.monotonic
                 _ <- governor.selectionChanged(first)
-                next <- governor.limitAt(empty)
+                next <- governor.limitAt(empty.anchor)
                 later <- IO.monotonic
                 losers <- killed.get
               yield (observation.result.map(_.losingPeers), thin.id, cap, at, next, later, losers)

@@ -303,16 +303,7 @@ final class Follower[F[_]: Async, S] private (
     * Storage/ChainDB/Impl/ChainSel.hs:767-777).
     */
   private def limitFor(selected: ChainSelection.Local): F[Option[Fragment]] =
-    genesis.get.flatMap(
-      _.flatTraverse(
-        _.governor.limitAt(
-          Fragment(
-            selected.anchor,
-            selected.blocks.map(_.point).collect { case block: ChainSync.Point.Block => block }
-          )
-        )
-      )
-    )
+    genesis.get.flatMap(_.flatTraverse(_.governor.limitAt(selected.anchor)))
 
   private def registryFor(peer: Peer[F])(using Raise[F, NodeError]): F[InvalidBlocks[F]] =
     for
@@ -391,7 +382,7 @@ final class Follower[F[_]: Async, S] private (
       window.get.map { snapshot =>
         val points = history.entries.reverseIterator.map(_.header.point) ++
           Iterator.single(history.base) ++ history.prefix.reverseIterator.map(_.point)
-        if !points.exists(snapshot.points) then Gsm.Candidate.DoesNotIntersect
+        if !points.exists(snapshot.selection.contains) then Gsm.Candidate.DoesNotIntersect
         else
           Gsm.Candidate.Better(
             ChainSelection.prefersCandidate(tip.tiebreaker, snapshot.selection.tipView, tip.value)
@@ -1060,15 +1051,17 @@ object Follower:
       selection: ChainSelection.Local,
       revision: Long = 0L
   ):
-    val points: Set[ChainSync.Point] =
-      selection.blocks.iterator.map(_.point).toSet + selection.anchor
-    val fragment: Fragment = Fragment(
-      selection.anchor,
-      selection.blocks.map(_.point).collect { case block: ChainSync.Point.Block => block }
-    )
+    // the selection's fragment, carried with it ([[ChainSelection.Local.blockPoints]])
+    val fragment: Fragment = Fragment(selection.anchor, selection.blockPoints)
 
   /** Preserve the full candidate outside selection: advancing or disabling LoE must reconsider
     * headers already downloaded, without requiring another peer announcement.
+    *
+    * The candidate is rebased on the newest of its points on our chain and trimmed to the limit
+    * (`trimToLoE`, ouroboros-consensus 82ecba329 ChainSel.hs:803-845, 1144-1186 at 2416493b), each
+    * searched from the candidate's tip as before, but through the window's carried index
+    * ([[ChainSelection.Local.intersection]]) and by slot on the limit ([[GenesisDensity.trim]]):
+    * nothing the size of the window or the limit is built for it (#1499).
     */
   private[node] def limitCandidate(
       k: Int,
@@ -1076,36 +1069,30 @@ object Follower:
       candidate: ChainSelection.Candidate,
       limit: Option[Fragment]
   ): Option[ChainSelection.Candidate] =
-    val selected = Fragment(
-      current.anchor,
-      current.blocks.map(_.point).collect { case block: ChainSync.Point.Block =>
-        block
-      }
-    )
-    val localPoints = current.anchor +: current.blocks.map(_.point)
-    val localPositions = localPoints.zipWithIndex.toMap
-    val candidatePoints = candidate.base +: candidate.headers.map(_.point)
-    val common = candidatePoints.lastIndexWhere(localPositions.contains)
-    if common < 0 then Some(candidate)
-    else
-      val intersection = candidatePoints(common)
-      val before =
-        current.blocks.take(localPositions.getOrElse(intersection, 0)).map(_.point).collect {
-          case block: ChainSync.Point.Block => block
-        }
-      val extension = candidate.headers.drop(common)
-      val proposed = Fragment(
-        current.anchor,
-        before ++ extension.map(_.point).collect { case block: ChainSync.Point.Block =>
-          block
-        }
-      )
-      GenesisDensity.trim(k, selected, proposed, limit).toOption.map { allowed =>
-        ChainSelection.Candidate(
-          intersection,
-          extension.take((allowed.headers.size - before.size).max(0))
-        )
-      }
+    current.intersection(candidate) match
+      case None => Some(candidate)
+      case Some((common, place)) =>
+        val intersection =
+          if common == 0 then candidate.base else candidate.headers(common - 1).point
+        val selected = current.blockPoints
+        // the blocks up to the intersection; a window block at Origin is not a fragment's block
+        val before =
+          if selected.sizeIs == current.blocks.size then selected.take(place)
+          else
+            current.blocks.take(place).map(_.point).collect { case block: ChainSync.Point.Block =>
+              block
+            }
+        val extension = candidate.headers.drop(common)
+        val proposed = Fragment(current.anchor, before ++ extension.map(_.blockPoint))
+        GenesisDensity
+          .trim(k, Fragment(current.anchor, selected), proposed, limit)
+          .toOption
+          .map { allowed =>
+            ChainSelection.Candidate(
+              intersection,
+              extension.take((allowed.headers.size - before.size).max(0))
+            )
+          }
 
   /** Whether `header` 's block is younger than the immutable tip of `chain`, so that it may still
     * join a chain: a higher block number, or an epoch boundary block of the immutable tip's own

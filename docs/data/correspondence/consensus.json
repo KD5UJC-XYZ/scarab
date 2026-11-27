@@ -4680,6 +4680,34 @@
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/810#issuecomment-7146574621",
    "note": "the newest of the candidate's points on our chain, searched from our newest block: both are chains, so it is the point the reference's binary search finds",
    "digest": "c6c9e4e5d509f0ba"
+  },
+  "def consensus.genesis.GenesisDensity.Fragment#offsetOf": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "symbol": "splitAfterPoint",
+     "lines": [
+      498,
+      508
+     ]
+    },
+    {
+     "repository": "IntersectMBO/ouroboros-network",
+     "revision": "c45735a56c567fa977969173d18943bac6bb3821",
+     "file": "ouroboros-network/api/lib/Ouroboros/Network/AnchoredFragment.hs",
+     "symbol": "pointOnFragment",
+     "lines": [
+      430,
+      432
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "a point found by its slot and then compared whole, as the finger tree's slot measure finds it; a binary search over the headers' slots (#1499)",
+   "digest": "3c27528fd7058cc8"
   }
  },
  "glue": [
@@ -4872,6 +4900,21 @@
    "reason": "the selected chain's index by hash, which chain selection's walks over the processed forest read to tell a selected block and the places a block's predecessor names, where the reference compares points on its AnchoredFragment; Scala plumbing with no counterpart of its own (#810)",
    "definitions": [
     "def consensus.ChainSelection.Local#placesOf"
+   ]
+  },
+  {
+   "reason": "the selection window's members its case class generated, written out now that it carries the index of its blocks; its blocks' points as a Genesis fragment reads them; and the newest point of a candidate on it, searched from the candidate's tip through that index as Follower.limitCandidate searched it before (#1499): Scala plumbing with no counterpart of its own",
+   "definitions": [
+    "val consensus.ChainSelection.Local#anchor",
+    "val consensus.ChainSelection.Local#anchorView",
+    "val consensus.ChainSelection.Local#blocks",
+    "def consensus.ChainSelection.Local#copy",
+    "def consensus.ChainSelection.Local#equals",
+    "def consensus.ChainSelection.Local#hashCode",
+    "def consensus.ChainSelection.Local#toString",
+    "def consensus.ChainSelection.Local.apply",
+    "def consensus.ChainSelection.Local#blockPoints",
+    "def consensus.ChainSelection.Local#intersection"
    ]
   }
  ]
