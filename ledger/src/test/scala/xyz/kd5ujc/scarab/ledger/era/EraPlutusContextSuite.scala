@@ -1725,9 +1725,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
     val era =
       rules.ShelleyUtxow
         .validateMetadata[Conway, TxLevel.Top](scripts, eraParams(c), st)(using t, top)
-        .map(test =>
-          EraUtxoRun.utxowFlat(test)(EraUtxoRun.shelleyW).getOrElse(fail(s"${c.name}: $test"))
-        )
+        .map(test => checked(test)(EraUtxoRun.shelleyW))
     val flat = xyz.kd5ujc.scarab.ledger.TxChecks
       .auxiliaryChecks[Conway](flatParams(c), c.flat, TestLedger.env.copy(decoder = scripts))(using
         ShelleyBasedEra.SConway
@@ -1818,9 +1816,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
     val (_, _, st) = annotated(c, cache)
     val era = rules.BabbageUtxow
       .validateScriptsWellFormed[Conway](scripts, pp, st)
-      .map(test =>
-        EraUtxoRun.utxowFlat(test)(EraUtxoRun.babbageW).getOrElse(fail(s"${c.name}: $test"))
-      )
+      .map(test => checked(test)(EraUtxoRun.babbageW))
     val flat = xyz.kd5ujc.scarab.ledger.TxChecks
       .scriptsWellFormed[Conway](flatPp, c.flat, TestLedger.env.copy(decoder = scripts))(using
         ShelleyBasedEra.SConway
@@ -1871,6 +1867,32 @@ class EraPlutusContextSuite extends munit.FunSuite:
         EvalFailure.Unsupported(BackendFailure.StackExhausted)
       )
     )
+
+  /** A failure of the era's metadata and well-formedness checks in the vocabulary of the flat
+    * checks the eras before Conway run (`TxChecks.auxiliaryChecks`, `scriptsWellFormed`), field by
+    * field: the constructors those checks report.
+    */
+  private def asFlatCheck(f: rules.ConwayUtxowPredFailure[Conway]): PredicateFailure =
+    import rules.ConwayUtxowPredFailure.*
+    import xyz.kd5ujc.scarab.ledger.UtxowFailure as Flat
+    f match
+      case MissingTxBodyMetadataHash(h) => utxow(Flat.MissingTxBodyMetadataHash(h))
+      case MissingTxMetadata(h)         => utxow(Flat.MissingTxMetadata(h))
+      case ConflictingMetadataHash(m)   => utxow(Flat.ConflictingMetadataHash(m.stored))
+      case InvalidMetadata()            => utxow(Flat.InvalidMetadata)
+      case MalformedScriptWitnesses(hs) =>
+        utxow(Flat.MalformedScriptWitnesses(hs.toSortedSet.toSet))
+      case MalformedReferenceScripts(hs) =>
+        utxow(Flat.MalformedReferenceScripts(hs.toSortedSet.toSet))
+      case other => fail(s"not a failure of the metadata or the scripts' form: $other")
+
+  /** An era check's verdict, its failures injected into Conway's by `inject`, in the flat checks'
+    * vocabulary ([[asFlatCheck]]).
+    */
+  private def checked[A](test: RuleTest[A])(
+      inject: A => rules.ConwayUtxowPredFailure[Conway]
+  ): RuleTest[PredicateFailure] =
+    test.leftMap(_.map(a => asFlatCheck(inject(a))))
 
   private def failuresOf(test: RuleTest[PredicateFailure]): Vector[PredicateFailure] =
     RuleTest.failures(test).map(_.toChain.toVector).getOrElse(Vector.empty)
@@ -2275,11 +2297,7 @@ class EraPlutusContextSuite extends munit.FunSuite:
         assertEquals(
           rules.ShelleyUtxow
             .validateMetadata[Conway, TxLevel.Top](decoder, eraParams(c), st)(using t, top)
-            .map(test =>
-              failuresOf(
-                EraUtxoRun.utxowFlat(test)(EraUtxoRun.shelleyW).getOrElse(fail(s"$name: $test"))
-              )
-            ),
+            .map(test => failuresOf(checked(test)(EraUtxoRun.shelleyW))),
           Right(
             if valid then Vector.empty
             else Vector(utxow(xyz.kd5ujc.scarab.ledger.UtxowFailure.InvalidMetadata))

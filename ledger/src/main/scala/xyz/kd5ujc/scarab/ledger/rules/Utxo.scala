@@ -2,14 +2,12 @@
 package xyz.kd5ujc.scarab.ledger.rules
 
 import cats.Monad
-import cats.mtl.{Ask, Raise, Stateful}
+import cats.mtl.{Raise, Stateful}
 import cats.syntax.all.*
 import scala.collection.immutable.SortedMap
-import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   Address,
-  Certificate,
-  RefScripts,
   GenDelegPair,
   LedgerDefect,
   LedgerFailure,
@@ -17,27 +15,27 @@ import xyz.kd5ujc.scarab.ledger.{
   TxChecks,
   PredicateFailure,
   ProtocolParams,
-  TxBody,
   TxIn,
   TxOut,
   TxEnv,
-  UtxowFailure,
-  Value
+  UtxowFailure
 }
 import xyz.kd5ujc.scarab.ledger.state.*
 
-// UTXOW, UTXO and UTXOS for Conway (`Conway/Rules/Utxow.hs`, `Utxo.hs`, `Utxos.hs`, with the Alonzo
-// and Babbage rules they share). They run on the UTxO state (`UTxOState`): the UTxO set, the
-// deposits and fees and donations, and the instant stake the tick reads (SNAP and the DRep pulser
-// take it as the stake of the UTxO). The shared pure predicates live in `TxChecks`; these rules
-// sequence them and maintain the UTxO state, including the instant stake as the set changes.
+// What the flat UTXOW, UTXO and UTXOS of the eras before Conway share (`ShelleyUtxo`): UTXO's
+// environment, the evaluation of the Plutus scripts and UTXOW's checks, with the instant stake of
+// Conway's UTxO state, which the genesis's UTxO set starts. The shared pure predicates live in
+// `TxChecks`. Conway's UTXOW, UTXO and UTXOS run on the era types only (`era/rules`, `ConwayUtxo.
+// conwayUtxoTransition`, `Conway/Rules/Utxo.hs:211-244`; `ConwayUtxos.utxosTransition`,
+// `Conway/Rules/Utxos.hs:207-224`; `BabbageUtxow.babbageUtxowTransition`,
+// `Babbage/Rules/Utxow.hs:308-391`; cardano-ledger f649f975).
 
 /** `UtxoEnv` (`Shelley/Rules/Utxo.hs:107`, cardano-ledger f649f975): the block-level context (the
   * slot), the parameters in force, and the certificate state *before* the transaction's
   * certificates (the refunds of deregistrations are the deposits its accounts hold, which CERTS has
   * already removed from the state that follows, `Conway/Rules/Ledger.hs:429-440`). The certificate
-  * state is the era's (`UtxoEnv era` holds `CertState era`): Conway's here, [[ShelleyCertState]]
-  * for the eras before.
+  * state is the era's (`UtxoEnv era` holds `CertState era`): [[ShelleyCertState]] for the eras
+  * before Conway, none where the rule reads none.
   */
 final case class UtxoEnv[+C](ctx: TxEnv, pp: ProtocolParams, cert: C)
 
@@ -81,70 +79,12 @@ object InstantStakeOps:
       .foldLeft(withAdded)((m, out) => m.flatMap(adjust(_, out, -1)))
       .map(ConwayInstantStake(_))
 
-/** The deposits a transaction pays and the refunds it collects, from the certificate state before
-  * it (`certsTotalDepositsTxBody`, `certsTotalRefundsTxBody`, `Conway/TxCert.hs`).
-  */
-object Deposits:
-  def of(pp: ProtocolParams, cert: ConwayCertState, body: TxBody): (BigInt, BigInt) =
-    val pools = CertLens.pools.get(cert)
-    val accounts = CertLens.accounts.get(cert)
-    val newPools = body.certificates.collect {
-      case Certificate.RegisterPool(p)
-          if !Convert.keyHash[StakePool](p.operator).toOption.exists(pools.contains) =>
-        p.operator
-    }.toSet
-    val keyDeposits = body.certificates.count {
-      case Certificate.Register(_, _)             => true
-      case Certificate.Delegate(_, _, _, Some(_)) => true
-      case _                                      => false
-    }
-    val drepDeposits = body.certificates.count {
-      case Certificate.RegisterDRep(_, _, _) => true
-      case _                                 => false
-    }
-    val deposits = pp.keyDeposit * keyDeposits + pp.poolDeposit * newPools.size +
-      pp.drepDeposit * drepDeposits + pp.govActionDeposit * body.proposals.size
-    val (_, refunds) =
-      body.certificates.foldLeft((Set.empty[xyz.kd5ujc.scarab.ledger.Credential], BigInt(0))) {
-        case ((regs, total), cert) =>
-          cert match
-            case Certificate.Register(c, _)             => (regs + c, total)
-            case Certificate.Delegate(c, _, _, Some(_)) => (regs + c, total)
-            case Certificate.Unregister(c, _) =>
-              if regs.contains(c) then (regs - c, total + pp.keyDeposit)
-              else
-                (
-                  regs,
-                  total + Convert
-                    .credential[Staking](c)
-                    .toOption
-                    .flatMap(accounts.get)
-                    .fold(BigInt(0))(_.deposit.toBigInt)
-                )
-            case Certificate.UnregisterDRep(_, refund) => (regs, total + refund)
-            case _                                     => (regs, total)
-      }
-    (deposits, refunds)
-
-/** UTXOS (`Conway/Rules/Utxos.hs:207`, `utxosTransition`, cardano-ledger `f649f975`): the
-  * evaluation of the Plutus scripts, whose verdict must equal the block's `is_valid` flag (a
-  * transaction flagged invalid must have a script that fails, one flagged valid none). The state is
-  * the node's counters of what was evaluated.
+/** UTXOS of the eras before Conway (`ShelleyUtxo`, with Babbage's evaluation, cardano-ledger
+  * `f649f975`): the evaluation of the Plutus scripts, whose verdict must equal the block's
+  * `is_valid` flag (a transaction flagged invalid must have a script that fails, one flagged valid
+  * none). The state is the node's counters of what was evaluated.
   */
 object Utxos:
-  /** UTXOS of the era `E`, Conway's or Dijkstra's, which collects the era's scripts and contexts.
-    */
-  def sts[E <: EraTag](using
-      ShelleyBasedEra[E]
-  ): JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFailure, LedgerFailure] =
-    new JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFailure, LedgerFailure]:
-      def transition[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
-          ask: Ask[F, Globals],
-          st: Stateful[F, PlutusStats],
-          raise: Raise[F, LedgerFailure],
-          judge: Judge[F, PredicateFailure]
-      ): F[Unit] = scripts[F, E](env, ann)
-
   /** `expectScriptsToPass` (`Babbage/Rules/Utxos.hs:132-155`, cardano-ledger f649f975) and
     * `babbageEvalScriptsTxInvalid` (`Babbage/Rules/Utxos.hs:194-220`): the contexts of the scripts
     * are collected, and the scripts are evaluated only if nothing failed so far in the judgment
@@ -177,136 +117,16 @@ object Utxos:
       _ <- next.traverse_(st.set)
     yield ()
 
-/** UTXO (`Conway/Rules/Utxo.hs:211` (cardano-ledger f649f975), `conwayUtxoTransition`, with
-  * `babbageUtxoValidation`, `Babbage/Rules/Utxo.hs:325`): the validity of the transaction against
-  * the parameters and the UTxO set, UTXOS, and then the change of the state (`updateUTxOState`):
-  * the set, the instant stake, the fees, the deposits and the donation of a valid transaction, the
-  * collateral of one that failed phase 2.
-  */
-object Utxo
-    extends JudgedSts[UtxoEnv[ConwayCertState], Counted[
-      UTxOState[Conway]
-    ], StAnnTx, PredicateFailure, LedgerFailure]:
-  given Embed[PlutusStats, Counted[UTxOState[Conway]], LedgerFailure, LedgerFailure] =
-    Embed(Counted.plutus[UTxOState[Conway]], identity)
-
-  /** The checks of UTXO (`babbageUtxoValidation`, [[UtxoTests.babbage]]): the minimum fee counts
-    * the reference scripts (`getMinFeeTxUtxo`, `Conway/Tx.hs`), and the value consumed and produced
-    * count the refunds, deposits and the donation.
-    */
-  def validate(
-      env: UtxoEnv[ConwayCertState],
-      ann: StAnnTx,
-      deposits: BigInt,
-      refunds: BigInt
-  ): Test[PredicateFailure] =
-    val tx = ann.tx
-    val body = tx.body
-    val pp = env.pp
-    val wits = tx.witnesses
-    val scriptFee =
-      (pp.priceMem * Rational(wits.totalExUnits.mem) + pp.priceSteps * Rational(
-        wits.totalExUnits.steps
-      )).ceil
-    val minFee =
-      pp.minFeeA * tx.size + pp.minFeeB + scriptFee +
-        RefScripts.tierRefScriptFee(
-          pp.minFeeRefScriptCostPerByte,
-          RefScripts.refScriptsSize(ann.utxo, body)
-        )
-    val withdrawn = body.withdrawals.valuesIterator.map(_.value).sum
-    val consumed = Value.sum(
-      ann.spent.iterator.map(_.value) ++
-        Iterator(Value.coin(withdrawn + refunds), Value.minted(body.mint))
-    )
-    val produced = Value.sum(
-      body.outputs.iterator.map(_.value) ++
-        Iterator(Value.coin(body.fee + deposits + body.donation), Value.burned(body.mint))
-    )
-    UtxoTests.babbage[Conway](pp, env.ctx, ann, minFee, consumed, produced)
-
-  /** `updateUTxOState` and `updateTreasuryDonation` (`Babbage/Rules/Utxo.hs:449` (cardano-ledger
-    * f649f975), `Conway/Rules/Utxo.hs:201`). The outputs created and staked are `txouts` 's
-    * (`Shelley/Rules/Utxo.hs:613-628`), none past index 65,535 ([[TxIn.txouts]]); a collateral
-    * return's input is `mkCollateralTxIn` 's ([[TxIn.collOuts]], `Babbage/Rules/Utxo.hs:474-486`).
-    */
-  def update(
-      s: UTxOState[Conway],
-      ann: StAnnTx,
-      collateral: TxChecks.Collateral,
-      deposits: BigInt,
-      refunds: BigInt
-  ): Either[VocabError, UTxOState[Conway]] =
-    val tx = ann.tx
-    val body = tx.body
-    val id = ann.id
-    val utxo = s.utxo.utxo
-    if tx.isValid then
-      val created = TxIn.txouts(id, body.outputs)
-      for
-        stake <- InstantStakeOps.update(
-          s.instantStake,
-          created.map(_._2),
-          body.inputs.distinct.sorted.flatMap(utxo.get)
-        )
-        deposited = Coin(s.deposited.value + deposits - refunds)
-        fees = Coin(s.fees.value + body.fee)
-        donation = Coin(s.donation.value + body.donation)
-      yield s.copy(
-        utxo = UtxoTables(utxo -- body.inputs ++ created),
-        deposited = deposited,
-        fees = fees,
-        instantStake = stake,
-        donation = donation
-      )
-    else
-      val returned = TxIn.collOuts(id, body.outputs.size, body.collateralReturn)
-      for
-        stake <- InstantStakeOps.update(
-          s.instantStake,
-          returned.map(_._2),
-          collateral.outputs
-        )
-        fees = Coin(s.fees.value + collateral.fee)
-      yield s.copy(
-        utxo = UtxoTables(utxo -- body.collateral ++ returned),
-        fees = fees,
-        instantStake = stake
-      )
-
-  def transition[F[_]: Monad](env: UtxoEnv[ConwayCertState], ann: StAnnTx)(using
-      ask: Ask[F, Globals],
-      st: Stateful[F, Counted[UTxOState[Conway]]],
-      raise: Raise[F, LedgerFailure],
-      judge: Judge[F, PredicateFailure]
-  ): F[Unit] =
-    val (deposits, refunds) = Deposits.of(env.pp, env.cert, ann.tx.body)
-    val collateral = TxChecks.collateral[Conway](ann.utxo, ann.tx)
-    for
-      _ <- Sts.runTest[F, PredicateFailure](validate(env, ann, deposits, refunds))
-      _ <- JudgedSts.trans[F, UtxoEnv[Any], PlutusStats, Counted[
-        UTxOState[Conway]
-      ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxos.sts[Conway], env, ann)
-      s <- st.get
-      next <- Refuse.vocab[F, UTxOState[Conway]](
-        update(s.state, ann, collateral, deposits, refunds)
-      )
-      _ <- st.set(s.copy(state = next))
-    yield ()
-
-/** UTXOW (`Babbage/Rules/Utxow.hs:308`, `babbageUtxowTransition`, as Conway's UTXOW runs it,
-  * cardano-ledger `f649f975`, with the Alonzo and Shelley rules it extends): the scripts the
-  * transaction provides are the ones it needs, its datums and redeemers match the Plutus scripts,
-  * the signatures, the auxiliary data, the scripts are well formed and the script integrity hash;
-  * then UTXO (`trans`). Every check records its failures and the rule goes on.
+/** UTXOW's checks of the eras before Conway (`ShelleyUtxo`; Shelley's, Alonzo's and Babbage's
+  * `Rules/Utxow.hs`, cardano-ledger `f649f975`): the scripts the transaction provides are the ones
+  * it needs, its datums and redeemers match the Plutus scripts, the signatures, the auxiliary data,
+  * the scripts are well formed and the script integrity hash. Every check records its failures and
+  * the rule goes on.
   *
   * An input the UTxO set does not hold needs nothing here (the checks read `txIns ◁ utxo`); UTXO
   * reports it.
   */
-object Utxow
-    extends JudgedSts[UtxoEnv[ConwayCertState], Counted[
-      UTxOState[Conway]
-    ], StAnnTx, PredicateFailure, LedgerFailure]:
+object Utxow:
   private def utxow(f: UtxowFailure): PredicateFailure = PredicateFailure.utxow(f)
 
   /** The checks of UTXOW of the era `E`, whatever the protocol version, in the reference's order,
@@ -444,16 +264,3 @@ object Utxow
         .lift[F, LedgerFailure, Test[PredicateFailure]](check)
         .flatMap(test => Sts.runTest[F, PredicateFailure](test))
     )
-
-  def transition[F[_]: Monad](env: UtxoEnv[ConwayCertState], ann: StAnnTx)(using
-      ask: Ask[F, Globals],
-      st: Stateful[F, Counted[UTxOState[Conway]]],
-      raise: Raise[F, LedgerFailure],
-      judge: Judge[F, PredicateFailure]
-  ): F[Unit] =
-    for
-      _ <- record[F](checks[Conway](env, Map.empty, ann, Test.pass))
-      _ <- JudgedSts.trans[F, UtxoEnv[ConwayCertState], Counted[UTxOState[Conway]], Counted[
-        UTxOState[Conway]
-      ], StAnnTx, PredicateFailure, LedgerFailure, LedgerFailure](Utxo, env, ann)
-    yield ()

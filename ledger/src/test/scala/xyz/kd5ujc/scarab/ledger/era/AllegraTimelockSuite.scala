@@ -204,15 +204,23 @@ class AllegraTimelockSuite extends munit.FunSuite:
       .toSet
     val hashes = scripts.map(_._1)
     val verdicts = Vector(hashes.toSet, Set(hashes(1)), Set.empty[Bytes]).map { needed =>
-      val ours = EraUtxoRun
-        .utxowFlat(
-          rules.BabbageUtxow
-            .validateFailedBabbageScripts[Conway, TxLevel.Top](conway, provided, needed)(using
-              t,
-              t.bodyOf.top
-            )
-        )(EraUtxoRun.shelleyW)
-        .getOrElse(fail("no flat form"))
+      // the failing scripts' hashes, in the flat check's vocabulary, which the eras before Conway run
+      val ours = rules.BabbageUtxow
+        .validateFailedBabbageScripts[Conway, TxLevel.Top](conway, provided, needed)(using
+          t,
+          t.bodyOf.top
+        )
+        .leftMap(
+          _.map(f =>
+            EraUtxoRun.shelleyW(f) match
+              case rules.ConwayUtxowPredFailure.ScriptWitnessNotValidatingUTXOW(hs) =>
+                xyz.kd5ujc.scarab.ledger.PredicateFailure.utxow(
+                  xyz.kd5ujc.scarab.ledger.UtxowFailure
+                    .ScriptWitnessNotValidating(hs.toSortedSet.toSet)
+                )
+              case other => fail(s"not a failing script's failure: $other")
+          )
+        )
       assertEquals(
         Right(ours),
         xyz.kd5ujc.scarab.ledger.TxChecks

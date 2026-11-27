@@ -151,7 +151,7 @@ object EraLedgerRun:
     */
   def flatCollect(
       error: CollectError[Conway],
-      purpose: EraUtxoRun.Purposes
+      purpose: conway.ConwayPlutusPurpose[AsItem] => Option[xyz.kd5ujc.scarab.ledger.Purpose]
   ): Option[xyz.kd5ujc.scarab.ledger.CollectError] =
     import xyz.kd5ujc.scarab.ledger.{CollectError as Flat, TranslationError as T}
     error match

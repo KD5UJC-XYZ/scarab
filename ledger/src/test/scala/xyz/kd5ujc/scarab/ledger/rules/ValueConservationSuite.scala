@@ -16,10 +16,10 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.TestLedger.*
 import xyz.kd5ujc.scarab.ledger.state.*
 
-/** The value consumed and produced of the UTXO rule with a mint field, in Conway ([[Utxo]]) and in
-  * Mary, Alonzo and Babbage ([[UtxoChecks]]): the minted assets consumed and the burned produced
-  * (`getConsumedMaryValue` and `burnedMultiAssets`, cardano-ledger f649f975 `Mary/UTxO.hs:72-97`),
-  * not the signed field on one side.
+/** The value consumed and produced of the UTXO rule with a mint field, in Conway (on the era types,
+  * `conwayUtxoTransition`) and in Mary, Alonzo and Babbage ([[UtxoChecks]]): the minted assets
+  * consumed and the burned produced (`getConsumedMaryValue` and `burnedMultiAssets`, cardano-ledger
+  * f649f975 `Mary/UTxO.hs:72-97`), not the signed field on one side.
   */
 class ValueConservationSuite extends FunSuite:
   private val policy = Bytes.fromArray(Array.fill(28)(5.toByte))
@@ -30,34 +30,39 @@ class ValueConservationSuite extends FunSuite:
     case PredicateFailure.Utxow(UtxowFailure.Utxo(f @ UtxoFailure.ValueNotConserved(_))) => f
   }
 
-  test("burning two tokens of one held reports one consumed and two produced") {
-    val held = TxOut(owner.address(), Value(10, Map(policy -> Map(name -> BigInt(1)))))
-    val b = body(
-      "burn",
-      Vector(txIn(1)),
-      Vector(out(owner.address(), 9)),
-      1,
-      mint = Map(policy -> Map(name -> BigInt(-2)))
+  test("burning two tokens of one held reports one consumed and two produced, in Conway") {
+    import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
+    import xyz.kd5ujc.scarab.ledger.testByteStrings
+    import ConwayTestKit.Cb.*
+    // the output held, `[address, [10, {policy: {name: 1}}]]`, with its true bytes
+    val heldRaw = arr(
+      bytes(owner.address().raw),
+      arr(uint(10), map(bytes(policy) -> map(bytes(name) -> uint(1))))
     )
-    val t = tx(b, Vector(owner))
+    val heldOut = TxOut.fromBytes(heldRaw).fold(e => fail(e.message), identity)
+    val built = ConwayTestKit.tx(
+      ConwayTestKit.Body(
+        Vector(txIn(1)),
+        Vector(ConwayTestKit.out(owner.address(), 9)),
+        1,
+        mint = Map(policy -> Map(name -> BigInt(-2)))
+      ),
+      Vector(owner)
+    )
     val pp = params(10)
-    val cert = NewEpochState.empty[Conway](EpochNo.fromUnsigned(5), pp).es.ls.cert
-    val test = Utxo.validate(
-      UtxoEnv(TestLedger.env, pp, cert),
-      StAnnTx(t, NodeUtxo(Map(txIn(1) -> held))),
-      0,
-      0
-    )
+    val ls = NewEpochState.empty[Conway](EpochNo.fromUnsigned(5), pp).es.ls
+    val state = ls.utxo.copy[Conway](utxo = UtxoTables(NodeUtxo.fromMap(Map(txIn(1) -> heldOut))))
+    val failures = xyz.kd5ujc.scarab.ledger.era.EraUtxoRun
+      .judge(built.typed, pp, ls.cert, state)
+      .fold(d => fail(s"a defect: $d"), _.left.toOption.fold(Vector.empty)(_.toChain.toVector))
     assertEquals(
-      valueFailure(Test.failures(test).fold(Vector.empty)(_.toChain.toVector)),
-      Vector(
-        UtxoFailure.ValueNotConserved(
-          Mismatch(
-            Value(10, Map(policy -> Map(name -> BigInt(1)))),
-            Value(10, Map(policy -> Map(name -> BigInt(2))))
+      failures.collect {
+        case xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxoPredFailure.ValueNotConservedUTxO(m) =>
+          UtxoFailure.ValueNotConserved(
+            m.storedBy(xyz.kd5ujc.scarab.ledger.era.StoredTxOut.conway.storedValue)
           )
-        )
-      )
+      },
+      oneConsumedTwoProduced
     )
   }
 

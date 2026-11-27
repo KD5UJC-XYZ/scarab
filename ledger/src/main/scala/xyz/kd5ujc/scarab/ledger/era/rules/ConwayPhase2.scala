@@ -276,16 +276,30 @@ object ConwayPhase2:
       outcome
     )
 
+  /** The flat form of a missing redeemer's purpose, which the case files name it in
+    * ([[storedErrors]]): the needed purpose whose item it is, with its index, in its flat form
+    * (`ConwayPlutusPurpose.toStored`), its spent output read from `utxo`.
+    */
+  private def storedPurposes(
+      scriptsNeeded: AlonzoScriptsNeeded[Conway],
+      utxo: UTxO[Conway]
+  ): ConwayPlutusPurpose[AsItem] => Option[xyz.kd5ujc.scarab.ledger.Purpose] =
+    val toAsItem = ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsItem](
+      [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
+    )
+    val byItem = scriptsNeeded.unAlonzoScriptsNeeded.map((sp, _) => toAsItem(sp) -> sp).toMap
+    p => byItem.get(p).flatMap(ConwayPlutusPurpose.toStored(_, utxo))
+
   /** The failures `errors` of the collection of the observed transaction's scripts
     * ([[Observation]]) in the node's flat vocabulary (`ledger.CollectError`), which the node's case
     * files (`--plutus-cases`) name them in, as they named the flat rules' collection's: glue until
     * the case files name the era's failures, not a function of the reference. A missing redeemer's
     * purpose, and one a context has no form for, are given their flat form by the purposes the
-    * transaction needs in the outputs it spends and reads
-    * (`ConwayUtxowPredFailure.storedPurposes`), a certificate by [[ConwayTxCert.toStored]], the
-    * votes and proposals by their own. A purpose not among them, which a failure of the collection
-    * names never, and an impossible context (`ImpossibleContextError`), which the flat vocabulary
-    * has no form of, are left as they are (`Left`).
+    * transaction needs in the outputs it spends and reads ([[storedPurposes]]), a certificate by
+    * [[ConwayTxCert.toStored]], the votes and proposals by their own. A purpose not among them,
+    * which a failure of the collection names never, and an impossible context
+    * (`ImpossibleContextError`), which the flat vocabulary has no form of, are left as they are
+    * (`Left`).
     */
   def storedErrors(
       observation: Observation,
@@ -299,7 +313,7 @@ object ConwayPhase2:
         StoredTxOut.conway.fromStored(out).toOption.map(in -> _)
       )
     )
-    val purpose = ConwayUtxowPredFailure.storedPurposes(
+    val purpose = storedPurposes(
       u.getScriptsNeeded[TxLevel.Top](utxo, t.body[TxLevel.Top](observation.tx))(using
         u.txOf.bodyOf.top
       ),

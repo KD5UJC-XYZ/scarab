@@ -13,6 +13,8 @@ import xyz.kd5ujc.scarab.ledger.{
   Utxo as NodeUtxo
 }
 import xyz.kd5ujc.scarab.ledger.state.*
+import xyz.kd5ujc.scarab.ledger.era.EraUtxoRun
+import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 
 /** A transaction's outputs are numbered with the bounded `TxIx`, a `Word16`
@@ -90,46 +92,42 @@ class TxOutsBoundSuite extends FunSuite:
     )
   }
 
+  /** An output to the same base address, with its true bytes, for Conway's decoder. */
+  private val conwayOut = ConwayTestKit.out(owner.baseAddress(staking), 2_000_000)
+  private val conwayHeld = ConwayTestKit.out(owner.baseAddress(staking), 3_000_000)
+
   test("Conway's UTXO creates and stakes the outputs txouts creates, 65,536 of 65,537") {
-    val utxo = NodeUtxo.fromMap(Map(spent -> held))
-    val state = Empty.ledgerState[Conway](TestLedger.params(10)).utxo
-    val start = state.copy[Conway](utxo = UtxoTables(utxo))
-    val outs = Vector.fill(Count)(out)
-    val b = body(outs)
-    val next = Utxo
-      .update(
-        start,
-        StAnnTx(TestLedger.tx(b, Vector.empty), utxo),
-        TxChecks.Collateral.none,
-        0,
-        0
-      )
-      .fold(e => fail(e.toString), identity)
-    val created = next.utxo.utxo.toMap.keySet.filter(_.id == b.id)
+    val utxo = NodeUtxo.fromMap(Map(spent -> conwayHeld))
+    val ls = Empty.ledgerState[Conway](TestLedger.params(10))
+    val start = ls.utxo.copy[Conway](utxo = UtxoTables(utxo))
+    val outs = Vector.fill(Count)(conwayOut)
+    val tx = ConwayTestKit.tx(ConwayTestKit.Body(Vector(spent), outs, 0), Vector.empty)
+    val (next, _) = EraUtxoRun.update(tx.typed, TestLedger.params(10), ls.cert, start)
+    val created = next.utxo.utxo.toMap.keySet.filter(_.id == tx.id)
     assertEquals(created.size, 65536)
     assertEquals(
       Right(next.instantStake),
-      InstantStakeOps.update(start.instantStake, outs.take(65536), Vector(held))
+      InstantStakeOps.update(start.instantStake, outs.take(65536), Vector(conwayHeld))
     )
   }
 
   test("a failed transaction of 65,536 outputs returns its collateral at index 65,535") {
-    val utxo = NodeUtxo.fromMap(Map(spent -> held))
-    val start = Empty
-      .ledgerState[Conway](TestLedger.params(10))
-      .utxo
-      .copy[Conway](utxo = UtxoTables(utxo))
-    val b = body(Vector.fill(65536)(out), Some(out))
-    val next = Utxo
-      .update(
-        start,
-        StAnnTx(TestLedger.tx(b, Vector.empty, isValid = false), utxo),
-        TxChecks.Collateral(Vector(held), 1_000_000),
+    val utxo = NodeUtxo.fromMap(Map(spent -> conwayHeld))
+    val ls = Empty.ledgerState[Conway](TestLedger.params(10))
+    val start = ls.utxo.copy[Conway](utxo = UtxoTables(utxo))
+    val tx = ConwayTestKit.tx(
+      ConwayTestKit.Body(
+        Vector(spent),
+        Vector.fill(65536)(conwayOut),
         0,
-        0
-      )
-      .fold(e => fail(e.toString), identity)
-    assertEquals(next.utxo.utxo.toMap.keySet.filter(_.id == b.id), Set(TxIn(b.id, 65535)))
+        collateral = Vector(spent),
+        collateralReturn = Some(conwayOut)
+      ),
+      Vector.empty,
+      isValid = false
+    )
+    val (next, _) = EraUtxoRun.update(tx.typed, TestLedger.params(10), ls.cert, start)
+    assertEquals(next.utxo.utxo.toMap.keySet.filter(_.id == tx.id), Set(TxIn(tx.id, 65535)))
   }
 
   test("Mary checks the outputs txouts creates, Shelley every output") {

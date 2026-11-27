@@ -6,16 +6,11 @@ import cats.data.{Chain, NonEmptyChain}
 import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
 import monocle.Lens
-import xyz.kd5ujc.scarab.ledger.{
-  CollectError as FlatCollectError,
-  PredicateFailure,
-  TestLedger,
-  UtxoFailure,
-  UtxosFailure,
-  UtxowFailure
-}
+import xyz.kd5ujc.scarab.ledger.{ProtocolParams, TestLedger, TxEnv}
+import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTestKit, ConwayTx}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   AlonzoUtxoEvent,
+  BabbageUtxo,
   ConwayUtxo,
   ConwayUtxoPredFailure,
   ConwayUtxosEvent,
@@ -25,10 +20,9 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   UtxoStateDefect
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Judge, Judgment, RuleT, contramap, focus}
-import xyz.kd5ujc.scarab.ledger.state.{Conway, UTxOState}
+import xyz.kd5ujc.scarab.ledger.state.{Conway, ConwayCertState, UTxOState}
 import xyz.kd5ujc.scarab.plutus.{
   EvalFailure,
-  EvalRequest,
   EvalResult,
   ScriptEvaluator,
   ScriptFailure as UplcScriptFailure
@@ -36,9 +30,10 @@ import xyz.kd5ujc.scarab.plutus.{
 import xyz.kd5ujc.scarab.uplc.cek.CekError
 import xyz.kd5ujc.scarab.uplc.ledger.EvaluationError
 
-/** Conway's UTXO on the era types (`ConwayUtxo.conwayUtxoTransition`) run in one judgment, and the
-  * form its failures and the flat UTXO's are compared in, for the suites that compare the two
-  * (`EraUtxoSuite`, and `ConwayUtxoChecksSuite` in the node).
+/** Conway's UTXO and UTXOW on the era types (`ConwayUtxo.conwayUtxoTransition`,
+  * `BabbageUtxow.babbageUtxowTransition`) run in one judgment, with what their judgments are
+  * recorded and checked by, for the suites that hold them to the flat rules' recorded judgments
+  * (`EraUtxoSuite`, `ConwayUtxoChecksSuite` and `ConwayUtxowChecksSuite` in the node).
   */
 object EraUtxoRun:
   type Rec = UtxoPredFailure[Conway]
@@ -94,6 +89,64 @@ object EraUtxoRun:
       )(globals, (state, Chain.empty))
       .map(_.map(_._1))
 
+  /** Conway's UTXO whole on `tx`, one level down (its failures in their order), from `state` and
+    * the UTxO set it holds, with the parameters `pp` (as stored) and the certificate state `cert`,
+    * under `ctx`: its slot, clock, network, policy, build and evaluator.
+    */
+  def judge(
+      tx: ConwayTx,
+      pp: ProtocolParams,
+      cert: ConwayCertState,
+      state: UTxOState[Conway],
+      ctx: TxEnv = TestLedger.env
+  ): Either[Defect, Either[NonEmptyChain[Rec], S]] =
+    val params = PParams[Conway](
+      ConwayPParams.fromStored(pp).fold(e => munit.Assertions.fail(s"parameters: $e"), identity)
+    )
+    val clock = ctx.clock.getOrElse(munit.Assertions.fail("the environment has no clock"))
+    val utxo = conway.ConwayUTxO
+      .fromStored(state.utxo.utxo.toMap)
+      .fold(e => munit.Assertions.fail(s"outputs: $e"), identity)
+    run(
+      UtxoEnv(ctx.slot, params, cert),
+      AlonzoStAnnTx.mkAlonzoStAnnTx[Conway](clock.posix, params, utxo, Map.empty, tx),
+      ConwayTestKit.contextOf(ctx),
+      state,
+      ctx.evaluator,
+      asSubRule = true
+    )
+
+  private type H[A] = RuleT[Nothing, UtxoStateDefect, Events, A]
+
+  private given Tell[H, Events] = new Tell[H, Events]:
+    val functor: Functor[H] = summon[Monad[H]]
+    def tell(events: Events): H[Unit] = summon[Stateful[H, Events]].modify(_ ++ events)
+
+  /** Conway's change of the UTxO state on `tx` from `state` (Babbage's `updateUTxOState` after
+    * Conway's `updateTreasuryDonation`, as `conwayUtxoTransition` runs them after UTXOS), with
+    * UTXO's events, the parameters `pp` as stored.
+    */
+  def update(
+      tx: ConwayTx,
+      pp: ProtocolParams,
+      cert: ConwayCertState,
+      state: UTxOState[Conway]
+  ): (UTxOState[Conway], Events) =
+    val params = PParams[Conway](
+      ConwayPParams.fromStored(pp).fold(e => munit.Assertions.fail(s"parameters: $e"), identity)
+    )
+    Judgment.judge(
+      BabbageUtxo.updateUTxOState[H, Conway](
+        params,
+        cert,
+        tx,
+        ConwayUtxo.updateTreasuryDonation[Conway](tx, state)
+      ),
+      RuleT.Policy.Accumulate
+    )(TestLedger.globals, Chain.empty) match
+      case Right(Right((events, next))) => (next, events)
+      case other                        => munit.Assertions.fail(s"the change of the state: $other")
+
   /** Conway's UTXOW (`BabbageUtxow.babbageUtxowTransition`) run in one judgment, as [[run]] runs
     * UTXO: its defects are UTXO's or the node's (`LedgerDefect`), its events UTXOW's.
     */
@@ -148,20 +201,6 @@ object EraUtxoRun:
           RuleT.Policy.Accumulate
         )(globals, (state, Chain.empty))
         .map(_.map(_._1))
-
-    /** An era failure in the comparison's form, a missing redeemer's purpose by `purpose`; none
-      * where `purpose` does not give one ([[collectForm]]).
-      */
-    def eraForm(f: rules.ConwayUtxowPredFailure[Conway], purpose: Purposes): Option[Failure] =
-      rules.ConwayUtxowPredFailure
-        .toStored(f, purpose)
-        .fold(
-          {
-            case rules.UtxowUnprojected.CollectErrors(es)   => collectForm(es, purpose)
-            case rules.UtxowUnprojected.MissingRedeemers(_) => None
-          },
-          form
-        )
 
     /** The counters UTXOS's events give, through UTXOW's and UTXO's embeddings ([[counters]]). */
     def counters(valid: Boolean, events: WEvents): Option[(Long, Long, Long)] =
@@ -223,75 +262,7 @@ object EraUtxoRun:
       evaluator
     )
 
-  /** A collection's failure: a missing redeemer by its purpose in the flat form, a missing script
-    * by its hash, a missing cost model by its language, and a context's failure to translate by its
-    * kind alone, its contents being `EraPlutusContextSuite` 's: the flat failure holds them in its
-    * own vocabulary.
-    */
-  enum Collect:
-    case NoRedeemer(purpose: xyz.kd5ujc.scarab.ledger.Purpose)
-    case NoWitness(script: xyz.kd5ujc.scarab.codec.Bytes)
-    case NoCostModel(language: xyz.kd5ujc.scarab.plutus.PlutusLanguage)
-    case BadTranslation
-
-  /** The flat form of a missing redeemer's purpose (`ConwayUtxowPredFailure.storedPurposes`). */
-  type Purposes =
-    conway.ConwayPlutusPurpose[AsItem] => Option[xyz.kd5ujc.scarab.ledger.Purpose]
-
-  /** The era's collection errors in the comparison's form; none where a missing redeemer's purpose
-    * has no flat form by `purpose`, so that the comparison fails rather than drop it.
-    */
-  def collectForm(
-      es: cats.data.NonEmptyList[CollectError[Conway]],
-      purpose: Purposes
-  ): Option[Failure] =
-    es.toList
-      .traverse {
-        case CollectError.NoRedeemer(p)     => purpose(p).map(Collect.NoRedeemer(_))
-        case CollectError.NoWitness(h)      => Some(Collect.NoWitness(h))
-        case CollectError.NoCostModel(l)    => Some(Collect.NoCostModel(l))
-        case CollectError.BadTranslation(_) => Some(Collect.BadTranslation)
-      }
-      .map(Failure.CollectErrors(_))
-
-  /** A failure as the comparison sees it: UTXO's own in the node's flat form, UTXOS's collection
-    * errors as [[Collect]] has them, and a script's failure by its cause and request.
-    */
-  enum Failure:
-    case Utxo(failure: PredicateFailure)
-    case CollectErrors(kinds: List[Collect])
-    case PassedUnexpectedly(flag: Boolean)
-    case FailedUnexpectedly(flag: Boolean, scripts: List[(Cause, EvalRequest)])
-
-  /** A flat failure in the comparison's form; none for a script's failure without its request,
-    * which the flat rule always gives.
-    */
-  def form(f: PredicateFailure): Option[Failure] = f match
-    case PredicateFailure.Utxow(UtxowFailure.Utxo(UtxoFailure.Utxos(failure))) =>
-      failure match
-        case UtxosFailure.CollectErrors(es) =>
-          Some(Failure.CollectErrors(es.toVector.toList.map {
-            case FlatCollectError.NoRedeemer(p)     => Collect.NoRedeemer(p)
-            case FlatCollectError.NoWitness(h)      => Collect.NoWitness(h)
-            case FlatCollectError.NoCostModel(l)    => Collect.NoCostModel(l)
-            case FlatCollectError.BadTranslation(_) => Collect.BadTranslation
-          }))
-        case UtxosFailure.ValidationTagMismatch(flag, None) =>
-          Some(Failure.PassedUnexpectedly(flag))
-        case UtxosFailure.ValidationTagMismatch(flag, Some(fs)) =>
-          fs.toList
-            .traverse(f => f.request.map(cause(f.cause) -> _))
-            .map(Failure.FailedUnexpectedly(flag, _))
-    case other => Some(Failure.Utxo(other))
-
-  /** An era failure in the comparison's form, through the node's flat form where it has one, a
-    * missing redeemer's purpose by `purpose`; none where `purpose` does not give one
-    * ([[collectForm]]).
-    */
-  def eraForm(f: ConwayUtxoPredFailure[Conway], purpose: Purposes): Option[Failure] =
-    ConwayUtxoPredFailure.toStored(f).fold(collectForm(_, purpose), form)
-
-  /** The counters the flat UTXOS keeps (`PlutusStats`), as UTXO's events give them: one passing
+  /** The counters the flat UTXOS kept (`PlutusStats`), as UTXO's events give them: one passing
     * transaction if a transaction flagged valid told its scripts passed, one failing if any told
     * they failed, and every script told; none where an event of a kind is told twice, which UTXOS
     * never does.
@@ -308,22 +279,6 @@ object EraUtxoRun:
         if failed.nonEmpty then 1L else 0L,
         (passed ++ failed).sum.toLong
       )
-    )
-
-  /** A UTXOW predicate's verdict in the node's flat form, its failures injected into Conway's
-    * (`inject`) and projected (`ConwayUtxowPredFailure.toStored`, a missing redeemer's purpose by
-    * `purpose`); none where a failure has no flat form so.
-    */
-  def utxowFlat[A](test: xyz.kd5ujc.scarab.ledger.rules.Test[A])(
-      inject: A => rules.ConwayUtxowPredFailure[Conway],
-      purpose: conway.ConwayPlutusPurpose[AsItem] => Option[xyz.kd5ujc.scarab.ledger.Purpose] =
-        (_: conway.ConwayPlutusPurpose[AsItem]) => None
-  ): Option[xyz.kd5ujc.scarab.ledger.rules.Test[PredicateFailure]] =
-    test.fold(
-      fs =>
-        fs.traverse(f => rules.ConwayUtxowPredFailure.toStored(inject(f), purpose).toOption)
-          .map(cats.data.Validated.Invalid(_)),
-      _ => Some(xyz.kd5ujc.scarab.ledger.rules.Test.pass)
     )
 
   /** Conway's injections of the UTXOW failures of Shelley, Alonzo and Babbage. */

@@ -318,7 +318,7 @@ class ConwayPlutusCasesSuite extends FunSuite:
   test(
     "the pinned case files name certificates, purposes of each kind needed, votes and proposals"
   ):
-    // the text `ConwayTxCert.toStored` and `ConwayUtxowPredFailure.storedPurposes` give, which the
+    // the text `ConwayTxCert.toStored` and `ConwayPhase2.storedPurposes` give, which the
     // pin above would otherwise hold of no case
     val texts = eraCaseFiles.toVector
     def named(set: String, what: String) =

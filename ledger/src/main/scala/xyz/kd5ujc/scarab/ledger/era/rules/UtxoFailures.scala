@@ -4,19 +4,10 @@ package xyz.kd5ujc.scarab.ledger.era.rules
 import cats.Order
 import cats.data.{NonEmptyList, NonEmptyMap, NonEmptySet}
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{
-  Address,
-  PlutusFailure,
-  PredicateFailure,
-  TxIn,
-  Unsigned,
-  UtxoFailure,
-  UtxosFailure as FlatUtxosFailure
-}
+import xyz.kd5ujc.scarab.ledger.{Address, TxIn, Unsigned}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W16
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
-import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, Coin, Conway, DeltaCoin, Dijkstra, EraTag}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
@@ -152,94 +143,6 @@ enum ConwayUtxoPredFailure[E <: EraTag]:
 object ConwayUtxoPredFailure:
   given [E <: EraTag]: CanEqual[ConwayUtxoPredFailure[E], ConwayUtxoPredFailure[E]] =
     CanEqual.derived
-
-  /** UTXOS's failure in the node's flat form (`UtxosFailure`), as [[toStored]] gives it, for the
-    * eras whose UTXOS is Conway's: its `CollectErrors` returned as they are, a script's failure the
-    * flat one with the evaluator's request and no reconstruction bytes.
-    */
-  def storedUtxos[E <: EraTag](
-      failure: ConwayUtxosPredFailure[E]
-  ): Either[NonEmptyList[CollectError[E]], FlatUtxosFailure] = failure match
-    case ConwayUtxosPredFailure.CollectErrors(errors) => Left(errors)
-    case ConwayUtxosPredFailure.ValidationTagMismatch(isValid, description) =>
-      Right(
-        FlatUtxosFailure.ValidationTagMismatch(
-          isValid == IsPhase2Valid.Phase2Valid,
-          description match
-            case TagMismatchDescription.PassedUnexpectedly => None
-            case TagMismatchDescription.FailedUnexpectedly(fs) =>
-              Some(fs.toList.toVector.map { case FailureDescription.PlutusFailure(cause, pwc) =>
-                PlutusFailure(cause, Bytes.empty, Some(PlutusWithContext.evalRequest(pwc)))
-              })
-        )
-      )
-
-  /** The failure in the node's flat form (`PredicateFailure`), which its encoders write and the
-    * flat rules report: glue until the failures of the era types have their own encoders (#85). It
-    * is one-way. UTXOS's `CollectErrors`, whose purposes and context errors the flat failure holds
-    * in its own vocabulary, are returned as they are. A script's failure is the flat one with the
-    * evaluator's request and no reconstruction bytes, as the flat rule gives it: the request is
-    * what the script is run with, while the typed `PlutusWithContext` also holds the runnable
-    * script's hash, which its equality reads and the flat form does not keep.
-    */
-  def toStored(
-      failure: ConwayUtxoPredFailure[Conway]
-  ): Either[NonEmptyList[CollectError[Conway]], PredicateFailure] =
-    val s = StoredTxOut.conway
-    def utxo(f: UtxoFailure): Either[NonEmptyList[CollectError[Conway]], PredicateFailure] =
-      Right(PredicateFailure.utxo(f))
-    def outs(os: NonEmptyList[TxOut[Conway]]) = os.toList.toVector.map(s.toStored)
-    failure match
-      case UtxosFailure(f) => storedUtxos(f).map(u => PredicateFailure.utxo(UtxoFailure.Utxos(u)))
-      case BadInputsUTxO(ins) => utxo(UtxoFailure.BadInputs(ins.toSortedSet))
-      case OutsideValidityIntervalUTxO(vi, slot) =>
-        utxo(UtxoFailure.OutsideValidityInterval(vi.invalidBefore, vi.invalidHereafter, slot))
-      case MaxTxSizeUTxO(m)    => utxo(UtxoFailure.MaxTxSize(m.stored))
-      case InputSetEmptyUTxO() => utxo(UtxoFailure.InputSetEmpty)
-      case FeeTooSmallUTxO(m) =>
-        utxo(UtxoFailure.FeeTooSmall(m.storedBy(_.value)))
-      case ValueNotConservedUTxO(m) =>
-        utxo(
-          UtxoFailure.ValueNotConserved(
-            m.storedBy(s.storedValue)
-          )
-        )
-      case WrongNetwork(n, addrs) =>
-        utxo(UtxoFailure.WrongNetwork(n.ordinal, addrs.toSortedSet.map(_.raw)))
-      case WrongNetworkWithdrawal(n, accounts) =>
-        utxo(
-          UtxoFailure.WrongNetworkWithdrawal(
-            n.ordinal,
-            accounts.toSortedSet.map(Convert.rewardAccountBack)
-          )
-        )
-      case OutputTooSmallUTxO(os)        => utxo(UtxoFailure.OutputTooSmall(outs(os)))
-      case OutputBootAddrAttrsTooBig(os) => utxo(UtxoFailure.OutputBootAddrAttrsTooBig(outs(os)))
-      case OutputTooBigUTxO(os) =>
-        utxo(UtxoFailure.OutputTooBig(os.toList.toVector.map((a, b, o) => (a, b, s.toStored(o)))))
-      case InsufficientCollateral(bal, required) =>
-        utxo(UtxoFailure.InsufficientCollateral(bal.value, required.value))
-      case ScriptsNotPaidUTxO(os) =>
-        utxo(UtxoFailure.ScriptsNotPaid(os.toSortedMap.view.mapValues(s.toStored).toMap))
-      case ExUnitsTooBigUTxO(m) => utxo(UtxoFailure.ExUnitsTooBig(m.stored))
-      case CollateralContainsNonADA(v) =>
-        utxo(UtxoFailure.CollateralContainsNonAda(s.storedValue(v)))
-      case WrongNetworkInTxBody(m) =>
-        utxo(UtxoFailure.WrongNetworkInTxBody(m.storedBy(_.ordinal)))
-      case OutsideForecast(slot) => utxo(UtxoFailure.OutsideForecast(slot))
-      case TooManyCollateralInputs(m) =>
-        utxo(UtxoFailure.TooManyCollateralInputs(m.storedBy(_.value.toInt)))
-      case NoCollateralInputs() => utxo(UtxoFailure.NoCollateralInputs)
-      case IncorrectTotalCollateralField(provided, declared) =>
-        utxo(UtxoFailure.IncorrectTotalCollateralField(provided.value, declared.value))
-      case BabbageOutputTooSmallUTxO(os) =>
-        utxo(
-          UtxoFailure.BabbageOutputTooSmall(
-            os.toList.toVector.map((o, c) => (s.toStored(o), c.value))
-          )
-        )
-      case BabbageNonDisjointRefInputs(ins) =>
-        utxo(UtxoFailure.BabbageNonDisjointRefInputs(ins.toList.toVector))
 
 /** `EraRuleFailure "UTXO" era`: Conway's is its own (`Conway/Rules/Utxo.hs:146`, cardano-ledger
   * f649f975), and so is Dijkstra's (`Dijkstra/Rules/Utxo.hs:172`, cardano-ledger 9df9f98c). Each

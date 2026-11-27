@@ -1,17 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger
 
-import cats.Id
+import cats.{Id, Monad}
 import cats.data.NonEmptyVector
+import cats.mtl.{Ask, Raise, Stateful}
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.rules.{JudgedSts, StAnnTx, UtxoEnv, Utxos}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, JudgedSts, StAnnTx, UtxoEnv, Utxos}
 import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Babbage, Conway, EraTag, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.plutus.*
 
-/** The UTXOS entry point passes the era through collection to each script's context, including
-  * chains whose epoch-triggered hard fork kept the previous protocol version (cardano-ledger
-  * f649f975). The fixed evaluator checks the context delivered to it, independently of CEK costs.
+/** The flat UTXOS's evaluation of the scripts (`Utxos.scripts`, which the eras before Conway run)
+  * passes the era through collection to each script's context, including chains whose
+  * epoch-triggered hard fork kept the previous protocol version (cardano-ledger f649f975). The
+  * fixed evaluator checks the context delivered to it, independently of CEK costs. Conway's era
+  * contexts are `EraPlutusContextSuite` 's; its cases here hold the flat contexts, which the
+  * collection shares across the languages.
   */
 class ScriptContextEraSuite extends FunSuite:
   private val script = Script.plutus(ScriptKind.PlutusV1, Bytes(Vector(1.toByte)))
@@ -50,13 +54,25 @@ class ScriptContextEraSuite extends FunSuite:
     )
     Tx(body, Witnesses.empty.copy(scripts = Vector(script), redeemers = redeemers), 0, true, None)
 
+  /** `Utxos.scripts` of the era `E` as a rule of its own. */
+  private def scripts[E <: EraTag](using
+      ShelleyBasedEra[E]
+  ): JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFailure, LedgerFailure] =
+    new JudgedSts[UtxoEnv[Any], PlutusStats, StAnnTx, PredicateFailure, LedgerFailure]:
+      def transition[F[_]: Monad](env: UtxoEnv[Any], ann: StAnnTx)(using
+          ask: Ask[F, Globals],
+          st: Stateful[F, PlutusStats],
+          raise: Raise[F, LedgerFailure],
+          judge: Judge[F, PredicateFailure]
+      ): F[Unit] = Utxos.scripts[F, E](env, ann)
+
   private def run[E <: EraTag](
       pv: Int,
       transaction: Tx,
       env: TxEnv = ctx
   )(using ShelleyBasedEra[E]): Either[LedgerFailure, PlutusStats] =
     val pp = TestLedger.params(pv).copy(costModels = Map(0 -> Vector.empty))
-    JudgedSts(Utxos.sts[E])(LedgerFailure.Rejected(transaction.body.id, _))(
+    JudgedSts(scripts[E])(LedgerFailure.Rejected(transaction.body.id, _))(
       TestLedger.globals,
       UtxoEnv(env, pp, ()),
       PlutusStats.zero,

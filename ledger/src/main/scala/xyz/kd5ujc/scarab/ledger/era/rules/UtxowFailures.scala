@@ -3,20 +3,10 @@ package xyz.kd5ujc.scarab.ledger.era.rules
 
 import cats.Order
 import cats.data.{NonEmptyList, NonEmptySet}
-import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{
-  CollectError as FlatCollectError,
-  PredicateFailure,
-  Purpose,
-  TxIn,
-  UtxoFailure as FlatUtxoFailure,
-  UtxosFailure as FlatUtxosFailure,
-  UtxowFailure as FlatUtxowFailure
-}
+import xyz.kd5ujc.scarab.ledger.TxIn
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
-import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPlutusPurpose
 import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag}
 
 // The failures and events of UTXOW as the reference declares them (cardano-ledger f649f975, the
@@ -123,104 +113,9 @@ enum ConwayUtxowPredFailure[E <: EraTag]:
       expected: Option[Bytes]
   )
 
-/** What a failure's flat form cannot hold in the node's vocabulary without what the transaction
-  * gives: UTXOS's collection errors, and a missing redeemer's purpose, which the flat failure names
-  * with its index and the output it spends where the reference keeps the item alone.
-  */
-enum UtxowUnprojected:
-  case CollectErrors(errors: NonEmptyList[CollectError[Conway]])
-  case MissingRedeemers(purposes: NonEmptyList[(ConwayPlutusPurpose[AsItem], Bytes)])
-
 object ConwayUtxowPredFailure:
   given [E <: EraTag]: CanEqual[ConwayUtxowPredFailure[E], ConwayUtxowPredFailure[E]] =
     CanEqual.derived
-
-  /** The failure in the node's flat form (`PredicateFailure`), as
-    * [[ConwayUtxoPredFailure.toStored]] gives UTXO's: glue until the failures of the era types have
-    * their own encoders (#85). A missing redeemer's purpose, of UTXOW's `MissingRedeemers` or of
-    * UTXOS's `NoRedeemer`, is given its flat form by `purpose`, which the transaction's scripts
-    * needed and UTxO set make (the flat form names the purpose's index and the output it spends). A
-    * purpose it does not give, and a context's failure to translate (`BadTranslation`, which the
-    * flat failure holds in its own vocabulary), leave the failure as it is.
-    */
-  def toStored(
-      failure: ConwayUtxowPredFailure[Conway],
-      purpose: ConwayPlutusPurpose[AsItem] => Option[Purpose]
-  ): Either[UtxowUnprojected, PredicateFailure] =
-    def utxow(f: FlatUtxowFailure): Either[UtxowUnprojected, PredicateFailure] =
-      Right(PredicateFailure.utxow(f))
-    def set[A](as: NonEmptySet[A]): Set[A] = as.toSortedSet
-    failure match
-      case UtxoFailure(f) =>
-        ConwayUtxoPredFailure
-          .toStored(f)
-          .left
-          .flatMap(errors =>
-            errors
-              .traverse {
-                case CollectError.NoRedeemer(p)  => purpose(p).map(FlatCollectError.NoRedeemer(_))
-                case CollectError.NoWitness(h)   => Some(FlatCollectError.NoWitness(h))
-                case CollectError.NoCostModel(l) => Some(FlatCollectError.NoCostModel(l))
-                case CollectError.BadTranslation(_) => None
-              }
-              .fold(Left(UtxowUnprojected.CollectErrors(errors)))(flat =>
-                Right(
-                  PredicateFailure.utxo(
-                    FlatUtxoFailure.Utxos(
-                      FlatUtxosFailure
-                        .CollectErrors(cats.data.NonEmptyVector.of(flat.head, flat.tail*))
-                    )
-                  )
-                )
-              )
-          )
-      case InvalidWitnessesUTXOW(keys) =>
-        utxow(FlatUtxowFailure.InvalidWitnesses(keys.toList.toVector))
-      case MissingVKeyWitnessesUTXOW(hs) => utxow(FlatUtxowFailure.MissingVKeyWitnesses(set(hs)))
-      case MissingScriptWitnessesUTXOW(hs) =>
-        utxow(FlatUtxowFailure.MissingScriptWitnesses(set(hs)))
-      case ScriptWitnessNotValidatingUTXOW(hs) =>
-        utxow(FlatUtxowFailure.ScriptWitnessNotValidating(set(hs)))
-      case MissingTxBodyMetadataHash(h) => utxow(FlatUtxowFailure.MissingTxBodyMetadataHash(h))
-      case MissingTxMetadata(h)         => utxow(FlatUtxowFailure.MissingTxMetadata(h))
-      case ConflictingMetadataHash(m)   => utxow(FlatUtxowFailure.ConflictingMetadataHash(m.stored))
-      case InvalidMetadata()            => utxow(FlatUtxowFailure.InvalidMetadata)
-      case ExtraneousScriptWitnessesUTXOW(hs) =>
-        utxow(FlatUtxowFailure.ExtraneousScriptWitnesses(set(hs)))
-      case MissingRedeemers(ps) =>
-        ps.toList
-          .traverse((p, h) => purpose(p).map(_ -> h))
-          .fold(Left(UtxowUnprojected.MissingRedeemers(ps)))(resolved =>
-            utxow(FlatUtxowFailure.MissingRedeemers(resolved.toVector))
-          )
-      case MissingRequiredDatums(missing, received) =>
-        utxow(FlatUtxowFailure.MissingRequiredDatums(set(missing), received))
-      case NotAllowedSupplementalDatums(unallowed, acceptable) =>
-        utxow(FlatUtxowFailure.NotAllowedSupplementalDatums(set(unallowed), acceptable))
-      case PPViewHashesDontMatch(m) => utxow(FlatUtxowFailure.PPViewHashesDontMatch(m.stored))
-      case UnspendableUTxONoDatumHash(ins) =>
-        utxow(FlatUtxowFailure.UnspendableUTxONoDatumHash(set(ins)))
-      case ExtraRedeemers(ps) =>
-        utxow(FlatUtxowFailure.ExtraRedeemers(ps.toList.toVector.map(p => (p.tag, p.ix.value))))
-      case MalformedScriptWitnesses(hs) => utxow(FlatUtxowFailure.MalformedScriptWitnesses(set(hs)))
-      case MalformedReferenceScripts(hs) =>
-        utxow(FlatUtxowFailure.MalformedReferenceScripts(set(hs)))
-      case ScriptIntegrityHashMismatch(m, expected) =>
-        utxow(FlatUtxowFailure.ScriptIntegrityHashMismatch(m.stored, expected))
-
-  /** The flat form of a missing redeemer's purpose (`purpose` of [[toStored]]): the needed purpose
-    * whose item it is, with its index, in its flat form (`ConwayPlutusPurpose.toStored`), its spent
-    * output read from `utxo`.
-    */
-  def storedPurposes(
-      scriptsNeeded: AlonzoScriptsNeeded[Conway],
-      utxo: UTxO[Conway]
-  ): ConwayPlutusPurpose[AsItem] => Option[Purpose] =
-    val toAsItem = ConwayPlutusPurpose.hoistPlutusPurpose[AsIxItem, AsItem](
-      [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
-    )
-    val byItem = scriptsNeeded.unAlonzoScriptsNeeded.map((sp, _) => toAsItem(sp) -> sp).toMap
-    p => byItem.get(p).flatMap(ConwayPlutusPurpose.toStored(_, utxo))
 
 /** `EraRuleFailure "UTXOW" era`: Conway's is its own (`Conway/Rules/Utxow.hs:114`, cardano-ledger
   * f649f975), and so is Dijkstra's (`Dijkstra/Rules/Utxow.hs:145`, cardano-ledger 9df9f98c).

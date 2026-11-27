@@ -334,7 +334,17 @@ class ConwayRulesSuite extends FunSuite:
         )
       )
     )
-    assertEquals(BigInt(RefScripts.refScriptsSize(utxo(s), b)), total)
+    // the distinct inputs and reference inputs' scripts, added up as the reference's `Int`
+    val held = utxo(s)
+    assertEquals(
+      BigInt(
+        (b.inputs.toSet ++ b.referenceInputs.toSet).iterator
+          .flatMap(held.get)
+          .map(_.referenceScriptSize)
+          .sum
+      ),
+      total
+    )
   }
 
   test("an input may not also be a reference input before protocol version 11") {
