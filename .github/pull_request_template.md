@@ -15,7 +15,8 @@
 
 <!-- Level 1 and above: `None`, or one row per difference from the reference that is not a Mirror, with its
 class and record in the approval cell (docs/design-rules.md, REF-7): `Improvement (e): [#474](link)` or
-`Deviation: [decision](link)`. A Gap goes under Gaps instead. Scarab references the Haskell cardano-node in every
+`Deviation: [decision](link)`. A Gap goes under Gaps instead. An Optimisation (REF-6) has no row; REF-7 says where
+its paragraph goes. Scarab references the Haskell cardano-node in every
 respect for production behaviour, so a deviation is the owner's decision, never a silent choice (ADR 0001;
 docs/decisions.md). The PR policy check reads this section.
 | Behaviour | Reference (pinned) | Scarab | Approval |

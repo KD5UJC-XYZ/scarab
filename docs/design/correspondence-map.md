@@ -107,7 +107,8 @@ An entry may also have `evidence` (suite names) and `record` (a link).
 - `upstream`: one or more counterparts. Each names a revision pinned in `docs/data/reference-pins.json`, and
   `lines` cover the counterpart at that revision.
 - `class`: Mirror, Improvement, Deviation or Gap ([REF-4](../design-rules.md#ref-4)). An Improvement or a Deviation
-  links its record. A Gap links its issue.
+  links its record. A Gap links its issue. An Optimisation ([REF-6](../design-rules.md#ref-6)) is not a class: the
+  definition it changes keeps its class, with structure `differs`.
 - `structure`: `same` when the definition has its counterpart's shape:
   - a data type has the same constructors and fields;
   - a state machine has the same states and transitions;
@@ -116,7 +117,9 @@ An entry may also have `evidence` (suite names) and `record` (a link).
   It is `differs` when the definition merges or splits counterparts, or uses another algorithm or representation.
   A `differs` entry names in `evidence` the suites that compare that behaviour with the reference: an exported
   reference corpus, an oracle, or a comparison with a running reference node. A suite that only restates what
-  the source says is not such evidence. Without it the entry is a Gap, which links its issue instead.
+  the source says is not such evidence. Without it the entry is a Gap, which links its issue instead. For an
+  Optimisation, `evidence` names the reference suites of the path it stands beside and its equivalence suite,
+  which carries that reference evidence over to it ([REF-6](../design-rules.md#ref-6)).
 - `digest`: the definition's code digest when the entry was last checked.
 
 **Glue** is a group with a `reason` and its `definitions`. It holds the code that has no counterpart: Scala

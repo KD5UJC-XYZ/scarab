@@ -126,7 +126,8 @@ tests), exceptions and how a kept site is marked, enforcement and reason. Read t
   [REF-4](docs/design-rules.md#ref-4) interoperability, reference defects, which reference governs, and the
   four classes (Mirror, Improvement, Deviation, Gap); [REF-5](docs/design-rules.md#ref-5) **agents may not
   deviate from the reference on their own accord**; [REF-6](docs/design-rules.md#ref-6) mirror its structure by
-  default, cite it at its pin, and differ internally only with differential evidence;
+  default, cite it at its pin, and differ internally only with differential evidence or as an Optimisation the
+  owner approved (internal, for speed, memory or disk use, nothing observable changing);
   [REF-7](docs/design-rules.md#ref-7) how a pull request records each class; [REF-8](docs/design-rules.md#ref-8)
   settled Deviations.
 - [Persisted formats and fixtures](docs/design-rules.md#fmt): [FMT-1](docs/design-rules.md#fmt-1) persisted formats
