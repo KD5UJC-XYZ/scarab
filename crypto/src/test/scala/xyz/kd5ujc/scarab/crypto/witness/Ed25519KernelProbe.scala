@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.crypto.witness
 /** Reads of the working storage of `VartimeEd25519` for the suites and the fuzz targets: what a
   * decoded key is, and what its double multiplication gives.
   */
-object VartimeEd25519Probe:
+object Ed25519KernelProbe:
   /** The canonical encoding of the point `VartimeEd25519.decode` reads from `e`, if any. */
   def decoded(e: Array[Byte]): Option[Array[Byte]] =
     val w = new VartimeEd25519()

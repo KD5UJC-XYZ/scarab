@@ -16,7 +16,7 @@ import scala.jdk.OptionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.crypto.witness.{
   Ed25519Verifiers,
-  VartimeEd25519Probe,
+  Ed25519KernelProbe,
   VerificationResult,
   Ed25519Model as M
 }
@@ -184,9 +184,9 @@ object CurveTargets:
     PointOperand(m.encode, m, Some(primeOrder))
 
   /** The 32 bytes at the operand as every decoder reads them (the vendored `decompress`, the
-    * decoding of `VartimeEd25519` and the model's, y modulo p and x = 0 whatever the sign), then a
-    * point of them: the point as written, [8]P (of the prime-order subgroup), a point of small
-    * order, or [8]P plus one. None when the bytes are no point's (all three decoders refusing
+    * decoding of the verification kernel and the model's, y modulo p and x = 0 whatever the sign),
+    * then a point of them: the point as written, [8]P (of the prime-order subgroup), a point of
+    * small order, or [8]P plus one. None when the bytes are no point's (all three decoders refusing
     * them).
     */
   private def point(in: Array[Byte], from: Int, check: Check): Option[PointOperand] =
@@ -200,8 +200,8 @@ object CurveTargets:
         s"expected $expected"
     )
     check(
-      VartimeEd25519Probe.decoded(raw).map(hex) == expected,
-      s"VartimeEd25519's decoding of ${hex(raw)} is ${VartimeEd25519Probe.decoded(raw).map(hex)}, " +
+      Ed25519KernelProbe.decoded(raw).map(hex) == expected,
+      s"the verification kernel's decoding of ${hex(raw)} is ${Ed25519KernelProbe.decoded(raw).map(hex)}, " +
         s"expected $expected"
     )
     val i = unsigned(in, from + 33) & 7
@@ -399,8 +399,8 @@ object CurveTargets:
       e
 
   /** [a]P by the constant-time multiplication, from radix-16 digits, by the variable-time double
-    * multiplication with b = 0, and by the double multiplication of `VartimeEd25519`: the same
-    * point.
+    * multiplication with b = 0, and by the double multiplication of the verification kernel: the
+    * same point.
     */
   private def variableBase(in: Array[Byte], at: Vector[Int], check: Check): Boolean =
     point(in, at(0), check).exists { p =>
@@ -413,7 +413,7 @@ object CurveTargets:
         "vartimeDoubleScalarMultiplyBasepoint" -> Some(
           encoding(EdwardsPoint.vartimeDoubleScalarMultiplyBasepoint(a.scalar, point, Scalar.ZERO))
         ),
-        "VartimeEd25519" -> VartimeEd25519Probe
+        "the verification kernel" -> Ed25519KernelProbe
           .doubleScalarMultiplyBasepoint(a.bytes, p.encoding, zero32)
           .map(hex)
       ).foreach { (name, got) =>
@@ -458,7 +458,7 @@ object CurveTargets:
           )
         )
       ),
-      "VartimeEd25519" -> VartimeEd25519Probe
+      "the verification kernel" -> Ed25519KernelProbe
         .doubleScalarMultiplyBasepoint(zero32, identityEncoding, b.bytes)
         .map(hex)
     ).foreach { (name, got) =>
@@ -491,7 +491,7 @@ object CurveTargets:
         "vartimeDoubleScalarMultiplyBasepoint" -> Some(
           encoding(EdwardsPoint.vartimeDoubleScalarMultiplyBasepoint(a.scalar, point, b.scalar))
         ),
-        "VartimeEd25519" -> VartimeEd25519Probe
+        "the verification kernel" -> Ed25519KernelProbe
           .doubleScalarMultiplyBasepoint(a.bytes, p.encoding, b.bytes)
           .map(hex)
       ).foreach { (name, got) =>
@@ -901,12 +901,15 @@ object CurveTargets:
     seeds
 
   /** `StrictEd25519` and `ByronEd25519` against the JDK's and Bouncy Castle's Ed25519 and the
-    * model, on triples as given, valid ones mutated, and the cross-check suite's families.
+    * model, on triples as given, valid ones mutated, and the cross-check suite's families. A case
+    * runs three verifiers, hundreds of times a decoder's cost, so the target takes a quarter of the
+    * run's cases.
     */
   private val verification: Target = Target(
     verificationName,
     () => verificationWarmed,
-    in => Probe.run(verificationName, in)(runVerification(in.bytes))
+    in => Probe.run(verificationName, in)(runVerification(in.bytes)),
+    share = 4
   )
 
   val all: Vector[Target] = Vector(arithmetic, verification)

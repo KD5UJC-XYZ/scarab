@@ -328,3 +328,6 @@ the quotient of `FieldElement.toByteArray`, or `Scalar.add` and `subtract` witho
 `fuzz 100000 1 4 curve25519-arithmetic` fails with seed 1 and prints the operation and its operands. With
 `StrictEd25519` made to accept S >= L or an R of small order, or `ByronEd25519` made to refuse S >= L,
 `fuzz 100000 1 4 ed25519-verification` fails with seed 1.
+
+A case of `ed25519-verification` runs three verifiers, hundreds of times what a decoder's case costs, so the target
+takes a quarter of a run's cases (`Target`'s `share`); `curve25519-arithmetic` takes them all.

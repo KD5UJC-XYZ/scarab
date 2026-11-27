@@ -464,7 +464,7 @@ class Ed25519CrossCheckSuite extends munit.ScalaCheckSuite:
       )
       if StrictEd25519.acceptsKey(e) then
         assertEquals(
-          VartimeEd25519Probe.decoded(e).map(hex),
+          Ed25519KernelProbe.decoded(e).map(hex),
           Some(hex(e)),
           s"Scarab's point of ${hex(e)}"
         )
