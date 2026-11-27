@@ -1195,10 +1195,15 @@ Conway's rules on the classes follow as the rest of stage 2.
     one, to the flat GOV's judgments, recorded before (`fixtures/conway-flat-refusals/gov-judgments.jsonl`: a
     refusal by its bytes, an admission by the governance state's), on those corpora, named, and on its crafted
     cases. These runs, with those of the corpora recorded later, reach every one of the 19 failures. GOV's events carry the transaction's id, the proposals after and the
-    DReps its certificates unregister. Where the reference refused a transaction for GOV alone (29 cases), the
+    DReps its certificates unregister. Where the reference refused a transaction for GOV alone (34 cases, 5 of them
+    `conway-gov-order`'s), the
     whole rule's failures, run two levels down as under MEMPOOL and LEDGER, encode to the reference's refusal byte
     for byte. A crafted committee update that fails both its conflict and its expiry records them in that order. The
-    predicates' failures are each one's bytes, as often as it is reported.
+    predicates' failures are each one's bytes, as often as it is reported. The governance state's encoding writes a
+    parameter's value, not the encoding the body gave it, so an admission's digest does not hold a parameter
+    change's kept encodings (`ConwayParamUpdate.Entry`): on every admission the suite checks that each proposal
+    held before keeps its procedure and that each one added is the body's, its kept encodings the body's bytes, and
+    a mutant that keeps `1800` for the body's `00` is refused while its digest is unchanged.
   - `UpstreamGovernanceFunctionalSuite` runs it on the upstream GOV cases: the 15 lawful seeds, the empty vote maps
     of a named committee voter and the registered DRep's vote leave the reference's proposals, as the flat rule
     did, and the changed deposit is refused with the reference's failure. Five seeds (510102, 510103, 510109,
@@ -1220,17 +1225,14 @@ Conway's rules on the classes follow as the rest of stage 2.
     - every refusal GOV alone gave holds one failure, so the byte-for-byte comparison does not tell the depth's
       order of several; the cases GOV refused with other rules (`certs-gov-utxow`, `gov-proposal-wrong-deposit`)
       are compared through LEDGER (below);
-    - the scenarios of `PreviewConwayRulesSuite` and the mempool suites run GOV through the flat LEDGER (LEDGER
-      whole, below, says why);
     - `ProposalsReadError` is reached by crafted stores only (`EraProposalsSuite`): the node's record is written
-      by the flat rule.
+      by Conway's rules themselves (`ProposalsRecord`).
   - Not yet (#85): the committee in the environment as the reference's `Committee era`; the votes of a transaction
     as the reference's typed voter (an action's state holds them under it, below). The ordered
     map is a vector, and the proposals are read once a block by the block's run (below) and per transaction
     elsewhere, which the Conway switch must make cheap for the mempool too, as the
-    flat rule's single pass over the votes is (#94). The flat rule numbers proposals with an unbounded index
-    (`zipWithIndex`), where the reference's is a `Word16`; only a 65,537th proposal tells them apart, and stage 3
-    deletes the flat rule.
+    flat rule's single pass over the votes was (#94). The flat rule, deleted in stage 3, numbered proposals with an
+    unbounded index (`zipWithIndex`), where the reference's is a `Word16`: a 65,537th proposal told them apart.
 - **The governance state** (`era/Governance.scala`, `era/GovStateRecord.scala`, `era/dijkstra/DijkstraProposals.scala`;
   `Conway/Governance.hs`, `Governance/Internal.hs`, `Governance/DRepPulser.hs` and `State/Governance.hs`,
   cardano-ledger f649f975, Dijkstra's instances `Dijkstra/Governance.hs:28-49` at 9df9f98c):
@@ -2234,8 +2236,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     and the failures ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923023870)), the
     committee as the reference's and GOV's functions over the governance state's classes, which are in place
     (the governance state, above)
-    ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923488137)), and the flat GOV's order of
-    its vote failures ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427)).
+    ([item](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6923488137)).
 - **Dijkstra's SUBUTXO and SUBUTXOW** (`era/rules/DijkstraSubUtxo.scala`, `era/rules/DijkstraSubUtxow.scala`;
   `Rules/SubUtxo.hs` and `Rules/SubUtxow.hs` of `eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/`, cardano-ledger
   9df9f98c):

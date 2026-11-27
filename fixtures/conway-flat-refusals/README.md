@@ -90,8 +90,11 @@ digits of the SHA-256 of the bytes it names.
     (16 cases with failures, the 68 others none), as the flat rule's failures were compared, a multiset. The
     crafted cases are made from the case `conway-bootstrap-attributes/utxo-bootstrap-attributes-too-big`, named.
 
-  Recorded at Scarab commit `e6a61dfe5`, the parent of the flat GOV's deletion (the head of the pull request
-  that deleted the flat LEDGER, #1483, before it was merged: a squash leaves that commit on no branch). The
+  Recorded at Scarab commit `e6a61dfe5`, the head of the pull request that deleted the flat LEDGER (#1483) before
+  it was squash-merged, which leaves that commit on no branch. The flat GOV's deletion was then rebased onto the
+  merge, and its parent, `5d19dffba`, differs from `e6a61dfe5` by the Conway era decoders' one-pass reading of a
+  transaction's parts (#1482). The suite was run again at `5d19dffba` with the flat GOV beside the era one: every
+  comparison agreed, and the recording it wrote was this one, byte for byte. The
   comparisons that had other oracles are not here: the unknown actions' votes listed in key order, where the
   flat GOV listed them in the body's order (#85's item 7054122427, closed with it), and the unelected voters'
   order, which keep their expected values from the reference's source; and the GOV-only refusals, held to the
