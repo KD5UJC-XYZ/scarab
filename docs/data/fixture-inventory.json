@@ -215,6 +215,7 @@
     "fixtures/chain-dep/genesis/shelley-genesis.json": "db896360dfb9acfdc463ac193b3e4528bae3df8378ee04d9e673b4f0837c25ea",
     "fixtures/chainsync-timeouts/decisions.jsonl": "a8e777250e051d8ab4f04479bc5be02e0be7b7e54c031d09b534c97a48d0ce69",
     "fixtures/chainsync-timeouts/manifest.json": "3b1692eb3669bbbee74df066af709c83bb620405597a28309c445f2907e70794",
+    "fixtures/conway-flat-refusals/certs-judgments.jsonl": "04669d305e7ca4f7f5d7412145a4efce88302a786ff00d13cc39c90c89e299e7",
     "fixtures/conway-flat-refusals/failure-constructors.jsonl": "a6b5d169ff7afb1f48584938d7ff0142ab9870dfb7d9db455ae60a302f3979a2",
     "fixtures/conway-flat-refusals/gov-judgments.jsonl": "da19313fecce88d477f8fef3dc778d67c5cf5447b16f2b4e1fb337b7c6529346",
     "fixtures/conway-flat-refusals/ledger-checks.jsonl": "af9827f643d88596ff7f35a39e8d2228120cabb40348f6ccba00440c4debc80f",

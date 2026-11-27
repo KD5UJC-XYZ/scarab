@@ -4,15 +4,23 @@ package xyz.kd5ujc.scarab.node.ntc
 import java.nio.file.{Files, Path}
 import scala.jdk.CollectionConverters.*
 import munit.{Assertions, Location}
-import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure
-import xyz.kd5ujc.scarab.ledger.state.{Conway, LedgerState, ProtVer, ShelleyBasedEra, Word64}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.ledger.era.rules.{CertsPredFailure, ConwayLedgerPredFailure}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Conway,
+  ConwayCertState,
+  LedgerState,
+  PState,
+  ProtVer,
+  ShelleyBasedEra,
+  Word64
+}
 import xyz.kd5ujc.scarab.protocol.{ReferenceBuild, StateLayout}
-import xyz.kd5ujc.scarab.storage.haskell.state.HaskellLedgerFile
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState, LedgerFileCodecs}
 
 /** The Conway refusals the flat rules' encoder wrote before it was deleted, and the judgments of
-  * the flat LEDGER, LEDGERS and GOV, recorded for the suites that hold Conway's era encoder and
-  * rules to them (`fixtures/conway-flat-refusals`, #85).
+  * the flat LEDGER, LEDGERS, GOV and CERTS, recorded for the suites that hold Conway's era encoder
+  * and rules to them (`fixtures/conway-flat-refusals`, #85).
   */
 object FlatRecordings:
   private val Dir = Path.of("fixtures/conway-flat-refusals")
@@ -95,6 +103,82 @@ object FlatRecordings:
   lazy val govJudgments: Map[String, Vector[String]] =
     keyed("gov-judgments.jsonl", "id")(field("gov-judgments.jsonl", _, "r"))
       .map((k, v) => k -> v.split(' ').toVector)
+
+  /** The judgments of Conway's era CERTS that the flat CERTS gave the same of, in
+    * `ConwayCertsChecksSuite` (`certs-judgments.jsonl`): each id to its cells, separated by spaces.
+    */
+  lazy val certsJudgments: Map[String, Vector[String]] =
+    keyed("certs-judgments.jsonl", "id")(field("certs-judgments.jsonl", _, "r"))
+      .map((k, v) => k -> v.split(' ').toVector)
+
+  /** A CERTS refusal's cell: `R:` and the digest of the `ApplyTxErr` bytes of its failures in their
+    * order, each under LEDGER's `ConwayCertsFailure`, as the node sends CERTS's refusal.
+    */
+  def certsRefused(failures: Iterable[CertsPredFailure[Conway]])(using Location): String =
+    refused(failures.map(ConwayLedgerPredFailure.ConwayCertsFailure[Conway](_)))
+
+  /** The certificate state's encoding in the Haskell state's form of `codecs` ' layout at protocol
+    * version 9, written as a value of unknown origin is (checked).
+    */
+  def certsEncoded(state: ConwayCertState, codecs: LedgerFileCodecs)(using Location): Bytes =
+    given ProtVer = ProtVer(Word64.fromUnsigned(9), Word64.zero)
+    given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
+    codecs
+      .certState[Conway]
+      .write(state)
+      .fold(e => Assertions.fail(s"the certificate state: $e"), identity)
+
+  /** The bytes a certificate state keeps as a certificate gave them and its encoding writes in its
+    * own form, so that their digest is not the encoding's: each pool's relays and metadata, then
+    * each re-registration's waiting parameters', in key order, as a CBOR array of byte strings
+    * (`null` for no metadata).
+    */
+  def certsKept(state: ConwayCertState)(using Location): Bytes =
+    def item(b: Bytes): Node = Node(Value.ByteString(b), Bytes.empty)
+    def pair(relays: Bytes, metadata: Option[Bytes]): Node =
+      Node(
+        Value.Arr(Vector(item(relays), metadata.fold(Node(Value.Null, Bytes.empty))(item))),
+        Bytes.empty
+      )
+    val p = state.pState
+    val pairs = p.stakePools.values.toVector.map(s => pair(s.relays, s.metadata)) ++
+      p.future.values.toVector.map(f => pair(f.relays, f.metadata.map(_.bytes)))
+    Cbor
+      .encode(Value.Arr(pairs), Cbor.Limits.Unbounded)
+      .fold(e => Assertions.fail(s"the kept bytes: $e"), identity)
+
+  /** `state` with the bytes [[certsKept]] holds set aside: no relays and no metadata. */
+  def certsWithoutKept(state: ConwayCertState): ConwayCertState =
+    ConwayCertState.pState.modify((p: PState) =>
+      p.copy(
+        stakePools =
+          p.stakePools.transform((_, s) => s.copy(relays = Bytes.empty, metadata = None)),
+        future = p.future.transform((_, f) => f.copy(relays = Bytes.empty, metadata = None))
+      )
+    )(state)
+
+  /** Whether the certificate state's encoding ([[certsEncoded]]) holds all of it but the bytes
+    * [[certsKept]] holds: read back, it is the state again, those bytes aside.
+    */
+  def certsHeldWhole(state: ConwayCertState, codecs: LedgerFileCodecs)(using Location): Boolean =
+    given ProtVer = ProtVer(Word64.fromUnsigned(9), Word64.zero)
+    given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
+    codecs
+      .certState[Conway]
+      .decodeBytes(certsEncoded(state, codecs), HaskellState.limits)
+      .exists(back => certsWithoutKept(back) == certsWithoutKept(state))
+
+  /** A CERTS admission's cell: `A:`, the digest of the certificate state it leaves
+    * ([[certsEncoded]]), then `/` and the digest of the bytes the state keeps ([[certsKept]]). The
+    * encoding is first checked to hold the rest of the state whole ([[certsHeldWhole]]), so that
+    * the cell is the state's, as the flat comparison was of the whole state.
+    */
+  def certsAdmitted(state: ConwayCertState, codecs: LedgerFileCodecs)(using Location): String =
+    Assertions.assert(
+      certsHeldWhole(state, codecs),
+      "the certificate state's encoding does not hold it whole"
+    )
+    s"A:${digest(certsEncoded(state, codecs))}/${digest(certsKept(state))}"
 
   /** A refusal's cell: `R:` and the digest of its `ApplyTxErr` bytes, every failure in its order.
     */

@@ -2,26 +2,18 @@
 package xyz.kd5ujc.scarab.node.ntc
 
 import xyz.kd5ujc.scarab.protocol.StateLayout
-import cats.data.NonEmptyChain
+import cats.data.{Chain, NonEmptyChain}
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{
-  Certificate,
-  CertFailure,
-  CertsFailure,
   Committee,
-  DelegFailure,
   GovAction,
   GovActionId,
   GovActionState,
-  GovCertFailure,
   LedgerDefect,
-  PoolFailure,
-  PredicateFailure,
   Proposal,
   RewardAccount,
-  Tx,
   TxIn,
   TxOut,
   Utxo,
@@ -39,14 +31,21 @@ import xyz.kd5ujc.scarab.ledger.era.{
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx, ConwayTxCert}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   CertsEnv as TypedCertsEnv,
+  CertsEvent,
+  CertsPredFailure,
   ConwayCertEvent,
+  ConwayCertPredFailure,
   ConwayCertsEvent,
   ConwayCertsPredFailure,
+  ConwayDelegPredFailure,
+  ConwayGovCertPredFailure,
   PoolEvent,
+  ShelleyPoolPredFailure,
   WithdrawalsRule
 }
-import xyz.kd5ujc.scarab.ledger.rules.{CertEnv, Certs, CertsEnv, Globals, Judgment}
+import xyz.kd5ujc.scarab.ledger.rules.Globals
 import xyz.kd5ujc.scarab.ledger.state.{
+  CertState,
   CompactCoin,
   Conway,
   ConwayCertState,
@@ -59,38 +58,50 @@ import xyz.kd5ujc.scarab.ledger.state.{
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.mempool.{ConwayTicked, LocalSubmission, MempoolEnv}
 import xyz.kd5ujc.scarab.protocol.{Era, ReferenceBuild}
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, LedgerFileCodecs, UtxoCodecs}
 
-/** Conway's certificate rules on the era types (`era.rules.CERTS` and the rules under it) against
-  * the flat ones (`rules.Certs`): from the same ticked state, each judges a transaction's
-  * certificates to the same defect, the same predicate failures in the same order, or the same
-  * certificate state. On every transaction of the recorded Conway refusal corpora, at the recorded
-  * protocol version and at 9, 10 and 11; and on certificates crafted against a recorded state for
-  * every predicate failure the corpus never records.
+/** Conway's certificate rules on the era types (`era.rules.CERTS` and the rules under it), on every
+  * transaction of the recorded Conway refusal corpora at the recorded protocol version and at 9, 10
+  * and 11, on the transactions of recorded Conway blocks, and on certificates crafted against a
+  * recorded state for every predicate failure the corpus never records. Before the flat CERTS was
+  * deleted (#85, stage 3), it was these judgments' oracle: from the same ticked state, both rules
+  * judged the certificates to the same predicate failures in the same order, or the same
+  * certificate state. The era rule is held to those judgments, recorded after the two were found to
+  * agree (`fixtures/conway-flat-refusals/certs-judgments.jsonl`): a refusal by the bytes of its
+  * failures, an admission by the certificate state it leaves, checked to be held whole by what is
+  * recorded of it. The corpora the flat rule judged and the state the crafted cases are made from
+  * are named ([[RecordedCorpora]], [[base]]). The refusals where only the certificate rules refused
+  * are held to the reference's bytes too.
   */
 class ConwayCertsChecksSuite extends FunSuite:
   import ReferenceRefusalSuite.*
 
-  private type Verdict =
-    Either[LedgerDefect, Either[NonEmptyChain[PredicateFailure], ConwayCertState]]
+  /** A judgment of the era CERTS: a defect, its failures in the reference's order, or the state
+    * after with its events.
+    */
+  private type Verdict = Either[
+    LedgerDefect,
+    Either[NonEmptyChain[CertsPredFailure[Conway]], (CertState[Conway], Chain[CertsEvent[Conway]])]
+  ]
 
-  /** One Conway case as both paths see it: its transaction, and the state the mempool judges it in.
+  /** One Conway case as the era types see it: its transaction, the state the mempool judges it in,
+    * and the codecs of its corpus's layout.
     */
   private final case class Seen(
       label: String,
       globals: Globals,
       network: Int,
       bytes: Bytes,
-      flat: Tx,
       typed: ConwayTx,
-      flatPp: xyz.kd5ujc.scarab.ledger.ProtocolParams,
+      storedPp: xyz.kd5ujc.scarab.ledger.ProtocolParams,
       pp: PParams[Conway],
       epoch: BigInt,
       cert: ConwayCertState,
       committee: Option[Committee],
       proposals: Map[GovActionId, GovActionState],
       families: Vector[Family],
-      reason: Bytes
+      reason: Bytes,
+      codecs: LedgerFileCodecs
   )
 
   private def right[E, A](what: String)(e: Either[E, A]): A =
@@ -129,7 +140,6 @@ class ConwayCertsChecksSuite extends FunSuite:
           env.rules,
           setup.globals.network.wire,
           bytes,
-          right(s"$what flat")(Tx.fromEnvelope(bytes, Era.Conway)),
           right(s"$what typed")(ConwayTx.fromEnvelope(bytes, StateLayout.Node11_1)),
           gov.curPParams,
           PParams[Conway](
@@ -140,36 +150,52 @@ class ConwayCertsChecksSuite extends FunSuite:
           gov.committee,
           gov.proposals.actions.map(g => g.id -> g).toMap,
           rc.families,
-          rc.reason
+          rc.reason,
+          codecs
         )
       }
     }
 
-  /** The same parameters in both forms, edited by `f`. */
+  /** The corpora the flat CERTS judged before it was deleted, whose judgments are recorded, by
+    * name: a corpus added later is not among them.
+    */
+  private val RecordedCorpora: Set[String] = Set(
+    "conway-bootstrap-attributes",
+    "conway-bootstrap-attributes-leios-b004fe0c",
+    "conway-constructors",
+    "conway-constructors-v11",
+    "conway-deleg-collateral",
+    "conway-devnet",
+    "conway-gov-order",
+    "conway-gov-proposals",
+    "conway-governance",
+    "conway-mempool",
+    "conway-three-certificates",
+    "conway-v11-coverage"
+  )
+
+  /** The cases of [[RecordedCorpora]]. */
+  private lazy val recordedSeen: Vector[Seen] =
+    seen.filter(s => RecordedCorpora.exists(c => s.label.startsWith(s"$c/")))
+
+  /** The recorded judgment `id`, failing the test where none was recorded. */
+  private def recorded(id: String): Vector[String] =
+    FlatRecordings.certsJudgments.getOrElse(id, fail(s"no recording of $id"))
+
+  /** The parameters in their stored and era forms, edited by `f`. */
   private def withParams(s: Seen, label: String)(
       f: xyz.kd5ujc.scarab.ledger.ProtocolParams => xyz.kd5ujc.scarab.ledger.ProtocolParams
   ): Seen =
-    val flatPp = f(s.flatPp)
+    val storedPp = f(s.storedPp)
     s.copy(
       label = s"${s.label}$label",
-      flatPp = flatPp,
-      pp = PParams[Conway](right("edited parameters")(ConwayPParams.fromStored(flatPp)))
+      storedPp = storedPp,
+      pp = PParams[Conway](right("edited parameters")(ConwayPParams.fromStored(storedPp)))
     )
 
-  /** The same parameters in both forms, at major version `major`. */
+  /** The parameters at major version `major`. */
   private def atVersion(s: Seen, major: Int): Seen =
     withParams(s, s"@v$major")(_.copy(protocolMajor = BigInt(major)))
-
-  private def flatOf(s: Seen, certs: Vector[Certificate]): Verdict =
-    Judgment.run(Certs, Judgment.Policy.Accumulate)(
-      s.globals,
-      CertsEnv(s.flat, CertEnv(s.flat.body.id, s.flatPp, s.epoch, s.committee, s.proposals)),
-      s.cert,
-      certs
-    )
-
-  private def typedOf(s: Seen, certs: Vector[ConwayTxCert]): Verdict =
-    EraCertsRun.flat(typedRun(s, certs))
 
   /** The era-typed CERTS on `certs` from `s`, under the build of `s` 's globals or `build`, `depth`
     * levels below the root.
@@ -179,7 +205,7 @@ class ConwayCertsChecksSuite extends FunSuite:
       certs: Vector[ConwayTxCert],
       build: Option[ReferenceBuild] = None,
       depth: Int = 0
-  ) =
+  ): Verdict =
     EraCertsRun.certs(
       build.fold(s.globals)(b =>
         s.globals.copy(ledger = s.globals.ledger.copy(referenceBuild = b))
@@ -202,110 +228,124 @@ class ConwayCertsChecksSuite extends FunSuite:
     val body = EraTxBody.conway
     body.certs[TxLevel.Top](tx.body[TxLevel.Top](s.typed)(using tx.bodyOf.top))(using body.top)
 
-  /** Both judgments of the transaction's own certificates. */
-  private def recorded(s: Seen): (Verdict, Verdict) =
-    val tx = EraTx.conway
-    val body = EraTxBody.conway
-    val tb = tx.body[TxLevel.Top](s.typed)(using tx.bodyOf.top)
-    (flatOf(s, s.flat.body.certificates), typedOf(s, body.certs[TxLevel.Top](tb)(using body.top)))
+  /** The era CERTS's judgment of the transaction's own certificates. */
+  private def ownJudgment(s: Seen): Verdict = typedRun(s, typedCerts(s))
+
+  /** A judgment's recorded cell ([[FlatRecordings.certsRefused]],
+    * [[FlatRecordings.certsAdmitted]]): no judgment the flat rule was compared on ended with a
+    * defect.
+    */
+  private def cellOf(s: Seen, v: Verdict): String = v match
+    case Left(defect)          => fail(s"${s.label}: a defect, which no recording holds: $defect")
+    case Right(Left(failures)) => FlatRecordings.certsRefused(failures.toChain.toVector)
+    case Right(Right((after, _))) => FlatRecordings.certsAdmitted(after, s.codecs)
 
   // ---- what a judgment reached
 
-  /** A predicate failure of CERTS, by its rule and constructor. */
+  /** A predicate failure of CERTS, by its constructor in the reference (`ConwayDelegPredFailure`,
+    * `ShelleyPoolPredFailure`, `ConwayGovCertPredFailure`, `ConwayCertsPredFailure`).
+    */
   private enum Reached:
-    case Deleg(constructor: Int)
-    case Pool(constructor: Int)
-    case GovCert(constructor: Int)
-    case Withdrawals
+    case IncorrectDepositDELEG, StakeKeyRegisteredDELEG, StakeKeyNotRegisteredDELEG,
+      StakeKeyHasNonZeroAccountBalanceDELEG, DelegateeDRepNotRegisteredDELEG,
+      DelegateeStakePoolNotRegisteredDELEG, DepositIncorrectDELEG, RefundIncorrectDELEG
+    case StakePoolNotRegisteredOnKeyPOOL, StakePoolRetirementWrongEpochPOOL,
+      StakePoolCostTooLowPOOL, WrongNetworkPOOL, PoolMedataHashTooBig, VRFKeyHashAlreadyRegistered
+    case ConwayDRepAlreadyRegistered, ConwayDRepNotRegistered, ConwayDRepIncorrectDeposit,
+      ConwayCommitteeHasPreviouslyResigned, ConwayDRepIncorrectRefund, ConwayCommitteeIsUnknown
+    case WithdrawalsNotInRewardsCERTS
+
+  private def reachedBy(f: CertsPredFailure[Conway]): Reached = f match
+    case ConwayCertsPredFailure.WithdrawalsNotInRewardsCERTS(_) =>
+      Reached.WithdrawalsNotInRewardsCERTS
+    case ConwayCertsPredFailure.CertFailure(c) =>
+      c match
+        case ConwayCertPredFailure.DelegFailure(d) =>
+          d match
+            case ConwayDelegPredFailure.IncorrectDepositDELEG(_) => Reached.IncorrectDepositDELEG
+            case ConwayDelegPredFailure.StakeKeyRegisteredDELEG(_) =>
+              Reached.StakeKeyRegisteredDELEG
+            case ConwayDelegPredFailure.StakeKeyNotRegisteredDELEG(_) =>
+              Reached.StakeKeyNotRegisteredDELEG
+            case ConwayDelegPredFailure.StakeKeyHasNonZeroAccountBalanceDELEG(_) =>
+              Reached.StakeKeyHasNonZeroAccountBalanceDELEG
+            case ConwayDelegPredFailure.DelegateeDRepNotRegisteredDELEG(_) =>
+              Reached.DelegateeDRepNotRegisteredDELEG
+            case ConwayDelegPredFailure.DelegateeStakePoolNotRegisteredDELEG(_) =>
+              Reached.DelegateeStakePoolNotRegisteredDELEG
+            case ConwayDelegPredFailure.DepositIncorrectDELEG(_) => Reached.DepositIncorrectDELEG
+            case ConwayDelegPredFailure.RefundIncorrectDELEG(_)  => Reached.RefundIncorrectDELEG
+        case ConwayCertPredFailure.PoolFailure(p) =>
+          p match
+            case ShelleyPoolPredFailure.StakePoolNotRegisteredOnKeyPOOL(_) =>
+              Reached.StakePoolNotRegisteredOnKeyPOOL
+            case ShelleyPoolPredFailure.StakePoolRetirementWrongEpochPOOL(_, _) =>
+              Reached.StakePoolRetirementWrongEpochPOOL
+            case ShelleyPoolPredFailure.StakePoolCostTooLowPOOL(_) =>
+              Reached.StakePoolCostTooLowPOOL
+            case ShelleyPoolPredFailure.WrongNetworkPOOL(_, _)     => Reached.WrongNetworkPOOL
+            case ShelleyPoolPredFailure.PoolMedataHashTooBig(_, _) => Reached.PoolMedataHashTooBig
+            case ShelleyPoolPredFailure.VRFKeyHashAlreadyRegistered(_, _) =>
+              Reached.VRFKeyHashAlreadyRegistered
+        case ConwayCertPredFailure.GovCertFailure(g) =>
+          g match
+            case ConwayGovCertPredFailure.ConwayDRepAlreadyRegistered(_) =>
+              Reached.ConwayDRepAlreadyRegistered
+            case ConwayGovCertPredFailure.ConwayDRepNotRegistered(_) =>
+              Reached.ConwayDRepNotRegistered
+            case ConwayGovCertPredFailure.ConwayDRepIncorrectDeposit(_) =>
+              Reached.ConwayDRepIncorrectDeposit
+            case ConwayGovCertPredFailure.ConwayCommitteeHasPreviouslyResigned(_) =>
+              Reached.ConwayCommitteeHasPreviouslyResigned
+            case ConwayGovCertPredFailure.ConwayDRepIncorrectRefund(_) =>
+              Reached.ConwayDRepIncorrectRefund
+            case ConwayGovCertPredFailure.ConwayCommitteeIsUnknown(_) =>
+              Reached.ConwayCommitteeIsUnknown
 
   private def reached(v: Verdict): Set[Reached] =
     v.toOption
       .flatMap(_.left.toOption)
-      .fold(Set.empty[Reached])(
-        _.toChain.toVector
-          .collect {
-            case PredicateFailure.Certs(CertsFailure.Cert(CertFailure.Deleg(d))) =>
-              Reached.Deleg(d.ordinal)
-            case PredicateFailure.Certs(CertsFailure.Cert(CertFailure.Pool(p))) =>
-              Reached.Pool(p.ordinal)
-            case PredicateFailure.Certs(CertsFailure.Cert(CertFailure.GovCert(g))) =>
-              Reached.GovCert(g.ordinal)
-            case PredicateFailure.Certs(CertsFailure.WithdrawalsNotInRewards(_)) =>
-              Reached.Withdrawals
-          }
-          .toSet
-      )
-
-  private val someCred = FlatCredential.Key(Bytes.fromArray(Array.fill(28)(0)))
-  private val someMismatch = xyz.kd5ujc.scarab.ledger.Mismatch(BigInt(0), BigInt(0))
-
-  /** Every predicate failure Conway's CERTS and its sub-rules record (`ConwayDelegPredFailure`,
-    * `ShelleyPoolPredFailure`, `ConwayGovCertPredFailure`, `ConwayCertsPredFailure`).
-    */
-  private val every: Map[Reached, String] = Map(
-    Reached.Deleg(DelegFailure.IncorrectDeposit(0).ordinal) -> "IncorrectDepositDELEG",
-    Reached.Deleg(DelegFailure.StakeKeyRegistered(someCred).ordinal) -> "StakeKeyRegisteredDELEG",
-    Reached.Deleg(DelegFailure.StakeKeyNotRegistered(someCred).ordinal) ->
-      "StakeKeyNotRegisteredDELEG",
-    Reached.Deleg(DelegFailure.StakeKeyHasNonZeroAccountBalance(0).ordinal) ->
-      "StakeKeyHasNonZeroAccountBalanceDELEG",
-    Reached.Deleg(DelegFailure.DelegateeDRepNotRegistered(someCred).ordinal) ->
-      "DelegateeDRepNotRegisteredDELEG",
-    Reached.Deleg(DelegFailure.DelegateeStakePoolNotRegistered(Bytes.empty).ordinal) ->
-      "DelegateeStakePoolNotRegisteredDELEG",
-    Reached.Deleg(DelegFailure.DepositIncorrect(someMismatch).ordinal) -> "DepositIncorrectDELEG",
-    Reached.Deleg(DelegFailure.RefundIncorrect(someMismatch).ordinal) -> "RefundIncorrectDELEG",
-    Reached.Pool(PoolFailure.StakePoolNotRegisteredOnKey(Bytes.empty).ordinal) ->
-      "StakePoolNotRegisteredOnKeyPOOL",
-    Reached.Pool(PoolFailure.StakePoolRetirementWrongEpoch(someMismatch, someMismatch).ordinal) ->
-      "StakePoolRetirementWrongEpochPOOL",
-    Reached.Pool(PoolFailure.StakePoolCostTooLow(someMismatch).ordinal) ->
-      "StakePoolCostTooLowPOOL",
-    Reached.Pool(
-      PoolFailure.WrongNetworkPool(xyz.kd5ujc.scarab.ledger.Mismatch(0, 0), Bytes.empty).ordinal
-    ) -> "WrongNetworkPOOL",
-    Reached.Pool(PoolFailure.PoolMedataHashTooBig(Bytes.empty, 0).ordinal) ->
-      "PoolMedataHashTooBig",
-    Reached.Pool(PoolFailure.VRFKeyHashAlreadyRegistered(Bytes.empty, Bytes.empty).ordinal) ->
-      "VRFKeyHashAlreadyRegistered",
-    Reached.GovCert(GovCertFailure.DRepAlreadyRegistered(someCred).ordinal) ->
-      "ConwayDRepAlreadyRegistered",
-    Reached.GovCert(GovCertFailure.DRepNotRegistered(someCred).ordinal) ->
-      "ConwayDRepNotRegistered",
-    Reached.GovCert(GovCertFailure.DRepIncorrectDeposit(someMismatch).ordinal) ->
-      "ConwayDRepIncorrectDeposit",
-    Reached.GovCert(GovCertFailure.CommitteeHasPreviouslyResigned(someCred).ordinal) ->
-      "ConwayCommitteeHasPreviouslyResigned",
-    Reached.GovCert(GovCertFailure.DRepIncorrectRefund(someMismatch).ordinal) ->
-      "ConwayDRepIncorrectRefund",
-    Reached.GovCert(GovCertFailure.CommitteeIsUnknown(someCred).ordinal) ->
-      "ConwayCommitteeIsUnknown",
-    Reached.Withdrawals -> "WithdrawalsNotInRewardsCERTS"
-  )
+      .fold(Set.empty[Reached])(_.toChain.toVector.map(reachedBy).toSet)
 
   // ---- the recorded corpus
 
   private def versions(s: Seen): Vector[Seen] =
     s +: Vector(9, 10, 11).map(atVersion(s, _))
 
-  test("the corpus has Conway cases, each read by both paths"):
+  test("the corpus has Conway cases, each read by the era types, and the recorded corpora"):
     assert(clue(seen.size) > 0)
+    assertEquals(
+      RecordedCorpora -- seen.map(_.label.takeWhile(_ != '/')),
+      Set.empty[String],
+      "the recorded corpora not loaded"
+    )
 
-  test("CERTS on the era types judges every recorded Conway transaction as the flat rule does"):
-    seen.flatMap(versions).foreach { s =>
-      val (flat, typed) = recorded(s)
-      assertEquals(typed, flat, s.label)
+  /** The corpus cases' judgments at their recorded version and at 9, 10 and 11, compared with the
+    * recording as they are made.
+    */
+  private lazy val corpusJudged: Vector[(String, Vector[Verdict])] =
+    recordedSeen.map { c =>
+      val id = s"corpus/${c.label}"
+      val judged = versions(c).map(s => s -> ownJudgment(s))
+      assertEquals(judged.map((s, v) => cellOf(s, v)), recorded(id), c.label)
+      id -> judged.map(_._2)
     }
+
+  test("CERTS on the era types gives the flat rule's recorded judgment of every recorded case"):
+    // the flat CERTS, before it was deleted, judged each case at its recorded protocol version and
+    // at 9, 10 and 11, and the era CERTS gave the same failures in the same order, or the same
+    // certificate state
+    assertEquals(corpusJudged.size, 112, "the recorded cases")
 
   /** The corpus cases (at their recorded version) that record each failure. */
   private lazy val corpusReach: Map[Reached, Int] =
     seen
-      .flatMap(s => reached(recorded(s)._1).toVector)
+      .flatMap(s => reached(ownJudgment(s)).toVector)
       .groupMapReduce(identity)(_ => 1)(_ + _)
 
   test("the corpus cases that reach each predicate failure, and those with certificates"):
-    val withCerts = seen.count(_.flat.body.certificates.nonEmpty)
-    val refused = seen.count(s => reached(recorded(s)._1).nonEmpty)
+    val withCerts = seen.count(_.typed.body.certs.toVector.nonEmpty)
+    val refused = seen.count(s => reached(ownJudgment(s)).nonEmpty)
     println(
       s"ConwayCertsChecksSuite: ${seen.size} Conway cases, $withCerts with certificates, " +
         s"$refused refused by CERTS"
@@ -316,12 +356,12 @@ class ConwayCertsChecksSuite extends FunSuite:
     val pool = carrying { case ConwayTxCert.ConwayTxCertPool(_) => () }
     val gov = carrying { case ConwayTxCert.ConwayTxCertGov(_) => () }
     println(s"  cases carrying a DELEG certificate: $deleg, POOL: $pool, GOVCERT: $gov")
-    every.toVector.sortBy(_._2).foreach { (r, name) =>
-      println(s"  $name: ${corpusReach.getOrElse(r, 0)} corpus cases")
+    Reached.values.toVector.sortBy(_.toString).foreach { r =>
+      println(s"  $r: ${corpusReach.getOrElse(r, 0)} corpus cases")
     }
     assert(withCerts > 0)
 
-  test("the certificate state's obligations are the deposits the flat state holds"):
+  test("the certificate state's obligations are the deposits it holds"):
     seen.foreach { s =>
       val c = s.cert
       val o = EraCertState.conway.obligationCertState(c)
@@ -338,8 +378,8 @@ class ConwayCertsChecksSuite extends FunSuite:
 
   // ---- recorded blocks
 
-  /** The transactions of the recorded Conway blocks (Preview), each read by both decoders. */
-  private lazy val blockTxs: Vector[(String, Tx, ConwayTx)] =
+  /** The transactions of the recorded Conway blocks (Preview), each read by Conway's decoder. */
+  private lazy val blockTxs: Vector[(String, ConwayTx)] =
     Vector("fixtures/preview/conway.hex", "fixtures/preview/conway-governance.hex").flatMap { f =>
       java.nio.file.Files
         .readString(Path.of(f))
@@ -352,35 +392,30 @@ class ConwayCertsChecksSuite extends FunSuite:
           xyz.kd5ujc.scarab.ledger.Block.decodeShelley(right(s"$at hex")(Bytes.fromHex(hex))) match
             case Right(b: xyz.kd5ujc.scarab.ledger.Block.Shelley) if b.era == Era.Conway =>
               b.transactions.zipWithIndex.map((t, k) =>
-                (
-                  s"$at#$k",
-                  right(s"$at#$k flat")(Tx.fromBlock(t, Era.Conway)),
-                  right(s"$at#$k typed")(ConwayTx.decode(t, StateLayout.Node11_1))
-                )
+                (s"$at#$k", right(s"$at#$k typed")(ConwayTx.decode(t, StateLayout.Node11_1)))
               )
             case other => fail(s"$at: not a Conway block: $other")
         }
     }
 
-  test(
-    "CERTS on the era types judges every recorded Conway block's transaction as the flat rule does"
-  ):
-    assert(clue(blockTxs.size) > 0)
-    val tx = EraTx.conway
-    val body = EraTxBody.conway
-    Vector(9, 10, 11).map(atVersion(base, _)).foreach { s =>
-      blockTxs.foreach { (at, flat, typed) =>
-        val tb = tx.body[TxLevel.Top](typed)(using tx.bodyOf.top)
-        val on = s.copy(label = s"${s.label} $at", flat = flat, typed = typed)
-        assertEquals(
-          typedOf(on, body.certs[TxLevel.Top](tb)(using body.top)),
-          flatOf(on, flat.body.certificates),
-          on.label
-        )
+  /** The block transactions' judgments from [[base]] at versions 9, 10 and 11, compared with the
+    * recording as they are made.
+    */
+  private lazy val blocksJudged: Vector[(String, Vector[Verdict])] =
+    blockTxs.map { (at, typed) =>
+      val id = s"blocks/$at"
+      val judged = Vector(9, 10, 11).map(atVersion(base, _)).map { s =>
+        val on = s.copy(label = s"${s.label} $at", typed = typed)
+        on -> ownJudgment(on)
       }
+      assertEquals(judged.map((s, v) => cellOf(s, v)), recorded(id), at)
+      id -> judged.map(_._2)
     }
 
-  // ---- crafted certificates, read by both decoders
+  test("CERTS on the era types gives the flat rule's recorded judgment of every block transaction"):
+    assertEquals(blocksJudged.size, 62, "the recorded block transactions")
+
+  // ---- crafted certificates, read by Conway's decoder
 
   private def node(v: Value): Node = Node(v, Bytes.empty)
   private def uint(n: BigInt): Node = node(Value.UInt(n))
@@ -463,42 +498,45 @@ class ConwayCertsChecksSuite extends FunSuite:
   private def read(n: Node): Node =
     right("read")(Cbor.decode(right("encode")(Cbor.encode(n.value, Cbor.Limits.Unbounded))))
 
-  private def both(certs: Vector[Node]): (Vector[Certificate], Vector[ConwayTxCert]) =
-    val nodes = certs.map(read)
-    (
-      nodes.map(n => right("flat certificate")(Certificate.decode(n, Era.Conway))),
-      nodes.map(n => right("typed certificate")(ConwayTxCert.decode(n, StateLayout.Node11_1)))
-    )
+  private def certsOf(certs: Vector[Node]): Vector[ConwayTxCert] =
+    certs.map(read).map(n => right("certificate")(ConwayTxCert.decode(n, StateLayout.Node11_1)))
 
-  /** A recorded state to craft against: one with two pools, an account and a DRep registered, so
-    * the crafted delegations have somewhere to move.
+  /** The recorded state to craft against, by its case's label: it has two pools, an account and a
+    * DRep registered, so the crafted delegations have somewhere to move.
     */
   private lazy val base: Seen =
-    seen
-      .find(s =>
-        s.cert.pState.stakePools.size >= 2 && s.cert.dState.accounts.states.nonEmpty &&
-          s.cert.vState.dreps.nonEmpty
-      )
-      .getOrElse(fail("no recorded Conway state with two pools, an account and a DRep"))
+    val label = "conway-bootstrap-attributes/utxo-bootstrap-attributes-too-big"
+    val s = seen.find(_.label == label).getOrElse(fail(s"no case $label"))
+    assert(
+      s.cert.pState.stakePools.size >= 2 && s.cert.dState.accounts.states.nonEmpty &&
+        s.cert.vState.dreps.nonEmpty,
+      s"$label has not two pools, an account and a DRep"
+    )
+    s
 
-  /** Both judgments of `certs` from `s`, which must agree; what they reached is recorded. */
-  private def compared(s: Seen, name: String, certs: Vector[Node]): Verdict =
-    val (flatCerts, typedCerts) = both(certs)
-    val flat = flatOf(s, flatCerts)
-    assertEquals(typedOf(s, typedCerts), flat, s"${s.label}: $name")
-    flat
+  /** A crafted judgment: its id, `crafted/` then the label of the state it is judged from and the
+    * case's name, and the era CERTS's judgment of `certs` from `s`.
+    */
+  private final case class Crafted(id: String, verdict: Verdict)
 
-  /** [[compared]] for certificates the flat rule accepts, so the two states are compared. */
-  private def accepted(s: Seen, name: String, certs: Vector[Node]): Verdict =
-    val verdict = compared(s, name, certs)
-    assert(verdict.exists(_.isRight), s"${s.label}: $name is refused: $verdict")
-    verdict
+  /** The era CERTS's judgment of `certs` from `s`, compared with the recording. */
+  private def compared(s: Seen, name: String, certs: Vector[Node]): Crafted =
+    val id = s"crafted/${s.label}/$name"
+    val verdict = typedRun(s, certsOf(certs))
+    assertEquals(Vector(cellOf(s, verdict)), recorded(id), id)
+    Crafted(id, verdict)
 
-  private def keyDeposit(s: Seen): BigInt = s.flatPp.keyDeposit
-  private def drepDeposit(s: Seen): BigInt = s.flatPp.drepDeposit
+  /** [[compared]] for certificates the rule accepts, so the states are compared. */
+  private def accepted(s: Seen, name: String, certs: Vector[Node]): Crafted =
+    val judged = compared(s, name, certs)
+    assert(judged.verdict.exists(_.isRight), s"${s.label}: $name is refused: ${judged.verdict}")
+    judged
+
+  private def keyDeposit(s: Seen): BigInt = s.storedPp.keyDeposit
+  private def drepDeposit(s: Seen): BigInt = s.storedPp.drepDeposit
 
   /** The crafted scenarios, at protocol versions 9, 10 and 11. */
-  private def scenarios(at: Seen): Vector[Verdict] =
+  private def scenarios(at: Seen): Vector[Crafted] =
     // a minimum pool cost a registration can fall below
     val s = withParams(at, "")(pp => pp.copy(minPoolCost = pp.minPoolCost.max(BigInt(1000))))
     val pools = s.cert.pState.stakePools.keys.toVector.map(_.bytes)
@@ -593,7 +631,7 @@ class ConwayCertsChecksSuite extends FunSuite:
     }
     // POOL
     val network = s.network
-    val minCost = s.flatPp.minPoolCost
+    val minCost = s.storedPp.minPoolCost
     val v6 = compared(
       s,
       "pool registrations",
@@ -726,16 +764,18 @@ class ConwayCertsChecksSuite extends FunSuite:
     )
     Vector(v1, v2, v3, v4, v5, v6, v7, v8, v9, moves, pooled, members) ++ vAccount
 
-  /** The crafted scenarios' judgments, each compared as it is made. */
-  private lazy val craftedVerdicts: Vector[Verdict] =
+  /** The crafted scenarios' judgments, each compared with the recording as it is made. */
+  private lazy val craftedJudged: Vector[Crafted] =
     Vector(9, 10, 11).flatMap(v => scenarios(atVersion(base, v))) ++ baseCases ++ funded
 
-  test("crafted certificates are judged by both paths alike at versions 9, 10 and 11"):
-    assert(craftedVerdicts.nonEmpty)
+  test(
+    "crafted certificates are given the flat rule's recorded judgments at versions 9, 10 and 11"
+  ):
+    assertEquals(craftedJudged.size, 293, "the crafted judgments")
 
   // ---- the base case of CERTS: withdrawals and the DReps' expiries
 
-  /** `s` with its transaction's body edited by `f`, read again by both decoders. */
+  /** `s` with its transaction's body edited by `f`, read again by Conway's decoder. */
   private def edited(s: Seen)(f: Vector[(Node, Node)] => Vector[(Node, Node)]): Seen =
     val root = right("envelope")(Cbor.decode(s.bytes))
     val again = root.value match
@@ -752,7 +792,6 @@ class ConwayCertsChecksSuite extends FunSuite:
       case other => fail(s"an envelope that is not an array: $other")
     s.copy(
       bytes = again,
-      flat = right("edited flat")(Tx.fromEnvelope(again, Era.Conway)),
       typed = right("edited typed")(ConwayTx.fromEnvelope(again, StateLayout.Node11_1))
     )
 
@@ -762,7 +801,7 @@ class ConwayCertsChecksSuite extends FunSuite:
     * network and of less than the balance; a draining one; and the DReps' expiries moved by the
     * corpus's transactions with proposals or votes, with dormant epochs counted and without.
     */
-  private def baseCases: Vector[Verdict] =
+  private lazy val baseCases: Vector[Crafted] =
     Vector(9, 10, 11).flatMap { v =>
       val s = atVersion(base, v)
       val (registered, held) = s.cert.dState.accounts.states.head
@@ -784,8 +823,11 @@ class ConwayCertsChecksSuite extends FunSuite:
       val dormant = s.cert.copy(vState =
         s.cert.vState.copy(numDormantEpochs = right("dormant")(EpochNo.fromBigInt(3)))
       )
-      val voting = seen
-        .filter(c => c.flat.body.proposals.nonEmpty || c.flat.body.votes.nonEmpty)
+      val voting = recordedSeen
+        .filter { c =>
+          val b = c.typed.body
+          b.proposalProcedures.toVector.nonEmpty || b.votingProcedures.unVotingProcedures.nonEmpty
+        }
         .map(atVersion(_, v))
       // a proposal and a vote of each registered DRep, crafted into the transaction
       val voters = s.cert.vState.dreps.keys.toVector.collect {
@@ -820,7 +862,7 @@ class ConwayCertsChecksSuite extends FunSuite:
         fields.filterNot(f => isKey(19)(f._1) || isKey(20)(f._1)) ++ Vector(
           uint(20) -> arr(
             arr(
-              uint(s.flatPp.govActionDeposit),
+              uint(s.storedPp.govActionDeposit),
               bytesN(rewardAccount(s.network, 62)),
               arr(uint(6)),
               anchor(62)
@@ -853,7 +895,7 @@ class ConwayCertsChecksSuite extends FunSuite:
         accepted(
           quiet.copy(cert = dormant),
           "DReps registered and updated, dormant epochs",
-          Vector(C.regDRep(80, s.flatPp.drepDeposit), C.updateDRep(80)) ++ registeredDRep.map(c =>
+          Vector(C.regDRep(80, s.storedPp.drepDeposit), C.updateDRep(80)) ++ registeredDRep.map(c =>
             arr(uint(18), c, nul)
           )
         ),
@@ -873,7 +915,7 @@ class ConwayCertsChecksSuite extends FunSuite:
     }
 
   /** An account holding a balance, unregistered, at versions 10 and 11. */
-  private def funded: Vector[Verdict] =
+  private lazy val funded: Vector[Crafted] =
     Vector(10, 11).map { v =>
       val s = atVersion(base, v)
       val (registered, held) = s.cert.dState.accounts.states.head
@@ -892,8 +934,8 @@ class ConwayCertsChecksSuite extends FunSuite:
       compared(s.copy(cert = fundedState), "a funded account", Vector(arr(uint(1), existing)))
     }
 
-  test("the base case and a funded account are judged by both paths alike"):
-    assert(baseCases.nonEmpty && funded.nonEmpty)
+  test("the base case and a funded account are given the flat rule's recorded judgments"):
+    assertEquals((baseCases.size, funded.size), (252, 2))
 
   // ---- the reference's failure types: refusals, builds and events
 
@@ -963,19 +1005,6 @@ class ConwayCertsChecksSuite extends FunSuite:
       Vector(WithdrawalsRule.LedgerAboveVersion10, WithdrawalsRule.Ledger, WithdrawalsRule.Ledger)
     )
 
-  test("the flat CERTS refuses withdrawals in its base case below 11 under every build (#85 gap)"):
-    // the flat rules gate at version 11 alone: under the 11.2 and Leios builds at 9 and 10 they
-    // refuse in CERTS what the reference refuses in LEDGER, the same verdict and state
-    // (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7055304484)
-    val s = withdrawing(10)
-    val flat = flatOf(s, s.flat.body.certificates)
-    assert(
-      flat.exists(_.left.exists(_.toChain.toVector match
-        case Vector(PredicateFailure.Certs(CertsFailure.WithdrawalsNotInRewards(_))) => true
-        case _                                                                       => false)),
-      s"flat: $flat"
-    )
-
   test("POOL tells a registration and a re-registration, embedded in CERT's and CERTS's events"):
     val s = withParams(base, "")(pp => pp.copy(minPoolCost = BigInt(0)))
     val operator = hash(950, 28)
@@ -985,7 +1014,7 @@ class ConwayCertsChecksSuite extends FunSuite:
       C.regPool(operator, hash(953, 32), 0, account),
       C.regPool(operator, hash(953, 32), 0, account)
     )
-    val (_, typed) = both(certs)
+    val typed = certsOf(certs)
     val pool =
       right("operator")(xyz.kd5ujc.scarab.ledger.state.KeyHash.fromBytes[StakePool](operator))
     val events = typedRun(s, typed) match
@@ -999,6 +1028,53 @@ class ConwayCertsChecksSuite extends FunSuite:
     )
 
   test("every predicate failure of CERTS is reached by the corpus or a crafted case"):
-    val all = corpusReach.keySet ++ craftedVerdicts.flatMap(reached)
-    val missing = every.collect { case (r, name) if !all.contains(r) => name }.toVector.sorted
-    assertEquals(missing, Vector.empty[String])
+    val all = corpusReach.keySet ++ craftedJudged.flatMap(c => reached(c.verdict))
+    assertEquals(Reached.values.toSet -- all, Set.empty[Reached])
+
+  test("the recording of the flat CERTS's judgments holds this suite's alone, each once"):
+    val ids = corpusJudged.map(_._1) ++ blocksJudged.map(_._1) ++ craftedJudged.map(_.id)
+    assertEquals(ids.diff(ids.distinct), Vector.empty[String], "ids judged twice")
+    assertEquals(ids.toSet, FlatRecordings.certsJudgments.keySet)
+    val verdicts =
+      corpusJudged.flatMap(_._2) ++ blocksJudged.flatMap(_._2) ++ craftedJudged.map(_.verdict)
+    assertEquals(
+      (verdicts.count(_.exists(_.isLeft)), verdicts.count(_.exists(_.isRight))),
+      (191, 736),
+      "the refusals and admissions compared"
+    )
+
+  // ---- what an admission's cell holds
+
+  /** An admission of [[base]] that registers, re-registers and retires pools, and the state it
+    * leaves.
+    */
+  private lazy val pooled: (Seen, ConwayCertState) =
+    val s = atVersion(base, 10)
+    val id = s"crafted/${s.label}/pools registered, re-registered and retired"
+    craftedJudged.find(_.id == id).map(_.verdict) match
+      case Some(Right(Right((after, _)))) => (s, after)
+      case other                          => fail(s"$id: $other")
+
+  test("an admission's cell holds the relays a state keeps, which its encoding writes anew"):
+    // the encoding writes a pool's relays in its own form, so a state holding them as other bytes
+    // (an indefinite empty list for the definite one) has the same encoding; the cell's second
+    // digest, of the bytes kept, tells them apart, as the flat comparison of the whole state did
+    val (s, after) = pooled
+    val pool = right("operator")(
+      xyz.kd5ujc.scarab.ledger.state.KeyHash.fromBytes[StakePool](hash(70, 28))
+    )
+    assertEquals(after.pState.stakePools.get(pool).map(_.relays), Some(Bytes.empty))
+    val indefinite = right("relays")(Bytes.fromHex("9fff"))
+    val mutant = ConwayCertState.pState.modify(p =>
+      p.copy(stakePools = p.stakePools.updatedWith(pool)(_.map(_.copy(relays = indefinite))))
+    )(after)
+    assertEquals(
+      FlatRecordings.certsEncoded(mutant, s.codecs),
+      FlatRecordings.certsEncoded(after, s.codecs),
+      "the encoding is the same"
+    )
+    assert(FlatRecordings.certsHeldWhole(mutant, s.codecs))
+    assertNotEquals(
+      FlatRecordings.certsAdmitted(mutant, s.codecs),
+      FlatRecordings.certsAdmitted(after, s.codecs)
+    )
