@@ -27,9 +27,11 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
   *     decode (`Tx.fromBlock`), the hashing of their bodies (`TxBody.id`), the witness keys with
   *     their `distinct`, the cache-key lookups those keys make, and the VRF alpha of the header.
   *
-  * Prints the mean milliseconds per block of each, and what the blocks hold. The parts are measured
-  * one after another on one thread; `warm` less their sum is its scheduling (the blocking threads,
-  * the permits and the fibers).
+  * Only the blocks the cache holds are timed (`VerificationCache.holds`, checked before each).
+  * Prints the mean milliseconds per block of each, and how many warmings were timed. The parts
+  * follow the flat decoder's path (blocks before Conway) and are measured one after another on one
+  * thread; `warm` less their sum is unattributed: mostly the scheduling (the blocking threads, the
+  * permits, the fibers), and the cache's own bookkeeping.
   *
   * With a fourth argument, `<ahead threads>`, it also measures the contention the checks made ahead
   * can cause: the decoding of every block on one thread (work of the kind the worker does), alone
@@ -94,6 +96,9 @@ object PreverifyHitBench:
     }
     final class Sums:
       val total = scala.collection.mutable.LinkedHashMap.empty[String, Long]
+      private val samples = new java.util.concurrent.atomic.AtomicLong(0)
+      def count(): Unit = samples.incrementAndGet(): Unit
+      def blocks: Long = samples.get
       def time[A](name: String)(body: => A): A =
         val t0 = System.nanoTime
         val a = body
@@ -101,7 +106,9 @@ object PreverifyHitBench:
         a
 
     def round(sums: Sums): Unit =
-      shelley.foreach { (raw, hash, header) =>
+      // only the blocks the cache holds: the hits the worker's call skips
+      shelley.filter((_, hash, _) => cache.holds(hash)).foreach { (raw, hash, header) =>
+        sums.count()
         sums.time("warm")(cache.warm[IO](Vector(raw), praos, threads).unsafeRunSync())
         sums.time("holds")(cache.holds(hash): Unit)
         sums.time("block decode")(ConwayBlock.read(raw, layout)).toOption.foreach {
@@ -129,7 +136,12 @@ object PreverifyHitBench:
         shelley.foreach((raw, _, _) => Prepared.decode(raw, layout): Unit)
         System.nanoTime - t0
       val verifying = IO
-        .blocking(VerificationCache.unsafe(aheadThreads))
+        .blocking {
+          val fresh = VerificationCache.unsafe(aheadThreads)
+          shelley.headOption
+            .foreach((_, _, h) => fresh.noteEpochNonce(praos.geometry.epochOf(h.slot), nonce))
+          fresh
+        }
         .flatMap { fresh =>
           raws
             .traverse_(r => fresh.warm[IO](Vector(r), praos, aheadThreads))
@@ -150,8 +162,11 @@ object PreverifyHitBench:
     round(Sums())
     val sums = Sums()
     (1 to rounds).foreach(_ => round(sums))
-    val per = (ns: Long) => ns / 1e6 / (rounds * shelley.size.max(1))
+    val per = (ns: Long) => ns / 1e6 / sums.blocks.max(1)
+    println(s"timed: ${sums.blocks} warmings of blocks the cache held")
     sums.total.foreach((name, ns) => println(f"$name%-16s ${per(ns)}%8.3f ms/block"))
     val parts = sums.total.view.filterKeys(k => !Set("warm", "holds")(k)).values.sum
-    println(f"${"warm - parts"}%-16s ${per(sums.total("warm") - parts)}%8.3f ms/block")
+    println(
+      f"${"unattributed"}%-16s ${per(sums.total.getOrElse("warm", 0L) - parts)}%8.3f ms/block"
+    )
     cache.shutdown()

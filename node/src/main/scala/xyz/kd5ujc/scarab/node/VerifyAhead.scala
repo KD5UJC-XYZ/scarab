@@ -110,9 +110,10 @@ final class VerifyAhead[F[_]: Async] private (
     slots.modify { held =>
       held.get(hash) match
         case Some(Slot.Running(_)) => (held.updated(hash, Slot.Abandoned[F]()), F.unit)
-        case Some(Slot.Verified()) => (held - hash, verifier.discard(hash))
-        case Some(Slot.Queued() | Slot.Unverified() | Slot.Abandoned()) => (held - hash, F.unit)
-        case None                                                       => (held, F.unit)
+        // a verification that did not make every check may still have left the decoded block
+        case Some(Slot.Verified() | Slot.Unverified()) => (held - hash, verifier.discard(hash))
+        case Some(Slot.Queued() | Slot.Abandoned())    => (held - hash, F.unit)
+        case None                                      => (held, F.unit)
     }.flatten
 
   /** The worker prepared a block without asking for its checks, every verdict of them being in the

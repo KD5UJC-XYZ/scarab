@@ -76,16 +76,24 @@ final class VerificationCache private (
   private val headers = new ConcurrentHashMap[HeaderKey, Either[OCertError, Unit]]()
   private val prepared = new ConcurrentHashMap[Bytes, Prepared]()
 
-  // The blocks whose every verdict a warming kept, by the generation of the verdict maps it began
-  // in ([[holds]]). Each clear of a verdict map moves the generation first, so a block whose
-  // warming a clear overlapped is no longer held, whichever finished first.
-  private val complete = new ConcurrentHashMap[Bytes, java.lang.Long]()
+  // The blocks whose every verdict a warming kept ([[holds]]): the generation of the verdict maps
+  // the warming began in, and the epoch nonce it verified the VRF proofs under. A clear of a verdict
+  // map moves the generation before and after it and is counted while it runs, so that a block
+  // whose warming a clear overlapped, before, during or after its own run, is not held.
+  private final case class Kept(generation: Long, hint: (BigInt, Nonce))
+  private val complete = new ConcurrentHashMap[Bytes, Kept]()
   private val generation = new java.util.concurrent.atomic.AtomicLong(0)
+  private val clearing = new java.util.concurrent.atomic.AtomicInteger(0)
 
-  /** `clear` of a verdict map, its generation moved first ([[holds]]). */
-  private def evicting(clear: => Unit): Unit =
+  /** `clear` of a verdict map, counted while it runs and the generation moved before and after it
+    * ([[holds]]).
+    */
+  private[node] def evicting(clear: => Unit): Unit =
+    clearing.incrementAndGet(): Unit
     generation.incrementAndGet(): Unit
     clear
+    generation.incrementAndGet(): Unit
+    clearing.decrementAndGet(): Unit
 
   // VRF proofs depend on the epoch nonce, which only the sequential rules know; the verdicts are
   // keyed by the derived alpha string, so a block warmed under a wrong nonce is just a miss.
@@ -254,12 +262,16 @@ final class VerificationCache private (
           .void
 
   /** Whether every verdict of the block `hash` 's checks is here: a warming decoded it and kept the
-    * verdict of each of its checks (none a provider failed on, its VRF under the epoch nonce of its
-    * epoch), no verdict map was cleared since that warming began, and the rules have not taken the
-    * block ([[takePrepared]]). Two map reads, no decoding.
+    * verdict of each of its checks (none a provider failed on, its VRF under the epoch nonce noted
+    * now), no verdict map was cleared since that warming began and none is being cleared, and the
+    * rules have not taken the block ([[takePrepared]]). A few reads, no decoding.
     */
   def holds(hash: Bytes): Boolean =
-    Option(complete.get(hash)).exists(_.longValue == generation.get) && prepared.containsKey(hash)
+    clearing.get == 0 &&
+      Option(complete.get(hash)).exists(k =>
+        k.generation == generation.get && k.hint == epochNonce.get
+      ) &&
+      prepared.containsKey(hash)
 
   /** The block decoded while warming, if any (taken once). */
   override def takePrepared(hash: Bytes): Option[Prepared] =
@@ -383,8 +395,10 @@ final class VerificationCache private (
     if headers.size > Limit then evicting(headers.clear())
     if prepared.size > bounds.prepared then evicting { prepared.clear(); complete.clear() }
     if vrfs.size > bounds.vrfs then evicting(vrfs.clear())
-    // the generation the block's verdicts are kept in: a clear after this makes it not held
+    // the generation the block's verdicts are kept in, and the nonce its VRF proofs are verified
+    // under: a clear after this, or another nonce noted, makes it not held
     val begun = generation.get
+    val hint = epochNonce.get
     NodeRules.decodeShelley(raw, layout).fold(Vector.empty[Task]) { p =>
       val b = p.envelope
       val key = HeaderKey(b.header.hash, config.slotsPerKesPeriod, config.maxKesEvolutions)
@@ -426,7 +440,7 @@ final class VerificationCache private (
               case Left(_: ProviderDefect)         => false
               case Left(_: OCertError) | Right(()) => true
           ,
-          () => warmVrf(b.header, config, epochNonce.get)
+          () => warmVrf(b.header, config, hint)
         ) ++ triples.map(witnessJob)
       val pending = new Pending(p, checks.size)
       // a job's defect is discarded (the validation asks the provider itself); the last job to
@@ -438,7 +452,7 @@ final class VerificationCache private (
           .fold(_ => pending.failure(), kept => if !kept then pending.unkept())
         if pending.finished() then
           prepared.put(b.header.hash, p)
-          if pending.kept then complete.put(b.header.hash, begun): Unit
+          if pending.kept then complete.put(b.header.hash, Kept(begun, hint)): Unit
       }
     }
 

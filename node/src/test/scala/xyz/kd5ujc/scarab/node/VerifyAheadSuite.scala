@@ -330,6 +330,43 @@ class VerifyAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       assertEquals(counts.skipped, 1L)
   }
 
+  test("a block warmed while a clear runs is not held, during the clear nor after it") {
+    val cache = VerificationCache.unsafe(2)
+    cache.noteEpochNonce(forged.genesis.ledgerEpoch, forged.genesis.protocol.epochNonce)
+    IO.blocking {
+      // the warming runs inside the clear: it begins and ends while the clear is under way, as a
+      // warming on another thread may, and finds the maps as the clear leaves them so far
+      val during = new java.util.concurrent.atomic.AtomicReference(Option.empty[Boolean])
+      cache.evicting {
+        cache.warm[IO](Vector(raw(0)), ForgedChain.config, 1).unsafeRunSync()(using munitIORuntime)
+        during.set(Some(cache.holds(header(0).hash)))
+      }
+      (during.get, cache.holds(header(0).hash))
+    }.flatMap { (during, after) =>
+      // warmed again with no clear, it is held
+      cache.warm[IO](Vector(raw(0)), ForgedChain.config, 1).map { _ =>
+        assertEquals((during, after), (Some(false), false))
+        assert(cache.holds(header(0).hash), "warmed with no clear, the block is held")
+      }
+    }.guarantee(IO(cache.shutdown()))
+  }
+
+  test("a block warmed under another epoch nonce than the one noted now is not held") {
+    val cache = VerificationCache.unsafe(2)
+    cache.noteEpochNonce(forged.genesis.ledgerEpoch, forged.genesis.protocol.epochNonce)
+    cache
+      .warm[IO](Vector(raw(0)), ForgedChain.config, 1)
+      .map { _ =>
+        val before = cache.holds(header(0).hash)
+        cache.noteEpochNonce(
+          forged.genesis.ledgerEpoch,
+          xyz.kd5ujc.scarab.ledger.Nonce.Hash(Bytes(Vector.fill(32)(1.toByte)))
+        )
+        assertEquals((before, cache.holds(header(0).hash)), (true, false))
+      }
+      .guarantee(IO(cache.shutdown()))
+  }
+
   test("a block whose check met a provider defect is not held: the worker asks for its checks") {
     val defect = ProviderDefect.Kes(xyz.kd5ujc.scarab.crypto.kes.Sum6Kes.Failure.Defect(boom))
     // the real verifiers, except that the certificate of the second block meets a defect
