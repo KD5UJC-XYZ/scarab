@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   NativeScriptRep,
   Plutus,
   PlutusLanguage,
+  Sized,
   Timelock,
   TimelockScripts,
   Val
@@ -81,6 +82,13 @@ object BabbagePlutusScript:
 opaque type BabbageScript = AlonzoScriptRep[BabbageTimelock, BabbagePlutusScript]
 
 object BabbageScript:
+  /** A native script as a Babbage script (`fromNativeScript`). */
+  private[babbage] def native(t: BabbageTimelock): BabbageScript = AlonzoScriptRep.NativeScript(t)
+
+  /** A Plutus script as a Babbage script (`fromPlutusScript`). */
+  private[babbage] def plutus(p: BabbagePlutusScript): BabbageScript =
+    AlonzoScriptRep.PlutusScript(p)
+
   /** Babbage's script decoder (`decodeAlonzoScript` at `eraMaxLanguage = PlutusV2`,
     * `Babbage/Scripts.hs:63`, cardano-ledger f649f975).
     */
@@ -140,10 +148,26 @@ object BabbageTxOut:
   private[ledger] def fromStored(
       out: xyz.kd5ujc.scarab.ledger.TxOut
   ): Either[EraTxError, BabbageTxOut] =
-    BabbageTxOutRep
-      .fromStored(out)(n => BabbageScript.read(n))
+    inverse(out)(BabbageTxOutRep.fromStored(out)(n => BabbageScript.read(n)))
+
+  /** An output the flat decoder read at Babbage from a block or a transaction, as a Babbage output:
+    * its inline datum read as data, as the reference's `DecCBOR` of `BinaryData` reads it
+    * (`makeBinaryData`), and its reference script read as a Babbage script. It is held to the flat
+    * output it came from, with the size of the encoding it was read from (`Sized`, the flat
+    * output's `ledgerSize`).
+    */
+  private[babbage] def fromDecoded(
+      out: xyz.kd5ujc.scarab.ledger.TxOut
+  ): Either[EraTxError, Sized[BabbageTxOut]] =
+    inverse(out)(BabbageTxOutRep.fromDecoded(out)(n => BabbageScript.read(n)))
+      .map(Sized(_, out.ledgerSize.toLong))
+
+  // the output written back is the one read, so `toStored` is its inverse
+  private def inverse(out: xyz.kd5ujc.scarab.ledger.TxOut)(
+      read: Either[LedgerDecodeError, BabbageTxOut]
+  ): Either[EraTxError, BabbageTxOut] =
+    read
       .leftMap(EraTxError.Decode(_))
-      // the output written back is the one read, so `toStored` is its inverse
       .flatMap(o => Either.cond(toStored(o) == out, o, EraTxError.StoredOutputDiffers))
 
   /** The output in the form the store keeps, the inverse of [[fromStored]] (which refuses a stored
