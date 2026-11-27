@@ -86,7 +86,7 @@ class WarmUtxoStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     val lookup = Gen.listOf(Gen.choose(0, 63)).map(ks => (t: Tier) => t.lookup(ks.map(key))._1)
     val fill = Gen.listOf(Gen.choose(0, 63)).map { ks => (t: Tier) =>
       val (looked, (_, seen)) = t.lookup(Nil)
-      looked.filled(seen, ks.map(k => key(k) -> Tier.encoded(out(k * 37))))._1
+      looked.filled(seen, 0, ks.map(k => key(k) -> Tier.encoded(out(k * 37))))._1
     }
     val clear = Gen.const((t: Tier) => t.moving(WarmUtxoStore.Touched.Everything).quiet)
     Gen.listOf(Gen.frequency(4 -> write, 3 -> lookup, 3 -> fill, 1 -> clear)).map(_.toVector)
@@ -107,7 +107,7 @@ class WarmUtxoStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       .moving(WarmUtxoStore.Touched.Keys(Vector(key(1))))
       .moved(Vector(key(1) -> Tier.encoded(out(1))))
     val (filled, _) = t.lookup(Nil) match
-      case (looked, (_, seen)) => looked.filled(seen, Vector(key(2) -> Tier.encoded(out(2))))
+      case (looked, (_, seen)) => looked.filled(seen, 0, Vector(key(2) -> Tier.encoded(out(2))))
     assertEquals((t.size, t.bytes, filled.size, filled.bytes), (0, 0L, 0, 0L))
   }
 
@@ -126,7 +126,7 @@ class WarmUtxoStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       (300 to 308).map(k => next.kindOf(key(k))),
       Some(Kind.Read) +: None +: Vector.fill(7)(Some(Kind.Young))
     )
-    assertEquals((next.stats.evictedYoung, next.stats.served), (1L, 1L))
+    assertEquals(next.stats.evictedYoung, 1L)
   }
 
   test("a fill whose lookup found the tier moving, or that comes after a move, is refused") {
@@ -135,13 +135,21 @@ class WarmUtxoStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
     val moving = quiet.moving(WarmUtxoStore.Touched.Keys(Vector(key(1))))
     val (_, (_, during)) = moving.lookup(Nil)
     val fill = Vector(key(2) -> Tier.encoded(out(2)))
-    val (afterMove, landed) = moving.quiet.filled(before, fill)
-    val (inMove, landedInMove) = moving.filled(during, fill)
+    val (afterMove, landed) = moving.quiet.filled(before, 0, fill)
+    val (inMove, landedInMove) = moving.filled(during, 0, fill)
     assertEquals(
       (afterMove.holds(key(2)), landed, inMove.holds(key(2)), landedInMove),
       (false, WarmUtxoStore.Landing.Moved, false, WarmUtxoStore.Landing.Current)
     )
     assertEquals(afterMove.stats.refused + inMove.stats.refused, 2L)
+  }
+
+  property("what a fill or a write stages is within the room it is given") {
+    Prop.forAll(Gen.listOf(Gen.choose(0, 600)), Gen.choose(0L, 4000L)) { (ks, room) =>
+      val staged = Tier.staged(ks.iterator.map(k => key(k % 64) -> out(k)), room)
+      staged.map(_._2.length + EntryBytes).sum <= room &&
+      staged.map(_._1) == ks.take(staged.size).map(k => key(k % 64))
+    }
   }
 
   // ------------------------------------------------------------------ the store
@@ -276,6 +284,53 @@ class WarmUtxoStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
           (false, false, 2L)
         )
         assertEquals(after, Map(in(3) -> out(3)))
+    }
+  }
+
+  test(
+    "a read whose hits are older than a write that came during it is read again from the store"
+  ) {
+    ok {
+      for
+        memory <- MemoryUtxoStore[IO]
+        reading <- Deferred[IO, Unit]
+        release <- Deferred[IO, Unit]
+        warm <- WarmUtxoStore[IO](Gated.reads(memory, reading, release), Budget.Default)
+        // 10 is held (written through the tier), 11 only stored
+        _ <- warm.write(Vector(in(10) -> Some(out(10))), 10)
+        _ <- memory.write(Vector(in(11) -> Some(out(11))), 11)
+        read <- warm
+          .read(Vector(in(10), in(11)))
+          .background
+          .use(landed =>
+            reading.get *> warm.write(Vector(in(10) -> None), 20) *> release.complete(()) *>
+              landed.flatMap(_.embedNever)
+          )
+          .guarantee(release.complete(()).void)
+        tier <- warm.held
+      yield
+        // the hit on 10 came before its delete: the whole read is the store's after it
+        assertEquals(read, Map(in(11) -> out(11)))
+        assertEquals(
+          (tier.holds(key(10)), tier.holds(key(11)), tier.stats.served),
+          (false, false, 0L)
+        )
+    }
+  }
+
+  test("a write of more entries than the budget holds empties the tier and adds nothing") {
+    ok {
+      for
+        memory <- MemoryUtxoStore[IO]
+        warm <- WarmUtxoStore[IO](memory, Budget.bytes(3 * EntryBytes + 100))
+        _ <- warm.write(Vector(in(12) -> Some(out(12))), 10)
+        before <- warm.held
+        _ <- warm.write((13 until 17).map(k => in(k) -> Some(out(k))), 11)
+        after <- warm.held
+        read <- warm.read((12 until 17).map(in))
+      yield
+        assertEquals((before.size, after.size), (1, 0))
+        assertEquals(read, (12 until 17).map(k => in(k) -> out(k)).toMap)
     }
   }
 

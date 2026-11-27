@@ -82,6 +82,7 @@ import xyz.kd5ujc.scarab.storage.UtxoStore.Coding
   */
 final class WarmUtxoStore[F[_]: Async] private (
     store: UtxoStore[F],
+    budget: WarmUtxoStore.Budget,
     tier: Ref[F, WarmUtxoStore.Tier],
     lock: Mutex[F]
 ) extends UtxoStore[F]:
@@ -105,8 +106,13 @@ final class WarmUtxoStore[F[_]: Async] private (
         val rest = keys.filterNot(served.contains)
         val stored = if rest.isEmpty then F.pure(Map.empty[TxIn, TxOut]) else store.read(rest)
         stored.flatMap { got =>
-          val fills = got.iterator.flatMap((in, out) => Key.of(in).map(_ -> Tier.encoded(out)))
-          tier.modify(_.filled(seen, fills.toVector)).flatMap {
+          // encoded before the step (which may run more than once), and no more than the read
+          // population can hold
+          val fills = Tier.staged(
+            got.iterator.flatMap((in, out) => Key.of(in).map(_ -> out)),
+            budget.readShare
+          )
+          tier.modify(_.filled(seen, hits.size, fills)).flatMap {
             case Landing.Current => F.pure(served ++ got)
             // a change of the store began since the lookup: the tier's part may be older than
             // the rest, so all of it is read from the store, at one moment
@@ -119,16 +125,23 @@ final class WarmUtxoStore[F[_]: Async] private (
       Raise[F, StorageError]
   ): F[Unit] =
     val batch = changes.toVector
-    val touched = Touched.Keys(batch.flatMap((in, _) => Key.of(in)))
-    // what the batch leaves in the store: the last change of each key, as the store applies them
-    // in order (a key created and deleted in one batch is not in the store after it)
-    val created = batch
-      .foldLeft(Map.empty[Key, Option[TxOut]]) { case (last, (in, out)) =>
+    // A batch of more entries than the budget can hold (the hand-over from Byron, the upgrade of
+    // the stored outputs on entering Dijkstra) empties the tier and adds nothing, so that what
+    // the tier stages for a write is bounded by its budget as well as what it keeps.
+    if batch.size.toLong * EntryBytes > budget.bytes then
+      moving(Touched.Everything, store.write(batch, stamp))
+    else
+      val touched = Touched.Keys(batch.flatMap((in, _) => Key.of(in)))
+      // what the batch leaves in the store: the last change of each key, as the store applies
+      // them in order (a key created and deleted in one batch is not in the store after it)
+      val last = batch.foldLeft(Map.empty[Key, Option[TxOut]]) { case (last, (in, out)) =>
         Key.of(in).fold(last)(last.updated(_, out))
       }
-      .toVector
-      .flatMap((key, out) => out.map(o => key -> Tier.encoded(o)))
-    moving(touched, store.write(batch, stamp).flatMap(_ => tier.update(_.moved(created))))
+      val created = Tier.staged(
+        last.iterator.flatMap((key, out) => out.map(key -> _)),
+        budget.bytes
+      )
+      moving(touched, store.write(batch, stamp).flatMap(_ => tier.update(_.moved(created))))
 
   def reset(using Raise[F, StorageError]): F[Unit] =
     moving(Touched.Everything, store.reset)
@@ -137,12 +150,12 @@ final class WarmUtxoStore[F[_]: Async] private (
     moving(Touched.Everything, store.restore(dir))
 
   /** `change` of the store as a move of the tier, under the lock: the keys it touches removed
-    * first, and the tier quiet again however `change` ends (`change` ends it itself where it
-    * succeeds and has creations to add).
+    * first, and the tier quiet again however the move ends, also where it is cancelled before
+    * `change` starts (`change` ends it itself where it succeeds and has creations to add).
     */
   private def moving[A](touched: Touched, change: F[A]): F[A] =
     lock.lock.surround(
-      tier.update(_.moving(touched)) *> change.guarantee(tier.update(_.quiet))
+      (tier.update(_.moving(touched)) *> change).guarantee(tier.update(_.quiet))
     )
 
   def stamp(using Raise[F, StorageError]): F[Long] = store.stamp
@@ -301,22 +314,24 @@ object WarmUtxoStore:
             t.held.get(key) match
               case Some(h) =>
                 val moved = t.removed(key).inserted(key, h.value, Kind.Read)
-                (moved.counted(served = 1), found.updated(key, h.value))
+                (moved, found.updated(key, h.value))
               case None => (t.counted(missed = 1), found)
       }
       (after.within, (hits, seen))
 
-    /** Entries read from the store after a lookup that found the tier as `seen`, added to the read
-      * population only if the tier was quiet then and has not moved since; otherwise refused, and
-      * [[Landing.Moved]] if it has moved.
+    /** Entries read from the store after a lookup that found the tier as `seen` and gave `hits`
+      * entries, added to the read population only if the tier was quiet then and has not moved
+      * since; otherwise refused, and [[Landing.Moved]] if it has moved (the hits are then dropped,
+      * and not counted as served).
       */
-    def filled(seen: Seen, read: Iterable[(Key, Array[Byte])]): (Tier, Landing) =
+    def filled(seen: Seen, hits: Int, read: Iterable[(Key, Array[Byte])]): (Tier, Landing) =
       if seen.epoch != epoch then (counted(refused = read.size.toLong), Landing.Moved)
       else
+        val served = counted(served = hits.toLong)
         seen.phase match
-          case Phase.Moving => (counted(refused = read.size.toLong), Landing.Current)
+          case Phase.Moving => (served.counted(refused = read.size.toLong), Landing.Current)
           case Phase.Quiet =>
-            val added = read.foldLeft(this) { case (t, (key, value)) =>
+            val added = read.foldLeft(served) { case (t, (key, value)) =>
               if t.held.contains(key) then t else t.inserted(key, value, Kind.Read).within
             }
             (added, Landing.Current)
@@ -420,6 +435,20 @@ object WarmUtxoStore:
     /** The store's encoding of `out`, as `RocksUtxoStore` writes it. */
     def encoded(out: TxOut): Array[Byte] = Coding.encodeValue(out)
 
+    /** The encodings of `entries`, in their order, as long as their charges stay within `room`:
+      * what a fill or a write stages for the tier is never more than it can hold.
+      */
+    def staged(entries: Iterator[(Key, TxOut)], room: Long): Vector[(Key, Array[Byte])] =
+      entries
+        .map((key, out) => key -> encoded(out))
+        .scanLeft((0L, Option.empty[(Key, Array[Byte])])) { case ((total, _), entry) =>
+          (total + entry._2.length + EntryBytes, Some(entry))
+        }
+        .drop(1)
+        .takeWhile((total, _) => total <= room)
+        .flatMap(_._2)
+        .toVector
+
     /** The output of a held encoding, as `RocksUtxoStore` reads it; none if it does not decode,
       * which an encoding the tier made cannot fail to do (the key is then read from the store).
       */
@@ -427,4 +456,4 @@ object WarmUtxoStore:
 
   /** `store` with a warm tier of `budget` in front of it. */
   def apply[F[_]: Async](store: UtxoStore[F], budget: Budget): F[WarmUtxoStore[F]] =
-    (Ref.of[F, Tier](Tier.empty(budget)), Mutex[F]).mapN(new WarmUtxoStore[F](store, _, _))
+    (Ref.of[F, Tier](Tier.empty(budget)), Mutex[F]).mapN(new WarmUtxoStore[F](store, budget, _, _))
