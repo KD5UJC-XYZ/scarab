@@ -106,9 +106,14 @@ trait ShelleyEraTxBody[E <: EraTag] extends EraTxBody[E]:
   override def certsOf: ShelleyEraTxCert[E]
 
   /** `updateTxBodyL` (`Shelley/TxBody.hs:97-100`, cardano-ledger f649f975): the typed update
-    * proposal ([[Update]]).
+    * proposal ([[Update]]), read with the bytes the node keeps it by ([[KeptUpdate]]), the form
+    * PPUP records its proposals in.
     */
-  def update(body: TxBody[TxLevel.Top, E]): Option[Update[E]]
+  def keptUpdate(body: TxBody[TxLevel.Top, E]): Option[KeptUpdate[E]]
+
+  /** `updateTxBodyL`: the typed update proposal alone ([[keptUpdate]]). */
+  final def update(body: TxBody[TxLevel.Top, E]): Option[Update[E]] =
+    keptUpdate(body).map(_.update)
 
 /** The slots a transaction is valid in, from Allegra (`data ValidityInterval`,
   * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:130-134`, cardano-ledger f649f975):
