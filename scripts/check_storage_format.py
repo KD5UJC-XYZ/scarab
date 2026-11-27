@@ -310,11 +310,7 @@ FORMAT_CHANGE_PATHS = OWNER_NAMED_PATHS + REQUIRED_BY_OTHER_GATES
 # Paths one storage format change may touch beyond FORMAT_CHANGE_PATHS, by the number of its pull request: an
 # exception the owner approved for that pull request only, which no other pull request gets. The number is read
 # from the event of the policy check (`GITHUB_EVENT_PATH`), which GitHub writes and the trusted policy reads.
-ONE_OFF_PATHS: dict[int, tuple[str, ...]] = {
-    # #1512: a registered pool's metadata read as `DecCBOR PoolMetadata` (#1511); its suite's 1 MiB genesis URL test
-    # asserts the reader's refusal. Approved by the owner 2026-11-27 (asked 17:01:40Z, decided 17:06:29Z).
-    1512: ('storage/src/test/scala/xyz/kd5ujc/scarab/storage/haskell/state/HaskellStateCodecSuite.scala',),
-}
+ONE_OFF_PATHS: dict[int, tuple[str, ...]] = {}
 # A pull request that changes one of these is a storage format change (scripts/pr_policy.py): the manifest, and the
 # guard and its tests, so that weakening the guard is as loud as a format change.
 FREEZE_PATHS = (MANIFEST, GUARD, GUARD_TESTS)
