@@ -187,13 +187,15 @@ object ScarabEvaluator:
 
     /** The program of `script` for an evaluation, memoised. The key, and the program decoded from
       * it, own exactly the script's bytes ([[Bytes.compact]]), so an entry never holds a larger
-      * buffer the script was read from.
+      * buffer the script was read from. A program is kept with its scope check made
+      * ([[Program.withScope]]), so that an evaluation on another thread reads the check and never
+      * waits for it.
       */
     private def admitted(language: PlutusLanguage, protocol: Int, script: Bytes): Admitted =
       val owned = script.compact
       programs.getOrElseUpdate(
         ProgramKey(language, protocol, owned),
-        LedgerEval.deserialiseScript(language, ProtocolMajor(protocol), owned)
+        LedgerEval.deserialiseScript(language, ProtocolMajor(protocol), owned).map(_.withScope)
       )(retained)
 
     /** The evaluation context of the request's language and cost model, made once

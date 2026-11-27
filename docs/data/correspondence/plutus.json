@@ -631,8 +631,9 @@
    ]
   },
   {
-   "reason": "an Optimisation of #1499 (owner approval 2026-11-27): the scope check that mkTermToEvaluate makes of the applied term (`Eval.hs:129-130`, plutus 1.70.0.0) made once for a decoded program and kept with it, since the arguments are constants and the check visits the function before its argument; ScopeAppliedSuite and EvaluatorPathsSuite show it equal to the walk of the applied term",
+   "reason": "an Optimisation of #1499 (owner approval 2026-11-27): the scope check that mkTermToEvaluate makes of the applied term (`Eval.hs:129-130`, plutus 1.70.0.0) made once for a decoded program and kept with it, since the arguments are constants and the check visits the function before its argument; ScopeAppliedSuite and EvaluatorPathsSuite show it equal to the walk of the applied term. A program the node's cache hands to other threads has the check made first, so that no thread waits for another's",
    "definitions": [
+    "def uplc.Program#withScope",
     "def uplc.ledger.Scope.applied",
     "val uplc.Program#scope"
    ]
