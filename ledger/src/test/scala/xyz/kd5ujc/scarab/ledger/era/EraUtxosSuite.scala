@@ -440,7 +440,16 @@ class EraUtxosSuite extends munit.FunSuite:
       evaluator: ScriptEvaluator[Id],
       failedBefore: Boolean
   ): Verdict =
-    val ours = eraVerdict(c, eraRun(c, validation, evaluator, failedBefore), failedBefore)
+    val run = eraRun(c, validation, evaluator, failedBefore)
+    // a verdict withheld is recorded as `N` alone: its typed cause, which the flat comparison held,
+    // is checked to be the one the evaluator gives the script the rule stopped at
+    run match
+      case Left(ScriptVerdictUnavailable(plutus, reason)) =>
+        evaluator.evaluate(PlutusWithContext.evalRequest(plutus)) match
+          case EvalResult.Failure(asked, _, _) => assertEquals(reason, asked, c.name)
+          case EvalResult.Success(_, _) => fail(s"${c.name}: no verdict for a script that passes")
+      case Right(_) => ()
+    val ours = eraVerdict(c, run, failedBefore)
     assert(causesHeld(ours), s"${c.name}: a script's cause is not the evaluator's on its request")
     ours
 
@@ -674,9 +683,15 @@ class EraUtxosSuite extends munit.FunSuite:
 
   test("an evaluator with no verdict leaves the transaction with none, whatever its flag") {
     val reached = verdicts.map(_._2.unavailable)
-    assert(
-      reached.exists(_ == Verdict.NoVerdict(EvalFailure.Unsupported(BackendFailure.StackExhausted)))
-    )
+    val withheld = Verdict.NoVerdict(EvalFailure.Unsupported(BackendFailure.StackExhausted))
+    assert(reached.contains(withheld))
+    // every verdict withheld has the evaluator's own cause, and every other is one no script was
+    // evaluated for
+    reached.foreach {
+      case v @ Verdict.NoVerdict(_)                           => assertEquals(v, withheld)
+      case Verdict.CollectErrors(_) | Verdict.Passed(0, 0, 0) => ()
+      case other => fail(s"a verdict for an evaluator that gives none: $other")
+    }
   }
 
   // ---- the state ---------------------------------------------------------------------------------
@@ -1065,4 +1080,14 @@ class EraUtxosSuite extends munit.FunSuite:
       Vector("utxos/", "state/passing/", "state/returning/", "state/blocks/").map(count),
       Vector(190, 68, 1, 128)
     )
+  }
+
+  test("the UTXOS recording holds the judgments of its two suites alone") {
+    // this suite holds the ids under `utxos/` and `state/` exactly, and `DijkstraStateSuite` those
+    // under `dijkstra-deposits/`, so the file is their union when no id is under another prefix
+    val prefixes = Vector("utxos/", "state/", "dijkstra-deposits/")
+    val ids = UtxoRecordings.utxos.keySet
+    assertEquals(ids.filterNot(id => prefixes.exists(id.startsWith)), Set.empty[String])
+    assertEquals(prefixes.map(p => ids.count(_.startsWith(p))), Vector(190, 197, 182))
+    assertEquals(ids.size, 569)
   }
