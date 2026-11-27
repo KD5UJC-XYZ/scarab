@@ -108,4 +108,9 @@ object Term:
   * (`UntypedPlutusCore/Core/Type.hs:119-125`; the annotation is `()` on the chain and not kept,
   * plutus 1.70.0.0).
   */
-final case class Program(version: ProgramVersion, term: Term)
+final case class Program(version: ProgramVersion, term: Term):
+  /** The scope check of the term ([[ledger.Scope.check]]), made once for the program however often
+    * it is evaluated (#1499). It is the check of the term applied to any constants
+    * ([[ledger.Scope.applied]]).
+    */
+  lazy val scope: Either[ledger.FreeVariableError, Unit] = ledger.Scope.check(term)
