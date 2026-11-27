@@ -737,7 +737,7 @@ object Peer:
             */
           def checkKnownInvalid(header: Header)(using Raise[F, PeerError]): F[Unit] =
             val scrutinized = diffusion match
-              case BlockPool.Diffusion.On  => header.prevHash
+              case BlockPool.Diffusion.On  => header.predecessor
               case BlockPool.Diffusion.Off => Some(header.hash)
             scrutinized.traverse_(hash =>
               claims.invalidBlocks

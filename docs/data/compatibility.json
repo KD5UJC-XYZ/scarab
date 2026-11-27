@@ -658,7 +658,8 @@
           "LeiosEbGateSuite",
           "AvailableBlocksSuite",
           "AvailableBlocksPropertySuite",
-          "ProcessedForestSuite"
+          "ProcessedForestSuite",
+          "GenesisNamingBoundarySuite"
         ]
       },
       "page": "docs/compatibility/chain-selection.md"

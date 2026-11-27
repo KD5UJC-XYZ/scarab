@@ -205,7 +205,7 @@ private[node] object FetchCandidates:
                 .map(p => (p - offset).toInt)
                 .toVector
               val pieces = (span.from +: cuts).lazyZip(cuts :+ span.until).map { (from, until) =>
-                BlockFetchPolicy.Fragment(headers(from).prevHash, blocks.slice(from, until))
+                BlockFetchPolicy.Fragment(headers(from).predecessor, blocks.slice(from, until))
               }
               val joins = last.exists(l => Announced.extendsHeader(headers(span.from), headers(l)))
               val merged = (done.lastOption, pieces.headOption) match
@@ -268,7 +268,7 @@ private[node] object FetchCandidates:
         case _                            => 1
 
     private def extendsHeader(header: Header, previous: Header): Boolean =
-      header.prevHash.contains(previous.hash)
+      header.predecessor.contains(previous.hash)
 
     private def sized(header: Header): BlockFetchPolicy.Header =
       BlockFetchPolicy.Header(header.hash, header.slot, FetchCoordinator.estimatedBytes(header))

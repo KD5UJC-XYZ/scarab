@@ -29,6 +29,14 @@ class ProcessedForestSuite extends ScalaCheckSuite:
       .UnsizedByron(hash(id), hash(id), false, 0, slot, 100000, slot, parent)
       .withSizeHint(FetchTesting.sizeHint(1))
 
+  /** A boundary block at `slot` (an epoch of one slot), with the "Genesis" tag or not: it names the
+    * genesis, whatever `parent` holds, when its epoch is 0 or it has the tag (#1505).
+    */
+  private def boundary(id: Int, parent: Option[Bytes], slot: Int, tagged: Boolean): Header =
+    Header
+      .UnsizedByron(hash(id), hash(id), true, slot, 0, 1, slot, parent, genesisTag = tagged)
+      .withSizeHint(FetchTesting.sizeHint(1))
+
   private enum Op:
     case Insert(block: Header)
     case Remove(hash: Bytes)
@@ -43,7 +51,10 @@ class ProcessedForestSuite extends ScalaCheckSuite:
       id <- Gen.choose(1, 40)
       parent <- Gen.frequency(1 -> Gen.const(None), 6 -> Gen.choose(1, 45).map(n => Some(hash(n))))
       slot <- Gen.choose(0, 20)
-    yield header(id, parent, slot)
+      kind <- Gen.frequency(6 -> 0, 1 -> 1, 1 -> 2)
+    yield kind match
+      case 0 => header(id, parent, slot)
+      case k => boundary(id, parent, slot, tagged = k == 2)
 
   private val ops: Gen[Op] = Gen.frequency(
     6 -> blocks.map(Op.Insert(_)),
@@ -63,7 +74,11 @@ class ProcessedForestSuite extends ScalaCheckSuite:
 
   private def rebuilt(blocks: Map[Bytes, Header]): Map[Option[Bytes], SortedSet[Bytes]] =
     blocks.values
-      .groupBy(_.prevHash)
+      .groupBy {
+        // the reference's `headerPrevHash`: genesis for a boundary block of epoch 0 or with the tag
+        case b: Header.Byron if b.boundary && (b.epoch == 0 || b.genesisTag) => None
+        case h                                                               => h.prevHash
+      }
       .view
       .mapValues(hs =>
         TreeSet.from(hs.map(_.hash))(using ProcessedForest.hashOrder): SortedSet[Bytes]

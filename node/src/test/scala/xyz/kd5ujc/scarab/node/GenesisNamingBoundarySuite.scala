@@ -5,19 +5,22 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.consensus.{ChainSelection, SelectView}
+import xyz.kd5ujc.scarab.consensus.{ChainSelection, HeaderRules, SelectView}
+import xyz.kd5ujc.scarab.consensus.state.MirrorState
 import xyz.kd5ujc.scarab.ledger.{Block, BlockFailure, ByronChainError, Header}
 import xyz.kd5ujc.scarab.protocol.ChainSync.Point
 import xyz.kd5ujc.scarab.protocol.ReferenceBuild
+import xyz.kd5ujc.scarab.storage.{ChainStorage, ReceivedBlocks}
 
 /** A Byron boundary block that names the genesis (epoch 0, or the "Genesis" tag) comes after
   * genesis for chain selection, whatever bytes its header holds as the previous hash: consensus's
   * `headerPrevHash` is then `GenesisHash` (`fromByronPrevHash`, `Byron/Ledger/Block.hs:240-246`,
   * ouroboros-consensus 82ecba32), the VolatileDB files the block under it (`biPrevHash`,
   * `Storage/VolatileDB/Impl/Parser.hs:117-123`; `insertMapSet`, `Storage/VolatileDB/Impl.hs:436`),
-  * so `Paths.isReachable` reaches it from genesis, and only the ledger reads the bytes, refusing a
-  * block whose bytes are not the genesis hash (`updateChainBoundary`,
-  * `Chain/Block/Validation.hs:276-287`, cardano-ledger f649f975) (#1505).
+  * so chain selection finds it after genesis (after an empty selection, or walking back to genesis,
+  * `constructPreferableCandidates`, `Storage/ChainDB/Impl/ChainSel.hs:710-777`), and only the
+  * ledger reads the bytes, refusing a block whose bytes are not the genesis hash
+  * (`updateChainBoundary`, `Chain/Block/Validation.hs:276-287`, cardano-ledger f649f975) (#1505).
   *
   * On the public networks the only such block is the first boundary block of mainnet and of
   * preprod, and its bytes are the configured genesis hash; preview has no Byron block. A boundary
@@ -121,6 +124,30 @@ class GenesisNamingBoundarySuite extends FunSuite:
         local <- Vector(origin, selected(recorded(0)))
         candidate <- AvailableBlocks.candidates(local, forest, _ => false)
       do assert(!candidate.headers.drop(1).exists(_.predecessor.isEmpty), candidate.toString)
+  }
+
+  test("the received log indexes such a block after genesis, as the VolatileDB's `biPrevHash`") {
+    val predecessor = ChainStorage.predecessorOf(epochSlots)
+    for previous <- previousBytes do
+      assertEquals(predecessor(forged(previous)._2), Some(ReceivedBlocks.Predecessor.Genesis))
+    assertEquals(predecessor(raws(0)), Some(ReceivedBlocks.Predecessor.Genesis))
+    assertEquals(predecessor(raws(1)), Some(ReceivedBlocks.Predecessor.Block(recorded(0).hash)))
+  }
+
+  test("the header gate takes such a block after Origin, as the reference's envelope does") {
+    // `validateEnvelope` compares `headerPrevHash`, genesis here, with Origin (ouroboros-consensus
+    // 82ecba32 `Ouroboros/Consensus/HeaderValidation.hs:364-376`); a boundary header is not signed
+    val gate = new NodeHeaderRules[MirrorState](
+      preprod.praos,
+      preprod.globals,
+      preprod.byronRules,
+      preprod.handOver
+    )
+    for previous <- previousBytes do
+      val (ebb, _) = forged(previous)
+      gate.validate(preprod.mirrorStart, None, gate.at(preprod.mirrorStart), ebb) match
+        case HeaderRules.Outcome.Valid(_) => ()
+        case other                        => fail(s"refused at Origin: $other")
   }
 
   test("the rules refuse such a block after genesis, as `updateChainBoundary` refuses it") {

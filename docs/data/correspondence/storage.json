@@ -2426,7 +2426,8 @@
     "ReceivedBlocksSuite",
     "ChainServerSuite"
    ],
-   "digest": "2f5fd2f6a029cfb2"
+   "note": "biPrevHash: the header's predecessor as headerPrevHash reads it, genesis for a Byron boundary block that names the genesis (#1505)",
+   "digest": "a129a34ba71d7e98"
   },
   "class storage.LeiosBackground.Info": {
    "upstream": [
