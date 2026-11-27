@@ -1970,12 +1970,13 @@ Conway's rules on the classes follow as the rest of stage 2.
   proposals (`dijkstraCertsTotalDepositsTxBody`, `:41-60`); the refunds the batch's certificates declare, no deposit
   looked up (`dijkstraCertsTotalRefundsTxBody`, `:62-81`), at the body's own level (`DijkstraTxBody.toSTxLevel`, the
   reference's `HasEraTxLevel TxBody`, `TxBody.hs:1079-1084`).
-  - `DijkstraStateSuite`, on the 217 transactions recorded on the Leios testnet's chain, which its ledger accepted, and
-    of the reference's UTXOW cases: the 176 without sub-transactions that the Conway decoder reads have the flat rules'
-    deposits and refunds (`Deposits.of`, recorded before it was deleted, and `DijkstraUtxo.declaredRefunds`); the 13 it refuses, for a field Dijkstra adds
-    or changes (a witness set's key 8, a parameter change of keys 45 to 48, the direct deposits' key 25 with the
-    balance intervals' key 26, a guard where Conway has a signer), are counted by their typed refusal, and the 28
-    batches have no flat computation. Every one
+  - `DijkstraStateSuite`, on the 231 transactions recorded on the Leios testnet's chain, which its ledger accepted, and
+    of the reference's UTXOW cases: the 182 of the 203 without sub-transactions that the Conway decoder reads have the
+    flat rules' deposits (`Deposits.of`, recorded before it was deleted) and the refunds their certificates declare
+    (`DijkstraStateSuite.declaredRefunds`); the 21 it refuses, for a field Dijkstra adds or changes (a witness set's
+    key 8, a parameter change of keys 45 to 48, the direct deposits' key 25 with or without the balance intervals'
+    key 26, the balance intervals' keys 26 and 27, a guard where Conway has a signer), are counted by their typed
+    refusal, and the 28 batches have no flat computation. Every one
     without certificates has the parameters' deposit for each of its proposals at both levels. Crafted batches give the
     refunds of each level, and the deposits of a pool registered at both levels (counted once), of a pool the state
     holds (not counted) and of proposals at both levels, each total derived by hand from the reference's rules. The

@@ -151,7 +151,10 @@ digits of the SHA-256 of the bytes it names.
   values, or the same state (compared whole, through `Eq`) and the same counters. A script's failure was compared by
   its error and trace and its request: the refusal's bytes hold the request, and the cause is checked instead to be
   the evaluator's on that request (`EraUtxoRun.causesHeld`), since the reference's text of a script that ends at an
-  explicit `error` leaves the trace out. The prefixes:
+  explicit `error` leaves the trace out. The encoding writes an output from its fields, and the state's form leaves
+  the governance state out: each output a refusal carries is checked to be the output its bytes read as, every field
+  (its value's size among them), and to be written as those bytes, and an admission's governance state to be the
+  one the rule started from. The file holds these three suites' judgments alone, under these prefixes:
   - `utxo-checks/`, 488 lines, `ConwayUtxoChecksSuite`, on the Conway cases of the refusal corpus: `values/` (84, each
     case of the eight corpora the flat predicates judged, `RecordedCorpora`: its minimum fee, the value it consumes
     and produces, and its certificates' deposits and refunds); `predicates/` (84, each of UTXO's 15 predicates on its
@@ -183,7 +186,9 @@ digits of the SHA-256 of the bytes it names.
   Recorded at Scarab commit `6448028a5`, the head of the flat CERTS's deletion with the case files pinned, with these
   suites beside the ones that compared the two rules: every comparison agreed. The flat UTXO's deletion's parent,
   `1ca5f3bff`, adds these recordings and the suites that read them; the suites of `6448028a5` were run again there
-  beside them, every comparison agreed, and the recordings written were these, byte for byte. The comparisons that had other
+  beside them, every comparison agreed, and the recordings written were these, byte for byte. Each of the two files
+  holds the judgments of the suites named alone: an id under no prefix named fails. A verdict without one (`N`)
+  holds no cause; each is checked to have the evaluator's own on the script the rule stopped at. The comparisons that had other
   oracles are not here: the reference's bytes where only UTXO or UTXOW refused, the reference's verdicts and script
   results, the expected values derived from the reference's source (a collateral count narrowed to a `Word16`, the
   forecast's branches, the order of failing keys), and the flat decoder's scripts needed and provided, which stay.

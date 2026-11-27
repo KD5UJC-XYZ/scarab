@@ -42,16 +42,17 @@ import DijkstraCorpus.*
   *
   * The transactions are those recorded on the public Leios testnet's chain, which its ledger
   * accepted, so each registration declares the deposit its parameters ask, and the reference's
-  * UTXOW cases, with their parameters: 217. Of the 189 without sub-transactions, the 176 the Conway
+  * UTXOW cases, with their parameters: 231. Of the 203 without sub-transactions, the 182 the Conway
   * decoder reads have their deposits held to those the flat Conway UTXO's `Deposits.of` gave,
   * recorded before it was deleted (`UtxoRecordings`, `dijkstra-deposits/`), and their refunds to
-  * those its certificates declare (`DijkstraUtxo.declaredRefunds`); the 13 it refuses, for a field
-  * Dijkstra adds or changes, are counted by their typed refusal. Every one without certificates has
-  * the parameters' deposit for each of its proposals at both levels. The flat path has no
-  * computation of a batch's, so crafted batches give the refunds of each level and the deposits of
-  * a pool registered twice in the batch, of a pool the state holds and of proposals at both levels,
-  * each total derived by hand from the reference's rules. The accounts and obligations are those of
-  * Conway's instance, on a state of distinct deposits and a delegation to a pool and a DRep.
+  * those its certificates declare ([[declaredRefunds]]); the 21 it refuses, for a field Dijkstra
+  * adds or changes, are counted by their typed refusal; the 28 batches are not compared. Every one
+  * without certificates has the parameters' deposit for each of its proposals at both levels. The
+  * flat path has no computation of a batch's, so crafted batches give the refunds of each level and
+  * the deposits of a pool registered twice in the batch, of a pool the state holds and of proposals
+  * at both levels, each total derived by hand from the reference's rules. The accounts and
+  * obligations are those of Conway's instance, on a state of distinct deposits and a delegation to
+  * a pool and a DRep.
   */
 class DijkstraStateSuite extends FunSuite:
   private val bodies = EraTxBody.dijkstra
@@ -190,6 +191,7 @@ class DijkstraStateSuite extends FunSuite:
       excluded.mkString("\n")
     )
     assertEquals((compared.size, excluded.size, cases.size - forms.size), (176 + 6, 13 + 8, 28))
+    assertEquals((cases.size, forms.size), (231, 203))
     assert(compared.exists(_._1 > 0) && compared.exists(_._2 > 0), compared.toString)
   }
 
