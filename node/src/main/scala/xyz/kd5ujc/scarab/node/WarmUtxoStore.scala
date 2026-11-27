@@ -203,9 +203,9 @@ object WarmUtxoStore:
 
     /** 256 MiB, the largest default. At an encoding of 100 to 150 bytes, an entry costs 356 to 406
       * bytes ([[EntryBytes]] more), so the young population's seven eighths hold 580,000 to 660,000
-      * entries: 13,000 to 15,000 blocks of 45 outputs (fewer survive the diff to be written, so more
-      * blocks), where #1484's spend-age curve puts about 40 percent of the spending reads that reach
-      * the store.
+      * entries: 13,000 to 15,000 blocks of 45 outputs (fewer survive the diff to be written, so
+      * more blocks), where #1484's spend-age curve puts about 40 percent of the spending reads that
+      * reach the store.
       */
     val Default: Budget = mib(256)
 

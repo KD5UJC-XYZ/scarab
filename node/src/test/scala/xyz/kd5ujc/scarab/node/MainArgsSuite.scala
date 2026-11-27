@@ -329,7 +329,9 @@ class MainArgsSuite extends munit.FunSuite:
     }
   }
 
-  test("--utxo-warm-mb is absent for the heap's default, 0 for no tier, or a budget, nothing else") {
+  test(
+    "--utxo-warm-mb is absent for the heap's default, 0 for no tier, or a budget, nothing else"
+  ) {
     assertEquals(Main.parse(base).map(_.utxoWarmMb), Right(None))
     assertEquals(Main.parse(base ++ List("--utxo-warm-mb", "0")).map(_.utxoWarmMb), Right(Some(0)))
     assertEquals(
