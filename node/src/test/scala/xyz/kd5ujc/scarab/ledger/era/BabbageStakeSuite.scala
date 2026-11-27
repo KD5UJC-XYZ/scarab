@@ -29,6 +29,8 @@ import xyz.kd5ujc.scarab.protocol.Era
   * Shelley's functions, `Shelley/State/Stake.hs:108-145`, cardano-ledger f649f975) against the
   * reference's own results and the flat path's (`ShelleyInstantStakeOps`):
   *
+  *   - the 22 recorded Babbage submissions of `fixtures/reference/v1-context`, each by its
+  *     reference verdict and validity tag (none, the collateral, or the inputs and outputs);
   *   - the 32 cases of `fixtures/reference/instant-stake`, half of them on pointer addresses, each
   *     the produced outputs added and the consumed ones deleted (`updateStakeDistribution`,
   *     `Shelley/Rules/Utxo.hs:613-624`), against the Babbage result the released functions gave and
@@ -141,27 +143,71 @@ class BabbageStakeSuite extends FunSuite:
 
   // ---- the recorded Babbage transactions
 
-  test("each recorded Babbage transaction changes the stake as the flat path does") {
+  /** The stake transition a recorded submission makes, by the reference's verdict and the
+    * transaction's validity tag: none for a refused submission; for an accepted transaction whose
+    * scripts are to fail, its collateral taken out and its collateral return, if any, put in
+    * (`updateUTxOState`'s `Phase2Invalid`, `Babbage/Rules/Utxo.hs:462-486`, `collOuts`,
+    * `Babbage/Collateral.hs:43-50`, cardano-ledger f649f975); for an accepted valid one, its
+    * inputs' outputs taken out and its outputs put in (`Phase2Valid`, Shelley's `updateUTxOState`).
+    */
+  enum Submission:
+    case Refused, Phase2Invalid, Phase2Valid
+
+  test("each recorded Babbage submission changes the stake as the flat path does, by its verdict") {
     val cases = Vector("babbage-pv7", "babbage-pv8").flatMap { name =>
       parse(Files.readString(Path.of(s"fixtures/reference/v1-context/$name.json")))
         .fold(e => fail(e.message), identity)
         .asArray
         .getOrElse(fail(s"$name: not an array"))
-        .map(xyz.kd5ujc.scarab.ledger.PlutusCase.fromJson)
+        .map { j =>
+          val accepted = j.hcursor
+            .downField("reference")
+            .get[Boolean]("accepted")
+            .fold(e => fail(e.message), identity)
+          (xyz.kd5ujc.scarab.ledger.PlutusCase.fromJson(j), accepted)
+        }
     }
-    val compared = cases.map { c =>
+    val compared = cases.map { (c, accepted) =>
       val what = c.name
-      val produced = c.tx.body.outputs.zipWithIndex.map((o, i) => TxIn(c.tx.body.id, i) -> o)
-      // the stake of the outputs spent, which the transaction takes out
-      val held = flat(what, ShelleyInstantStake(Sorted.empty, Sorted.empty), c.spent, Vector.empty)
-      val typed = update(what, held, produced, c.spent)
-      assertEquals(typed, flat(what, held, produced, c.spent), what)
-      (held.credentialStake.nonEmpty, typed != held)
+      val body = c.tx.body
+      val kind =
+        if !accepted then Submission.Refused
+        else if c.tx.isValid then Submission.Phase2Valid
+        else Submission.Phase2Invalid
+      val (produced, consumed) = kind match
+        case Submission.Refused => (Vector.empty, Vector.empty)
+        case Submission.Phase2Invalid =>
+          assertEquals(c.collateral.keySet, body.collateral.toSet, what)
+          (
+            body.collateralReturn.toVector
+              .map(TxIn.mkCollateralTxIn(body.id, body.outputs.size) -> _),
+            c.collateral.toVector
+          )
+        case Submission.Phase2Valid =>
+          (body.outputs.zipWithIndex.map((o, i) => TxIn(body.id, i) -> o), c.spent.toVector)
+      // the stake of the outputs the transaction may spend, which a deletion takes out
+      val held = flat(
+        what,
+        ShelleyInstantStake(Sorted.empty, Sorted.empty),
+        (c.spent ++ c.collateral).toVector,
+        Vector.empty
+      )
+      val typed = update(what, held, produced, consumed)
+      assertEquals(typed, flat(what, held, produced, consumed), what)
+      (kind, produced.nonEmpty, typed != held)
     }
-    // every transaction spends outputs of base addresses and moves their stake
+    // the reference refused 18; of the four it accepted, two are to fail their scripts, which
+    // take their collateral and have no collateral return, and two spend their inputs; every
+    // accepted one moves stake
     assertEquals(
-      (compared.size, compared.count(_._1), compared.count(_._2)),
-      (22, 22, 22)
+      compared.groupMapReduce(_._1)(_ => 1)(_ + _),
+      Map(Submission.Refused -> 18, Submission.Phase2Invalid -> 2, Submission.Phase2Valid -> 2)
+    )
+    assertEquals(compared.filter(_._1 == Submission.Refused).count(_._3), 0)
+    assertEquals(compared.filter(_._1 != Submission.Refused).count(_._3), 4)
+    assertEquals(
+      compared.filter(_._1 == Submission.Phase2Invalid).count(_._2),
+      0
     )
   }
 
