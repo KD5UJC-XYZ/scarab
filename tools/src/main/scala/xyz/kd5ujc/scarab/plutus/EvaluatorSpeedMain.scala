@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.plutus
 
-import cats.effect.unsafe.implicits.global
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import java.security.MessageDigest
+import scala.jdk.CollectionConverters.*
+import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.RecordedRequests
 import xyz.kd5ujc.scarab.plutus.ndc.UplcTurboMain
 import xyz.kd5ujc.scarab.uplc.{Program, ProtocolMajor}
@@ -39,12 +40,35 @@ object EvaluatorSpeedMain:
       RecordedRequests.sources.flatMap(_.requests).map(r => r.id -> r.request)
     )
 
+  /** The files of a directory, by name, the listing closed once read. */
+  private def listed(dir: Path): Vector[Path] =
+    val stream = Files.list(dir)
+    val all = stream.iterator.asScala.toVector
+    stream.close()
+    all.sortBy(_.getFileName.toString)
+
+  /** The programs of a `uplc-turbo` corpus, `<epoch>/<name>-v<n>.flat`, as [[UplcTurboMain]] reads
+    * them.
+    */
+  private def benches(root: Path): Vector[UplcTurboMain.Bench] =
+    listed(root)
+      .filter(Files.isDirectory(_))
+      .flatMap(dir => dir.getFileName.toString.toIntOption.map(dir -> _))
+      .flatMap((dir, epoch) =>
+        listed(dir).filter(_.getFileName.toString.endsWith(".flat")).map { file =>
+          val name = file.getFileName.toString
+          val language =
+            UplcTurboMain.languageOf(name).getOrElse(sys.error(s"$file names no language"))
+          val bytes = Bytes.fromArray(Files.readAllBytes(file))
+          UplcTurboMain.Bench(name, language, UplcTurboMain.protocolOf(epoch), bytes)
+        }
+      )
+      .sortBy(_.name)
+
   private def turbo(root: Path): Corpus =
-    val benches =
-      UplcTurboMain.corpus(root).unsafeRunSync().fold(e => sys.error(e.message), identity)
     Corpus(
       root.toString,
-      benches.map { b =>
+      benches(root).map { b =>
         val costModel =
           UplcTurboMain
             .defaultCostModel(b.language, b.protocol)
@@ -110,9 +134,9 @@ object EvaluatorSpeedMain:
   private def load(argument: String): Corpus =
     if argument == "recorded" then recorded else turbo(Path.of(argument))
 
-  /** A corpus made ready, for a driver that loads two builds of the evaluator into one JVM (each in
-    * a class loader of its own) and alternates their rounds, so that the load of the machine falls
-    * on both alike: the digest of its results, and a round, which must give the same results.
+  /** A corpus made ready, for [[EvaluatorCompareMain]], which loads two builds of the evaluator
+    * into one JVM (each in a class loader of its own) and alternates their rounds: the digest of
+    * its results, and a round, which must give the same results.
     */
   final class Session(argument: String):
     private val requests = load(argument).requests.map(ready)
