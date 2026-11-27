@@ -64,6 +64,19 @@ trait UtxoStore[F[_]] extends UtxoReadView[F]:
   /** The stamp of the last batch (`-1` for a store nothing was written to). */
   def flushed(using Raise[F, StorageError]): F[Long]
 
+  /** The read set of a block: the entries of `keys` the store holds, where `keys` are inputs of the
+    * block that `utxo`, the set of the state it is applied to, does not decide (`utxo.missing`).
+    * The answer is always `read(keys)` 's. A store that read some of the keys ahead, while earlier
+    * blocks were applied, may give those from what it read where `utxo` shows that they cannot have
+    * changed since (the node's `ReadAheadStore`); this one reads them all now.
+    */
+  def readFor(
+      @scala.annotation.unused utxo: Utxo,
+      keys: scala.collection.immutable.SortedSet[TxIn]
+  )(using
+      Raise[F, StorageError]
+  ): F[Map[TxIn, TxOut]] = read(keys)
+
   /** A stable, resource-scoped view of the current backing generation. It reads what it pinned
     * across later batches and a [[reset]]. Where a [[restore]], or the release of the store, while
     * it is held replaces or releases the store's storage, each later read that reaches the storage

@@ -2942,6 +2942,12 @@
  },
  "glue": [
   {
+   "reason": "The block path's read of its read set, which a store may answer in part from entries it read ahead while earlier blocks were applied (the node's ReadAheadStore, #1484); the answer is always the store's read of the same keys. The reference reads a block's tables when it applies the block (forkerReadTables of getBlockKeySets in withValues, Storage/LedgerDB/Forker.hs at ouroboros-consensus 82ecba32), with nothing read ahead.",
+   "definitions": [
+    "def storage.UtxoStore#readFor"
+   ]
+  },
+  {
    "reason": "The import of a reference node's ImmutableDB is Scarab's own command, with no counterpart in the reference: which reference builds' Dijkstra blocks it stores (the Leios testnet's, whose chain is in Dijkstra from its first block), as bytes and with every other block's checks; no rule is applied by storing a block.",
    "definitions": [
     "def storage.haskell.HaskellImport.storesDijkstra"

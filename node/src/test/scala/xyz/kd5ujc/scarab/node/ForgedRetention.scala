@@ -135,6 +135,10 @@ private[node] object ForgedRetention extends munit.Assertions:
           case Preparation.Records       => put(header, raw)
           case Preparation.Raises(error) => error.raise[IO, Unit]
           case Preparation.Throws(cause) => IO.raiseError(cause))
+      def ahead(
+          @scala.annotation.unused header: Header,
+          @scala.annotation.unused raw: Bytes
+      ): IO[Unit] = IO.unit
 
   /** The pool's view of `received`, as `Main` builds it; a storage failure fails the case. */
   private def recovered(received: ReceivedBlocks[IO]): BlockPool.Recovered[IO] =

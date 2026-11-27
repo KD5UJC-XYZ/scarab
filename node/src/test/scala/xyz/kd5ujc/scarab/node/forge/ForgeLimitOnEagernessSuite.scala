@@ -180,6 +180,10 @@ class ForgeLimitOnEagernessSuite extends FailsOnUncaught with ForgeFixture:
       def store(header: Header, @scala.annotation.unused raw: Bytes)(using
           Raise[IO, NodeError]
       ): IO[Unit] = BlockPoolProblem.MissingDeliveredHeader(header.point).raise[IO, Unit]
+      def ahead(
+          @scala.annotation.unused header: Header,
+          @scala.annotation.unused raw: Bytes
+      ): IO[Unit] = IO.unit
     TestControl
       .executeEmbed(withHandle {
         for
