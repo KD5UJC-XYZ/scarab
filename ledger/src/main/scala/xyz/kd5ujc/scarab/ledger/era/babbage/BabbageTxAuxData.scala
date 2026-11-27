@@ -37,7 +37,7 @@ object BabbageTxAuxData extends AlonzoTxAuxDataRep.Fields[BabbageTxAuxData, Babb
 
   private given Ordering[Unsigned[Unsigned.Width.W64]] = Ordering.by(_.value)
 
-  private val version = DecoderVersion.of(Era.Babbage)
+  private val blockVersion = DecoderVersion.of(Era.Babbage)
 
   /** What the keys read so far set (`emptyAlonzoTxAuxDataRaw`), the Plutus scripts of each key in
     * the order the keys are written.
@@ -65,22 +65,31 @@ object BabbageTxAuxData extends AlonzoTxAuxDataRep.Fields[BabbageTxAuxData, Babb
     * input that holds an empty indefinite list and that the plain parse refuses is parsed again
     * with the detached records a walk finds ([[DetachedRecords.read]]).
     */
-  def decode(raw: Bytes): Either[EraTxError, BabbageTxAuxData] =
+  def decode(raw: Bytes): Either[EraTxError, BabbageTxAuxData] = decodeAt(raw, blockVersion)
+
+  /** [[decode]] at `version`, one of Babbage's ([[DecoderVersion.at]]), as `decodeFull'` reads a
+    * type at any version: the reference's verdicts on auxiliary data at Babbage's protocol version
+    * 8 are read at it. A block's and a submission's are read at 7 ([[decode]]).
+    */
+  private[babbage] def decodeAt(
+      raw: Bytes,
+      version: DecoderVersion
+  ): Either[EraTxError, BabbageTxAuxData] =
     DetachedRecords
       .read(
         raw,
         Cbor.Limits.Unbounded,
         DetachedRecords.Shapes.auxiliaryDataAt(Era.Babbage, version.value)
-      )(LedgerDecodeError.Syntax(_))(read)
+      )(LedgerDecodeError.Syntax(_))(read(_, version))
       .bimap(EraTxError.Decode(_), project(raw, _))
 
   /** [[decode]] of auxiliary data's item, parsed already with no detached record in it
     * ([[BabbageTx.fromEnvelope]]).
     */
   private[babbage] def fromItem(n: Node): Either[EraTxError, BabbageTxAuxData] =
-    read(n).bimap(EraTxError.Decode(_), project(n.original, _))
+    read(n, blockVersion).bimap(EraTxError.Decode(_), project(n.original, _))
 
-  private def read(node: Node): Either[LedgerDecodeError, Fields] =
+  private def read(node: Node, version: DecoderVersion): Either[LedgerDecodeError, Fields] =
     given ByteStrings = ByteStrings.of(version)
     node.value match
       case _: Value.Map => metadata(node).map(m => Fields(metadata = m))
@@ -99,7 +108,7 @@ object BabbageTxAuxData extends AlonzoTxAuxDataRep.Fields[BabbageTxAuxData, Babb
                 (),
                 LedgerDecodeError.DuplicateKey(DecodeField.AuxiliaryData)
               )
-              set <- field(key, v, fields)
+              set <- field(key, v, fields, version)
             yield (set, seen + key)
           })
           .map(_._1)
@@ -112,7 +121,7 @@ object BabbageTxAuxData extends AlonzoTxAuxDataRep.Fields[BabbageTxAuxData, Babb
   /** The value of `key` read into `fields` (`auxDataField`, `Alonzo/TxAuxData.hs:290-300`,
     * cardano-ledger f649f975).
     */
-  private def field(key: BigInt, n: Node, fields: Fields)(using
+  private def field(key: BigInt, n: Node, fields: Fields, version: DecoderVersion)(using
       ByteStrings
   ): Either[LedgerDecodeError, Fields] =
     def plutus(language: PlutusLanguage) =

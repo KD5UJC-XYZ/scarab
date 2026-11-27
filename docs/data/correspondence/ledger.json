@@ -51549,8 +51549,8 @@
     "BabbageTxDifferentialSuite",
     "BabbageTxSuite"
    ],
-   "note": "auxiliary data in any of its three forms, the tagged map read in one pass at Babbage's decoder version, 7, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 7; PlutusV4's key 5 is refused as the reference refuses it (`guardPlutus`), where the flat reader refuses it as unknown; held to the flat decoder's verdicts on every Babbage transaction the repository holds (the recorded blocks, the reference's refusal, v1-context and Plutus admission corpora) and on byte mutants of them, and on 576 Babbage rows of the reference's decoder corpora (three of them witness sets at protocol version 8, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (BabbageTxDifferentialSuite), and to its written order on crafted cases (BabbageTxSuite); and to the reference's 140 recorded verdicts on Babbage auxiliary data",
-   "digest": "42875deb5801458e"
+   "note": "auxiliary data in any of its three forms, the tagged map read in one pass at Babbage's decoder version, 7, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 7; PlutusV4's key 5 is refused as the reference refuses it (`guardPlutus`), where the flat reader refuses it as unknown; held to the flat decoder's verdicts on every Babbage transaction the repository holds (the recorded blocks, the reference's refusal, v1-context and Plutus admission corpora) and on byte mutants of them, and on 576 Babbage rows of the reference's decoder corpora (three of them witness sets at protocol version 8, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (BabbageTxDifferentialSuite), and to its written order on crafted cases (BabbageTxSuite); and to the reference's 140 recorded verdicts on Babbage auxiliary data, each read at its version (decodeAt)",
+   "digest": "9a4bbadd7be6c3cb"
   },
   "val ledger.era.babbage.BabbageTxAuxData.instance": {
    "upstream": [
@@ -51835,6 +51835,27 @@
    ],
    "note": "the witness set's decoder at a version of Babbage's, 7 or 8, as `decodeFull'` reads at any version: the reference's recordings at protocol version 8 are read at it",
    "digest": "1186e8719b1383e4"
+  },
+  "def ledger.era.babbage.BabbageTxAuxData.decodeAt": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "symbol": "DecCBOR (Annotator (AlonzoTxAuxDataRaw era))",
+     "lines": [
+      210,
+      312
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbageTxDifferentialSuite"
+   ],
+   "note": "the auxiliary data's decoder at a version of Babbage's, 7 or 8, as `decodeFull'` reads at any version: the reference's verdicts at protocol version 8 are read at it",
+   "digest": "fd605e998047eb80"
   }
  },
  "glue": [
