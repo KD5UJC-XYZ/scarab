@@ -213,7 +213,7 @@ object AlonzoTxInfo:
   )(using
       t: EraPlutusTxInfo[L, E],
       cert: PlutusTxCert[L] =:= PV1.DCert,
-      s: ConwayEraScript[E],
+      s: AlonzoEraScript[E],
       inj: Inject[AlonzoContextError[E], ContextError[E]]
   ): Either[ContextError[E], PV1.ScriptPurpose] =
     s.toSpendingPurpose[AsIxItem](purpose)
@@ -281,7 +281,7 @@ object AlonzoTxInfo:
       plutusPurpose: PlutusPurpose[AsIxItem, E]
   )(using
       u: AlonzoEraUTxO[E],
-      s: ConwayEraScript[E],
+      s: AlonzoEraScript[E],
       inj: Inject[AlonzoContextError[E], ContextError[E]]
   ): Either[ContextError[E], Option[Data]] =
     u.getSpendingDatum[T](
@@ -304,7 +304,7 @@ object AlonzoTxInfo:
   )(using
       t: EraPlutusTxInfo[Language.PlutusV1, E],
       u: AlonzoEraUTxO[E],
-      s: ConwayEraScript[E],
+      s: AlonzoEraScript[E],
       inj: Inject[AlonzoContextError[E], ContextError[E]]
   ): Either[ContextError[E], PlutusV1Args] =
     for

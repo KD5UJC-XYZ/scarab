@@ -137,7 +137,7 @@ object BabbageTxInfo:
   )(using
       t: EraPlutusTxInfo[Language.PlutusV2, E],
       u: AlonzoEraUTxO[E],
-      s: ConwayEraScript[E],
+      s: AlonzoEraScript[E],
       inj: Inject[AlonzoContextError[E], ContextError[E]]
   ): Either[ContextError[E], PlutusV2Args] =
     for

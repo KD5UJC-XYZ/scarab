@@ -12,10 +12,13 @@ import xyz.kd5ujc.scarab.ledger.{
   DecodeSite,
   LedgerDecodeError,
   ScriptKind,
+  TxIn,
+  Unsigned,
   Value as FlatValue
 }
 import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoEraScript,
+  AlonzoPlutusPurpose,
   AlonzoScriptRep,
   BabbageEraTxOut,
   BabbageTxOutRep,
@@ -34,7 +37,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TimelockScripts,
   Val
 }
-import xyz.kd5ujc.scarab.ledger.state.Babbage
+import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, Babbage}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
 // Babbage's types: the opaque types are transparent in this file only, so only this file makes a
@@ -136,6 +139,40 @@ object BabbageScript:
     ): A = plutus match
       case BabbagePlutusScript.V1(p) => f(p, PlutusLanguage.v1)
       case BabbagePlutusScript.V2(p) => f(p, PlutusLanguage.v2)
+
+    // `hoistPlutusPurpose` and `mkSpendingPurpose` to `toWithdrawingPurpose`,
+    // `Babbage/Scripts.hs:74-98`, cardano-ledger f649f975: Alonzo's purpose, its builders the
+    // constructors
+    override def hoistPlutusPurpose[G[_, _], F[_, _]](f: [ix, it] => G[ix, it] => F[ix, it])(
+        purpose: AlonzoPlutusPurpose[G, Babbage]
+    ): AlonzoPlutusPurpose[F, Babbage] =
+      AlonzoPlutusPurpose.hoistPlutusPurpose[G, F, Babbage](f)(purpose)
+    override def mkSpendingPurpose[F[_, _]](
+        txIn: F[Unsigned[Unsigned.Width.W32], TxIn]
+    ): AlonzoPlutusPurpose[F, Babbage] = AlonzoPlutusPurpose.AlonzoSpending(txIn)
+    override def toSpendingPurpose[F[_, _]](
+        purpose: AlonzoPlutusPurpose[F, Babbage]
+    ): Option[F[Unsigned[Unsigned.Width.W32], TxIn]] = AlonzoPlutusPurpose.toSpending(purpose)
+    override def mkMintingPurpose[F[_, _]](
+        policy: F[Unsigned[Unsigned.Width.W32], Bytes]
+    ): AlonzoPlutusPurpose[F, Babbage] = AlonzoPlutusPurpose.AlonzoMinting(policy)
+    override def toMintingPurpose[F[_, _]](
+        purpose: AlonzoPlutusPurpose[F, Babbage]
+    ): Option[F[Unsigned[Unsigned.Width.W32], Bytes]] = AlonzoPlutusPurpose.toMinting(purpose)
+    override def mkCertifyingPurpose[F[_, _]](
+        txCert: F[Unsigned[Unsigned.Width.W32], BabbageTxCert]
+    ): AlonzoPlutusPurpose[F, Babbage] = AlonzoPlutusPurpose.AlonzoCertifying(txCert)
+    override def toCertifyingPurpose[F[_, _]](
+        purpose: AlonzoPlutusPurpose[F, Babbage]
+    ): Option[F[Unsigned[Unsigned.Width.W32], BabbageTxCert]] =
+      AlonzoPlutusPurpose.toCertifying(purpose)
+    override def mkWithdrawingPurpose[F[_, _]](
+        account: F[Unsigned[Unsigned.Width.W32], AccountAddress]
+    ): AlonzoPlutusPurpose[F, Babbage] = AlonzoPlutusPurpose.AlonzoWithdrawing(account)
+    override def toWithdrawingPurpose[F[_, _]](
+        purpose: AlonzoPlutusPurpose[F, Babbage]
+    ): Option[F[Unsigned[Unsigned.Width.W32], AccountAddress]] =
+      AlonzoPlutusPurpose.toWithdrawing(purpose)
 
 /** A Babbage output: `BabbageTxOut BabbageEra`
   * (`eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs:133-158`, cardano-ledger f649f975), its

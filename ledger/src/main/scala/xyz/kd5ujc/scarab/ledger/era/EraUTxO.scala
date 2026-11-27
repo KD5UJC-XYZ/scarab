@@ -148,7 +148,7 @@ final case class AlonzoScriptsNeeded[E <: EraTag](
 
 /** Alonzo's functions of the UTxO set (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs`,
   * cardano-ledger f649f975, the same at 9df9f98c). Each purpose is built through the era's script
-  * class (`SpendingPurpose` and the rest), whose builders are members of [[ConwayEraScript]] here.
+  * class (`SpendingPurpose` and the rest, [[AlonzoEraScript]]).
   */
 object AlonzoUTxO:
   private type Ix = Unsigned[Unsigned.Width.W32]
@@ -174,7 +174,7 @@ object AlonzoUTxO:
   def getSpendingScriptsNeeded[E <: EraTag, L <: TxLevel](utxo: UTxO[E], body: TxBody[L, E])(using
       b: EraTxBody[E],
       l: b.Level[L],
-      s: ConwayEraScript[E]
+      s: AlonzoEraScript[E]
   ): AlonzoScriptsNeeded[E] =
     val o = b.outputsOf
     AlonzoScriptsNeeded(
@@ -195,7 +195,7 @@ object AlonzoUTxO:
   def getWithdrawingScriptsNeeded[E <: EraTag, L <: TxLevel](body: TxBody[L, E])(using
       b: EraTxBody[E],
       l: b.Level[L],
-      s: ConwayEraScript[E]
+      s: AlonzoEraScript[E]
   ): AlonzoScriptsNeeded[E] =
     AlonzoScriptsNeeded(
       zipAsIxItem(b.withdrawals[L](body).unWithdrawals.keys.toVector) { asIxItem =>
@@ -212,7 +212,7 @@ object AlonzoUTxO:
   def getMintingScriptsNeeded[E <: EraTag, L <: TxLevel](body: TxBody[L, E])(using
       b: MaryEraTxBody[E],
       l: b.Level[L],
-      s: ConwayEraScript[E]
+      s: AlonzoEraScript[E]
   ): AlonzoScriptsNeeded[E] =
     AlonzoScriptsNeeded(
       zipAsIxItem(b.mint[L](body).keys.toVector.sorted) { asIxItem =>
@@ -499,7 +499,7 @@ object BabbageUTxO:
       t: AlonzoEraTx[E],
       l: t.bodyOf.Level[L],
       o: BabbageEraTxOut[E],
-      s: ConwayEraScript[E]
+      s: AlonzoEraScript[E]
   ): Either[PlutusData.DecodeError, Option[Data]] =
     val spent =
       for

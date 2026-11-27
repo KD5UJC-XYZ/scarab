@@ -208,7 +208,7 @@ final case class LedgerTxInfo[L <: TxLevel, E <: EraTag](
     ltiTx: Tx[L, E],
     ltiScriptsUsed: List[(PlutusPurpose[AsIxItem, E], SupportedPlutusRunnable[E])],
     ltiLevelTxInfo: LedgerLevelTxInfo[L, E]
-)(using s: ConwayEraScript[E]):
+)(using s: AlonzoEraScript[E]):
   /** `ltiScriptHashesUsed`: the hash of the script used for each purpose, by its index. */
   lazy val ltiScriptHashesUsed: Map[PlutusPurpose[AsIx, E], Bytes] =
     LedgerTxInfo.toScriptHashByPurpose(ltiScriptsUsed)
@@ -220,7 +220,7 @@ object LedgerTxInfo:
     */
   def toScriptHashByPurpose[E <: EraTag](
       scriptsUsed: List[(PlutusPurpose[AsIxItem, E], SupportedPlutusRunnable[E])]
-  )(using s: ConwayEraScript[E]): Map[PlutusPurpose[AsIx, E], Bytes] =
+  )(using s: AlonzoEraScript[E]): Map[PlutusPurpose[AsIx, E], Bytes] =
     scriptsUsed.map { (sp, sr) =>
       s.hoistPlutusPurpose[AsIxItem, AsIx]([ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsIx(a))(
         sp

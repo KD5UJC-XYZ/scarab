@@ -244,8 +244,7 @@ object AlonzoUtxow:
     * The redeemers no such purpose names, in their map's order (`ExtraRedeemers`), then the
     * purposes needed that no redeemer names, as items (`toAsItem`), in the order of the scripts
     * needed with their scripts' hashes (`MissingRedeemers`). The purposes change form through the
-    * script class's `hoistPlutusPurpose`, a member of `ConwayEraScript` here as the purpose
-    * builders are not members of `AlonzoEraScript` yet (#85), so it serves Conway and Dijkstra.
+    * script class's `hoistPlutusPurpose` ([[AlonzoEraScript]]).
     */
   def hasExactSetOfRedeemers[E <: EraTag, L <: TxLevel](
       tx: Tx[L, E],
@@ -254,7 +253,7 @@ object AlonzoUtxow:
   )(using
       t: AlonzoEraTx[E],
       l: t.bodyOf.Level[L],
-      s: ConwayEraScript[E]
+      s: AlonzoEraScript[E]
   ): Test[RedeemersFailure[E]] =
     given EraScript[E] = t.witsOf.scriptsOf
     val toAsIx = s.hoistPlutusPurpose[AsIxItem, AsIx](

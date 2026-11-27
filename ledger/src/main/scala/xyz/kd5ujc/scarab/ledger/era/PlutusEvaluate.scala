@@ -258,15 +258,15 @@ object CollectError:
 /** Alonzo's collection of the Plutus scripts of a transaction with their contexts
   * (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs`,
   * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs:100-127`,
-  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs:431-465`, cardano-ledger f649f975), for an
-  * era whose purposes have the voting and proposing ones ([[ConwayEraScript]], whose
-  * `hoistPlutusPurpose` is the reference's `AlonzoEraScript` member).
+  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs:431-465`, cardano-ledger f649f975), for any
+  * era from Alonzo, its purposes changing form through the script class's `hoistPlutusPurpose`
+  * ([[AlonzoEraScript]]).
   */
 object AlonzoPlutusEvaluate:
   private type Used[E <: EraTag] = (PlutusPurpose[AsIxItem, E], SupportedPlutusRunnable[E])
 
   private def asItem[E <: EraTag](p: PlutusPurpose[AsIxItem, E])(using
-      s: ConwayEraScript[E]
+      s: AlonzoEraScript[E]
   ): PlutusPurpose[AsItem, E] =
     s.hoistPlutusPurpose[
       AsIxItem,
@@ -274,7 +274,7 @@ object AlonzoPlutusEvaluate:
     ]([ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a))(p)
 
   private def asIx[E <: EraTag](p: PlutusPurpose[AsIxItem, E])(using
-      s: ConwayEraScript[E]
+      s: AlonzoEraScript[E]
   ): PlutusPurpose[AsIx, E] =
     s.hoistPlutusPurpose[AsIxItem, AsIx]([ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsIx(a))(p)
 
@@ -344,7 +344,7 @@ object AlonzoPlutusEvaluate:
       costModels: CostModels
   )(using
       x: AlonzoEraTx[E],
-      s: ConwayEraScript[E],
+      s: AlonzoEraScript[E],
       c: EraPlutusContext[E]
   ): Either[NonEmptyList[CollectError[E]], List[PlutusWithContext]] =
     scriptsWithContextFromLedgerTxInfoWithResult(lti, c.mkTxInfoResult(lti), costModels)
@@ -362,7 +362,7 @@ object AlonzoPlutusEvaluate:
       costModels: CostModels
   )(using
       x: AlonzoEraTx[E],
-      s: ConwayEraScript[E],
+      s: AlonzoEraScript[E],
       c: EraPlutusContext[E]
   ): Either[NonEmptyList[CollectError[E]], List[PlutusWithContext]] =
     type Found = (SupportedPlutusRunnable[E], PlutusPurpose[AsIxItem, E], Data, ExUnits)
@@ -429,7 +429,7 @@ object AlonzoPlutusEvaluate:
       p: AlonzoEraPParams[E],
       x: AlonzoEraTx[E],
       u: AlonzoEraUTxO[E],
-      s: ConwayEraScript[E],
+      s: AlonzoEraScript[E],
       c: EraPlutusContext[E],
       needed: ScriptsNeeded[E] =:= AlonzoScriptsNeeded[E]
   ): Either[NonEmptyList[CollectError[E]], List[PlutusWithContext]] =

@@ -10,8 +10,8 @@ import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, EraTag}
   * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:332-337`; `type PlutusPurpose BabbageEra =
   * AlonzoPlutusPurpose`, `eras/babbage/impl/src/Cardano/Ledger/Babbage/Scripts.hs:61`): what a
   * script is run for, the item a certifying purpose names being the era's certificate. The index is
-  * a `Word32`. Only the purpose a redeemer is keyed by and a pointer's inverse are here; the
-  * class's builders and readers come with Babbage's Plutus side (#85).
+  * a `Word32`. The script class's members of an era whose purpose this is are the functions of the
+  * companion, which Babbage's instance gives ([[babbage.BabbageScript]]).
   */
 enum AlonzoPlutusPurpose[F[_, _], E <: EraTag]:
   case AlonzoSpending(purpose: F[Unsigned[Unsigned.Width.W32], TxIn])
@@ -41,6 +41,51 @@ object AlonzoPlutusPurpose:
   given canEqual[E <: EraTag]
       : CanEqual[AlonzoPlutusPurpose[AsIx, E], AlonzoPlutusPurpose[AsIx, E]] =
     CanEqual.derived
+
+  /** `hoistPlutusPurpose` of Babbage's instance (`Babbage/Scripts.hs:74-78`, cardano-ledger
+    * f649f975; Alonzo's, `Alonzo/Scripts.hs:580-584`, is the same): the purpose with its item's
+    * form changed by `f`.
+    */
+  def hoistPlutusPurpose[G[_, _], F[_, _], E <: EraTag](f: [ix, it] => G[ix, it] => F[ix, it])(
+      purpose: AlonzoPlutusPurpose[G, E]
+  ): AlonzoPlutusPurpose[F, E] = purpose match
+    case AlonzoSpending(x)    => AlonzoSpending(f(x))
+    case AlonzoMinting(x)     => AlonzoMinting(f(x))
+    case AlonzoCertifying(x)  => AlonzoCertifying(f(x))
+    case AlonzoWithdrawing(x) => AlonzoWithdrawing(f(x))
+
+  // The readers of Babbage's instance (`toSpendingPurpose` to `toWithdrawingPurpose`,
+  // `Babbage/Scripts.hs:80-98`, cardano-ledger f649f975; Alonzo's, `Alonzo/Scripts.hs:586-604`,
+  // are the same): the item of the reader's own purpose, none for another. The builders are the
+  // constructors.
+
+  /** `toSpendingPurpose`. */
+  def toSpending[F[_, _], E <: EraTag](
+      purpose: AlonzoPlutusPurpose[F, E]
+  ): Option[F[Ix, TxIn]] = purpose match
+    case AlonzoSpending(i)                                             => Some(i)
+    case AlonzoMinting(_) | AlonzoCertifying(_) | AlonzoWithdrawing(_) => None
+
+  /** `toMintingPurpose`. */
+  def toMinting[F[_, _], E <: EraTag](
+      purpose: AlonzoPlutusPurpose[F, E]
+  ): Option[F[Ix, Bytes]] = purpose match
+    case AlonzoMinting(i)                                               => Some(i)
+    case AlonzoSpending(_) | AlonzoCertifying(_) | AlonzoWithdrawing(_) => None
+
+  /** `toCertifyingPurpose`. */
+  def toCertifying[F[_, _], E <: EraTag](
+      purpose: AlonzoPlutusPurpose[F, E]
+  ): Option[F[Ix, TxCert[E]]] = purpose match
+    case AlonzoCertifying(i)                                         => Some(i)
+    case AlonzoSpending(_) | AlonzoMinting(_) | AlonzoWithdrawing(_) => None
+
+  /** `toWithdrawingPurpose`. */
+  def toWithdrawing[F[_, _], E <: EraTag](
+      purpose: AlonzoPlutusPurpose[F, E]
+  ): Option[F[Ix, AccountAddress]] = purpose match
+    case AlonzoWithdrawing(i)                                       => Some(i)
+    case AlonzoSpending(_) | AlonzoMinting(_) | AlonzoCertifying(_) => None
 
   extension [E <: EraTag](p: AlonzoPlutusPurpose[AsIx, E])
     /** The index of the item the purpose names. */

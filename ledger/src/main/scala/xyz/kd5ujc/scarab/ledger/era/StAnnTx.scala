@@ -46,7 +46,7 @@ object AlonzoStAnnTx:
       p: AlonzoEraPParams[E],
       x: AlonzoEraTx[E],
       u: AlonzoEraUTxO[E],
-      s: ConwayEraScript[E],
+      s: AlonzoEraScript[E],
       c: EraPlutusContext[E],
       needed: ScriptsNeeded[E] =:= AlonzoScriptsNeeded[E]
   ): AlonzoStAnnTx[E] =
