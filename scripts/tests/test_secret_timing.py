@@ -6,6 +6,7 @@ import argparse
 import copy
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -24,6 +25,17 @@ CLEAN.update({"control-random": 1.5, "control-field": 4.0, "control-vartime": 25
 COMMIT = "c" * 40
 
 
+def _entry(ident, value, measurements=100000, proofs=25000):
+    """A target as the tool writes it, its parts consistent: t on all measurements and the largest crop's both the
+    statistic, and classes that hold the measurements of its size."""
+    written = "Infinity" if value == float("inf") else value
+    measured = proofs if ident in timing.PROOF_SIZED else measurements
+    return {"id": ident, "name": f"the {ident}", "role": timing.ROSTER[ident], "measurements": measured,
+            "calibration": max(100, measured // 10), "fixed": {"n": measured // 2}, "random": {"n": measured - measured // 2},
+            "t_all": written, "max_t_crops": written, "at_crop": 5, "crops_counted": 100, "statistic": written,
+            "over": value > 10, "slowest_entry": None}
+
+
 def report(statistics=None, **changes):
     """A tool report whose flags agree with its statistics (`CLEAN`'s with `statistics` over them)."""
     values = {**CLEAN, **(statistics or {})}
@@ -31,13 +43,10 @@ def report(statistics=None, **changes):
              if (timing.ROSTER[ident] in ("noise-control", "value-control") and value > 10)
              or (timing.ROSTER[ident] == "leak-control" and not value > 10)]
     body = {
-        "tool": "SecretPathTiming", "version": 2, "run_id": str(uuid.uuid4()), "measurements": 100000,
-        "proofs": 25000, "calibration_share": 10, "pool": 1024, "crops": 100, "min_crop_class": 1000,
-        "probably": 10.0, "definitely": 500.0,
-        "targets": [{"id": ident, "name": f"the {ident}", "role": timing.ROSTER[ident],
-                     "fixed": {"n": 12500}, "random": {"n": 12500},
-                     "statistic": "Infinity" if value == float("inf") else value, "over": value > 10}
-                    for ident, value in values.items()],
+        "tool": "SecretPathTiming", "version": 2, "run_id": str(uuid.uuid4()), "layout_seed": "1",
+        "measurements": 100000, "proofs": 25000, "calibration_share": 10, "pool": 1024, "crops": 100,
+        "min_crop_class": 1000, "probably": 10.0, "definitely": 500.0,
+        "targets": [_entry(ident, value) for ident, value in values.items()],
         "conclusive": not flaws, "flaws": [f"{ident} failed" for ident in flaws], "sink": "0x00000000",
     }
     body.update(changes)
@@ -140,6 +149,42 @@ class RefusalTest(unittest.TestCase):
         lying["report"].update(conclusive=True, flaws=[])
         self.assert_refused(lying, "the field control at 20 with `conclusive` true")
 
+    def test_a_statistic_that_is_not_the_larger_of_its_parts_is_refused(self):
+        # the reviewer's: t on all measurements 60, no crop, a statistic of 2, voted clean
+        lying = record()
+        target = next(t for t in lying["report"]["targets"] if t["id"] == "kes-sign")
+        target.update(t_all=60.0, max_t_crops=0.0, statistic=2.0, over=False)
+        self.assert_refused(lying, "a statistic below t on all measurements")
+        lying = record()
+        next(t for t in lying["report"]["targets"] if t["id"] == "kh-zero").update(t_all="-Infinity", statistic=2.0)
+        self.assert_refused(lying, "an infinite t with a finite statistic")
+        honest = record()
+        next(t for t in honest["report"]["targets"] if t["id"] == "kh-zero").update(
+            t_all="-Infinity", max_t_crops=3.0, statistic="Infinity", over=True)
+        self.assertEqual(timing.parse_record(json.dumps(honest), "run.json").statistic("kh-zero"), float("inf"),
+                         "an infinite t is read back as one")
+
+    def test_sizes_that_contradict_the_counts_are_refused(self):
+        cases = {
+            "classes holding more than the target's measurements": lambda t: t["fixed"].update(n=t["fixed"]["n"] + 1),
+            "a target of the wrong size": lambda t: t.update(measurements=100000),
+            "a calibration batch its sizes do not give": lambda t: t.update(calibration=7),
+            "a crop beyond the crops": lambda t: t.update(at_crop=100),
+            "no crop counted but a largest one": lambda t: t.update(crops_counted=0),
+            "a slowest entry beyond the pool": lambda t: t.update(slowest_entry={"entry": 1024}),
+        }
+        for case, change in cases.items():
+            with self.subTest(case=case):
+                lying = record()
+                change(next(t for t in lying["report"]["targets"] if t["id"] == "kes-sign"))
+                self.assert_refused(lying, case)
+        self.assert_refused(record(proofs=20000), "proofs its measurements do not give")
+
+    def test_a_bare_infinity_is_refused(self):
+        text = json.dumps(record()).replace('"sink": "0x00000000"', '"sink": Infinity')
+        with self.assertRaises(timing.CheckError, msg="JSON has no bare Infinity"):
+            timing.parse_record(text, "run.json")
+
     def test_a_roster_that_is_not_exactly_the_expected_one_is_refused(self):
         missing = record()
         missing["report"]["targets"] = [t for t in missing["report"]["targets"] if t["id"] != "kes-evolve-1-2"]
@@ -206,6 +251,24 @@ class SummaryTest(unittest.TestCase):
         self.assertEqual(data["on_reference_cpu"], [True, True, True], "each run's CPU against the reference")
         self.assertEqual(data["results"][2]["kind"], "noisy", "the kind of each run")
 
+    def test_the_summary_writes_no_bare_infinity(self):
+        runs = [parsed({"kh-zero": float("inf")}), parsed({"kh-zero": float("inf")}), parsed()]
+        written = timing.dumps(timing.summary(runs, timing.decide(runs)))
+        data = timing.loads(written)
+        self.assertEqual(data["results"][0]["statistics"]["kh-zero"], "Infinity", "written as the tool writes it")
+        self.assertEqual(data["above"]["kh-zero"][0]["statistic"], "Infinity", "in the readings above too")
+
+    def test_a_confirmation_in_noisy_runs_only_says_so(self):
+        runs = [parsed({"kes-sign": 100.0, "control-field": 12.0}), parsed({"kes-sign": 100.0, "control-field": 12.0}),
+                parsed()]
+        decision = timing.decide(runs)
+        self.assertEqual(decision.status, timing.LEAK, "100 is above five times 12 twice")
+        self.assertEqual(timing.summary(runs, decision)["confirmed_in_noisy_runs_only"], ["kes-sign"], "flagged")
+        self.assertIn("confirmed in noisy runs only", timing.markdown(runs, decision), "and said in the summary")
+        runs = [parsed({"kes-sign": 100.0, "control-field": 12.0}), parsed({"kes-sign": 100.0}), parsed()]
+        decision = timing.decide(runs)
+        self.assertEqual(timing.summary(runs, decision)["confirmed_in_noisy_runs_only"], [], "one clean run is enough")
+
     def test_an_inconclusive_summary_says_why(self):
         runs = [parsed({"control-random": 14.0, "vrf-output": 11.0}, {"cpu": "Other CPU"}), parsed(), parsed()]
         text = timing.markdown(runs, timing.decide(runs))
@@ -217,14 +280,18 @@ class SummaryTest(unittest.TestCase):
         self.assertIn("| the vrf-output | secret | *11.0* | 2.0 | 2.0 |", text, "above but not counted, in italics")
 
 
-def write_outcome(root, status, records=("run-1.json", "run-2.json"), summary_status=None):
-    (root / "summary.md").write_text("summary", encoding="utf-8")
-    (root / "provenance.json").write_text("{}", encoding="utf-8")
-    for name in records:
-        (root / name).write_text("{}", encoding="utf-8")
-    data = {"status": status if summary_status is None else summary_status, "why": "the reason",
-            "results": [{"record": name} for name in ("run-1.json", "run-2.json")]}
-    (root / "summary.json").write_text(json.dumps(data), encoding="utf-8")
+def evidence(root, *statistics):
+    """A directory as the workflow's test step leaves it: a record per run, the provenance and the summaries that
+    `--reports` writes; the status that wrote them."""
+    names = []
+    for index, values in enumerate(statistics, start=1):
+        name = f"run-{index}.json"
+        (root / name).write_text(json.dumps(record(values)), encoding="utf-8")
+        names.append(name)
+    provenance = {"scarab": {"commit": COMMIT, "dirty": False}, "runs": [{"record": name} for name in names]}
+    (root / "provenance.json").write_text(json.dumps(provenance), encoding="utf-8")
+    with redirect_stdout(io.StringIO()):
+        return timing.main(["--out", str(root), "--reports", *(str(root / name) for name in names)])
 
 
 class OutcomeTest(unittest.TestCase):
@@ -234,32 +301,56 @@ class OutcomeTest(unittest.TestCase):
         return code, out.getvalue()
 
     def test_each_status_with_its_evidence(self):
-        cases = {"0": (0, "no leak found"), "1": (1, "::error title=Secret-path timing: leak confirmed::"),
-                 "2": (0, "::warning title=Secret-path timing: inconclusive::")}
-        for status, (code, line) in cases.items():
+        cases = {"0": ([{}, {}, {}], 0, "no leak found"),
+                 "1": ([{"kes-sign": 40.0}, {}, {"kes-sign": 12.0}], 1, "::error title=Secret-path timing: leak confirmed::"),
+                 "2": ([{"kes-sign": 40.0}, {}, {}], 0, "::warning title=Secret-path timing: inconclusive::")}
+        for status, (runs, code, line) in cases.items():
             with self.subTest(status=status), tempfile.TemporaryDirectory() as scratch:
-                write_outcome(Path(scratch), int(status))
+                self.assertEqual(evidence(Path(scratch), *runs), int(status), "the test step's status")
                 found, printed = self.outcome(Path(scratch), status)
                 self.assertEqual(found, code, f"status {status} makes the job {'red' if code else 'green'}")
                 self.assertIn(line, printed, "with its annotation")
 
-    def test_missing_or_disagreeing_evidence_is_red(self):
+    def test_evidence_that_does_not_hold_is_red(self):
+        def broken(change):
+            with tempfile.TemporaryDirectory() as scratch:
+                root = Path(scratch)
+                evidence(root, {}, {}, {})
+                change(root)
+                return self.outcome(root, "0")
+
+        def summary(data):
+            return lambda root: (root / "summary.json").write_text(json.dumps(data), encoding="utf-8")
+
+        cases = {
+            "the reviewer's: no run, an empty job summary, an empty provenance": lambda root: (
+                summary({"status": 0, "results": [None]})(root),
+                (root / "summary.md").write_text("", encoding="utf-8"),
+                (root / "provenance.json").write_text("{}", encoding="utf-8")),
+            "a run that is not a record": lambda root: (root / "run-2.json").write_text("{}", encoding="utf-8"),
+            "a run's record missing": lambda root: (root / "run-2.json").unlink(),
+            "an empty job summary": lambda root: (root / "summary.md").write_text(" \n", encoding="utf-8"),
+            "an empty provenance": lambda root: (root / "provenance.json").write_text("{}", encoding="utf-8"),
+            "a result that names a path elsewhere": lambda root: summary(
+                {"status": 0, "results": [{"record": "../run-1.json"}]})(root),
+            "a summary the records do not give": lambda root: (root / "run-1.json").write_text(
+                json.dumps(record({"kes-sign": 40.0})), encoding="utf-8"),
+            "no summary at all": lambda root: (root / "summary.json").unlink(),
+        }
+        for case, change in cases.items():
+            with self.subTest(case=case):
+                code, printed = broken(change)
+                self.assertEqual(code, 1, f"{case} is red")
+                self.assertIn("could not run", printed, "and is not called a leak or a pass")
+
+    def test_a_status_the_records_do_not_give_is_red(self):
         with tempfile.TemporaryDirectory() as scratch:
-            write_outcome(Path(scratch), 0, records=("run-1.json",))
-            code, printed = self.outcome(Path(scratch), "0")
-            self.assertEqual(code, 1, "a run's record is missing")
-            self.assertIn("run-2.json", printed, "and it is named")
-        with tempfile.TemporaryDirectory() as scratch:
-            code, printed = self.outcome(Path(scratch), "0")
-            self.assertEqual(code, 1, "no summary at all, as when the directory is gone")
-        with tempfile.TemporaryDirectory() as scratch:
-            write_outcome(Path(scratch), 1, summary_status=0)
-            code, printed = self.outcome(Path(scratch), "1")
-            self.assertEqual(code, 1, "an exit of 1 the summary does not give, such as a crash, is red")
-            self.assertIn("could not run", printed, "and is not called a leak")
-        with tempfile.TemporaryDirectory() as scratch:
-            code, printed = self.outcome(Path(scratch), "")
-            self.assertEqual(code, 1, "a step that gave no status")
+            evidence(Path(scratch), {}, {}, {})
+            for status in ("1", "2", "3", ""):
+                with self.subTest(status=status):
+                    code, printed = self.outcome(Path(scratch), status)
+                    self.assertEqual(code, 1, f"an exit status of {status!r} over records that decide 0 is red")
+                    self.assertIn("could not run", printed, "a crash's 1 is not called a leak")
 
 
 class ProgramTest(unittest.TestCase):
@@ -298,6 +389,29 @@ class ProgramTest(unittest.TestCase):
     def test_any_failure_of_the_program_itself_exits_3(self):
         with mock.patch.object(timing, "main", side_effect=KeyError("a defect")), redirect_stderr(io.StringIO()):
             self.assertEqual(timing.entry(), timing.ERROR, "never 1, which is a leak")
+
+    def test_an_import_that_failed_exits_3(self):
+        with mock.patch.object(timing, "IMPORT_FAILURE", ImportError("no module")), redirect_stderr(io.StringIO()):
+            self.assertEqual(timing.entry(), timing.ERROR, "never Python's 1, which is a leak")
+
+    def test_a_closed_output_exits_3_not_the_verdict(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = Path(scratch)
+            paths = []
+            for index, statistics in enumerate([{"vrf-prove": 30.0}, {}, {"vrf-prove": 25.0}], start=1):
+                path = root / f"run-{index}.json"
+                path.write_text(json.dumps(record(statistics)), encoding="utf-8")
+                paths.append(str(path))
+            script = Path(timing.__file__).resolve()
+            # a pipe whose reading end is closed before the program starts: every write to it fails
+            reading, writing = os.pipe()
+            os.close(reading)
+            try:
+                done = subprocess.run([sys.executable, "-I", "-B", str(script), "--out", str(root / "out"),
+                                       "--reports", *paths], stdout=writing, stderr=subprocess.DEVNULL, timeout=60)
+            finally:
+                os.close(writing)
+            self.assertEqual(done.returncode, timing.ERROR, "a leak it could not print is 3, never 1")
 
     def test_an_output_directory_with_reports_in_it_is_refused_before_anything_runs(self):
         with tempfile.TemporaryDirectory() as scratch:
@@ -346,15 +460,35 @@ class ProgramTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as scratch:
             args.out = Path(scratch)
             with mock.patch.object(timing.subprocess, "run", side_effect=fake), redirect_stderr(io.StringIO()):
-                with self.assertRaises(timing.CheckError) as failed:
+                with self.assertRaises(timing.RunTimedOut) as failed:
                     timing.run_tool(checkout, "/work/a.jar", args, 1, "Some CPU", (COMMIT, False))
-            self.assertIn("took more than 5 s", str(failed.exception), "the reason")
-            self.assertIn("may be left behind", str(failed.exception), "and the container that did not go")
+            self.assertEqual((failed.exception.index, failed.exception.seconds), (1, 5), "the run and its bound")
+            self.assertEqual(failed.exception.left, "secret-timing-run-1", "the container that did not go")
             command, kwargs = calls[-1]
             self.assertEqual(command, ["docker", "rm", "-f", "secret-timing-run-1"], "its container removed")
             self.assertEqual(kwargs.get("timeout"), timing.REMOVE_TIMEOUT, "within a bound")
             self.assertEqual((Path(scratch) / "run-1.log").read_text(encoding="utf-8"), "partial",
                              "what it printed is kept")
+
+    def test_a_log_that_cannot_be_written_does_not_skip_the_stop(self):
+        args = argparse.Namespace(owner="secret-timing", cpus="3", memory="4g", image="scarab-jdk:local",
+                                  measurements=10000, repetitions=3, run_timeout=5)
+        checkout = mock.Mock(root=Path("/checkout"), cache=Path("/cache"))
+        calls = []
+
+        def fake(command, **kwargs):
+            calls.append(command)
+            if command[:2] == ["docker", "run"]:
+                raise subprocess.TimeoutExpired(command, 5, output="partial", stderr="")
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with tempfile.TemporaryDirectory() as scratch:
+            args.out = Path(scratch) / "gone"
+            with mock.patch.object(timing.subprocess, "run", side_effect=fake), redirect_stderr(io.StringIO()):
+                with self.assertRaises(timing.RunTimedOut) as failed:
+                    timing.run_tool(checkout, "/work/a.jar", args, 1, "Some CPU", (COMMIT, False))
+            self.assertEqual(calls[-1], ["docker", "rm", "-f", "secret-timing-run-1"], "stopped though the log failed")
+            self.assertIsNone(failed.exception.left, "and removed, so nothing is left")
 
     def test_a_run_is_recorded_with_its_identity_commit_and_status(self):
         args = argparse.Namespace(owner="secret-timing", cpus="3", memory="4g", image="scarab-jdk:local",

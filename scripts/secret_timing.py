@@ -38,7 +38,8 @@ it, or the record is refused):
   - in a clean run a secret target counts when its statistic is above the threshold, dudect's 10; in a noisy run
     when it is above the threshold and above `FACTOR` times the floor, the rule `TimingProbeMain` gives a target
     against its noise control ("t > 10 && t > 5 * noise");
-  - a leak is confirmed when one secret target counts in at least `CONFIRMATIONS` runs;
+  - a leak is confirmed when one secret target counts in at least `CONFIRMATIONS` runs; a ratio of t statistics
+    bounds no timing effect, so the summary says when a confirmation rests on noisy runs only;
   - otherwise the result is inconclusive when any secret target's statistic is above the threshold in any run (the
     summary names it and its readings), or when fewer than `CONFIRMATIONS` runs are clean;
   - otherwise no leak was found.
@@ -73,8 +74,14 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from conformance import run as runner  # noqa: E402
-from conformance.scenarios import TURBO_REFERENCE_CPU  # noqa: E402
+# A failure to import is this program's own and must exit 3, as `entry` makes every other one; Python's own exit
+# status for an uncaught exception, 1, is the verdict "leak confirmed".
+IMPORT_FAILURE: BaseException | None = None
+try:
+    from conformance import run as runner  # noqa: E402
+    from conformance.scenarios import TURBO_REFERENCE_CPU  # noqa: E402
+except BaseException as failure:  # noqa: BLE001 - reported by `entry` as "could not run"
+    IMPORT_FAILURE = failure
 
 ROOT = Path(__file__).resolve().parents[1]
 MAIN = "xyz.kd5ujc.scarab.crypto.vrf.SecretPathTiming"
@@ -99,6 +106,8 @@ ROSTER = {
     "control-field": "value-control",
     "control-vartime": "leak-control",
 }
+# The targets the tool measures `proofs` times; every other one, `measurements` times.
+PROOF_SIZED = frozenset({"vrf-prove", "vrf-output", "kes-sign", "kes-evolve-0-1", "kes-evolve-1-2", "control-keys"})
 # dudect's `t_threshold_moderate`, the tool's own threshold, which every report must carry.
 THRESHOLD = 10.0
 # TimingProbeMain's factor over the noise floor ("t > 10 && t > 5 * noise").
@@ -121,6 +130,16 @@ VERDICTS = {NO_LEAK: "no leak found", LEAK: "leak confirmed", INCONCLUSIVE: "inc
 
 class CheckError(RuntimeError):
     """The check could not run, or a record is not one; the message says which and why."""
+
+
+class RunTimedOut(CheckError):
+    """Run `index` took more than `seconds` and was stopped; `left` names its container when it could not be removed,
+    and `why` says why."""
+
+    def __init__(self, index: int, seconds: int, log: str, left: str | None, why: str | None):
+        self.index, self.seconds, self.left, self.why = index, seconds, left, why
+        super().__init__(f"run {index} took more than {seconds} s and was stopped; {log}"
+                         + (f"; its container {left} may be left behind: {why}" if left else ""))
 
 
 @dataclass(frozen=True)
@@ -196,24 +215,55 @@ class Decision:
         return sorted(ident for ident, runs in self.counted.items() if len(runs) >= CONFIRMATIONS)
 
 
+def _reject_constant(name: str) -> float:
+    raise ValueError(f"{name} is not JSON")
+
+
+def loads(text: str) -> object:
+    """JSON as RFC 8259 has it: a bare `NaN` or `Infinity` is refused, which Python's reader would take."""
+    return json.loads(text, parse_constant=_reject_constant)
+
+
+def dumps(value: object) -> str:
+    """JSON as RFC 8259 has it: a value that is no finite number fails here instead of writing a bare `Infinity`."""
+    return json.dumps(value, indent=2, allow_nan=False) + "\n"
+
+
+def _written(value: float) -> float | str:
+    """A statistic as this program writes it: a number, or `Infinity`, as the tool writes one."""
+    return "Infinity" if math.isinf(value) else round(value, 2)
+
+
 def _reading(value: float) -> str:
     return "infinite" if math.isinf(value) else f"{value:,.1f}"
 
 
-def _statistic(value: object) -> float | None:
-    """A statistic as the tool writes it: a finite number, or `Infinity` as a string; None otherwise."""
+def _signed(value: object) -> float | None:
+    """A t as the tool writes it: a finite number, or `Infinity` or `-Infinity` as a string; None otherwise."""
     if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
         return float(value)
-    if value in ("Infinity", "-Infinity"):
+    if value == "Infinity":
         return math.inf
+    if value == "-Infinity":
+        return -math.inf
     return None
+
+
+def _statistic(value: object) -> float | None:
+    """A statistic as the tool writes it, which is never negative; None otherwise."""
+    found = _signed(value)
+    return found if found is not None and found >= 0 else None
+
+
+def _agrees(a: float, b: float) -> bool:
+    return a == b if math.isinf(a) or math.isinf(b) else math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-9)
 
 
 def _count(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
-def _target(entry: object, where: str) -> Target:
+def _target(entry: object, where: str, sizes: dict[str, int]) -> Target:
     if not isinstance(entry, dict):
         raise CheckError(f"{where}: a target is an object")
     ident, name, role = entry.get("id"), entry.get("name"), entry.get("role")
@@ -222,8 +272,14 @@ def _target(entry: object, where: str) -> Target:
     if role != ROSTER[ident]:
         raise CheckError(f"{where}: {ident} has the role {role!r}, not {ROSTER[ident]}")
     statistic = _statistic(entry.get("statistic"))
-    if statistic is None:
-        raise CheckError(f"{where}: {ident} has no statistic")
+    t_all, largest = _signed(entry.get("t_all")), _statistic(entry.get("max_t_crops"))
+    if statistic is None or t_all is None or largest is None:
+        raise CheckError(f"{where}: {ident} has no statistic, t on all measurements or largest crop t")
+    if not _agrees(statistic, max(abs(t_all), largest)):
+        raise CheckError(f"{where}: {ident}'s statistic {_reading(statistic)} is not the larger of |t| on all "
+                         f"measurements ({_reading(abs(t_all))}) and the largest crop's ({_reading(largest)})")
+    measured = sizes["proofs"] if ident in PROOF_SIZED else sizes["measurements"]
+    counted = []
     for side in ("fixed", "random"):
         counts = entry.get(side)
         if not isinstance(counts, dict) or not _count(counts.get("n")):
@@ -231,6 +287,22 @@ def _target(entry: object, where: str) -> Target:
         if counts["n"] < MIN_CLASS_SAMPLES:
             raise CheckError(f"{where}: {ident}'s {side} class holds {counts['n']} measurements, fewer than "
                              f"{MIN_CLASS_SAMPLES}")
+        counted.append(counts["n"])
+    if entry.get("measurements") != measured or sum(counted) != measured:
+        raise CheckError(f"{where}: {ident} was to be measured {measured} times; its report gives "
+                         f"{entry.get('measurements')!r}, and its classes hold {sum(counted)}")
+    if entry.get("calibration") != max(sizes["crops"], measured // sizes["calibration_share"]):
+        raise CheckError(f"{where}: {ident}'s calibration batch {entry.get('calibration')!r} is not the one its sizes give")
+    crop, crops_counted = entry.get("at_crop"), entry.get("crops_counted")
+    if not isinstance(crops_counted, int) or isinstance(crops_counted, bool) \
+            or not 0 <= crops_counted <= sizes["crops"] or not isinstance(crop, int) or isinstance(crop, bool) \
+            or not -1 <= crop < sizes["crops"] or (crop == -1) != (crops_counted == 0):
+        raise CheckError(f"{where}: {ident}'s crops ({crops_counted!r} counted, the largest at {crop!r}) do not fit "
+                         f"its {sizes['crops']} crops")
+    slowest = entry.get("slowest_entry")
+    if slowest is not None and (not isinstance(slowest, dict) or not _count(slowest.get("entry"))
+                                or slowest["entry"] >= sizes["pool"]):
+        raise CheckError(f"{where}: {ident}'s slowest entry is not one of its pool of {sizes['pool']}")
     if entry.get("over") is not (statistic > THRESHOLD):
         raise CheckError(f"{where}: {ident} reads {_reading(statistic)} but its report says `over` is "
                          f"{entry.get('over')!r}")
@@ -241,7 +313,7 @@ def parse_record(text: str, path: str) -> Run:
     """A run's record as this program writes it, checked and recomputed; `CheckError` when it is not one, when the
     tool did not exit 0, or when the report's own flags disagree with its statistics."""
     try:
-        record = json.loads(text)
+        record = loads(text)
     except ValueError as error:
         raise CheckError(f"{path}: not JSON: {error}") from None
     run = record.get("run") if isinstance(record, dict) else None
@@ -266,10 +338,13 @@ def parse_record(text: str, path: str) -> Run:
     if report["min_crop_class"] < MIN_CLASS_SAMPLES:
         raise CheckError(f"{path}: its crops count from {report['min_crop_class']} a class, fewer than "
                          f"{MIN_CLASS_SAMPLES}")
+    if report["proofs"] != max(1000, report["measurements"] // 4):
+        raise CheckError(f"{path}: {report['proofs']} a proof is not what {report['measurements']} measurements give")
     entries = report.get("targets")
     if not isinstance(entries, list):
         raise CheckError(f"{path}: no targets")
-    targets = tuple(_target(entry, path) for entry in entries)
+    sizes = {key: report[key] for key in SIZES}
+    targets = tuple(_target(entry, path, sizes) for entry in entries)
     ids = [target.id for target in targets]
     if sorted(ids) != sorted(ROSTER):
         raise CheckError(f"{path}: its targets are not exactly the roster of version {REPORT_VERSION}")
@@ -334,12 +409,24 @@ def _cpu_text(cpu: str | None) -> str:
     return cpu + (" (the reference CPU)" if cpu == TURBO_REFERENCE_CPU else f" (not the reference CPU, {TURBO_REFERENCE_CPU})")
 
 
+def noisy_only(runs: list[Run], decision: Decision) -> list[str]:
+    """The confirmed targets every one of whose counted runs is noisy: a ratio of t statistics bounds no timing
+    effect, so such a confirmation is weaker evidence than one in clean runs."""
+    return [ident for ident in decision.confirmed
+            if all(runs[index - 1].kind == "noisy" for index in decision.counted[ident])]
+
+
 def _why(runs: list[Run], decision: Decision) -> str:
     limit = f"{THRESHOLD:g}"
     if decision.status == LEAK:
-        return "counted in at least {} runs: {}".format(
-            CONFIRMATIONS, "; ".join(f"`{ident}` in runs {', '.join(map(str, decision.counted[ident]))}"
-                                     for ident in decision.confirmed))
+        weak = noisy_only(runs, decision)
+        return "counted in at least {} runs: {}{}".format(
+            CONFIRMATIONS,
+            "; ".join(f"`{ident}` in runs " + ", ".join(f"{index} ({runs[index - 1].kind})"
+                                                       for index in decision.counted[ident])
+                      for ident in decision.confirmed),
+            "; confirmed in noisy runs only, where a ratio of statistics bounds no timing effect: "
+            + ", ".join(f"`{ident}`" for ident in weak) if weak else "")
     if decision.above:
         readings = "; ".join(f"`{ident}` " + ", ".join(f"{_reading(value)} in run {index}" for index, value in values)
                              for ident, values in sorted(decision.above.items()))
@@ -369,17 +456,17 @@ def summary(runs: list[Run], decision: Decision) -> dict:
         "clean_runs": decision.clean,
         "confirmed": decision.confirmed,
         "counted": decision.counted,
-        "above": {ident: [{"run": index, "statistic": None if math.isinf(value) else round(value, 2)}
+        "confirmed_in_noisy_runs_only": noisy_only(runs, decision),
+        "above": {ident: [{"run": index, "statistic": _written(value)}
                           for index, value in values] for ident, values in decision.above.items()},
         "cpus": sorted({run.cpu or "unknown" for run in runs}),
         "reference_cpu": TURBO_REFERENCE_CPU,
         "on_reference_cpu": [run.cpu == TURBO_REFERENCE_CPU for run in runs],
         "targets": names,
         "results": [{"record": Path(run.path).name, "run_id": run.id, "commit": run.commit, "dirty": run.dirty,
-                     "cpu": run.cpu, "kind": run.kind, "floor": round(run.floor, 2), "flaws": run.flaws(),
+                     "cpu": run.cpu, "kind": run.kind, "floor": _written(run.floor), "flaws": run.flaws(),
                      "sizes": dict(run.sizes),
-                     "statistics": {target.id: None if math.isinf(target.statistic) else round(target.statistic, 2)
-                                    for target in run.targets}}
+                     "statistics": {target.id: _written(target.statistic) for target in run.targets}}
                     for run in runs],
     }
 
@@ -404,8 +491,8 @@ def markdown(runs: list[Run], decision: Decision) -> str:
         f"| Rule | a run is blind when its variable-time control is not above {limit}, noisy when its random/random, "
         f"same-seed or field-arithmetic control is above {limit}, clean otherwise; a secret target counts above {limit} in a "
         f"clean run, above {limit} and {FACTOR:g} times the floor in a noisy one; a leak is one target counted in "
-        f"{CONFIRMATIONS} runs; any reading above {limit} that is not a leak is inconclusive; "
-        "docs/running/secret-timing.md |",
+        f"{CONFIRMATIONS} runs; any secret target's reading above {limit} that is not a confirmed leak is "
+        "inconclusive; docs/running/secret-timing.md |",
         "",
         "| Target | Role | " + " | ".join(f"Run {i}" for i in range(1, len(runs) + 1)) + " | Counted in runs |",
         "|---|---|" + "---:|" * len(runs) + "---|",
@@ -506,23 +593,27 @@ def run_tool(checkout: runner.Checkout, classpath: str, args: argparse.Namespace
     try:
         done = subprocess.run(command, text=True, capture_output=True, timeout=args.run_timeout)
     except subprocess.TimeoutExpired as expired:
-        log.write_text(_text(expired.stdout) + _text(expired.stderr), encoding="utf-8")
-        left = stop(name)
-        raise CheckError(f"run {index} took more than {args.run_timeout} s and was stopped; see {log.name}"
-                         + (f"; its container may be left behind: {left}" if left else "")) from None
+        # the container goes first, so that a failure to keep the log cannot leave it running
+        why = stop(name)
+        try:
+            log.write_text(_text(expired.stdout) + _text(expired.stderr), encoding="utf-8")
+            kept = f"see {log.name}"
+        except OSError as error:
+            kept = f"no log ({error.strerror or error})"
+        raise RunTimedOut(index, args.run_timeout, kept, name if why else None, why) from None
     log.write_text(done.stdout + done.stderr, encoding="utf-8")
     seconds = round(time.monotonic() - clock, 1)
     if not raw.is_file():
         raise CheckError(f"run {index}: the tool exited {done.returncode} without its report; see {log.name}")
     try:
-        report = json.loads(raw.read_text(encoding="utf-8"))
+        report = loads(raw.read_text(encoding="utf-8"))
     except ValueError as error:
         raise CheckError(f"run {index}: the tool's report is not JSON: {error}") from None
     ident = report.get("run_id") if isinstance(report, dict) else None
     record = {"run": {"index": index, "id": ident, "commit": commit[0], "dirty": commit[1], "jvm": list(JVM),
                       "cpu": cpu, "exit_status": done.returncode, "seconds": seconds},
               "report": report}
-    (args.out / f"run-{index}.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    (args.out / f"run-{index}.json").write_text(dumps(record), encoding="utf-8")
     raw.unlink()
     if done.returncode != 0:
         raise CheckError(f"run {index}: the tool exited {done.returncode}; see {log.name}")
@@ -567,41 +658,66 @@ def measure(args: argparse.Namespace) -> list[Run]:
             "started_at": runner.stamp(started),
             "finished_at": runner.stamp(runner.now()),
         }
-        (args.out / "provenance.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+        (args.out / "provenance.json").write_text(dumps(record), encoding="utf-8")
     return read_records([args.out / run["record"] for run in runs])
 
 
+def _evidence(out: Path) -> tuple[dict, list[Run]]:
+    """The summary and the runs it names, every one parsed as `--reports` parses it; `CheckError` when the summary,
+    the job summary, the provenance or a record is missing, empty, malformed or does not agree with the others."""
+    try:
+        data = loads((out / "summary.json").read_text(encoding="utf-8"))
+        written = (out / "summary.md").read_text(encoding="utf-8")
+        provenance = loads((out / "provenance.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        raise CheckError(f"the summary, the job summary or the provenance cannot be read: {error}") from None
+    if not isinstance(data, dict) or not isinstance(data.get("status"), int) or isinstance(data.get("status"), bool):
+        raise CheckError("the summary gives no status")
+    if not written.strip():
+        raise CheckError("the job summary is empty")
+    results = data.get("results")
+    if not isinstance(results, list) or not results or not all(
+            isinstance(item, dict) and isinstance(item.get("record"), str) and item["record"]
+            and Path(item["record"]).name == item["record"] for item in results):
+        raise CheckError("the summary names no run, or a run without a record of its own in this directory")
+    names = [item["record"] for item in results]
+    scarab = provenance.get("scarab") if isinstance(provenance, dict) else None
+    listed = provenance.get("runs") if isinstance(provenance, dict) else None
+    if not isinstance(scarab, dict) or not isinstance(scarab.get("commit"), str) or not isinstance(listed, list) \
+            or [item.get("record") if isinstance(item, dict) else None for item in listed] != names:
+        raise CheckError("the provenance names no commit, or not the runs the summary names")
+    runs = read_records([out / name for name in names])
+    check_together(runs, allow_mixed=False)
+    if any(run.commit != scarab["commit"] for run in runs):
+        raise CheckError("a record's commit is not the provenance's")
+    return data, runs
+
+
 def outcome(out: Path, status: str) -> int:
-    """The workflow's last step: 0 when the job may be green, 1 when it must be red, with its annotation."""
+    """The workflow's last step: 0 when the job may be green, 1 when it must be red, with its annotation. The verdict is
+    decided again from the records the summary names, and must be the summary's and the exit status's."""
     def red(title: str, message: str) -> int:
         print(f"::error title=Secret-path timing: {title}::{message}")
         return 1
 
     if status not in ("0", "1", "2", "3"):
         return red("the check could not run", f"the step that ran the test gave the status {status!r}")
-    try:
-        data = json.loads((out / "summary.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError) as error:
-        return red("the check could not run", f"exit status {status}, and no readable summary: {error}")
-    if not isinstance(data, dict) or data.get("status") != int(status):
-        return red("the check could not run",
-                   f"exit status {status}, but the summary gives {data.get('status') if isinstance(data, dict) else None!r}")
-    results = data.get("results")
-    expected = [out / "summary.md", out / "provenance.json"]
-    expected += [out / item["record"] for item in results if isinstance(item, dict) and isinstance(item.get("record"), str)] \
-        if isinstance(results, list) else []
-    missing = [path.name for path in expected if not path.is_file()]
-    if not isinstance(results, list) or not results or missing:
-        return red("the check could not run", f"exit status {status}, but evidence is missing: "
-                   + (", ".join(missing) if missing else "no run in the summary"))
-    why = str(data.get("why", ""))
-    if status == "1":
-        return red("leak confirmed", why + "; see the job summary and docs/running/secret-timing.md")
-    if status == "2":
-        print(f"::warning title=Secret-path timing: inconclusive::{why} (docs/running/secret-timing.md)")
-        return 0
     if status == "3":
         return red("the check could not run", "see the log of the step that ran the test")
+    try:
+        data, runs = _evidence(out)
+        decision = decide(runs)
+    except CheckError as error:
+        return red("the check could not run", f"exit status {status}, but the evidence does not hold: {error}")
+    if decision.status != data["status"] or decision.status != int(status):
+        return red("the check could not run", f"exit status {status}, the summary's {data['status']}, and the records "
+                   f"decide {decision.status}")
+    why = _why(runs, decision)
+    if decision.status == LEAK:
+        return red("leak confirmed", why + "; see the job summary and docs/running/secret-timing.md")
+    if decision.status == INCONCLUSIVE:
+        print(f"::warning title=Secret-path timing: inconclusive::{why} (docs/running/secret-timing.md)")
+        return 0
     print(f"no leak found: {why}")
     return 0
 
@@ -679,9 +795,8 @@ def main(argv: list[str] | None = None) -> int:
         decision = decide(runs)
         text = markdown(runs, decision)
         (args.out / "summary.md").write_text(text, encoding="utf-8")
-        (args.out / "summary.json").write_text(json.dumps(summary(runs, decision), indent=2) + "\n",
-                                               encoding="utf-8")
-    except (CheckError, runner.RunError, OSError) as error:
+        (args.out / "summary.json").write_text(dumps(summary(runs, decision)), encoding="utf-8")
+    except (CheckError, runner.RunError, OSError, ValueError) as error:
         print(f"the check could not run: {error}", file=sys.stderr)
         return ERROR
     print(text)
@@ -689,7 +804,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def entry() -> int:
-    """`main`, with any failure of this program's own an exit status of 3, never one of the verdicts."""
+    """`main`, with any failure of this program's own an exit status of 3, never one of the verdicts: an import that
+    failed, an exception, or an interruption."""
+    if IMPORT_FAILURE is not None:
+        print(f"the check could not run: an import failed: {IMPORT_FAILURE!r}", file=sys.stderr)
+        return ERROR
     try:
         return main()
     except SystemExit:
@@ -699,5 +818,21 @@ def entry() -> int:
         return ERROR
 
 
+def finish(status: int) -> int:
+    """`status`, unless what is left of standard output cannot be written, which is 3 too: closed or a broken pipe
+    would otherwise end the interpreter with a status of its own when it flushes on the way out."""
+    try:
+        if sys.stdout is not None:
+            sys.stdout.flush()
+        return status
+    except (OSError, ValueError):
+        # what is still buffered goes nowhere, so that the interpreter's own flush on the way out finds nothing to fail
+        try:
+            os.dup2(os.open(os.devnull, os.O_WRONLY), 1)
+        except OSError:
+            pass
+        return ERROR
+
+
 if __name__ == "__main__":
-    sys.exit(entry())
+    sys.exit(finish(entry()))
