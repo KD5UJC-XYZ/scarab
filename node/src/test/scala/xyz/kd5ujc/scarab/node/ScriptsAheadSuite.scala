@@ -264,6 +264,8 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
   }
 
   test("a failure holding a term of the machine is not kept, one without is") {
+    // a cause never discharged: nothing reads it
+    val cause = xyz.kd5ujc.scarab.uplc.cek.Cause(fail("the cause was discharged"))
     val withCause: ScriptEvaluator[Id] = _ =>
       EvalResult.Failure(
         EvalFailure.Script(
@@ -271,8 +273,7 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
             EvaluationError.Cek(
               xyz.kd5ujc.scarab.uplc.cek.CekFailure(
                 xyz.kd5ujc.scarab.uplc.cek.CekError.ErrorTerm,
-                // never discharged: nothing reads it
-                Some(xyz.kd5ujc.scarab.uplc.cek.Cause(fail("the cause was discharged")))
+                Some(cause)
               )
             ),
             Vector("trace")
