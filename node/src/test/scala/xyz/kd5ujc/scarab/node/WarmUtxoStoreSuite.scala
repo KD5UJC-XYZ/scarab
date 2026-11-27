@@ -172,17 +172,17 @@ class WarmUtxoStoreSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught with 
       Gen.choose(0, 40),
       Gen.frequency(2 -> Gen.const(None), 3 -> Gen.choose(0, 600).map(Some(_)))
     )
+    // reads of a few keys, as a block's, and sometimes of many
     val keys = Gen.frequency(
       9 -> Gen.choose(0, 3).flatMap(Gen.listOfN(_, Gen.choose(0, 40))),
       1 -> Gen.listOf(Gen.choose(0, 40))
     )
     // mostly a budget of a few entries (one is charged about 290 bytes), sometimes 0 or larger
     val budget = Gen.frequency(3 -> Gen.choose(1000L, 3000L), 1 -> Gen.choose(0L, 12000L))
+    // writes mostly of the size of a flush the budget stages, sometimes larger
     val op: Gen[Op] = Gen.frequency(
-      // mostly the size of a flush the budget stages, sometimes one larger
       6 -> Gen.choose(0, 2).flatMap(Gen.listOfN(_, change)).map(Op.Write.apply),
       1 -> Gen.listOf(change).map(Op.Write.apply),
-      // reads of a few keys, as a block's, and sometimes of many
       4 -> keys.map(Op.Read.apply),
       2 -> keys.map(Op.Ahead.apply),
       2 -> keys.map(Op.Use.apply),
