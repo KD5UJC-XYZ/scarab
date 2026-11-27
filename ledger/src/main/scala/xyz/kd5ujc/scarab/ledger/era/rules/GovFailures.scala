@@ -3,18 +3,9 @@ package xyz.kd5ujc.scarab.ledger.era.rules
 
 import cats.data.{NonEmptyList, NonEmptyMap, NonEmptySet}
 import scala.collection.immutable.SortedSet
-import xyz.kd5ujc.scarab.ledger.{
-  Credential as FlatCredential,
-  GovAction as FlatGovAction,
-  GovActionId,
-  GovFailure,
-  PredicateFailure,
-  RewardAccount,
-  Voter
-}
+import xyz.kd5ujc.scarab.ledger.{Credential as FlatCredential, GovActionId, Voter}
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
-import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
   ColdCommittee,
@@ -76,93 +67,6 @@ enum ConwayGovPredFailure[E <: EraTag]:
   case ProposalReturnAccountDoesNotExist(account: AccountAddress)
   case TreasuryWithdrawalReturnAccountsDoNotExist(accounts: NonEmptyList[AccountAddress])
   case UnelectedCommitteeVoters(credentials: NonEmptyList[FlatCredential])
-
-/** An action the failure carries that has no flat form here: one that is not one of the proposals
-  * it was given, as the flat form holds the action as read, which only the proposal keeps; or, at
-  * Dijkstra, a parameter change, which the flat Conway action cannot hold.
-  */
-final case class GovActionNotRead[E <: EraTag](action: GovAction[E])
-
-object ConwayGovPredFailure:
-  /** The flat action of each of `proposals`' actions, as read. */
-  def readOf(
-      proposals: Iterable[ProposalProcedure[Conway]]
-  ): GovAction[Conway] => Option[FlatGovAction] =
-    action => proposals.find(_.pProcGovAction == action).map(_.read.action)
-
-  /** A failure in the node's flat form, glue the comparisons with the flat rule read, one-way. An
-    * action is put in its flat form as `read` gives it: the action as read, which the flat failure
-    * holds ([[readOf]] the transaction's proposals).
-    */
-  def toStored(
-      failure: ConwayGovPredFailure[Conway],
-      read: GovAction[Conway] => Option[FlatGovAction]
-  ): Either[GovActionNotRead[Conway], PredicateFailure] =
-    def gov(f: GovFailure): Either[GovActionNotRead[Conway], PredicateFailure] =
-      Right(PredicateFailure.gov(f))
-    def action(a: GovAction[Conway]): Either[GovActionNotRead[Conway], FlatGovAction] =
-      read(a).toRight(GovActionNotRead(a))
-    def version(v: ProtVer): (BigInt, BigInt) = (BigInt(v.pvMajor.value), v.pvMinor.value)
-    failure match
-      case GovActionsDoNotExist(ids) => gov(GovFailure.GovActionsDoNotExist(ids.toList.toVector))
-      case MalformedProposal(a) =>
-        action(a).map(f => PredicateFailure.gov(GovFailure.MalformedProposal(f)))
-      case ProposalProcedureNetworkIdMismatch(account, network) =>
-        gov(
-          GovFailure.ProposalProcedureNetworkIdMismatch(
-            Convert.rewardAccountBack(account),
-            network.wire
-          )
-        )
-      case TreasuryWithdrawalsNetworkIdMismatch(accounts, network) =>
-        gov(
-          GovFailure.TreasuryWithdrawalsNetworkIdMismatch(
-            accounts.toSortedSet.map(Convert.rewardAccountBack),
-            network.wire
-          )
-        )
-      case ProposalDepositIncorrect(m) =>
-        gov(GovFailure.ProposalDepositIncorrect(m.storedBy(_.value)))
-      case DisallowedVoters(votes) => gov(GovFailure.DisallowedVoters(votes.toList.toVector))
-      case ConflictingCommitteeUpdate(members) =>
-        gov(GovFailure.ConflictingCommitteeUpdate(members.toSortedSet.map(Convert.back(_))))
-      case ExpirationEpochTooSmall(members) =>
-        gov(
-          GovFailure.ExpirationEpochTooSmall(
-            members.toSortedMap.map((c, e) => Convert.back(c) -> e.toBigInt).toMap
-          )
-        )
-      case InvalidPrevGovActionId(p) => gov(GovFailure.InvalidPrevGovActionId(p.read))
-      case VotingOnExpiredGovAction(votes) =>
-        gov(GovFailure.VotingOnExpiredGovAction(votes.toList.toVector))
-      case ProposalCantFollow(parent, m) =>
-        gov(
-          GovFailure.ProposalCantFollow(
-            parent.map(_.unGovPurposeId),
-            m.storedBy(version(_))
-          )
-        )
-      case InvalidGuardrailsScriptHash(proposed, constitution) =>
-        gov(
-          GovFailure.InvalidGuardrailsScriptHash(proposed.map(_.bytes), constitution.map(_.bytes))
-        )
-      case DisallowedProposalDuringBootstrap(p) =>
-        gov(GovFailure.DisallowedProposalDuringBootstrap(p.read))
-      case DisallowedVotesDuringBootstrap(votes) =>
-        gov(GovFailure.DisallowedVotesDuringBootstrap(votes.toList.toVector))
-      case VotersDoNotExist(voters) => gov(GovFailure.VotersDoNotExist(voters.toList.toVector))
-      case ZeroTreasuryWithdrawals(a) =>
-        action(a).map(f => PredicateFailure.gov(GovFailure.ZeroTreasuryWithdrawals(f)))
-      case ProposalReturnAccountDoesNotExist(account) =>
-        gov(GovFailure.ProposalReturnAccountDoesNotExist(Convert.rewardAccountBack(account)))
-      case TreasuryWithdrawalReturnAccountsDoNotExist(accounts) =>
-        gov(
-          GovFailure.TreasuryWithdrawalReturnAccountsDoNotExist(
-            accounts.toList.toVector.map(Convert.rewardAccountBack)
-          )
-        )
-      case UnelectedCommitteeVoters(credentials) =>
-        gov(GovFailure.UnelectedCommitteeVoters(credentials.toList.toVector))
 
 /** `data ConwayGovEvent era` (`Conway/Rules/Gov.hs:300-308`, cardano-ledger f649f975): the
   * proposals after the transaction, and the votes it replaced with the DReps whose votes it

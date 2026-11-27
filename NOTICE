@@ -44,7 +44,7 @@ verdicts from the same reference CLI, under the project's Apache-2.0 license. No
 
 fixtures/conway-flat-refusals contains digests of the bytes Scarab's own former flat Conway encoders
 wrote for its test cases and the refusal corpus's Conway cases, and of the judgments of its former
-flat Conway LEDGER, recorded by this project's Apache-2.0 tests before those were removed. They
+flat Conway LEDGER and GOV, recorded by this project's Apache-2.0 tests before those were removed. They
 are distributed under this project's Apache-2.0 license; no third-party material and no key is
 included.
 
@@ -99,6 +99,12 @@ VRF proof-to-hash cases (fixtures/vrf-proof-to-hash): proofs derived from those
 cardano-base vectors (Apache-2.0, the same licence files), with the results of the
 pinned libsodium fork's crypto_vrf_ietfdraft03_proof_to_hash. The results and the driver
 that produced them are Scarab's own; the libsodium source is not redistributed.
+
+Differential fuzz targets (fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/SodiumTargets.scala):
+the fuzz workflows build the same libsodium fork (IntersectMBO/libsodium
+dbb48cce5429cb6585c9034f002568964f1ce567, ISC; its LICENSE is
+fixtures/vrf/licenses/sodium-LICENSE) from its source archive with scripts/sodium_oracle.py,
+and those tests call it. Nothing of libsodium is vendored, bundled or redistributed.
 
 Leios (fixtures/leios): serialisation test vectors from IntersectMBO/cardano-base
 (Apache-2.0; fixtures/licenses/cardano-base-LICENSE and -NOTICE), the golden LeiosVote of

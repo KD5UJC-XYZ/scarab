@@ -5,7 +5,8 @@ import xyz.kd5ujc.scarab.protocol.StateLayout
 import java.nio.file.Path
 import munit.FunSuite
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
-import xyz.kd5ujc.scarab.ledger.{Credential, GovFailure, PredicateFailure, ProtocolParams, Tx}
+import cats.data.NonEmptyList
+import xyz.kd5ujc.scarab.ledger.{Credential, GovActionId, ProtocolParams, Tx}
 import xyz.kd5ujc.scarab.ledger.era.{
   EraGovRun,
   EraPParams,
@@ -13,7 +14,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraTxBody,
   GovAction,
   PParams,
-  ProposalProcedure,
   TxLevel
 }
 import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTx}
@@ -22,9 +22,10 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ConwayGov,
   ConwayGovEvent,
   ConwayGovPredFailure,
+  ConwayLedgerPredFailure,
   GovEnv as EraGovEnv
 }
-import xyz.kd5ujc.scarab.ledger.rules.{CertLens, Globals, Gov, GovEnv, GovSignal, Judgment}
+import xyz.kd5ujc.scarab.ledger.rules.{CertLens, Globals, Test}
 import xyz.kd5ujc.scarab.ledger.state.{
   CommitteeState,
   Conway,
@@ -35,20 +36,25 @@ import xyz.kd5ujc.scarab.ledger.state.{
   EpochNo,
   Hash32,
   Network,
-  ScriptHash
+  ProtVer,
+  ScriptHash,
+  ShelleyBasedEra,
+  Word64
 }
 import xyz.kd5ujc.scarab.node.NodeSetup
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission
 import xyz.kd5ujc.scarab.protocol.Era
-import xyz.kd5ujc.scarab.storage.haskell.state.HaskellState
+import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellLedgerFile, HaskellState}
 
-/** Conway's GOV predicates on the era types against the flat rule, on every transaction of the
-  * recorded Conway refusal corpora and on cases crafted from them: the failures the predicates
-  * report are the ones the flat GOV rule records for the same checks, each as often. A predicate
-  * the corpus never fails is named, and a crafted case fails it. The corpora recorded for the era
-  * rules alone ([[xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.EraOnly]]) are left out of the
-  * flat comparisons, which stage 3 retires; the era rules' own assertions keep them, and
-  * `ReferenceRefusalSuite` binds the era rules to them.
+/** Conway's GOV predicates and its whole transition on the era types, on every transaction of the
+  * recorded Conway refusal corpora and on cases crafted from them. Where the flat GOV rule was the
+  * oracle, before it was deleted (#85, stage 3), the era rule is held to its judgments, recorded
+  * after the two were found to agree (`fixtures/conway-flat-refusals/gov-judgments.jsonl`): the
+  * failures each ported predicate reports, each as often, and the whole transition's failures in
+  * the reference's order at the root, or the proposals after. A predicate the corpus never fails is
+  * named, and a crafted case fails it. The corpora the flat rule judged are named
+  * ([[RecordedCorpora]]); those recorded for the era rules alone are bound to the reference's bytes
+  * by `ReferenceRefusalSuite` and by this suite's reference tests.
   */
 class ConwayGovChecksSuite extends FunSuite:
   import ReferenceRefusalSuite.*
@@ -57,7 +63,7 @@ class ConwayGovChecksSuite extends FunSuite:
   private val top = body.top
   private given EraPParams[Conway] = EraPParams.conway
 
-  /** One Conway case as both paths see it. */
+  /** One Conway case as both decoders read it. */
   private final case class Seen(
       label: String,
       bytes: Bytes,
@@ -111,62 +117,52 @@ class ConwayGovChecksSuite extends FunSuite:
       }
     }
 
+  /** The corpora the flat GOV judged before it was deleted, whose judgments are recorded, by name:
+    * a corpus added later is not among them.
+    */
+  private val RecordedCorpora: Set[String] = Set(
+    "conway-bootstrap-attributes",
+    "conway-bootstrap-attributes-leios-b004fe0c",
+    "conway-deleg-collateral",
+    "conway-devnet",
+    "conway-gov-proposals",
+    "conway-governance",
+    "conway-three-certificates",
+    "conway-v11-coverage"
+  )
+
+  /** The cases of [[RecordedCorpora]]. */
+  private lazy val recordedSeen: Vector[Seen] =
+    seen.filter(s => RecordedCorpora.exists(c => s.label.startsWith(s"$c/")))
+
+  /** The case the crafted cases are made from, by its label. */
+  private lazy val base: Seen =
+    val label = "conway-bootstrap-attributes/utxo-bootstrap-attributes-too-big"
+    seen.find(_.label == label).getOrElse(fail(s"no case $label"))
+
+  /** The recorded judgment `id`, failing the test where none was recorded. */
+  private def recorded(id: String): Vector[String] =
+    FlatRecordings.govJudgments.getOrElse(id, fail(s"no recording of $id"))
+
   /** The predicate each GOV failure of the ported checks comes from. */
-  private def predicateOf(f: PredicateFailure): Option[String] = f match
-    case PredicateFailure.Gov(g) =>
-      g match
-        case GovFailure.DisallowedProposalDuringBootstrap(_) => Some("checkBootstrapProposal")
-        case GovFailure.MalformedProposal(_)                 => Some("actionWellFormed")
-        case GovFailure.InvalidGuardrailsScriptHash(_, _)    => Some("checkGuardrailsScriptHash")
-        case GovFailure.UnelectedCommitteeVoters(_)          => Some("unelectedCommitteeVoters")
-        case _                                               => None
-    case _ => None
+  private def predicateOf(f: ConwayGovPredFailure[Conway]): Option[String] = f match
+    case ConwayGovPredFailure.DisallowedProposalDuringBootstrap(_) => Some("checkBootstrapProposal")
+    case ConwayGovPredFailure.MalformedProposal(_)                 => Some("actionWellFormed")
+    case ConwayGovPredFailure.InvalidGuardrailsScriptHash(_, _) => Some("checkGuardrailsScriptHash")
+    case ConwayGovPredFailure.UnelectedCommitteeVoters(_)       => Some("unelectedCommitteeVoters")
+    case _                                                      => None
 
-  /** The failures the flat GOV rule records for the ported checks, each as often as it records it.
-    */
-  private def flatFailures(s: Seen): Map[PredicateFailure, Int] =
-    flatRun(s)
-      .fold(identity, _ => Vector.empty)
-      .filter(predicateOf(_).isDefined)
-      .groupMapReduce(identity)(_ => 1)(_ + _)
-
-  /** The flat GOV whole, every failure accumulated and in the reference's order as the root: its
-    * failures, or the proposals after.
-    */
-  private def flatRun(
-      s: Seen
-  ): Either[Vector[PredicateFailure], xyz.kd5ujc.scarab.ledger.Proposals] =
-    val fb = s.flat.body
-    val env = GovEnv(
-      fb.id,
-      s.epoch,
-      s.flatPp,
-      s.gov.constitution.script,
-      s.cert,
-      s.gov.committee
-    )
-    val signal = GovSignal(
-      fb.votes.map((voter, votes) => voter -> votes.map((id, p) => id -> p.vote)),
-      fb.proposals,
-      fb.certificates
-    )
-    right(s"${s.label}: a defect")(
-      Judgment.run(Gov, Judgment.Policy.Accumulate)(s.globals, env, s.gov.proposals, signal)
-    ).left.map(_.toChain.toVector)
-
-  /** Conway's GOV whole on the era types, `depth` levels down: its failures in the node's flat
-    * form, or the proposals after as the node records them, with GOV's events.
+  /** Conway's GOV whole on the era types, `depth` levels down: its failures, or the proposals after
+    * as the node records them, with GOV's events.
     */
   private def eraRun(
       s: Seen,
       depth: Int = 0
-  ): Either[Vector[PredicateFailure], (xyz.kd5ujc.scarab.ledger.Proposals, EraGovRun.Events)] =
-    val signal = EraGovRun.signalOf(s.typed)
+  ): Either[Vector[
+    ConwayGovPredFailure[Conway]
+  ], (xyz.kd5ujc.scarab.ledger.Proposals, EraGovRun.Events)] =
     eraGov(s, depth) match
-      case Left(fs) =>
-        Left(
-          fs.toChain.toVector.map(f => right(s"${s.label}: flat form")(EraGovRun.stored(signal, f)))
-        )
+      case Left(fs)               => Left(fs.toChain.toVector)
       case Right((after, events)) => Right((EraGovRun.toStored(after), events))
 
   /** Conway's GOV whole on the era types, `depth` levels down: its failures, or the proposals after
@@ -188,26 +184,17 @@ class ConwayGovChecksSuite extends FunSuite:
     val state = right(s"${s.label}: the stored proposals")(EraGovRun.proposals(s.gov.proposals))
     right(s"${s.label}: a defect")(EraGovRun.run(env, signal, netId, state, depth))
 
-  /** A failure of the era types in the node's flat form, its action read from `proposals`. */
-  private def storedOf(label: String, proposals: Vector[ProposalProcedure[Conway]])(
-      f: ConwayGovPredFailure[Conway]
-  ): PredicateFailure =
-    right(s"$label: the flat form")(
-      ConwayGovPredFailure.toStored(f, ConwayGovPredFailure.readOf(proposals))
-    )
-
   /** The failures the typed predicates report, as the reference's transition runs them: per
     * proposal the bootstrap check, the well-formedness and the guardrails of a withdrawal or a
     * parameter change; from version 11 the unelected committee voters.
     */
-  private def typedFailures(s: Seen): Map[PredicateFailure, Int] =
+  private def typedFailures(s: Seen): Vector[ConwayGovPredFailure[Conway]] =
     val tx = EraTx.conway
     val tb = tx.body[TxLevel.Top](s.typed)(using tx.bodyOf.top)
     val pv = summon[EraPParams[Conway]].ppProtocolVersionL.get(s.pp)
     val constitutionPolicy =
       s.gov.constitution.script.map(b => right(s"${s.label}: guardrails")(ScriptHash.fromBytes(b)))
     val procedures = body.proposalProcedures[TxLevel.Top](tb)(using top).toVector
-    val stored = storedOf(s.label, procedures)
     val proposals = procedures.map { p =>
       val guardrails = p.pProcGovAction match
         case GovAction.TreasuryWithdrawals(_, policy) =>
@@ -217,12 +204,12 @@ class ConwayGovChecksSuite extends FunSuite:
         case GovAction.HardForkInitiation(_, _) | GovAction.NoConfidence(_) |
             GovAction.UpdateCommittee(_, _, _, _) | GovAction.NewConstitution(_, _) |
             GovAction.InfoAction() =>
-          xyz.kd5ujc.scarab.ledger.rules.Test.pass[ConwayGovPredFailure[Conway]]
+          Test.pass[ConwayGovPredFailure[Conway]]
       Vector(
         ConwayGov.checkBootstrapProposal[Conway](s.pp, p),
         ConwayGov.actionWellFormed[Conway](pv, p.pProcGovAction),
         guardrails
-      ).map(_.leftMap(_.map(stored)))
+      )
     }.flatten
     val unelected =
       if ConwayEra.hardforkConwayDisallowUnelectedCommitteeFromVoting(pv) then
@@ -231,32 +218,191 @@ class ConwayGovChecksSuite extends FunSuite:
           CommitteeState(CertLens.committee.get(s.cert)),
           body.votingProcedures[TxLevel.Top](tb)(using top)
         )
-        Vector(
-          xyz.kd5ujc.scarab.ledger.rules.Test.failureUnless(
-            bad.isEmpty,
-            PredicateFailure.gov(GovFailure.UnelectedCommitteeVoters(bad.toVector))
-          )
-        )
+        NonEmptyList
+          .fromList(bad.toList)
+          .map(ConwayGovPredFailure.UnelectedCommitteeVoters[Conway](_))
+          .toVector
       else Vector.empty
-    (proposals ++ unelected)
-      .flatMap(xyz.kd5ujc.scarab.ledger.rules.Test.failures(_).toVector.flatMap(_.toChain.toVector))
-      .groupMapReduce(identity)(_ => 1)(_ + _)
+    proposals.flatMap(Test.failures(_).toVector.flatMap(_.toChain.toVector)) ++ unelected
 
-  private def compared(s: Seen): Map[PredicateFailure, Int] =
-    val (flat, typed) = (flatFailures(s), typedFailures(s))
-    assertEquals(typed, flat, s.label)
-    flat
+  // ---- the recorded cells (`fixtures/conway-flat-refusals/README.md`)
 
-  /** The cases the flat comparisons judge: the corpora recorded for the era rules alone aside. */
-  private lazy val flatSeen: Vector[Seen] = seen.filterNot(s => eraOnly(s.label))
+  /** A refusal's cell: `R:` and the digest of the `ApplyTxErr` bytes of `failures`, in their order,
+    * each under LEDGER's `ConwayGovFailure`, as the node sends GOV's refusal.
+    */
+  private def refusedCell(failures: Iterable[ConwayGovPredFailure[Conway]]): String =
+    "R:" + FlatRecordings.digest(
+      ConwayFailureCborCheck.direct(failures.map(ConwayLedgerPredFailure.ConwayGovFailure(_)))
+    )
 
-  test("the typed GOV predicates report the flat rule's failures on every Conway case"):
-    assert(flatSeen.nonEmpty)
-    flatSeen.foreach(compared)
+  /** An admission's cell: `A:` and the digest of `s` 's governance state with the proposals
+    * `after`, in the Haskell state's encoding of 11.1's layout at protocol version 9.
+    */
+  private def admittedCell(s: Seen, after: xyz.kd5ujc.scarab.ledger.Proposals): String =
+    given ProtVer = ProtVer(Word64.fromUnsigned(9), Word64.zero)
+    given ShelleyBasedEra[Conway] = ShelleyBasedEra.SConway
+    val bytes = HaskellLedgerFile
+      .codecs(StateLayout.Node11_1)
+      .govState[Conway]
+      .write(s.gov.copy(proposals = after))
+      .fold(e => fail(s"${s.label}: the state: $e"), identity)
+    "A:" + FlatRecordings.digest(bytes)
+
+  /** The whole transition's cell at the root. */
+  private def wholeCell(s: Seen): String = eraRun(s) match
+    case Left(fs)          => refusedCell(fs)
+    case Right((after, _)) => admittedCell(s, after)
+
+  // ---- what an admission's digest does not hold
+
+  /** Where the proposals an admission leaves differ from what the transaction and the state before
+    * it give, in what the governance state's encoding does not write: the procedures, and the
+    * original encoding of each value a parameter change keeps (`ConwayParamUpdate.Entry`). GOV adds
+    * the transaction's proposals and changes no procedure (`Conway/Rules/Gov.hs:483-560`,
+    * cardano-ledger f649f975), so the expected values are the state's before and the body's.
+    */
+  private enum Kept:
+    /** The proposals held, not those held before with the transaction's added. */
+    case Ids(after: Set[GovActionId], expected: Set[GovActionId])
+
+    /** A proposal held before whose procedure is not the one held before. */
+    case Changed(id: GovActionId)
+
+    /** A proposal the transaction adds whose procedure is not the body's, as its decoder read it.
+      */
+    case NotTheBodys(id: GovActionId)
+
+    /** A parameter change the transaction adds whose kept encodings are not the body's bytes. */
+    case Originals(id: GovActionId, kept: Vector[(Int, Bytes)], body: Vector[(Int, Bytes)])
+
+  private def items(n: Node): Vector[Node] = n.value match
+    case Value.Tag(_, inner) => items(inner)
+    case Value.Arr(xs)       => xs
+    case other               => fail(s"not a set or a list: $other")
+
+  /** The bytes of each value of each proposal's parameter update, by key, as the body holds them: a
+    * proposal `[deposit, return account, action, anchor]`, a parameter change `[0, parent, update,
+    * policy]` (`Procedures.hs`, cardano-ledger f649f975); none for another action.
+    */
+  private def bodyUpdates(s: Seen): Vector[Option[Vector[(Int, Bytes)]]] =
+    val root = right("envelope")(Cbor.decode(s.bytes))
+    val body = root.value match
+      case Value.Arr(parts) => parts.head
+      case other            => fail(s"an envelope that is not an array: $other")
+    val proposals = body.value match
+      case Value.Map(fields) => fields.collectFirst { case (k, v) if isKey(20)(k) => items(v) }
+      case other             => fail(s"a body that is not a map: $other")
+    proposals.toVector.flatten.map { p =>
+      items(items(p)(2)) match
+        case Vector(tag, _, update, _) if tag.value == Value.UInt(0) =>
+          update.value match
+            case Value.Map(pairs) =>
+              Some(
+                pairs
+                  .map { case (k, v) =>
+                    k.value match
+                      case Value.UInt(key) => key.toInt -> v.original
+                      case other           => fail(s"an update key that is not a word: $other")
+                  }
+                  .sortBy(_._1)
+              )
+            case other => fail(s"an update that is not a map: $other")
+        case _ => None
+    }
+
+  /** Where `after`, the proposals an admission of `s` leaves, differs from what the transaction and
+    * the proposals before it give ([[Kept]]).
+    */
+  private def kept(s: Seen, after: xyz.kd5ujc.scarab.ledger.Proposals): Vector[Kept] =
+    val before = s.gov.proposals.byId
+    val tx = s.flat.body
+    val added = tx.proposals.zipWithIndex.map((p, i) => GovActionId(tx.id, BigInt(i)) -> p)
+    val ids = after.actions.map(_.id).toSet
+    val expected = before.keySet ++ added.map(_._1)
+    val idsKept = Option.unless(ids == expected)(Kept.Ids(ids, expected)).toVector
+    val beforeKept = after.actions.collect {
+      case g if before.get(g.id).exists(_.proposal != g.proposal) => Kept.Changed(g.id)
+    }
+    val updates = bodyUpdates(s)
+    val addedKept = added.zip(updates).flatMap { case ((id, p), update) =>
+      after.byId.get(id).toVector.flatMap { g =>
+        val procedure = Option.unless(g.proposal == p)(Kept.NotTheBodys(id))
+        val originals = (g.action, update) match
+          case (xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(_, u, _), Some(fromBody))
+              if u.encodings != fromBody =>
+            Some(Kept.Originals(id, u.encodings, fromBody))
+          case (xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(_, _, _), None) =>
+            Some(Kept.NotTheBodys(id))
+          case _ => None
+        procedure.toVector ++ originals
+      }
+    }
+    idsKept ++ beforeKept ++ addedKept
+
+  test("an admission keeps every procedure, and each parameter change's original encodings"):
+    // the governance state's encoding writes a parameter's value, not the encoding the body gave
+    // it, so the admissions' digests do not hold those; the body and the state before do
+    val admitted = versions.flatMap(s =>
+      eraRun(s).toOption.map { (after, _) =>
+        assertEquals(kept(s, after), Vector.empty, s.label)
+        (s, after)
+      }
+    )
+    assert(admitted.nonEmpty, "no case GOV admits")
+    assert(
+      admitted.exists((s, _) => bodyUpdates(s).exists(_.exists(_.nonEmpty))),
+      "no admitted parameter change"
+    )
+
+  test("a mutant whose kept zero is 1800, not the body's 00, fails; its digest does not tell it"):
+    // the coins-per-byte proposal of zero, admitted at version 9 (`Conway/PParams.hs:935-963`,
+    // cardano-ledger f649f975): the update `{17: 0}` keeps the body's `00`
+    val label = "conway-gov-proposals/gov-parameter-change-coins-per-utxo-byte-zero"
+    val s = withVersion(seen.find(_.label == label).getOrElse(fail(s"no case $label")), 9)
+    val after = eraRun(s).fold(fs => fail(s"$label refused: $fs"), _._1)
+    assertEquals(kept(s, after), Vector.empty)
+    val mutated = after.copy(actions = after.actions.map { g =>
+      g.action match
+        case xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(prev, u, policy)
+            if u.encodings.exists(_._2 == right("00")(Bytes.fromHex("00"))) =>
+          val again = right("the mutant update")(
+            xyz.kd5ujc.scarab.ledger.ConwayParamUpdate.fromEncoded(u.encodings.map { (k, b) =>
+              BigInt(k) -> (if b.hex == "00" then right("1800")(Bytes.fromHex("1800")) else b)
+            })
+          )
+          g.copy(proposal =
+            g.proposal.copy(action =
+              xyz.kd5ujc.scarab.ledger.GovAction.ParameterChange(prev, again, policy)
+            )
+          )
+        case _ => g
+    })
+    assertNotEquals(mutated, after, "the mutant is not another record")
+    assertEquals(admittedCell(s, mutated), admittedCell(s, after), "the digest tells it")
+    assert(
+      kept(s, mutated).exists {
+        case Kept.Originals(_, _, _) => true
+        case _                       => false
+      },
+      s"the mutant is not refused: ${kept(s, mutated)}"
+    )
+
+  /** The ported predicates' cell: each failure's own refusal cell, sorted, as the flat rule's
+    * failures were compared, each as often; `-` for none.
+    */
+  private def predicatesCell(s: Seen): String =
+    val fs = typedFailures(s)
+    if fs.isEmpty then "-" else fs.map(f => refusedCell(Vector(f))).sorted.mkString(",")
+
+  test("the typed GOV predicates report the flat rule's recorded failures on every recorded case"):
+    assert(recordedSeen.nonEmpty)
+    recordedSeen.foreach { s =>
+      assertEquals(Vector(predicatesCell(s)), recorded(s"predicates/${s.label}"), s.label)
+    }
 
   /** The predicates the corpus fails somewhere. */
   private lazy val refusedSomewhere: Set[String] =
-    flatSeen.flatMap(s => flatFailures(s).keys.flatMap(predicateOf)).toSet
+    recordedSeen.flatMap(s => typedFailures(s).flatMap(predicateOf)).toSet
 
   // ---- crafted from a recorded case
 
@@ -313,25 +459,31 @@ class ConwayGovChecksSuite extends FunSuite:
   private def proposal(s: Seen, action: String): String = s"8400${account(s)}$action$anchor"
   private def tagged(set: String*): String = s"d90102${"8" + set.size.toString}${set.mkString}"
 
-  private def refused(s: Seen, predicate: String): Unit =
-    val flat = compared(s)
-    assert(flat.keys.exists(predicateOf(_).contains(predicate)), s"${s.label}: $predicate passes")
+  /** A crafted case `id` 's predicates give the recorded failures, and `predicate` fails. */
+  private def refused(s: Seen, id: String, predicate: String): Unit =
+    assertEquals(Vector(predicatesCell(s)), recorded(s"predicates/crafted/$id"), id)
+    assert(typedFailures(s).exists(predicateOf(_).contains(predicate)), s"$id: $predicate passes")
 
   private val script = "51" * 28
 
   test("crafted: a treasury withdrawal proposed in the bootstrap phase"):
-    val s = withVersion(seen.head, 9)
+    val s = withVersion(base, 9)
     refused(
       edited(s, Some(tagged(proposal(s, s"8302a1${account(s)}01f6"))), None),
+      "bootstrap-treasury-withdrawal",
       "checkBootstrapProposal"
     )
 
   test("crafted: an update setting the maximum transaction size to zero"):
-    val s = withGuardrails(withVersion(seen.head, 10), None)
-    refused(edited(s, Some(tagged(proposal(s, "8400f6a10300f6"))), None), "actionWellFormed")
+    val s = withGuardrails(withVersion(base, 10), None)
+    refused(
+      edited(s, Some(tagged(proposal(s, "8400f6a10300f6"))), None),
+      "max-tx-size-zero",
+      "actionWellFormed"
+    )
 
   test("crafted: a parameter change and a withdrawal naming another guardrails script"):
-    val s = withGuardrails(withVersion(seen.head, 10), Some(Bytes.fromHex("52" * 28).toOption.get))
+    val s = withGuardrails(withVersion(base, 10), Some(right("script")(Bytes.fromHex("52" * 28))))
     refused(
       edited(
         s,
@@ -343,6 +495,7 @@ class ConwayGovChecksSuite extends FunSuite:
         ),
         None
       ),
+      "other-guardrails",
       "checkGuardrailsScriptHash"
     )
 
@@ -351,7 +504,7 @@ class ConwayGovChecksSuite extends FunSuite:
     * a script credential before a key one.
     */
   private def unelectedVotes(first: String, second: String): Seen =
-    val s = withVersion(seen.head, 11)
+    val s = withVersion(base, 11)
     val action = "825820" + "dd" * 32 + "00"
     val vote = "8201f6"
     edited(s, None, Some(s"a2${first}a1$action$vote${second}a1$action$vote"))
@@ -360,20 +513,24 @@ class ConwayGovChecksSuite extends FunSuite:
   private val hotScript = "8201581c" + "4c" * 28
 
   test("crafted: at version 11, votes of committee keys no elected member authorised"):
-    refused(unelectedVotes(hotScript, hotKey), "unelectedCommitteeVoters")
+    refused(unelectedVotes(hotScript, hotKey), "unelected-script-first", "unelectedCommitteeVoters")
 
   /** The reference collects the unelected voters into a `Set (Credential HotCommitteeRole)` and
     * reports its ascending list (`Conway/Rules/Gov.hs:478-481,652-665`, cardano-ledger f649f975), a
-    * script credential before a key one, whatever order the body's map arrived in; both paths do.
+    * script credential before a key one, whatever order the body's map arrived in; the era rule
+    * does, as the flat rule did (each order's recorded failures).
     */
-  test("both paths list unelected voters in the reference's order, whatever the body's"):
-    def voters(fs: Map[PredicateFailure, Int]) = fs.keys.collect {
-      case PredicateFailure.Gov(GovFailure.UnelectedCommitteeVoters(cs)) => cs
-    }.toVector
-    val reported = Vector((hotKey, hotScript), (hotScript, hotKey)).map { (first, second) =>
+  test("unelected voters are listed in the reference's order, whatever the body's"):
+    def voters(fs: Vector[ConwayGovPredFailure[Conway]]) = fs.collect {
+      case ConwayGovPredFailure.UnelectedCommitteeVoters(cs) => cs.toList.toVector
+    }
+    val reported = Vector(
+      (hotKey, hotScript, "unelected-key-first"),
+      (hotScript, hotKey, "unelected-script-first")
+    ).map { (first, second, id) =>
       val s = unelectedVotes(first, second)
-      val (flat, typed) = (voters(flatFailures(s)), voters(typedFailures(s)))
-      assertEquals(typed, flat, s"$first first")
+      assertEquals(Vector(predicatesCell(s)), recorded(s"predicates/crafted/$id"), id)
+      val typed = voters(typedFailures(s))
       assertEquals(typed.map(_.size), Vector(2), s"$first first")
       typed
     }
@@ -400,18 +557,40 @@ class ConwayGovChecksSuite extends FunSuite:
 
   // ---- the whole transition
 
-  /** Each case at its own protocol version and at 9, 10 and 11. */
-  private lazy val versions: Vector[Seen] =
-    seen.flatMap(s =>
-      s +: Vector(9, 10, 11).map(v => withVersion(s, v).copy(label = s"${s.label}@$v"))
-    )
+  /** `s` at its own protocol version and at 9, 10 and 11. */
+  private def versionsOf(s: Seen): Vector[Seen] =
+    s +: Vector(9, 10, 11).map(v => withVersion(s, v).copy(label = s"${s.label}@$v"))
 
-  test("the whole era-typed GOV gives the flat rule's verdict on every Conway case, at 9, 10, 11"):
-    // the failures in order as the root, or the same proposals after
-    versions.filterNot(s => eraOnly(s.label)).foreach { s =>
-      assertEquals(eraRun(s).map(_._1), flatRun(s), s.label)
+  /** Each case at its own protocol version and at 9, 10 and 11. */
+  private lazy val versions: Vector[Seen] = seen.flatMap(versionsOf)
+
+  test("the whole era-typed GOV gives the flat rule's recorded verdicts on every recorded case"):
+    // the flat GOV, before it was deleted, judged each case at the root at its recorded protocol
+    // version and at 9, 10 and 11, and the era GOV gave the same failures in the same order, or the
+    // same proposals after: 117 refusals and 219 admissions
+    val cells = recordedSeen.flatMap { s =>
+      val judged = versionsOf(s).map(wholeCell)
+      assertEquals(judged, recorded(s"whole/${s.label}"), s.label)
+      judged
     }
-    assert(versions.exists(s => eraRun(s).isLeft), "no case GOV refuses")
+    assertEquals(cells.count(_.startsWith("R:")), 117, "the refusals compared")
+    assertEquals(cells.count(_.startsWith("A:")), 219, "the admissions compared")
+
+  test("the recording of the flat GOV's judgments holds this suite's alone, each once"):
+    val crafted = Set(
+      "predicates/crafted/bootstrap-treasury-withdrawal",
+      "predicates/crafted/max-tx-size-zero",
+      "predicates/crafted/other-guardrails",
+      "predicates/crafted/unelected-script-first",
+      "predicates/crafted/unelected-key-first",
+      "whole/crafted/committee-conflict-expiry"
+    )
+    val corpus = recordedSeen.map(_.label).toSet
+    assertEquals(corpus.size, 84, "the recorded cases")
+    assertEquals(
+      FlatRecordings.govJudgments.keySet,
+      corpus.map(l => s"predicates/$l") ++ corpus.map(l => s"whole/$l") ++ crafted
+    )
 
   test("GOV's events: the proposals after, the transaction's id and the DReps it unregisters"):
     versions.foreach { s =>
@@ -445,9 +624,7 @@ class ConwayGovChecksSuite extends FunSuite:
   test("the whole transition's runs reach every failure of GOV, or name it"):
     val reached = versions
       .flatMap(s => eraRun(s).left.toOption.toVector.flatten)
-      .collect { case PredicateFailure.Gov(g) =>
-        g.productPrefix
-      }
+      .map(_.productPrefix)
       .toSet
     // the 19 constructors of `ConwayGovPredFailure` (`Conway/Rules/Gov.hs:237-255`, f649f975)
     val all = Set(
@@ -483,9 +660,7 @@ class ConwayGovChecksSuite extends FunSuite:
     assert(govOnly.nonEmpty, "no case only GOV refuses")
     govOnly.foreach { s =>
       val failures = eraGov(s, depth = 2).fold(
-        _.toChain.toVector.map(
-          xyz.kd5ujc.scarab.ledger.era.rules.ConwayLedgerPredFailure.ConwayGovFailure[Conway](_)
-        ),
+        _.toChain.toVector.map(ConwayLedgerPredFailure.ConwayGovFailure[Conway](_)),
         _ => fail(s"${s.label}: admitted")
       )
       assertEquals(ConwayFailureCborCheck.direct(failures).hex, s.reason.hex, s.label)
@@ -505,9 +680,9 @@ class ConwayGovChecksSuite extends FunSuite:
 
   /** The reference folds the votes of a `Map` (`foldrVotingProcedures`, `Procedures.hs:431-442`,
     * cardano-ledger f649f975), so the actions that do not exist are listed by voter and then
-    * action, ascending, whatever order the body's maps arrived in. The flat rule lists them as they
-    * arrived: its difference, in the failure's order only, tracked as #85's item
-    * (https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427).
+    * action, ascending, whatever order the body's maps arrived in. The flat rule, deleted since,
+    * listed them as they arrived (#85's item
+    * https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7054122427, closed with it).
     */
   test("crafted: votes on actions that do not exist, listed ascending whatever the body's order"):
     val s = seen.find(_.label.endsWith("/vote-on-unknown-action")).getOrElse(fail("no such case"))
@@ -515,24 +690,24 @@ class ConwayGovChecksSuite extends FunSuite:
     def action(ix: Int) = "825820" + "ee" * 32 + f"$ix%02x"
     val vote = "8201f6"
     val crafted = edited(s, None, Some(s"a1${voterHex(voter)}a2${action(1)}$vote${action(0)}$vote"))
-    def unknown(r: Either[Vector[PredicateFailure], ?]) = r.left.toOption.toVector.flatten.collect {
-      case PredicateFailure.Gov(GovFailure.GovActionsDoNotExist(ids)) => ids.map(_.index)
+    val unknown = eraRun(crafted).left.toOption.toVector.flatten.collect {
+      case ConwayGovPredFailure.GovActionsDoNotExist(ids) => ids.toList.toVector.map(_.index)
     }
-    assertEquals(unknown(eraRun(crafted)), Vector(Vector(BigInt(0), BigInt(1))))
-    assertEquals(unknown(flatRun(crafted)), Vector(Vector(BigInt(1), BigInt(0))))
+    assertEquals(unknown, Vector(Vector(BigInt(0), BigInt(1))))
 
   /** A committee update that removes and adds one member whose term has ended: the conflict is
     * checked before the expiry (`Conway/Rules/Gov.hs:551-556`, cardano-ledger f649f975), so both
     * are recorded, in that order.
     */
   test("crafted: a committee update failing the conflict and the expiry, in that order"):
-    val s = withVersion(seen.head, 10)
+    val s = withVersion(base, 10)
     val member = "8200581c" + "c1" * 28
     val update = s"8504f6d9010281${member}a1${member}00d81e820102"
     val crafted = edited(s, Some(tagged(proposal(s, update))), None)
-    assertEquals(eraRun(crafted).map(_._1), flatRun(crafted))
-    val recorded = eraRun(crafted, depth = 1).left.toOption.toVector.flatten.collect {
-      case PredicateFailure.Gov(f @ GovFailure.ConflictingCommitteeUpdate(_)) => f.productPrefix
-      case PredicateFailure.Gov(f @ GovFailure.ExpirationEpochTooSmall(_))    => f.productPrefix
+    // the flat GOV's failures at the root, recorded
+    assertEquals(Vector(wholeCell(crafted)), recorded("whole/crafted/committee-conflict-expiry"))
+    val listed = eraRun(crafted, depth = 1).left.toOption.toVector.flatten.collect {
+      case f @ ConwayGovPredFailure.ConflictingCommitteeUpdate(_) => f.productPrefix
+      case f @ ConwayGovPredFailure.ExpirationEpochTooSmall(_)    => f.productPrefix
     }
-    assertEquals(recorded, Vector("ConflictingCommitteeUpdate", "ExpirationEpochTooSmall"))
+    assertEquals(listed, Vector("ConflictingCommitteeUpdate", "ExpirationEpochTooSmall"))

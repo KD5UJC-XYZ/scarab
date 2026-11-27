@@ -118,9 +118,10 @@ object Runner:
     (chunks ++ zeros).take(400).toStream
   }
 
-  /** Run `check` over `cases` generated inputs for each seed; the first failure fails the target.
+  /** Run `check` over `cases` generated inputs for each seed; the first failure fails the target. A
+    * target slower than the decoders runs one `share` of the cases (the differential targets).
     */
-  def run(name: String, gen: Gen[Input])(check: Input => Unit): Unit =
+  def run(name: String, gen: Gen[Input], share: Int = 1)(check: Input => Unit): Unit =
     val prop = Prop.forAll(gen) { (in: Input) =>
       check(in)
       true
@@ -128,7 +129,7 @@ object Runner:
     (0 until FuzzConfig.seeds).foreach { i =>
       val seed = FuzzConfig.firstSeed + i
       val params = Test.Parameters.default
-        .withMinSuccessfulTests(FuzzConfig.cases)
+        .withMinSuccessfulTests(math.max(1, FuzzConfig.cases / share))
         .withWorkers(1)
         .withInitialSeed(Seed(seed * 1000003L + name.hashCode))
         .withMaxSize(100)

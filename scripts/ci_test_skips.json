@@ -1,6 +1,36 @@
 {
- "_comment": "The tests CI's shards may report as skipped (scripts/ci_test_shards.py verify, #1151); any other skip, and a suite that runs no test, fails the shard report check, because an incomplete run is not a pass (CNF-2, docs/design-rules.md). Each entry names the module, suite and test as the JUnit report does, the environment variables whose absence skips it (`environment`) or the data it waits on (`data`), and the issue that owns running it. An entry whose test runs is refused: remove it with the change that makes the test run. Read from CI runs 44935743836 (2026-11-21, main b9cb03153) and 44976228903 (2026-11-22, main 74477ce1c). Eleven of the #294 entries are the external-data cases of scripts/candidate_acceptance/cases.json, which the manual candidate-acceptance workflow runs with their data; the twelfth is the ignored multiScalarMul comparison, a follow-up in #294's checklist. #1293 moves the five FormatBenchSuite benchmarks to `tools` (TOOL-1). The #54 entries wait on the reference's ledger states of the public Leios testnet, which are private and read through LeiosReferenceStates; #54's checklist holds running them where the states exist.",
+ "_comment": "The tests CI's shards may report as skipped (scripts/ci_test_shards.py verify, #1151); any other skip, and a suite that runs no test, fails the shard report check, because an incomplete run is not a pass (CNF-2, docs/design-rules.md). Each entry names the module, suite and test as the JUnit report does, the environment variables whose absence skips it (`environment`) or the data it waits on (`data`), and the issue that owns running it. An entry whose test runs is refused: remove it with the change that makes the test run. Read from CI runs 44935743836 (2026-11-21, main b9cb03153) and 44976228903 (2026-11-22, main 74477ce1c). Eleven of the #294 entries are the external-data cases of scripts/candidate_acceptance/cases.json, which the manual candidate-acceptance workflow runs with their data; the twelfth is the ignored multiScalarMul comparison, a follow-up in #294's checklist. #1293 moves the five FormatBenchSuite benchmarks to `tools` (TOOL-1). The #54 entries wait on the reference's ledger states of the public Leios testnet, which are private and read through LeiosReferenceStates; #54's checklist holds running them where the states exist. The three #1418 entries are the differential fuzz targets against the libsodium the reference links; the fuzz gate and the nightly fuzz workflow (fuzz-gate.yml, fuzz.yml) build that library and fail unless they run.",
  "skips": [
+  {
+   "module": "fuzz",
+   "suite": "xyz.kd5ujc.scarab.fuzz.FuzzSuite",
+   "test": "fuzz sodium-ed25519",
+   "environment": [
+    "SCARAB_SODIUM_ORACLE"
+   ],
+   "data": "the libsodium the reference links (IntersectMBO/libsodium dbb48cce), built by scripts/sodium_oracle.py",
+   "issue": 1418
+  },
+  {
+   "module": "fuzz",
+   "suite": "xyz.kd5ujc.scarab.fuzz.FuzzSuite",
+   "test": "fuzz sodium-vrf-prove",
+   "environment": [
+    "SCARAB_SODIUM_ORACLE"
+   ],
+   "data": "the libsodium the reference links (IntersectMBO/libsodium dbb48cce), built by scripts/sodium_oracle.py",
+   "issue": 1418
+  },
+  {
+   "module": "fuzz",
+   "suite": "xyz.kd5ujc.scarab.fuzz.FuzzSuite",
+   "test": "fuzz sodium-vrf-verify",
+   "environment": [
+    "SCARAB_SODIUM_ORACLE"
+   ],
+   "data": "the libsodium the reference links (IntersectMBO/libsodium dbb48cce), built by scripts/sodium_oracle.py",
+   "issue": 1418
+  },
   {
    "module": "node",
    "suite": "xyz.kd5ujc.scarab.node.DijkstraEraEpochGovSuite",

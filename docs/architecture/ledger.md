@@ -137,7 +137,8 @@ tests of the version.
 
 ## Conway
 
-`ledger/rules/Ledger.scala` (with `Gov.scala`, `Certs.scala` and `ConwayTx.scala`) is Conway's LEDGER rule, selected by the era.
+`ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/Ledger.scala` (with `Gov.scala`, `Certs.scala`,
+`Utxow.scala`, `Utxo.scala` and `Utxos.scala` beside it) is Conway's LEDGER rule on the era types, selected by the era.
 For a phase-2 valid transaction it follows the ledger's order: treasury value and reference-script
 size checks, the withdrawals (key accounts must be delegated to a DRep except in the bootstrap
 phase at protocol version 9; a withdrawal takes the whole balance), the DRep expiry updates, CERTS, GOV; UTXOW (scripts provided, needed and not
