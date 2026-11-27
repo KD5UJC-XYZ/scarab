@@ -199,7 +199,9 @@ published. The 0.1.4 and 0.1.5 releases add Straus and Pippenger multiscalar mul
 Scarab does not use. The source vendored is that of 0.1.3: it is traced to source and reproduces from it, and
 the strict prototype of the Ed25519 witness corpus ran on that release (`strict_prototype` in
 `fixtures/witness/manifest.json`). The expected verdicts of the Ed25519 and VRF corpora are not this library's:
-they come from the libsodium builds their fixtures name (`fixtures/witness/README.md`, `fixtures/vrf/README.md`).
+they come from the libsodium builds their fixtures name (`fixtures/witness/README.md`, `fixtures/vrf/README.md`),
+and the fuzz workflows compare the verifiers with that libsodium live, built from its source archive and never
+vendored ([fuzzing](running/fuzzing.md#differential-targets-against-the-references-libsodium-1418)).
 Any change to the vendored arithmetic has to keep the suites that run it on those corpora and vectors passing
 unchanged (`StrictEd25519Suite`, `StrictEd25519DifferentialSuite`, `ByronEd25519ReferenceSuite`,
 `Draft03ProverSuite`).

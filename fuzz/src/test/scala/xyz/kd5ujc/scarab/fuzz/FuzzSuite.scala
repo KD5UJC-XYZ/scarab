@@ -22,3 +22,24 @@ class FuzzSuite extends FunSuite:
       val accepted = Option(Targets.accepted.get(target.name)).fold(0L)(_.sum()) - before
       println(s"  ${target.name}: ${FuzzConfig.cases * FuzzConfig.seeds} cases, $accepted decoded")
     }
+
+  test("differential target names are unique and are not decoder target names") {
+    val names = SodiumTargets.all.map(_.target.name)
+    assertEquals(names.distinct, names)
+    assertEquals(names.filter(Targets.all.map(_.name).contains(_)), Vector.empty[String])
+  }
+
+  // The differential targets against the libsodium the reference links (`SodiumTargets`): skipped
+  // when `Sodium.Variable` names no library, failed when it names one that cannot be used, and failed
+  // when the run (`SodiumTargets.run`) did not count each kind the target requires.
+  for differential <- SodiumTargets.all do
+    test(s"fuzz ${differential.target.name}") {
+      Sodium.oracle match
+        case Left(Sodium.Unavailable.NotConfigured) =>
+          println(s"  ${differential.target.name}: skipped: ${Sodium.notConfigured}")
+          assume(false, Sodium.notConfigured)
+        case Left(why) =>
+          fail(s"the libsodium oracle named by ${Sodium.Variable} cannot be used: $why")
+        case Right(_) =>
+          assertEquals(SodiumTargets.run(differential), Vector.empty, "kinds the run never counted")
+    }
