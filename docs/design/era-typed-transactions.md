@@ -1707,14 +1707,19 @@ Conway's rules on the classes follow as the rest of stage 2.
   `Integer`s) and its units (`Natural`s) are `encodeInteger`'s, a bignum past 64 bits, where the flat encoder's
   writers fail or keep the low 64 bits; a set of addresses is in the reference's order of addresses (the derived
   `Ord Addr`), not their bytes'. `LocalSubmission` sends a Conway refusal by it since the mempool's switch (below).
-  - Evidence: beside each comparison of the era rules' refusals with the reference's bytes through the flat form
+  - Evidence: until stage 3 deleted the flat rules and the flat rules' Conway encoder (`PredicateFailureCbor`,
+    C5), beside each comparison of the era rules' refusals with the reference's bytes through the flat form
     (`ConwayLedgerChecksSuite`'s LEDGER cases, `RedeemerIndexReferenceSuite`, `ContextRefusalReasonSuite`,
     `PastHorizonReferenceSuite`, the upstream LEDGER and LEDGERS judgments), the era failures written by the
-    encoder give the same bytes; on every refusal of the Conway refusal corpus, at each version, build, policy and
-    depth, none left out, the bytes of the flat form's encoder; `ConwayFailureCborSuite` holds every constructor of the
-    LEDGER tree to the flat form's bytes (mixed credentials and networks, collections past 23 items, signed
-    integers), the failures the bridge cannot project to the flat form's bytes of the same values, the recorded
-    reasons of `PredicateFailureCborSuite` and the certificates of the reference's collection oracle to the
+    encoder gave the same bytes; on every refusal of the Conway refusal corpus, at each version, build, policy and
+    depth, none left out, the bytes of the flat form's encoder; and `ConwayFailureCborSuite` held every constructor
+    of the LEDGER tree to the flat form's bytes (mixed credentials and networks, collections past 23 items, signed
+    integers), and the failures the bridge cannot project to the flat form's bytes of the same values. The
+    comparisons with the reference's bytes hold the era encoder to those bytes directly. The corpus and constructor
+    comparisons ran once more before the deletion and recorded the digests of the bytes both encoders wrote
+    (`fixtures/conway-flat-refusals`: `ledger-checks.jsonl`, `mempool-run.jsonl`, `failure-constructors.jsonl`),
+    which the era encoder is held to since. `ConwayFailureCborSuite` still holds the reference node's recorded
+    reasons (once `PredicateFailureCborSuite`'s) and the certificates of the reference's collection oracle to the
     reference's bytes, sums past 64 bits, a set of every kind of address and a pool's metadata hash past a CBOR
     read's default bounds to the bytes derived from the reference's instances, and 20,000 collection errors on a
     small stack.
@@ -2874,7 +2879,10 @@ Conway's rules on the classes follow as the rest of stage 2.
   flat rules for Conway; the flat BBODY and MEMPOOL themselves stay (owner decision 4).
   - The refusal encoders share their leaf writers, Conway's index and the era mismatch in `FailureCbor`, moved there
     as they were, so `ConwayFailureCbor` and `PreConwayFailureCbor` no longer borrow from the flat rules' Conway
-    encoder (`PredicateFailureCbor`), whose only users are the suites that compare with the flat MEMPOOL.
+    encoder (`PredicateFailureCbor`), whose only users were then the suites that compared with the flat MEMPOOL.
+    Stage 3 deleted it (C5), and then the Conway arms of the context error encoder (`ContextFailureCbor`, C11),
+    which only `ContextMatrixSuite` reached: its refused Conway collections are held to the reference's bytes through
+    Conway's era collection and `ConwayFailureCbor`.
   - The node's own refusals (Conway's free-text `ConwayMempoolFailure`) are written by `ConwayFailureCbor`, byte for
     byte as before (`LocalSubmissionSuite`). A flat refusal reaches `LocalSubmission.reasonItem` only from a ledger of
     an era from Shelley to Babbage; under any other it is `NoEncoding`, where it was written as Conway's flat refusal

@@ -5,7 +5,7 @@ import cats.Order
 import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.ledger.state.{ProtVer, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.ProtVer
 import xyz.kd5ujc.scarab.models.runtime.Codec
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.protocol.Era
@@ -14,15 +14,14 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{
   NodeOrders,
   Params,
   UtxoCodecs,
-  Versions,
   Wire
 }
 
 /** What the node's encoders of a refusal share: Conway's index in the hard-fork combinator's
   * `ApplyTxErr` and its era mismatch; the writers of the leaves of a failure (the Haskell state
   * codecs' values, the sets, maps, lists and maybes they nest in, a `Mismatch` in line); the
-  * encodings the eras share (POOL's failures, UTXOS's `ValidationTagMismatch`, a purpose with its
-  * item); and the voting procedures and pool relays of Conway's context errors and certificates.
+  * encodings the eras share (POOL's failures, UTXOS's `ValidationTagMismatch`); and the voting
+  * procedures and pool relays of Conway's context errors and certificates.
   *
   * Conway's encoder of the era's failures ([[ConwayFailureCbor]]), the encoder of the eras before
   * Conway ([[PreConwayFailureCbor]]) and the context errors' ([[ContextFailureCbor]]) write with
@@ -46,10 +45,6 @@ object FailureCbor:
 
   // ---- helpers
 
-  /** The ledger values of a failure are written by the Haskell state codecs, at the version the
-    * reference writes the Conway era at; `W` is the failure's own writer.
-    */
-  private given ProtVer = Versions.eraLow(ShelleyBasedEra.SConway)
   import NodeOrders.given
 
   private[ntc] def put[A](w: W, a: A)(using codec: Codec[A]): W = w.raw(codec.encodeUnchecked(a))
@@ -80,8 +75,6 @@ object FailureCbor:
     put(w, a)(using HaskellStateCodecs.rewardAccount)
   private[ntc] def govActionId(w: W, i: GovActionId): W =
     put(w, i)(using HaskellStateCodecs.govActionId)
-  private[ntc] def proposalProcedure(w: W, p: Proposal): W =
-    put(w, p)(using HaskellStateCodecs.proposal)
   private[ntc] def exUnits(w: W, e: ExUnits): W = put(w, e)(using Params.exUnits)
 
   private[ntc] def hash(w: W, h: Bytes): Unit = { w.bytes(h); () }
@@ -114,19 +107,6 @@ object FailureCbor:
   private[ntc] def protVer(w: W, v: (BigInt, BigInt)): Unit = {
     w.array(2).uint(v._1).uint(v._2); ()
   }
-
-  /** A Plutus purpose as the ledger names it with the item it applies to (`PlutusPurpose AsItem`):
-    * `[tag, item]`. The certifying purpose is the exception: its item is the Conway certificate,
-    * which [[ContextFailureCbor.purpose]] writes, so no caller reaches the certifying arm below.
-    * The arm is kept only because the match is total.
-    */
-  private[ntc] def item(w: W, p: Purpose): Unit = p match
-    case Purpose.Spending(_, input, _)  => w.array(2).uint(0); txIn(w, input)
-    case Purpose.Minting(_, policy)     => w.array(2).uint(1).bytes(policy)
-    case Purpose.Certifying(_, _)       => w.array(2).uint(2); w.nul
-    case Purpose.Rewarding(_, account)  => w.array(2).uint(3); rewardAccount(w, account)
-    case Purpose.Voting(_, v)           => w.array(2).uint(4); voter(w, v)
-    case Purpose.Proposing(_, proposal) => w.array(2).uint(5); proposalProcedure(w, proposal)
 
   private[ntc] def value(w: W, v: Value): Unit = { put(w, v)(using UtxoCodecs.value); () }
 

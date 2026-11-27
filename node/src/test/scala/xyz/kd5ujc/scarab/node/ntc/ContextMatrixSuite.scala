@@ -9,16 +9,43 @@ import munit.FunSuite
 import scala.util.chaining.*
 import xyz.kd5ujc.scarab.codec.{Cbor, Value}
 import xyz.kd5ujc.scarab.ledger.*
-import xyz.kd5ujc.scarab.ledger.state.ShelleyBasedEra
+import xyz.kd5ujc.scarab.ledger.era.conway.{ConwayPParams, ConwayTestKit, ConwayUTxO}
+import xyz.kd5ujc.scarab.ledger.era.rules.ConwayUtxosPredFailure
+import xyz.kd5ujc.scarab.ledger.state.{Conway, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.plutus.ScarabEvaluator
 import xyz.kd5ujc.scarab.protocol.Era
 
-/** Independent Haskell era-specific API evidence. API derivations are not signed admissions. */
+/** Independent Haskell era-specific API evidence. API derivations are not signed admissions. A
+  * refused collection's bytes are written by the era's encoder: Alonzo's and Babbage's by
+  * [[ContextFailureCbor]] from the flat collection, Conway's by [[ConwayFailureCbor]] from Conway's
+  * era collection (`collectPlutusScriptsWithContext`, `Alonzo/Plutus/Evaluate.hs:83-118`,
+  * cardano-ledger f649f975), on the same outputs, parameters and clock.
+  */
 class ContextMatrixSuite extends FunSuite:
   import ContextReferenceCases.{field, hex}
   private val rows = parse(
     Files.readString(Path.of("fixtures/reference/context-matrix/matrix.json"))
   ).fold(error => fail(error.message), identity).asArray.getOrElse(fail("not an array"))
+
+  test("the matrix's rows by era and outcome: every refused one reaches the byte comparison") {
+    val counts = rows
+      .groupBy(row =>
+        (field[String](row, "era"), field[Boolean](field[Json](row, "oracle"), "collected"))
+      )
+      .view
+      .mapValues(_.size)
+      .toMap
+    assertEquals(
+      counts,
+      Map(
+        ("Alonzo", true) -> 20,
+        ("Babbage", true) -> 34,
+        ("Babbage", false) -> 20,
+        ("Conway", true) -> 120,
+        ("Conway", false) -> 115
+      )
+    )
+  }
 
   rows.foreach { row =>
     val name = field[String](row, "name")
@@ -97,12 +124,33 @@ class ContextMatrixSuite extends FunSuite:
           val reference = CborOut.build(w =>
             w.array(2).uint(1).raw(hex(field[String](expected, "collectErrorsCbor")))
           )
-          val contextEra = era match
-            case Era.Alonzo  => ContextFailureCbor.ContextEra.Alonzo
-            case Era.Babbage => ContextFailureCbor.ContextEra.Babbage
-            case Era.Conway  => ContextFailureCbor.ContextEra.Conway
-            case other       => fail(s"no context era for $other")
-          assertEquals(ContextFailureCbor.utxos(contextEra, errors), Some(reference))
+          val encoded = era match
+            case Era.Alonzo =>
+              ContextFailureCbor.utxos(ContextFailureCbor.ContextEra.Alonzo, errors)
+            case Era.Babbage =>
+              ContextFailureCbor.utxos(ContextFailureCbor.ContextEra.Babbage, errors)
+            case Era.Conway =>
+              // Conway's era collection on the row's outputs, parameters and clock refuses too,
+              // and its era encoder writes the reference's bytes
+              val pp = xyz.kd5ujc.scarab.ledger.era.PParams[Conway](
+                ConwayPParams.fromStored(params).fold(e => fail(s"$name: $e"), identity)
+              )
+              val utxo = ConwayUTxO.fromStored(known).fold(e => fail(s"$name: $e"), identity)
+              xyz.kd5ujc.scarab.ledger.era.AlonzoPlutusEvaluate
+                .collectPlutusScriptsWithContext[Conway](
+                  slot => Right(start + slot * length),
+                  pp,
+                  ConwayTestKit.typed(tx),
+                  utxo
+                )
+                .swap
+                .fold(_ => fail(s"$name: Conway's era collection succeeded"), identity)
+                .pipe(eraErrors =>
+                  ConwayFailureCbor.utxos(ConwayUtxosPredFailure.CollectErrors[Conway](eraErrors))
+                )
+                .toOption
+            case other => fail(s"no context era for $other")
+          assertEquals(encoded, Some(reference))
         case Right(requests) =>
           val expectedRequests = field[Vector[Json]](expected, "scripts")
           assertEquals(requests.size, expectedRequests.size)
