@@ -23,7 +23,7 @@ a cycle does not load.
 | `storage` | `ImmutableStore`, `VolatileStore`, `LedgerSnapshots`, `ChainStorage`, `UtxoStore` (memory, RocksDB), derived `Codec`s, format migrations, the Haskell ImmutableDB reader and the Haskell ledger-state codec | Algebras over `F[_]` |
 | `node` | Peer, follower, header gate, block rules (`MirrorRules`, with what they share in `NodeRules`), mempool, forging, relay, node-to-client, query server, `Main` | Algebras over `F[_]`; `IO` only in `Main` and the tools |
 | `models-gen`, `models` | CDDL parser and Scala generator; the generated models, their runtime and the equivalence tests. A spike: the node does not decode with the generated models, only `storage` uses the runtime (docs/models.md) | Build-time tool; pure |
-| `fuzz` | Structured fuzzing of every decoder entry point (test only) | |
+| `fuzz` | Structured fuzzing of every decoder entry point, and differential fuzzing of the curve arithmetic and the Ed25519 verifiers and against the reference's libsodium (test only) | |
 | `tools` | Benchmarks, probes and fixture writers run by hand (`tools/runMain <class>`); not published | `IO` at entry points; pure helpers |
 | `warts` | The design rules' own WartRemover warts (`SystemTimeAndUnsafeRun`, `StringControlFlow`, `FloatingPointInLedger`), which the compiler of every other module loads; build tooling, not published | Compiler-plugin code |
 

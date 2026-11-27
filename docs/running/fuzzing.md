@@ -12,6 +12,8 @@ LocalTxMonitor in every state and for both roles, headers and blocks (Byron and 
 witness sets and whole submitted transactions per era, addresses and outputs, scripts, Plutus data, the own
 evaluator's `deserialiseScript` (`uplc`; an admitted program written back must decode to itself), node-to-client
 queries and protocol-parameter updates, the node's own volatile log, and the operator's `config.json` and `topology.json`. `Targets.all` is the maintained target registry.
+Two differential targets also check the vendored curve arithmetic and the Ed25519 verifiers against oracles
+that are not dependencies of the node ([below](#curve-arithmetic-and-ed25519-verification-1418)).
 
 Inputs (`Mutate.scala`, `Corpus.scala`): ScalaCheck generators that take a seed item and apply one to four
 mutations (bit flips, truncation, extension, a head rewritten to declare 2^60 elements, a fresh head with a huge
@@ -260,3 +262,69 @@ the JDK container and name it there:
 python3 scripts/sodium_oracle.py --download --out /oracle      # in that image: needs gcc, make and Python 3
 SCARAB_SODIUM_ORACLE=/oracle/libsodium.so scripts/sbtw "fuzz 100000 1 4 sodium"
 ```
+
+### Curve arithmetic and Ed25519 verification (#1418)
+
+[`CurveTargets.scala`](../../fuzz/src/test/scala/xyz/kd5ujc/scarab/fuzz/CurveTargets.scala) registers two
+targets whose bytes are operands rather than an encoding: every input reads as one case, so a mutation changes a
+limb, a scalar, a point or a signature, and a shrunk failure is still a case. They run wherever the decoder
+targets run (`check`, the nightly campaign and the fixed-seed gate), and `fuzz <cases> <first seed> <seeds> 25519`
+selects the two of them.
+
+`curve25519-arithmetic` checks the vendored `com.weavechain.curve25519` arithmetic with the comparisons of
+`FieldElementSuite`, `ScalarSuite` and `EdwardsPointSuite`, against exact arithmetic on `BigInt` and the RFC 8032
+model `Ed25519Model`. Byte 0 chooses an operation; its operands follow at fixed offsets, each a mode byte and a
+payload. A field operand is ten limbs within the bounds the operation documents: drawn in their range, at the
+corners of the range, k p + delta or an edge of the field written in large limbs (`Curve25519Gen.limbsFor`), or 32
+bytes decoded. A scalar is an integer as given, an edge (0, L and its multiples and neighbours, 2^252 to 2^256, the
+limb boundaries), runs of 0x00 and 0xff, or j L + delta. A point is its 32 bytes as written, read modulo p with
+either sign, or built in the model from them: [8]P, a point of small order, or [8]P plus one.
+
+- `FieldElement`: `fromByteArray`, non-canonical encodings and values next to p included; `toByteArray` over the
+  whole range its documentation admits (limbs below 2^27), with `isZero`, `isNegative` and `ctEquals`; `add`,
+  `subtract`, `negate`, `multiply`, `square`, `squareAndDouble`, `invert`, `powP58` and `sqrtRatioM1`, each on limbs
+  within its precondition, its result within its postcondition.
+- `Scalar`: the reduction of 32 and of 64 bytes (`reduceWide` too), `fromCanonicalBytes` (exactly the values below
+  L), `fromBits` and `reduce`; `add`, `subtract`, `multiply`, `multiplyAndAdd` (both forms) and `square` of any
+  operands below 2^255; the radix-16 and width-5 NAF digits, which must recompose to the value.
+- Points: the vendored `decompress`, `VartimeEd25519`'s decoding and the model's on every point operand; `add`,
+  `subtract`, `negate`, `dbl`, `multiplyByCofactor`, `isSmallOrder`, `isIdentity` and `equals` against the model;
+  [a]P by the constant-time multiplication, its radix-16 form, the variable-time double multiplication and
+  `VartimeEd25519`'s kernel, against each other, and by the constant-time multiplication against the model; [b]B
+  by the basepoint table, its radix-16 form, the constant-time multiplication and both double multiplications,
+  against each other, and by the table against the model; [a]P + [b]B by both double multiplications against the
+  constant-time sum; `isTorsionFree` against the point's construction, or the model's [L]P for a point as written.
+
+A point operation costs ten to a hundred times a field or scalar operation, so the operations are weighted: the
+point operations take a sixth of the inputs, the model's multiplications one in 24.
+
+`ed25519-verification` compares `StrictEd25519` and `ByronEd25519` with the JDK's and Bouncy Castle's Ed25519 and
+the model. Byte 0 chooses the triple: a key, a signature and a message as given (seeded with every twentieth row of
+`fixtures/witness/vectors.tsv` and the Wycheproof cases of `fixtures/wycheproof-ed25519`); a valid signature by
+Bouncy Castle's signer, for a key derived from the input, with one change (none, a bit of A, R, S or the message
+flipped, S + j L, R a point of small order, A an encoding only a reading modulo p decodes); or one of the families
+of `Ed25519CrossCheckSuite`, built with the model (A, R or both of mixed order, A or R of small order, A or R such an
+encoding, S + j L), signed for the message as given, so that the message decides whether a torsion part satisfies
+the equation. The verdicts are compared by the rules `Ed25519Verifiers` states and cites, and only a disagreement
+outside them fails:
+
+- Bouncy Castle's refusals (y >= p, no x, x = 0 with the sign bit set, A of small order, S >= L) and its failed
+  cofactored equation are all refusals of `StrictEd25519`'s, so where Bouncy Castle rejects, Strict must reject.
+- Where Bouncy Castle accepts, Strict must accept exactly when the exact equation [S]B = R + [k]A holds and R is not
+  of small order. The equation is the JDK's verdict, or Bouncy Castle's own where the triple's construction puts A
+  and R in the prime-order subgroup (its cofactored equation is then the exact one).
+- `ByronEd25519` must refuse S >= 2^253 and accept what Strict accepts. Where Strict refuses for a reason Byron does
+  not have (S >= L, A not canonical, A or R of small order), Byron must give the exact equation with S reduced
+  modulo L: the JDK's verdict, Bouncy Castle's as above, or the model's for an A that only a reading modulo p
+  decodes. Elsewhere Strict's refusal is Byron's.
+
+Not covered here: Bouncy Castle's acceptance where only its cofactored equation holds is its rule and is not
+recomputed; the JDK's refusals are compared only where Bouncy Castle accepts; keys and signatures of other lengths
+are `Ed25519CrossCheckSuite`'s and `EntryPointTotalitySuite`'s; VRF verification and proving and KES signing have no
+target here.
+
+Each target was shown to fail. With either reduction defect that #1438 fixed put back (the 32-bit `19 * h9` in
+the quotient of `FieldElement.toByteArray`, or `Scalar.add` and `subtract` without reducing their operands),
+`fuzz 100000 1 4 curve25519-arithmetic` fails with seed 1 and prints the operation and its operands. With
+`StrictEd25519` made to accept S >= L or an R of small order, or `ByronEd25519` made to refuse S >= L,
+`fuzz 100000 1 4 ed25519-verification` fails with seed 1.

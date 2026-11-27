@@ -182,7 +182,7 @@ Generated CDDL models runtime and equivalence tests.
 
 ## fuzz
 
-Structured fuzzing of decoder entry points, and differential targets against the reference's libsodium (test only).
+Structured fuzzing of decoder entry points, and differential fuzzing of the curve arithmetic and the Ed25519 verifiers and against the reference's libsodium (test only).
 
 No main sources.
 
