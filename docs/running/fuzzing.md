@@ -13,7 +13,7 @@ witness sets and whole submitted transactions per era, addresses and outputs, sc
 evaluator's `deserialiseScript` (`uplc`; an admitted program written back must decode to itself), node-to-client
 queries and protocol-parameter updates, the node's own volatile log, and the operator's `config.json` and `topology.json`. `Targets.all` is the maintained target registry.
 Two differential targets also check the vendored curve arithmetic and the Ed25519 verifiers against oracles
-that are not dependencies of the node ([below](#curve-arithmetic-and-ed25519-verification-1418)).
+that add no dependency ([below](#curve-arithmetic-and-ed25519-verification-1418)).
 
 Inputs (`Mutate.scala`, `Corpus.scala`): ScalaCheck generators that take a seed item and apply one to four
 mutations (bit flips, truncation, extension, a head rewritten to declare 2^60 elements, a fresh head with a huge
@@ -283,30 +283,38 @@ either sign, or built in the model from them: [8]P, a point of small order, or [
 - `FieldElement`: `fromByteArray`, non-canonical encodings and values next to p included; `toByteArray` over the
   whole range its documentation admits (limbs below 2^27), with `isZero`, `isNegative` and `ctEquals`; `add`,
   `subtract`, `negate`, `multiply`, `square`, `squareAndDouble`, `invert`, `powP58` and `sqrtRatioM1`, each on limbs
-  within its precondition, its result within its postcondition.
+  within its precondition, its result within its postcondition (for `powP58` and the root of `sqrtRatioM1`, the
+  product bounds, within the reduced bounds that `negate` takes when `decompress` negates the root).
 - `Scalar`: the reduction of 32 and of 64 bytes (`reduceWide` too), `fromCanonicalBytes` (exactly the values below
   L), `fromBits` and `reduce`; `add`, `subtract`, `multiply`, `multiplyAndAdd` (both forms) and `square` of any
   operands below 2^255; the radix-16 and width-5 NAF digits, which must recompose to the value.
-- Points: the vendored `decompress`, `VartimeEd25519`'s decoding and the model's on every point operand; `add`,
-  `subtract`, `negate`, `dbl`, `multiplyByCofactor`, `isSmallOrder`, `isIdentity` and `equals` against the model;
-  [a]P by the constant-time multiplication, its radix-16 form, the variable-time double multiplication and
-  `VartimeEd25519`'s kernel, against each other, and by the constant-time multiplication against the model; [b]B
-  by the basepoint table, its radix-16 form, the constant-time multiplication and both double multiplications,
-  against each other, and by the table against the model; [a]P + [b]B by both double multiplications against the
-  constant-time sum; `isTorsionFree` against the point's construction, or the model's [L]P for a point as written.
+- Points: the vendored `decompress`, the verification kernel's decoding (`VartimeEd25519`) and the model's on every
+  point operand; `add`, `subtract`, `negate`, `dbl` and `multiplyByCofactor` against the model, each result also
+  added to the second operand, which reads all four of its coordinates; `isSmallOrder`, `isIdentity` and `equals`
+  against the model; [a]P by the constant-time multiplication, its radix-16 form, the variable-time double
+  multiplication and the kernel's, against each other, and by the constant-time multiplication against the model;
+  [b]B by the basepoint table, its radix-16 form, the constant-time multiplication and both double
+  multiplications, against each other, and by the table against the model; [v]P and [v]B by `multiplyRadix16` from
+  digits drawn over the whole of [-8, 8] at every index, which the recoder of `Scalar` does not write (it writes 8
+  only at the last), against the model's multiples of their value; [a]P + [b]B by both double multiplications
+  against the constant-time sum; `isTorsionFree` against the point's construction, or the model's [L]P for a point
+  as written. Every point a vendored operation returns must also hold the invariants of extended coordinates (Z
+  not zero, X Y = Z T, the curve equation; `Curve25519Gen.extendedFailure`, which `EdwardsPointSuite` uses): a
+  wrong T compresses correctly and breaks only the next operation that reads it.
 
 A point operation costs ten to a hundred times a field or scalar operation, so the operations are weighted: the
-point operations take a sixth of the inputs, the model's multiplications one in 24.
+point operations take 9 of 49 slots of the operation byte, and those that multiply in the model 3 of them.
 
-`ed25519-verification` compares `StrictEd25519` and `ByronEd25519` with the JDK's and Bouncy Castle's Ed25519 and
-the model. Byte 0 chooses the triple: a key, a signature and a message as given (seeded with every twentieth row of
-`fixtures/witness/vectors.tsv` and the Wycheproof cases of `fixtures/wycheproof-ed25519`); a valid signature by
-Bouncy Castle's signer, for a key derived from the input, with one change (none, a bit of A, R, S or the message
-flipped, S + j L, R a point of small order, A an encoding only a reading modulo p decodes); or one of the families
-of `Ed25519CrossCheckSuite`, built with the model (A, R or both of mixed order, A or R of small order, A or R such an
-encoding, S + j L), signed for the message as given, so that the message decides whether a torsion part satisfies
-the equation. The verdicts are compared by the rules `Ed25519Verifiers` states and cites, and only a disagreement
-outside them fails:
+`ed25519-verification` compares `StrictEd25519` and `ByronEd25519` with the JDK's and Bouncy Castle's Ed25519
+(Bouncy Castle is already a dependency of `crypto`) and the model. Byte 0 chooses the triple: a key, a signature and
+a message as given (seeded with every twentieth row of `fixtures/witness/vectors.tsv`, the Wycheproof cases of
+`fixtures/wycheproof-ed25519`, and the four cases of `fixtures/witness-byron` whose key has x = 0 and the sign bit
+set and whose signature the reference's Byron path accepts); a valid signature by Bouncy Castle's signer, for a key
+derived from the input, with one change (none, a bit of A, R, S or the message flipped, S + j L, R a point of small
+order, A an encoding only a reading modulo p decodes); or one of the families of `Ed25519CrossCheckSuite`, built
+with the model (A, R or both of mixed order, A or R of small order, A or R such an encoding, S + j L), signed for
+the message as given, so that the message decides whether a torsion part satisfies the equation. The verdicts are
+compared by the rules `Ed25519Verifiers` states and cites, and only a disagreement outside them fails:
 
 - Bouncy Castle's refusals (y >= p, no x, x = 0 with the sign bit set, A of small order, S >= L) and its failed
   cofactored equation are all refusals of `StrictEd25519`'s, so where Bouncy Castle rejects, Strict must reject.
@@ -317,6 +325,9 @@ outside them fails:
   not have (S >= L, A not canonical, A or R of small order), Byron must give the exact equation with S reduced
   modulo L: the JDK's verdict, Bouncy Castle's as above, or the model's for an A that only a reading modulo p
   decodes. Elsewhere Strict's refusal is Byron's.
+- A signature the construction makes valid (the signer's, unchanged, or the model's for A = [a]B and R = [r]B) must
+  be accepted by all four: Bouncy Castle, the JDK, Strict and Byron, as `Ed25519CrossCheckSuite` requires of the
+  signer's signatures.
 
 Not covered here: Bouncy Castle's acceptance where only its cofactored equation holds is its rule and is not
 recomputed; the JDK's refusals are compared only where Bouncy Castle accepts; keys and signatures of other lengths
@@ -324,10 +335,11 @@ are `Ed25519CrossCheckSuite`'s and `EntryPointTotalitySuite`'s; VRF verification
 target here.
 
 Each target was shown to fail. With either reduction defect that #1438 fixed put back (the 32-bit `19 * h9` in
-the quotient of `FieldElement.toByteArray`, or `Scalar.add` and `subtract` without reducing their operands),
+the quotient of `FieldElement.toByteArray`, or `Scalar.add` and `subtract` without reducing their operands), with
+`EdwardsPoint.negate` leaving T as it was, or with `multiplyRadix16` wrong for a digit of 8 at index 0,
 `fuzz 100000 1 4 curve25519-arithmetic` fails with seed 1 and prints the operation and its operands. With
-`StrictEd25519` made to accept S >= L or an R of small order, or `ByronEd25519` made to refuse S >= L,
-`fuzz 100000 1 4 ed25519-verification` fails with seed 1.
+`StrictEd25519` made to accept S >= L or an R of small order, `ByronEd25519` made to refuse S >= L, or the JDK made
+to refuse the signer's valid signatures, `fuzz 100000 1 4 ed25519-verification` fails with seed 1.
 
 A case of `ed25519-verification` runs three verifiers, hundreds of times what a decoder's case costs, so the target
 takes a quarter of a run's cases (`Target`'s `share`); `curve25519-arithmetic` takes them all.
