@@ -26,7 +26,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   TxLevel
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts}
-import xyz.kd5ujc.scarab.ledger.state.{Babbage, CertState, Conway, Dijkstra, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Babbage, CertState, Conway, Dijkstra, EraTag, SlotNo}
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScriptEvaluator}
 
 // UTXOS as the reference writes it (cardano-ledger f649f975, the `Rules/Utxos.hs` of Alonzo, Babbage
@@ -185,9 +185,9 @@ object EmbedPpupInUtxos:
 
 /** `data UtxosEnv era = UtxosEnv {ueSlot, uePParams, ueCertState}`
   * (`Alonzo/Rules/Utxos.hs:118-122`, cardano-ledger f649f975): the environment of the UTXOS of
-  * Alonzo and Babbage, whose PPUP reads it.
+  * Alonzo and Babbage, whose PPUP reads it, its slot a `SlotNo` as the reference's is.
   */
-final case class UtxosEnv[E <: EraTag](slot: BigInt, pp: PParams[E], certState: CertState[E])
+final case class UtxosEnv[E <: EraTag](slot: SlotNo, pp: PParams[E], certState: CertState[E])
 
 /** Alonzo's functions of UTXOS (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxos.hs`,
   * cardano-ledger f649f975).

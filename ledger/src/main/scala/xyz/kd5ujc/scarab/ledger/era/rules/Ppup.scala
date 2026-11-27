@@ -28,7 +28,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   ShelleyGovState
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts}
-import xyz.kd5ujc.scarab.ledger.state.{EpochNo, EraTag, Genesis, KeyHash}
+import xyz.kd5ujc.scarab.ledger.state.{EpochNo, EraTag, Genesis, KeyHash, SlotNo}
 
 // PPUP as the reference writes it (cardano-ledger f649f975
 // `eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Ppup.hs`), the rule of the update proposals
@@ -38,10 +38,11 @@ import xyz.kd5ujc.scarab.ledger.state.{EpochNo, EraTag, Genesis, KeyHash}
 // them ([[KeptUpdate]]).
 
 /** `data PpupEnv era = PPUPEnv SlotNo (PParams era) GenDelegs` (`Shelley/Rules/Ppup.hs:65`,
-  * cardano-ledger f649f975): the slot, the parameters in force and the genesis delegations.
+  * cardano-ledger f649f975): the slot, the parameters in force and the genesis delegations. The
+  * slot is a `SlotNo`, as the reference's is; the epoch arithmetic reads it as a number.
   */
 final case class PpupEnv[E <: EraTag](
-    slot: BigInt,
+    slot: SlotNo,
     pp: PParams[E],
     genDelegs: Map[KeyHash[Genesis], GenDelegPair]
 )
@@ -136,7 +137,7 @@ object ShelleyPpup:
     update.traverse_ { kept =>
       val pup: KeptProposedPPUpdates[E] = kept.proposed
       val targetEpochNo = kept.update.epoch
-      val slot = env.slot
+      val slot = env.slot.toBigInt
       val pp = env.pp
       def epochNo(n: BigInt): F[EpochNo] =
         Sts.lift[F, LedgerDefect, EpochNo](EpochNo.fromBigInt(n).leftMap(LedgerFailure.Vocab(_)))

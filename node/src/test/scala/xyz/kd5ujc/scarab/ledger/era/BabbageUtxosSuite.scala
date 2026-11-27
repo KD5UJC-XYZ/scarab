@@ -134,6 +134,8 @@ class BabbageUtxosSuite extends FunSuite:
   private def right[E, A](what: String)(e: Either[E, A]): A =
     e.fold(x => fail(s"$what: $x"), identity)
 
+  private def slotNo(n: BigInt): SlotNo = right(s"slot $n")(SlotNo.fromBigInt(n))
+
   // ---- the era rules, run in one judgment
 
   private type PRec = ShelleyPpupPredFailure[Babbage]
@@ -389,7 +391,14 @@ class BabbageUtxosSuite extends FunSuite:
       Map.empty,
       j.typed
     )
-    UtxosRun.run(j.globals, UtxosEnv(j.slot, pp, j.cert), stAnnTx, gov, evaluator, validation) match
+    UtxosRun.run(
+      j.globals,
+      UtxosEnv(slotNo(j.slot), pp, j.cert),
+      stAnnTx,
+      gov,
+      evaluator,
+      validation
+    ) match
       case Left(defect)          => fail(s"${j.name}: era defect $defect")
       case Right(Left(failures)) => Outcome.Refused(failures.toList.map(seenOf))
       case Right(Right((after, events))) =>
@@ -597,7 +606,7 @@ class BabbageUtxosSuite extends FunSuite:
     val kept = c.kept.getOrElse(right(s"${c.name} update")(KeptUpdate.fromStored[Babbage](c.u)))
     val gov = right(s"${c.name} governance")(ShelleyGovStateRecord.fromStored[Babbage](c.gov))
     val pp = PParams[Babbage](right(s"${c.name} parameters")(BabbagePParams.fromStored(c.pp)))
-    PpupRun.run(c.globals, PpupEnv(c.slot, pp, c.genDelegs), Some(kept), gov) match
+    PpupRun.run(c.globals, PpupEnv(slotNo(c.slot), pp, c.genDelegs), Some(kept), gov) match
       case Left(defect)                  => fail(s"${c.name}: era defect $defect")
       case Right(Left(failures))         => Left(failures.toList.map(flatPpupOf))
       case Right(Right((after, events))) =>
@@ -879,7 +888,7 @@ class BabbageUtxosSuite extends FunSuite:
     val gov = right("gov")(ShelleyGovStateRecord.fromStored[Babbage](emptyGov(pp8)))
     val pp = PParams[Babbage](right("pp")(BabbagePParams.fromStored(pp8)))
     assertEquals(
-      PpupRun.run(g, PpupEnv(510, pp, delegs(1)), None, gov),
+      PpupRun.run(g, PpupEnv(slotNo(510), pp, delegs(1)), None, gov),
       Right(Right((gov, Chain.empty)))
     )
   }
@@ -1195,7 +1204,7 @@ class BabbageUtxosSuite extends FunSuite:
     val gov = right("gov")(ShelleyGovStateRecord.fromStored[Babbage](g10.state.gov))
     UtxosRun.run(
       g10.globals,
-      UtxosEnv(g10.slot, pp, g10.cert),
+      UtxosEnv(slotNo(g10.slot), pp, g10.cert),
       stAnnTx,
       gov,
       ScarabEvaluator.default,
