@@ -1,7 +1,7 @@
 ### Added (timing of the secret paths in CI, #1418)
 
 - `SecretPathTiming` also times KES signing (a Sum6 key at period 0) and two evolutions (period 0 to 1 and 1 to 2)
-  against a fixed seed and random ones, makes the two classes' pools taking turns at which entry is made first, adds a
+  against a fixed seed and random ones, holds the two classes' pools as one vector of pairs, the class first in a pair alternating, adds a
   control of KES keys of one seed in both classes, takes its crops' cutoffs from a calibration batch it then discards, counts a
   crop only from 1,000 measurements a class, consumes every result whole after the clock, reports a slow pool entry
   as a diagnostic, and writes its results as JSON, with an identity of the run, when given a path.

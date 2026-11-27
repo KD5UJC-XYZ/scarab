@@ -27,11 +27,12 @@ The method is dudect's (Reparaz, Balasch and Verbauwhede, "Dude, is my code cons
 operation, two classes of its secret, one fixed and one random, are measured interleaved in a random order, with
 every input chosen before the timing starts: each class draws from a pool of 1,024 entries of its own (the fixed
 pool holds distinct copies of the fixed value), the i-th measurement takes entry i mod 1,024 of its class's pool, the
-two pools are made in one loop, the class whose entry is made first alternating, so that they lie in memory alike, and
-an array input is copied into one buffer that every measurement of the target passes. A key is used where it lies, and
-when the fixed class's key was always the first of its pair, keys of one and the same seed in both classes read as a
-difference; the alternation removes that, and the same-seed control below watches for it. Each result is consumed
-whole after the second clock read.
+two pools are made in one loop and held as one vector of pairs, an entry of each class in each pair and the class held
+first alternating, so that they lie in memory alike, and an array input is copied into one buffer that every
+measurement of the target passes. A key is used where it lies. Held as two vectors, the two pools ended in two regions
+of memory once the collector had moved them, one class's keys in each, and keys of one and the same seed in both
+classes then read as a difference; held in pairs they stay interleaved, and the same-seed control below watches for
+it. Each result is consumed whole after the second clock read.
 
 The statistic. A target first times a calibration batch of a tenth of its measurements, in the same random order,
 takes the crops' cutoffs from it (dudect's percentiles, 1 − 0.5^(10(i + 1)/100) for crop i of 100) and discards it,
@@ -149,6 +150,17 @@ seen at all: the job stays green.
 
 The job's last step (`--outcome`) is green only when the summary gives the status the test step exited with and
 every run's record is there; a step that left no summary, or one that disagrees, is red whatever its status.
+
+**What fixed against random can tell apart on these runners.** A fixed input processed again and again does not take
+the same time as changing inputs, in code that holds no secret at all. Measured on GitHub-hosted `ubuntu-24.04`
+runners on 2026-11-27, with this method before its calibration batch and paired pools: the JDK's SHA-512 and
+`Scalar.reduceWide`, a fixed 64-byte input against random ones, read 6.1 to 13.5 on an Intel Xeon 6975P-C and 21 to
+36 on an AMD EPYC 9V74, while two different fixed inputs, each repeated, read 1.3 to 3.5 on both for the multiplications,
+the table selection and both field arithmetics. A fixed-against-random reading says that the time differs between a
+repeated input and changing ones; it does not say that it depends on which secret it is. Two fixed secrets against
+each other are immune to the repetition, and so is a target whose public input changes at every measurement (proving
+and the output, where H does). How large the effect is under the current method, on each CPU model, is what the
+nightly summaries show.
 
 Why one run is not enough, and why 10 and not less. With the classes interleaved at random, |t| of two classes of
 one distribution is close to a standard normal, and above 10 by chance essentially never, even as the largest of a
