@@ -64,7 +64,7 @@ meanwhile. The depth was measured from 64 to 256 against the public relay (perfo
 no timeout at any of them, 128 and above are 6 to 10% faster than 64.
 
 ```sh
-follow ... --db <dir> [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--read-ahead N]
+follow ... --db <dir> [--utxo-store memory|rocksdb] [--utxo-cache-mb N] [--utxo-warm-mb N] [--read-ahead N]
 ```
 
 `rocksdb` is the default with `--db`; without it the node uses the memory store. The query server

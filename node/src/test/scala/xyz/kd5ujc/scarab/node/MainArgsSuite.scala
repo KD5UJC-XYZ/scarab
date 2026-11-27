@@ -329,6 +329,30 @@ class MainArgsSuite extends munit.FunSuite:
     }
   }
 
+  test(
+    "--utxo-warm-mb is absent for the heap's default, 0 for no tier, or a budget, nothing else"
+  ) {
+    assertEquals(Main.parse(base).map(_.utxoWarmMb), Right(None))
+    assertEquals(Main.parse(base ++ List("--utxo-warm-mb", "0")).map(_.utxoWarmMb), Right(Some(0)))
+    assertEquals(
+      Main.parse(base ++ List("--utxo-warm-mb", "64")).map(_.utxoWarmMb),
+      Right(Some(64))
+    )
+    List("-1", "many").foreach { value =>
+      assert(
+        Main.parse(base ++ List("--utxo-warm-mb", value)) match {
+          case Left(
+                xyz.kd5ujc.scarab.ledger
+                  .ConfigError(ConfigProblem.WithUsage(ConfigProblem.FlagValue(_, _), _))
+              ) =>
+            true
+          case _ => false
+        },
+        value
+      )
+    }
+  }
+
   test("--cpu-threads takes zero (no pool) or a positive number, nothing else") {
     assertEquals(Main.parse(base ++ List("--cpu-threads", "0")).toOption.get.cpuThreads, 0)
     assertEquals(Main.parse(base ++ List("--cpu-threads", "3")).toOption.get.cpuThreads, 3)

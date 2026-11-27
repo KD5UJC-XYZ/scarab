@@ -384,6 +384,15 @@ the operator's choice; a node whose metrics are public publishes its schedule.
 | `scarab_received_cache_evictions_total` | counter |  | Received bodies that left the cache for its bound (they stay readable from the log). | none |
 | `scarab_received_reads_total` | counter |  | Received bodies read back from the received-block log. | none |
 | `scarab_received_unreadable_total` | counter |  | Received-block records that failed their checksum when read back, and were dropped. | none |
+| `scarab_utxo_warm_entries` | gauge |  | UTxO entries the warm tier in front of the store holds (`--utxo-warm-mb`; absent without a tier). | none |
+| `scarab_utxo_warm_bytes` | gauge | `population` | Bytes charged to the warm tier's entries (encoding and per-entry overhead), by population (`Young`: written and not read since; `Read`: read). | none |
+| `scarab_utxo_warm_limit_bytes` | gauge |  | The warm tier's budget, in bytes (`--utxo-warm-mb`). | none |
+| `scarab_utxo_warm_served_total` | counter |  | UTxO reads the warm tier answered without reading the store. | none |
+| `scarab_utxo_warm_missed_total` | counter |  | UTxO reads of keys the warm tier did not hold, read from the store. | none |
+| `scarab_utxo_warm_evictions_total` | counter | `population` | Entries that left the warm tier for its budget, by population (they stay in the store). | none |
+| `scarab_utxo_warm_refused_total` | counter |  | Entries read from the store that the warm tier did not take, as the store changed under the read. | none |
+| `scarab_utxo_read_ahead_served_total` | counter |  | UTxO entries the block path took from what was read ahead of it. | none |
+| `scarab_utxo_read_ahead_stale_total` | counter |  | UTxO entries read ahead and dropped, as read before the trim point of the state that asked. | none |
 | `scarab_block_pool_bodies` | gauge |  | Received bodies the block pool holds in memory (with a received log, only until their admission is processed). | none |
 | `scarab_block_pool_body_bytes` | gauge |  | Bytes of the received bodies the block pool holds in memory. | none |
 | `scarab_replay_blocks` | gauge |  | Stored blocks applied again at the start (so far, then in total). | none |

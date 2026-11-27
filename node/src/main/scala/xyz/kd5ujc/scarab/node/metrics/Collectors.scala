@@ -12,7 +12,7 @@ import xyz.kd5ujc.scarab.consensus.{SchedulingStats, VolatileChain}
 import xyz.kd5ujc.scarab.ledger.EpochGeometry
 import xyz.kd5ujc.scarab.network.{ConnectionManager, InboundGovernorCounters}
 import xyz.kd5ujc.scarab.network.selection.PeerMetrics
-import xyz.kd5ujc.scarab.node.{BlockPool, OutboundPeers}
+import xyz.kd5ujc.scarab.node.{BlockPool, OutboundPeers, ReadAheadStore, WarmUtxoStore}
 import xyz.kd5ujc.scarab.node.forge.{ForgeStats, Forger}
 import xyz.kd5ujc.scarab.node.mempool.Mempool
 import xyz.kd5ujc.scarab.storage.ReceivedBlocks
@@ -88,6 +88,28 @@ object Collectors:
         metrics.advance(receivedReads, r.reads.toDouble) *>
         metrics.advance(receivedUnreadable, r.unreadable.toDouble)
     )
+
+  /** The UTxO store's reads: what the read-ahead served and dropped, and the warm tier's entries,
+    * bytes and counts where the store has one (#1484).
+    */
+  def utxoReads[F[_]: Monad](reads: ReadAheadStore[F], warm: Option[WarmUtxoStore[F]])(using
+      metrics: Metrics[F]
+  ): F[Unit] =
+    import Catalogue.*
+    reads.buffered.get.flatMap(b =>
+      metrics.advance(utxoReadAheadServed, b.served.toDouble) *>
+        metrics.advance(utxoReadAheadStale, b.stale.toDouble)
+    ) *> warm.traverse_(_.stats.flatMap { s =>
+      metrics.set(utxoWarmEntries, s.entries.toDouble) *>
+        metrics.set(utxoWarmBytes, WarmPopulationLabel.Young, s.youngBytes.toDouble) *>
+        metrics.set(utxoWarmBytes, WarmPopulationLabel.Read, s.readBytes.toDouble) *>
+        metrics.set(utxoWarmLimit, s.budget.toDouble) *>
+        metrics.advance(utxoWarmServed, s.served.toDouble) *>
+        metrics.advance(utxoWarmMissed, s.missed.toDouble) *>
+        metrics.advance(utxoWarmEvictions, WarmPopulationLabel.Young, s.evictedYoung.toDouble) *>
+        metrics.advance(utxoWarmEvictions, WarmPopulationLabel.Read, s.evictedRead.toDouble) *>
+        metrics.advance(utxoWarmRefused, s.refused.toDouble)
+    })
 
   /** The bodies the block pool holds in memory. */
   def pool[F[_]: Monad](pool: BlockPool[F])(using metrics: Metrics[F]): F[Unit] =

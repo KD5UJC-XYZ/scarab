@@ -57,7 +57,7 @@ import xyz.kd5ujc.scarab.storage.{UtxoPinnedReadView, UtxoStore}
   * `forkerReadTables fo (getBlockKeySets blk)`, ouroboros-consensus 82ecba32
   * `ouroboros-consensus/src/ouroboros-consensus/Ouroboros/Consensus/Storage/LedgerDB/Forker.hs`
   * 455-458), with nothing read ahead. Only when an entry is read changes, never the entries a block
-  * is applied with: an Improvement, approved with #1484's plan.
+  * is applied with: an Optimisation (REF-6), approved with #1484's plan.
   */
 final class ReadAheadStore[F[_]: Async] private (
     store: UtxoStore[F],
