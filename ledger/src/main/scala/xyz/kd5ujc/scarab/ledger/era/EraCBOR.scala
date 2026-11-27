@@ -65,6 +65,9 @@ object Encoding:
     else if -n <= Word64Limit then head(1, -1 - n)
     else bignum(3, -1 - n)
 
+  /** `encodeBytes`: a definite byte string. */
+  def encodeBytes(b: Bytes): Encoding = head(2, b.size) ++ Chain.fromSeq(b.toArray.toIndexedSeq)
+
   /** `encodeListLen`: the head of a definite list of `size` items. */
   def encodeListLen(size: Int): Encoding = head(4, size)
 
@@ -138,6 +141,25 @@ object EncCBOR:
   def apply[A](using e: EncCBOR[A]): EncCBOR[A] = e
 
   given unsigned[W <: Unsigned.Width]: EncCBOR[Unsigned[W]] = encodeWord(_)
+
+  /** `instance EncCBOR MaryValue` (`eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs:342-350`,
+    * cardano-ledger f649f975): the coin alone when the value holds no asset, else `[coin, assets]`,
+    * the assets `MultiAsset` 's derived `EncCBOR` (`:154-155`), the `Map PolicyID (Map AssetName
+    * Integer)` 's: each map of variable length (`encodeMap`) with its keys ascending, as `Data.Map`
+    * holds them (a policy id and an asset name compared bytewise, `Ord` of a hash and of a
+    * `ShortByteString`), each key its bytes and each quantity `encodeInteger` of it.
+    */
+  given multiAssetValue: EncCBOR[MultiAssetValue] = v =>
+    def sortedMap[V](m: Map[Bytes, V])(value: V => Encoding): Encoding =
+      val entries = m.toVector.sortBy(_._1)
+      variableMapLenEncoding(
+        entries.size,
+        entries.foldMap((k, x) => encodeBytes(k) |+| value(x))
+      )
+    if v.assets.isEmpty then encodeInteger(v.lovelace)
+    else
+      encodeListLen(2) |+| encodeInteger(v.lovelace) |+|
+        sortedMap(v.assets)(names => sortedMap(names)(encodeInteger))
 
   given compactCoin: EncCBOR[CompactCoin] = c => encodeWord64(c.word)
 

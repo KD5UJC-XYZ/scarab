@@ -11,7 +11,8 @@ import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, EraTag}
   * AlonzoPlutusPurpose`, `eras/babbage/impl/src/Cardano/Ledger/Babbage/Scripts.hs:61`): what a
   * script is run for, the item a certifying purpose names being the era's certificate. The index is
   * a `Word32`. The script class's members of an era whose purpose this is are the functions of the
-  * companion, which Babbage's instance gives ([[babbage.BabbageScript]]).
+  * companion, which Alonzo's and Babbage's instances give ([[alonzo.AlonzoScript]],
+  * [[babbage.BabbageScript]]).
   */
 enum AlonzoPlutusPurpose[F[_, _], E <: EraTag]:
   case AlonzoSpending(purpose: F[Unsigned[Unsigned.Width.W32], TxIn])

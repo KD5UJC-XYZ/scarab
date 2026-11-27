@@ -85,6 +85,37 @@
      "symbol": "getDataHashBabbageTxOut"
     }
    ]
+  },
+  "given ledger.era.EraTxOut.alonzo": {
+   "class": "Mirror",
+   "digest": "80f7c86b0fd360f4",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "Alonzo's output instances, the one place listing the eras of the output classes; the reference's EraTxOut members this class does not carry (mkBasicTxOut, the compact lenses, getMinCoinTxOut) are not here, the least coin coming with Alonzo's parameters",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      335,
+      372
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxOut AlonzoEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      519,
+      528
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraTxOut AlonzoEra"
+    }
+   ]
   }
  },
  "glue": [

@@ -157,6 +157,27 @@
     }
    ]
   },
+  "def ledger.era.Encoding.encodeBytes": {
+   "class": "Mirror",
+   "digest": "4cb9afbd46498f66",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "a definite byte string, its head the shortest",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "lines": [
+      214,
+      215
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "encodeBytes"
+    }
+   ]
+  },
   "def ledger.era.Encoding.encodeInteger": {
    "class": "Mirror",
    "digest": "0357a4a936cdaf46",
@@ -1027,6 +1048,37 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "Milliseconds32"
+    }
+   ]
+  },
+  "given ledger.era.EncCBOR.multiAssetValue": {
+   "class": "Mirror",
+   "digest": "33e2cd5e10f4be09",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "the coin alone without assets, else [coin, assets], each map of variable length with its keys ascending bytewise as Data.Map holds them; written back to the bytes of every recorded Alonzo output and of the reference's own UTxO answers, and a crafted out-of-order value written in order",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      342,
+      350
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EncCBOR MaryValue"
+    },
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      154,
+      155
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "MultiAsset"
     }
    ]
   },

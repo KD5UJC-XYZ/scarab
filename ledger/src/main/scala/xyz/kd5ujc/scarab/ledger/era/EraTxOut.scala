@@ -4,7 +4,16 @@ package xyz.kd5ujc.scarab.ledger.era
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.Address
 import xyz.kd5ujc.scarab.plutus.PlutusData
-import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Coin, Conway, Dijkstra, EraTag, Mary}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Allegra,
+  Alonzo,
+  Babbage,
+  Coin,
+  Conway,
+  Dijkstra,
+  EraTag,
+  Mary
+}
 
 /** The fields every era's output has (`EraTxOut`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:297`). An output of the previous era is
@@ -57,6 +66,7 @@ trait BabbageEraTxOut[E <: EraTag] extends AlonzoEraTxOut[E]:
 object EraTxOut:
   given allegra: EraTxOut[Allegra] = xyz.kd5ujc.scarab.ledger.era.allegra.AllegraTxOut.instance
   given mary: EraTxOut[Mary] = xyz.kd5ujc.scarab.ledger.era.mary.MaryTxOut.instance
+  given alonzo: AlonzoEraTxOut[Alonzo] = xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoTxOut.instance
   given babbage: BabbageEraTxOut[Babbage] =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxOut.instance
   given conway: BabbageEraTxOut[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut.instance
