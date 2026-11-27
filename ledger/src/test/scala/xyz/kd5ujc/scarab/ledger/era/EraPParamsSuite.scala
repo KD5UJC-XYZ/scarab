@@ -264,7 +264,7 @@ class EraPParamsSuite extends ScalaCheckSuite:
     assertEquals(compileErrors("Unsigned.lit[Unsigned.Width.W32](4294967295L)"), "")
 
   test("Conway has no instance of the eras' parameters it does not have"):
-    assert(compileErrors("summon[EraPParams[xyz.kd5ujc.scarab.ledger.state.Babbage]]").nonEmpty)
+    assert(compileErrors("summon[EraPParams[xyz.kd5ujc.scarab.ledger.state.Alonzo]]").nonEmpty)
     assertEquals(compileErrors("summon[EraPParams[Conway]]"), "")
 
   // The update as Plutus data (`ToPlutusData (PParamsUpdate era)`) against the flat path's, which

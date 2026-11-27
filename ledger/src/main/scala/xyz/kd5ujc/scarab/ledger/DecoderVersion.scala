@@ -76,6 +76,12 @@ object DecoderVersion:
   def ofMajor(major: BigInt): Option[DecoderVersion] =
     Option.when(major >= 0 && major <= MaxVersion)(major.toInt)
 
+  /** A protocol version's major as the decoder version (`natVersion`, `Binary/Version.hs:91-97`,
+    * cardano-ledger f649f975, where both are one type, `Version`): every
+    * [[xyz.kd5ujc.scarab.ledger.era.Version]] is at most [[MaxVersion]], its own bound.
+    */
+  def ofVersion(v: xyz.kd5ujc.scarab.ledger.era.Version): DecoderVersion = v.value
+
   /** `version` when it is one of `era`'s ([[at]]). */
   def within(era: Era, version: DecoderVersion): Either[OutOfRange, DecoderVersion] =
     at(era, version)

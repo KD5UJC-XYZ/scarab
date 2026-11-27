@@ -147,6 +147,20 @@ final class CostModel[L <: Language] private (val cmValues: Vector[Long])(using
 object CostModel:
   given [L <: Language]: CanEqual[CostModel[L], CostModel[L]] = CanEqual.derived
 
+  /** `mkCostModel` (`CostModels.hs:278-291`, cardano-ledger f649f975): the model of language `L`
+    * with the parameters `values`, each an `Int64`. Whether they make an evaluation context is the
+    * evaluator's to check, as for every model here. The reference's builds the context and can
+    * refuse, but not a list of `Int64`: `tagWithParamNames` names the parameters by the language's
+    * own enumeration, padding or cutting the list with a warning only, so of `CostModelApplyError`
+    * an unknown name is not reached and the two internal errors are the reference's own defects
+    * (plutus 261766ad `PlutusLedgerApi/Common/ParamName.hs:86-111`,
+    * `PlutusCore/Evaluation/Machine/CostModelInterface.hs:244-250`).
+    */
+  private[era] def mkCostModel[L <: Language](values: Vector[Long])(using
+      PlutusLanguage[L]
+  ): CostModel[L] =
+    new CostModel[L](values)
+
   /** The model of language `L` among the valid ones (`Map.lookup lang (costModelsValid
     * costModels)`, `costModelsValid` at `CostModels.hs:391-392`, cardano-ledger f649f975). The
     * era's [[CostModels]] holds the valid and the unknown models in one map, by tag (their split is

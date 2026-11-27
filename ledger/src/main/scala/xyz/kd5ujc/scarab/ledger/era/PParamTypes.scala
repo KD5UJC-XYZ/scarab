@@ -96,7 +96,7 @@ object CoinPerByte:
 opaque type Version = Int
 
 object Version:
-  val Max: Int = 13
+  val Max: Int = xyz.kd5ujc.scarab.ledger.DecoderVersion.MaxVersion
 
   /** `mkVersion`. */
   def mkVersion(n: BigInt): Option[Version] = Option.when(n >= 0 && n <= Max)(n.toInt)
@@ -172,6 +172,12 @@ object CostModels:
       */
     def updated(update: CostModels): CostModels = c ++ update
 
+  /** `mkCostModels . Map.singleton lang` (`mkCostModels`, `CostModels.hs:418-419`, cardano-ledger
+    * f649f975): the one model, a valid model of its language, under the language's tag.
+    */
+  def singleton[L <: Language](model: CostModel[L]): CostModels =
+    Map(model.cmLanguage.id -> model.cmValues.map(BigInt(_)))
+
 /** `ExUnits` (`newtype ExUnits = WrapExUnits {unWrapExUnits :: ExUnits' Natural}`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ExUnits.hs:100-104`, cardano-ledger
   * f649f975): memory and steps, each a `Natural`. Over the node's units, whose components are any
@@ -197,3 +203,12 @@ final case class OrdExUnits(unOrdExUnits: ExUnits)
 
 object OrdExUnits:
   val zero: OrdExUnits = OrdExUnits(ExUnits.zero)
+
+  /** `hkdMap unOrdExUnits` over a field, and `hkdMap OrdExUnits` back: the units lens of each
+    * record that holds them as `OrdExUnits` (`Babbage/PParams.hs:232-239`,
+    * `Conway/PParams.hs:915-923`, cardano-ledger f649f975).
+    */
+  def hkdUnits[F[_]](using f: HKDFunctor[F]): monocle.Lens[F[OrdExUnits], F[ExUnits]] =
+    monocle.Lens[F[OrdExUnits], F[ExUnits]](f.hkdMap(_.unOrdExUnits))(u =>
+      _ => f.hkdMap(OrdExUnits(_))(u)
+    )

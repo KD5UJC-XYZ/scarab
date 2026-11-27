@@ -460,9 +460,10 @@ Conway's rules on the classes follow as the rest of stage 2.
   - Against the flat rules, on generated updates and on every recorded Preview parameter change: applying an
     update, `ppuWellFormed` and `modifiedPPGroups` agree.
   - A member the reference confines to a range of eras (`AtMostEra`, `ExactEra`) is a class of its own per
-    range, with instances at exactly those eras (decided 2026-11-15, #85). None of those eras has its record
-    yet, so `EraPParams` lands without its five ranged members, and `AlonzoEraPParams` without
-    `hkdCoinsPerUTxOWordL`. Of the bodies' ranged members, the required signers' field
+    range, with instances at exactly those eras (decided 2026-11-15, #85). `EraPParams` lands without its
+    five ranged members, and `AlonzoEraPParams` without `hkdCoinsPerUTxOWordL`; the protocol version of the
+    eras up to Babbage came with Babbage's record in stage 4 (`EraPParamsToBabbage`, below), and the others
+    come with the records of their eras. Of the bodies' ranged members, the required signers' field
     (`reqSignerHashesTxBodyL`, of the eras Alonzo to Conway) is `AlonzoEraTxBodyToConway`. Its only
     instance yet is Conway's, as Conway is the only era with a typed body; Alonzo's and Babbage's come
     with their bodies. Dijkstra's body, whose field the reference fills with `notSupportedInThisEraL`,
@@ -478,11 +479,11 @@ Conway's rules on the classes follow as the rest of stage 2.
     blocks and of the Conway refusal corpora, and on every update of the Dijkstra parameter corpus. The
     reference's recorded contexts carry it: the PlutusV3 contexts of the two recorded Preview transactions
     that propose a parameter change, and the PlutusV4 contexts of the Leios build's governance case.
-  - Not yet: the upgrade and downgrade of the parameters (`UpgradePParams`, `upgradePParamsHKD`,
-    `downgradePParamsHKD`, `emptyUpgradePParamsUpdate`), which need Babbage's record and its class
-    instances, and the reference's comparison of parameter records and updates (`Ord (PParamsHKD …)`, not the
-    descriptions' order above), each on #85's checklist;
-    `fromPlutusData`, and the JSON instances a description also packs (#85).
+  - Not yet: the upgrade and downgrade of the parameters as members of `EraPParams` (`UpgradePParams`,
+    `upgradePParamsHKD`, `downgradePParamsHKD`, `emptyUpgradePParamsUpdate`), which Babbage's instance can give
+    only with Alonzo's record; Conway's are its functions for now (stage 4, below). Also not yet: the
+    reference's comparison of parameter records and updates (`Ord (PParamsHKD …)`, not the descriptions' order
+    above), each on #85's checklist; `fromPlutusData`, and the JSON instances a description also packs (#85).
   - **The CBOR** (`ledger/.../era/EraCBOR.scala`): the reference's `EncCBOR` and `DecCBOR` of every value
     type of the parameters, the decoder given the version a `Decoder s` carries in the reference, and the
     reference's generic codecs folded over the descriptions (`Core/PParams.hs:204-301`, cardano-ledger
@@ -3335,6 +3336,32 @@ Conway's rules on the classes follow as the rest of stage 2.
   - The flat pool's `reapply` (`MempoolLedger`'s) was 11.1's `reapplyTx` under every build, so under 11.2 and the Leios
     build it admitted again a held transaction whose major version changed, which their `reapplyValidatedTx`
     validates in full (the suite asserts it); the pool reapplies by the build since its switch (above).
+- **Babbage's parameters and update proposal** (stage 4, first part; `era/babbage/BabbagePParams.scala`,
+  `era/Update.scala`; cardano-ledger f649f975 `Babbage/PParams.hs:89-412`, `Shelley/PParams.hs:247-274`):
+  - Babbage's record `BabbagePParams[F]` and its instances of the parameter classes up to `BabbageEraPParams`,
+    its descriptions and the reference's generic `applyPPUpdates`, which replaces an updated field whole, the
+    cost models among them. The protocol version an update of the eras up to Babbage sets is a class of its own
+    (`EraPParamsToBabbage`, `AtMostEra "Babbage"`), its update read by `decodeProtVer`. The record comes from the
+    stored `ProtocolParams` and goes back over it; the recorded Babbage state's three records read and write
+    back byte for byte.
+  - Conway's upgrade from Babbage and downgrade to it (`UpgradeConwayPParams`, `upgradeConwayPParams`,
+    `downgradeConwayPParams`) are Conway's functions over `HKDApplicative`; a genesis deposit outside `Word64`,
+    on which the reference throws, is the upgrade's refusal.
+  - The typed proposal `Update[E]` over `ProposedPPUpdates[E]`, read only at an era with
+    `EraPParamsToBabbage` (the range of the body's update) and at that era's decoder version. Its decoder of a
+    body's key 6 also keeps each
+    value's bytes, the form the node stores a proposal in (ADR 0006), and the stored form is read back into the
+    era, so no persisted format changes. Against the flat decoder, on generated updates written in shortest and
+    wide forms, on the forms at the edge of both readers (each width and one over it, indefinite and detached
+    records, a delegate proposing twice) and on the recorded Babbage proposals of the era walk and the PPUP
+    corpus, the stored form is the flat one byte for byte and the two accept alike. Three refusals name another
+    key, site or reason than the reference's (a repeated key, a word over its width, a nonempty indefinite
+    outer record), a known diagnostic gap the flat decoder shares (#85); the typed and flat decoders also name
+    the first two differently from each other, and the tests pin each as it is. Nothing reads the typed update
+    yet.
+  - Found: the flat path merges an update's cost models into the parameters' at every era
+    (`ProtocolParams.update`), where Babbage's and Alonzo's generic `applyPPUpdates` replace them whole
+    ([#1495](https://github.com/KD5UJC-XYZ/scarab/issues/1495)).
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

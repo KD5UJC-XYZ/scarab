@@ -5,7 +5,7 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.annotation.tailrec
 import scala.jdk.CollectionConverters.*
-import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Value}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Node, Rational, Value}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   ConwayParamUpdate,
@@ -15,10 +15,12 @@ import xyz.kd5ujc.scarab.ledger.{
   ProtocolParams,
   Tx as FlatTx
 }
+import xyz.kd5ujc.scarab.ledger.era.babbage.BabbagePParams
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraPParams
-import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway, Dijkstra, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission
+import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.*
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, HaskellStateCodecs, Params}
@@ -156,7 +158,9 @@ class EraPParamsStoredSuite extends FunSuite:
       layout: StateLayout,
       era: ShelleyBasedEra[E],
       size: Int,
-      at: DecoderVersion
+      at: DecoderVersion,
+      govRecords: Node => Vector[Node] = governance,
+      toStored: Option[PParams[E] => ProtocolParams] = None
   )(fromStored: ProtocolParams => PParams[E])(using EraPParams[E]): Int =
     val codec = Params.codecIn(layout, era)
     val root = stateOf(path)
@@ -164,7 +168,7 @@ class EraPParamsStoredSuite extends FunSuite:
     val nes = Vector(1, 0, telescope, 1, 1, 1).foldLeft(root)((n, i) => items(n)(i))
     assertEquals(
       found.map(_._1.original.hex).sorted,
-      governance(nes).map(_.original.hex).sorted,
+      govRecords(nes).map(_.original.hex).sorted,
       s"$path: the records are the governance state's"
     )
     found.foreach { (n, stored) =>
@@ -173,8 +177,100 @@ class EraPParamsStoredSuite extends FunSuite:
       assertEquals(PParams.decodePParams[E](n), Right(expected), path)
       assertEquals(PParams.encodePParams(expected).bytes, n.original, path)
       assertEquals(codec.write(stored), Right(n.original), path)
+      // the era's record written back over parameters that hold none of it
+      toStored.foreach(back => assertEquals(codec.write(back(expected)), Right(n.original), path))
     }
     found.size
+
+  /** The parameters within a Babbage `NewEpochState`: of its `ShelleyGovState` (`[proposals,
+    * futureProposals, curPParams, prevPParams, futurePParams]`, cardano-ledger f649f975
+    * `eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs:63-71`), the current and previous
+    * parameters and those the future parameters predict, if any.
+    */
+  private def shelleyGovernance(nes: Node): Vector[Node] =
+    val gov = Vector(3, 1, 1, 3).foldLeft(nes)((n, i) => items(n)(i))
+    Vector(items(gov)(2), items(gov)(3)) ++ lists(items(gov)(4), 22)
+
+  /** Parameters whose every Babbage field is a value no recorded record holds, each within its
+    * field's type.
+    */
+  private val babbageSentinel: ProtocolParams = ProtocolParams.empty.copy(
+    minFeeA = 987654321,
+    minFeeB = 987654323,
+    maxBlockBodySize = 987659,
+    maxTxSize = 98761,
+    maxBlockHeaderSize = 9871,
+    keyDeposit = 987654327,
+    poolDeposit = 987654329,
+    eMax = 9873,
+    nOpt = 9877,
+    a0 = Rational(7, 13),
+    rho = Rational(5, 17),
+    tau = Rational(3, 19),
+    protocolMajor = 13,
+    protocolMinor = 9879,
+    minPoolCost = 987654331,
+    coinsPerUTxOByte = 9883,
+    costModels = Map(1 -> Vector(BigInt(-7))),
+    priceMem = Rational(11, 23),
+    priceSteps = Rational(13, 29),
+    maxTxExUnits = ExUnits(9887, 9901),
+    maxBlockExUnits = ExUnits(9907, 9923),
+    maxValueSize = 9929,
+    collateralPercentage = 9931,
+    maxCollateralInputs = 9941
+  )
+
+  private def babbageParams(p: ProtocolParams): PParams[Babbage] =
+    PParams[Babbage](right("Babbage's parameters")(BabbagePParams.fromStored(p)))
+
+  test("the recorded Babbage state's parameter records are the era's, positionally"):
+    val count = records(
+      "fixtures/haskell-state/babbage-4000/state",
+      5,
+      StateLayout.Node11_1,
+      ShelleyBasedEra.SBabbage,
+      22,
+      version(8),
+      shelleyGovernance,
+      Some(pp => {
+        // the base differs from the record in every field `toStored` sets, so a field it
+        // dropped keeps the base's value and the bytes differ
+        val base = right("sentinel")(BabbagePParams.fromStored(babbageSentinel))
+        pp.hkd.productIterator
+          .zip(base.productIterator)
+          .zipWithIndex
+          .foreach { case ((field, sentinel), i) => assertNotEquals(field, sentinel, s"field $i") }
+        BabbagePParams.toStored(pp.hkd, babbageSentinel)
+      })
+    )(babbageParams)
+    // the current (version 7), the previous (6) and the future, voted for (8)
+    assertEquals(count, 3)
+
+  test("the recorded Babbage update proposal reads the typed way as the flat decoder stores it"):
+    val loaded = right("the refusal corpus")(load(Path.of("fixtures/reference/refusals")))
+    val compared = loaded.corpora.filter(_.era == RefusalEra.Babbage).flatMap { c =>
+      c.cases.flatMap { rc =>
+        val what = s"${c.path}/${rc.label}"
+        val bytes = right(s"$what item")(LocalSubmission.unwrap(rc.item)).raw
+        val flat = right(s"$what flat")(FlatTx.fromEnvelope(bytes, Era.Babbage))
+        val body = items(right(s"$what cbor")(Cbor.decode(bytes)))(0)
+        val key6 = body.value match
+          case Value.Map(pairs) =>
+            pairs.collectFirst { case (k, v) if k.value == Value.UInt(6) => v }
+          case other => fail(s"$what: not a body: $other")
+        key6.map { n =>
+          val kept = right(s"$what typed")(KeptUpdate.decode[Babbage](n))
+          assertEquals(Some(kept.stored), flat.body.update, what)
+          assertEquals(
+            KeptUpdate.fromStored[Babbage](kept.stored).map(_.update),
+            Right(kept.update)
+          )
+          what
+        }
+      }
+    }
+    assertEquals(compared.size, 1, compared)
 
   private def dijkstraParams(p: ProtocolParams): PParams[Dijkstra] =
     PParams[Dijkstra](right("Dijkstra's parameters")(DijkstraPParams.fromStored(p)))
