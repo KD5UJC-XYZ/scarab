@@ -44431,11 +44431,12 @@
    "class": "Mirror",
    "structure": "same",
    "evidence": [
+    "BabbageUpdateSuite",
     "EraPParamsCborSuite",
     "EraPParamsStoredSuite"
    ],
    "note": "at f649f975 an era decoder is the description's (`ppEraDecoder`); no description of Conway's has one",
-   "digest": "77b12faab2469255"
+   "digest": "dab5cec1b90f2746"
   },
   "given ledger.era.PParamsUpdate.decCBOR": {
    "upstream": [
@@ -50263,7 +50264,8 @@
    "class": "Mirror",
    "structure": "differs",
    "evidence": [
-    "BabbagePParamsSuite"
+    "BabbagePParamsSuite",
+    "BabbageUpdateSuite"
    ],
    "note": "the era decoder `decodeProtVer` packed in the update's era codec (`ppuEraCodec`), the form of the Leios build's pin, where f649f975 packs it on the description (`ppEraDecoder`); the parameters read the version by its `decCBOR` either way",
    "digest": "f98cf82289915ac8"
@@ -50509,6 +50511,101 @@
    ],
    "note": "the class member `downgradePParamsHKD ()` waits for every era with a record to have its downgrade (#85)",
    "digest": "a99bac579e676632"
+  },
+  "class ledger.era.Update": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "symbol": "Update",
+     "lines": [
+      247,
+      249
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "7c85d5002dfda4af"
+  },
+  "class ledger.era.ProposedPPUpdates": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "symbol": "ProposedPPUpdates",
+     "lines": [
+      270,
+      272
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "digest": "fcfd98766a7fe22a"
+  },
+  "def ledger.era.KeptUpdate.decode": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/PParams.hs",
+     "symbol": "DecCBOR (Update era)",
+     "lines": [
+      263,
+      267
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbageUpdateSuite",
+    "EraPParamsStoredSuite"
+   ],
+   "note": "each field's value kept as the bytes it was read from beside the typed update, the form the node stores a proposal in (ADR 0006); the same stored form as the flat decoder's, byte for byte",
+   "digest": "b71bdf14b57a5171"
+  },
+  "def ledger.era.PParamsUpdate.decodeFields": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "DecCBOR (PParamsUpdate era)",
+     "lines": [
+      257,
+      293
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "differs",
+   "evidence": [
+    "BabbageUpdateSuite"
+   ],
+   "note": "`decodePParamsUpdate` with the node of each field's value, which the stored form of a pre-Conway update keeps",
+   "digest": "52e418cc34a90db2"
+  },
+  "def ledger.era.PParamsUpdate.readFields": {
+   "upstream": [
+    {
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/PParams.hs",
+     "symbol": "DecCBOR (PParamsUpdate era)",
+     "lines": [
+      257,
+      293
+     ]
+    }
+   ],
+   "class": "Mirror",
+   "structure": "same",
+   "note": "the fold over the update's entries of `decodeSparseKeyed` and of the pre-12 `SparseKeyed`",
+   "digest": "ab0033fc0238fe05"
   }
  },
  "glue": [
@@ -50740,6 +50837,7 @@
     "object ledger.era.HKDApplicative",
     "object ledger.era.HKDFunctor",
     "object ledger.era.Inject",
+    "object ledger.era.KeptUpdate",
     "object ledger.era.LegacyPlutusArgs",
     "object ledger.era.MaxPledgeLeverage",
     "object ledger.era.NonNegativeInterval",
@@ -52027,6 +52125,13 @@
    "reason": "the sequencing through a field of a conversion that may fail, which an upgrade of the parameters makes its deposits with; the reference throws there (`compactCoinOrError`) and has no counterpart (#85)",
    "definitions": [
     "def ledger.era.HKDApplicative#hkdSequence"
+   ]
+  },
+  {
+   "reason": "an update proposal of the eras before Conway with the bytes of its values, as the node stores it (ADR 0006), and its reading from that stored form; the reference stores the typed update and writes it canonically, so it has no counterpart (#85)",
+   "definitions": [
+    "class ledger.era.KeptUpdate",
+    "def ledger.era.KeptUpdate.fromStored"
    ]
   }
  ]

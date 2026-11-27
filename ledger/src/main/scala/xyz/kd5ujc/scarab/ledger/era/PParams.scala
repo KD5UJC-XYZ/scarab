@@ -154,26 +154,50 @@ object PParamsUpdate:
       era: EraPParams[E],
       at: DecodeAt
   ): Either[LedgerDecodeError, PParamsUpdate[E]] =
-    val fields = updateFields(era)
+    decodeFields(n).map(_._1)
+
+  /** [[decodePParamsUpdate]], with the node each field's value was read from, by tag: the bytes the
+    * node keeps a pre-Conway update by are those values' ([[xyz.kd5ujc.scarab.ledger.ParamUpdate]],
+    * [[KeptUpdate]]).
+    */
+  private[era] def decodeFields[E <: EraTag](n: Node)(using
+      era: EraPParams[E],
+      at: DecodeAt
+  ): Either[LedgerDecodeError, (PParamsUpdate[E], Vector[(BigInt, Node)])] =
     val from12 = at.version.atLeast(12)
     val entries = if from12 then V12.entries(n, at.site) else CborRead.map(n, at.site)
     def key(k: Node): Either[LedgerDecodeError, BigInt] =
       if from12 then V12.word64(k, at.site / DecodeSite.Qualifier.Key)
       else Unsigned.read[W64](k, DecodeField.ParameterIndex).map(_.value)
-    entries.flatMap(
-      _.foldLeftM((Set.empty[BigInt], era.emptyPParamsUpdate)) { case ((seen, acc), (k, v)) =>
-        for
-          tag <- key(k)
-          _ <- Either.cond(
-            !seen.contains(tag),
-            (),
-            LedgerDecodeError.PParamsCodec(PParamsDecodeError.DuplicateKey(at.site, tag))
-          )
-          field <- fields.get(tag).toRight(LedgerDecodeError.UnknownKey(at.site, tag))
-          next <- field.read(acc, v)
-        yield (seen + tag, next)
-      }.map(_._2)
-    )
+    entries.flatMap(es => readFields(es.map((k, v) => key(k).map(_ -> v))))
+
+  /** The update of the fields `entries` give, in order, each a tag and the node of its value: a tag
+    * read before refused by the tag ([[PParamsDecodeError.DuplicateKey]]), then a tag of no field,
+    * then the value read by its field. An entry is read only after those before it are, so a
+    * refusal is the first entry's that fails, as the reference's decoders read the map in order.
+    */
+  private[era] def readFields[E <: EraTag](
+      entries: Vector[Either[LedgerDecodeError, (BigInt, Node)]]
+  )(using
+      era: EraPParams[E],
+      at: DecodeAt
+  ): Either[LedgerDecodeError, (PParamsUpdate[E], Vector[(BigInt, Node)])] =
+    val fields = updateFields(era)
+    entries
+      .foldLeftM((Set.empty[BigInt], era.emptyPParamsUpdate, Vector.empty[(BigInt, Node)])) {
+        case ((seen, acc, read), entry) =>
+          for
+            (tag, v) <- entry
+            _ <- Either.cond(
+              !seen.contains(tag),
+              (),
+              LedgerDecodeError.PParamsCodec(PParamsDecodeError.DuplicateKey(at.site, tag))
+            )
+            field <- fields.get(tag).toRight(LedgerDecodeError.UnknownKey(at.site, tag))
+            next <- field.read(acc, v)
+          yield (seen + tag, next, read :+ (tag -> v))
+      }
+      .map((_, u, read) => (u, read))
 
   /** [[decodePParamsUpdate]]. */
   given decCBOR[E <: EraTag](using EraPParams[E]): DecCBOR[PParamsUpdate[E]] with

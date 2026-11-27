@@ -203,6 +203,32 @@ class EraPParamsStoredSuite extends FunSuite:
     // the current (version 7), the previous (6) and the future, voted for (8)
     assertEquals(count, 3)
 
+  test("the recorded Babbage update proposal reads the typed way as the flat decoder stores it"):
+    val loaded = right("the refusal corpus")(load(Path.of("fixtures/reference/refusals")))
+    given DecodeAt = DecodeAt(version(8), DecodeField.ParameterUpdate)
+    val compared = loaded.corpora.filter(_.era == RefusalEra.Babbage).flatMap { c =>
+      c.cases.flatMap { rc =>
+        val what = s"${c.path}/${rc.label}"
+        val bytes = right(s"$what item")(LocalSubmission.unwrap(rc.item)).raw
+        val flat = right(s"$what flat")(FlatTx.fromEnvelope(bytes, Era.Babbage))
+        val body = items(right(s"$what cbor")(Cbor.decode(bytes)))(0)
+        val key6 = body.value match
+          case Value.Map(pairs) =>
+            pairs.collectFirst { case (k, v) if k.value == Value.UInt(6) => v }
+          case other => fail(s"$what: not a body: $other")
+        key6.map { n =>
+          val kept = right(s"$what typed")(KeptUpdate.decode[Babbage](n))
+          assertEquals(Some(kept.stored), flat.body.update, what)
+          assertEquals(
+            KeptUpdate.fromStored[Babbage](kept.stored).map(_.update),
+            Right(kept.update)
+          )
+          what
+        }
+      }
+    }
+    assertEquals(compared.size, 1, compared)
+
   private def dijkstraParams(p: ProtocolParams): PParams[Dijkstra] =
     PParams[Dijkstra](right("Dijkstra's parameters")(DijkstraPParams.fromStored(p)))
 
