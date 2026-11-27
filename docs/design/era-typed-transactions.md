@@ -3492,6 +3492,28 @@ Conway's rules on the classes follow as the rest of stage 2.
     delegations read through `EraCertState`, with Babbage's state classes; the flat purpose of a Babbage purpose
     (`toStored`, for `MissingRedeemers`), with Babbage's UTXOW; and `upgradePlutusPurposeAsIx`, which nothing
     reads yet. Nothing in the node reads these types yet.
+- **Babbage's state classes** (stage 4, fourth part; `era/babbage/BabbageState.scala`, `era/ShelleyGovState.scala`;
+  cardano-ledger f649f975 `Babbage/State/Account.hs:11-29`, `Babbage/State/Stake.hs:18-23`,
+  `Babbage/PParams.hs:249-259`, `Shelley/State/Account.hs:158-237`, `Shelley/State/Stake.hs:104-145`,
+  `Shelley/Governance.hs:63-192`):
+  - Babbage's accounts are Shelley's, with the reference's `ShelleyEraAccounts` (the pointer of the certificate
+    that registered an account, the pointer map written only by adding and removing an account) and its functions;
+    its instant stake is Shelley's, the lovelace of a pointer address counted under its pointer; its stored output
+    is its output's (`StoredTxOut`).
+  - Its governance state is an era record of Shelley's (`ShelleyGovState[E]`), whose proposed updates keep the bytes
+    the node stores each by, as `KeptUpdate` does (ADR 0006), so a proposal in a non-canonical form is written back
+    as it was stored. It is read from the node's flat record and written back over it (`ShelleyGovStateRecord`):
+    each parameter record over the flat one of its place, whose other eras' fields it keeps.
+  - On the Haskell state `babbage-4000`, the native V10 snapshots `babbage-541` and `babbage-727` and the 188 Babbage
+    states of the era-walking capture, the classes read what the flat code reads, field by field, and the
+    governance state writes back identical, also over parameters that hold no Babbage value; 185 of the states hold
+    three delegates' proposals. Unregistering and registering each account again gives the flat DELEG's accounts and
+    pools. The instant stake gives the reference's Babbage results on the 32 cases of
+    `fixtures/reference/instant-stake` (16 on pointer addresses) and the flat code's on the 22 recorded Babbage
+    transactions of the V1 contexts, the two blocks of the capture that move outputs, and an output at each
+    registered account's pointer in each state (564).
+  - Babbage's `EraCertState` instance is not here: its members name Babbage's body (`certsTotalDepositsTxBody`),
+    which comes with Babbage's transaction. Nothing in the node uses these instances yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
