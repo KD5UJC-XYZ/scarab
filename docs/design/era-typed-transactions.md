@@ -3788,10 +3788,16 @@ Conway's rules on the classes follow as the rest of stage 2.
       script passes and on one whose script fails (both failures recorded), PPUP's event after the scripts', an
       update written wide, a translation failure not recorded (a spent input missing, no script evaluated, the
       flat UTXOS recording it) beside a missing cost model recorded on both, a missing clock recorded on both
-      with no script evaluated (#1534), a transaction flagged invalid (no PPUP, its collateral's lovelace the
-      fees), and a deregistration's refund.
+      with no script evaluated and a time past the horizon (the reference's) not recorded and no script
+      evaluated (#1534), a judgment of `ValidateNone` evaluating no script while PPUP records its update (no
+      labelled clause runs, cardano-ledger f649f975
+      `libs/small-steps/src/Control/State/Transition/Extended.hs:709-712, 727-730`), a transaction flagged
+      invalid (no PPUP, its collateral's lovelace the fees), and a deregistration's refund.
 
-    Every comparison agrees, but the translation failure the flat path records. Nothing in the node runs these
+    Every comparison agrees, but the translation failure the flat path records. Not compared: the events of the
+    change of the state (`TotalDeposits`, `TxUTxODiff`), which the suite discards; the bytes of a spent output
+    in `TxUTxODiff` after the store's round trip are the stored form's, the known difference of
+    [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7232186984). Nothing in the node runs these
     rules yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.

@@ -1426,6 +1426,44 @@ class AlonzoUtxosSuite extends FunSuite:
       typed = right("typed")(AlonzoTx.decode(parts, StateLayout.Node11_1))
     )
 
+  /** A slot past the forecast horizon, the reference's `TimeTranslationPastHorizon`
+    * ([[TranslationOrigin.Reference]]): the collection's failure is not recorded and no script is
+    * evaluated, so a rule that classified it as the node's would refuse the transaction.
+    */
+  test("UTXOS: a time past the horizon, the reference's translation failure, is not recorded") {
+    val j = withTtl(caseNamed("alonzo-pv6-v1-plain"))
+    val params = xyz.kd5ujc.scarab.ledger.Horizon.Params(100, 1000, 30, 30)
+    val horizon = xyz.kd5ujc.scarab.ledger.Horizon
+      .History(Vector.empty, xyz.kd5ujc.scarab.ledger.Horizon.Edge(0, 0, 0), params, Some(params))
+      .at(xyz.kd5ujc.scarab.ledger.Horizon.Transition.Unknown(Some(150)))
+    val pastHorizon: BigInt => Either[TranslationError, BigInt] =
+      slot => Left(TranslationError.PastHorizon(slot, horizon))
+    val (pp, stAnnTx, gov) = annotated(j, pastHorizon)
+    // the collection fails with the time translation's failure alone
+    EraUTxO.alonzo.plutusScriptsWithContextStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top) match
+      case Left(errors) =>
+        assertEquals(
+          errors.toList.map {
+            case CollectError.BadTranslation(e) => TranslationOrigin.ofAlonzo[Alonzo](e)
+            case other                          => fail(s"not a translation's: $other")
+          },
+          List(TranslationOrigin.Reference)
+        )
+      case Right(scripts) => fail(s"collected: $scripts")
+    val never: ScriptEvaluator[Id] = _ => fail("a script was evaluated")
+    assertEquals(
+      UtxosRun.run(
+        j.globals,
+        UtxosEnv(slotNo(j.slot), pp, j.cert),
+        stAnnTx,
+        gov,
+        never,
+        TxEnv.Validation.All
+      ),
+      Right(Right((gov, Chain.empty)))
+    )
+  }
+
   /** `ValidateNone` runs no labelled clause (`Extended.hs:709-712, 727-730`, cardano-ledger
     * f649f975), so the scripts are not evaluated even under the policy that validates every check;
     * PPUP still runs and changes the state.
