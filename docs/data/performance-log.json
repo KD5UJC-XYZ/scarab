@@ -6024,6 +6024,134 @@
     }
    ],
    "listings": []
+  },
+  {
+   "id": "perf-77",
+   "section": "71",
+   "heading": "71. The program cache against a cycle of 586 scripts: weight thrash from mainnet block 10,490,500 (#1529)",
+   "subject": "The program cache against a cycle of 586 scripts: weight thrash from mainnet block 10,490,500 (#1529)",
+   "date": "2026-11-27",
+   "dateSource": "text",
+   "issues": [
+    "#1529",
+    "#1499"
+   ],
+   "commits": [
+    "abd3553a7"
+   ],
+   "links": [],
+   "page": "rewards-and-evaluation",
+   "results": [
+    {
+     "id": "perf-77.t1",
+     "header": [
+      "494,083 evaluations of mainnet blocks 10,490,500 to 10,491,499",
+      "Bound by weight",
+      "Hits",
+      "Programs kept at the end",
+      "Their weight",
+      "Per block, median",
+      "Mean",
+      "90th percentile",
+      "Total"
+     ],
+     "separator": "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "before (`abd3553a7`), any heap",
+       "64 MiB, 512 entries",
+       "1.0%",
+       "51",
+       "63.1 MiB",
+       "1,041.9 ms",
+       "1,002.1 ms",
+       "1,792.9 ms",
+       "986.1 s"
+      ],
+      [
+       "after, an interpreter not sized for a heap",
+       "64 MiB",
+       "1.0%",
+       "63",
+       "63.7 MiB",
+       "448.5 ms",
+       "432.5 ms",
+       "757.3 ms",
+       "425.5 s"
+      ],
+      [
+       "after, `-Xmx3g`",
+       "192 MiB",
+       "1.0%",
+       "189",
+       "191.2 MiB",
+       "451.3 ms",
+       "405.5 ms",
+       "685.6 ms",
+       "399.0 s"
+      ],
+      [
+       "after, `-Xmx6g`",
+       "384 MiB",
+       "44.8%",
+       "381",
+       "383.9 MiB",
+       "204.3 ms",
+       "253.0 ms",
+       "558.7 ms",
+       "248.9 s"
+      ],
+      [
+       "after, `-Xmx16g` (the mainnet probe's)",
+       "1 GiB",
+       "99.8%",
+       "1,004",
+       "664.8 MiB",
+       "1.45 ms",
+       "5.09 ms",
+       "4.63 ms",
+       "5.0 s"
+      ]
+     ]
+    },
+    {
+     "id": "perf-77.t2",
+     "header": [
+      "The 1,004 scripts (15.5 KiB median)",
+      "Decode, median",
+      "90th percentile",
+      "Mean",
+      "Weight of a 15.5 KiB program",
+      "Heap of all programs",
+      "Their weight",
+      "Heap / weight"
+     ],
+     "separator": "|---|---:|---:|---:|---:|---:|---:|---:|",
+     "rows": [
+      [
+       "before (`abd3553a7`)",
+       "1.62 ms",
+       "4.35 ms",
+       "2.07 ms",
+       "1,267 KiB",
+       "384.5 MiB",
+       "825.4 MiB",
+       "0.47"
+      ],
+      [
+       "after",
+       "0.86 ms",
+       "2.58 ms",
+       "1.39 ms",
+       "1,036 KiB",
+       "384.5 MiB",
+       "664.8 MiB",
+       "0.58"
+      ]
+     ]
+    }
+   ],
+   "listings": []
   }
  ]
 }

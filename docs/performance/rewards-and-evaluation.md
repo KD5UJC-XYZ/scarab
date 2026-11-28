@@ -540,8 +540,9 @@ xyz.kd5ujc.scarab.uplc.BuiltinTimeMain 5"` (the rounds, then any shape names to 
 The own evaluator keeps the program it decodes from each script (`ScarabEvaluator`, `BoundedCache`), so that a
 script evaluated again is not decoded again. The interpreter is a pure function in `Id`, called from the pure ledger
 rules, so the cache is one atomic cell holding an immutable least-recently-used map: a kept imperative site under
-the performance exception of the design rules ([FUN-2](../design-rules.md#fun-2) (a)). It is bounded by 512 entries
-and by 64 MiB of `ProgramWeight`, an estimate of the heap a decoded program holds that is never below it.
+the performance exception of the design rules ([FUN-2](../design-rules.md#fun-2) (a)). It was bounded by 512 entries
+and by 64 MiB of `ProgramWeight`, an estimate of the heap a decoded program holds that is never below it; since
+section 71 the node's cache is bounded by a sixteenth of its heap and the weight follows the kind of each term.
 `ProgramCacheHeapMain` (`tools`) measures what the cache saves, what a decoded program holds against its weight,
 and what one interpreter keeps. Table 2 is for the build at `b71d5ec38`, and tables 1, 3 and 4 for the build at
 `1dbc9b291`, before that commit's change to the weight of a `value`; both on a shared 24-core x86-64 host (load
@@ -714,3 +715,66 @@ the runs' medians. A shared 24-core x86-64 host (load average 2 to 9 from other 
 
 What the benchmark does not time, the program cache's lookup, was 2.3% of the probe's samples under the evaluator
 (`BoundedCache`, a hash of the script's bytes at each evaluation), and decoding 0.5%; both are tracked under #1499.
+
+## 71. The program cache against a cycle of 586 scripts: weight thrash from mainnet block 10,490,500 (#1529)
+
+From about block 10,490,500 (epoch 493, protocol 8) the mainnet sync applied about one block a second, and
+`scarab_block_apply_seconds` averaged 1.1 s. A 90-second flight recording of the sync put 11,806 of its 23,597
+execution samples in decoding scripts (`LedgerEval.deserialiseScript` under `ScarabEvaluator`'s program cache), on
+the rules' threads and on the speculator's alike, and about 1,400 more in weighing and scope-checking each new entry;
+the machine itself took about 190.
+
+The scripts of blocks 10,490,500 to 10,491,499, from Koios (`block_tx_info` and `script_info`), are 494,083
+evaluations, about 494 a block, of 1,004 distinct scripts. 586 of them, V2 scripts of about 15.5 KiB (each about
+3,000 applications of a builtin to an integer constant), make 483,462 of the evaluations: transactions with about
+194 stake-withdrawal redeemers each run 194 of them, in three sets that rotate. A script is asked for again after
+193 to 195 others (10th percentile), 388 to 398 (median) or about 592 (99th): that is the size a least-recently-used
+cache must have for those hits. Each of these programs weighed 1,267 KiB by `ProgramWeight`, so the cache's 64 MiB
+held about 50, and it was always the program evicted last that was asked for next: 1.0% of the evaluations found
+their program (table 1, before). The 512 entries were too few as well. No script was refused (all 1,004 admitted),
+and the speculator and the rules use the same interpreter, so neither refusals nor separate caches were the cause.
+
+The change: the node's cache is bounded by a sixteenth of the maximum heap (as the warm tier of the UTxO set is,
+`WarmUtxoStore.Budget.forHeap`), never less than 64 MiB, and by 4,096 entries, so that the weight is the bound that holds; a term is
+weighed by its kind (24 to 48 bytes, the `Fix` node and its layer) where every term was 64; and decoding takes three
+shortcuts that give the same values and refusals (`FlatShortcutsSuite`): a constant of a type that is not a list, an
+array or a pair is read by its type's decoder without compiling a plan of the type (about half of the decoding), a
+type of one tag is read without the list of its tags, and a builtin's availability is an index by its ordinal. The
+reference compiles every type and reads every type's tags as a list; only the time differs, an Optimisation approved
+for #1499 item 4.
+
+`ProgramCacheTraceMain trace` (`tools`) gives the evaluations to one interpreter in the chain's order, each with a
+budget too small to run the machine, so that what it times is the cache and its decodings; one thread, no
+speculator. The development machine (24 cores, other work running), the JDK container with `--cpus 8`, `java -Xmx4g
+-XX:+UseG1GC -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges`; the heap of each row is the one the bound
+is computed for, not the JVM's. One round each, from an empty cache.
+
+<!-- register:table perf-77.t1 -->
+| 494,083 evaluations of mainnet blocks 10,490,500 to 10,491,499 | Bound by weight | Hits | Programs kept at the end | Their weight | Per block, median | Mean | 90th percentile | Total |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| before (`abd3553a7`), any heap | 64 MiB, 512 entries | 1.0% | 51 | 63.1 MiB | 1,041.9 ms | 1,002.1 ms | 1,792.9 ms | 986.1 s |
+| after, an interpreter not sized for a heap | 64 MiB | 1.0% | 63 | 63.7 MiB | 448.5 ms | 432.5 ms | 757.3 ms | 425.5 s |
+| after, `-Xmx3g` | 192 MiB | 1.0% | 189 | 191.2 MiB | 451.3 ms | 405.5 ms | 685.6 ms | 399.0 s |
+| after, `-Xmx6g` | 384 MiB | 44.8% | 381 | 383.9 MiB | 204.3 ms | 253.0 ms | 558.7 ms | 248.9 s |
+| after, `-Xmx16g` (the mainnet probe's) | 1 GiB | 99.8% | 1,004 | 664.8 MiB | 1.45 ms | 5.09 ms | 4.63 ms | 5.0 s |
+<!-- /register -->
+
+`ProgramCacheTraceMain scripts` decodes each of the 1,004 scripts twice and times the second round; the heap is the
+heap in use after full collections with every program held, less that before.
+
+<!-- register:table perf-77.t2 -->
+| The 1,004 scripts (15.5 KiB median) | Decode, median | 90th percentile | Mean | Weight of a 15.5 KiB program | Heap of all programs | Their weight | Heap / weight |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| before (`abd3553a7`) | 1.62 ms | 4.35 ms | 2.07 ms | 1,267 KiB | 384.5 MiB | 825.4 MiB | 0.47 |
+| after | 0.86 ms | 2.58 ms | 1.39 ms | 1,036 KiB | 384.5 MiB | 664.8 MiB | 0.58 |
+<!-- /register -->
+
+The node's heap sets what the cache can keep: at `-Xmx16g` the whole cycle fits (about 380 MiB of heap for the 1,004
+programs), at `-Xmx6g` about two thirds of it and 45% of the evaluations hit, and below about 4 GiB none of the cycle
+stays, as before, and only the faster decoding remains. A cache that kept a fixed part of a cycle larger than itself,
+instead of evicting the next program asked for, would hit about in proportion to its size there (#1529).
+
+**To repeat.** The inputs are the Koios answers for blocks 10,490,500 to 10,491,499 as three tab-separated files
+(scripts, the trace of evaluations, the cost models of epoch 493); raw run artifacts are not published. In the JDK
+container, `java <the flags above> -cp <tools classpath> xyz.kd5ujc.scarab.plutus.ProgramCacheTraceMain trace
+scripts.tsv trace.tsv costmodels.tsv 8 1 [max heap MiB]`, and `... scripts scripts.tsv`.
