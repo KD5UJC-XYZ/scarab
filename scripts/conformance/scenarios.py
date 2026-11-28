@@ -18,8 +18,10 @@ from pathlib import Path
 from typing import Any, Callable
 
 from conformance.schema import date_time
+import jit_workaround
 
-JDK_FLAGS = ("--enable-native-access=ALL-UNNAMED", "--sun-misc-unsafe-memory-access=allow")
+# With the JIT workaround of #1521 (jit_workaround.py): the tools run Scarab's code.
+JDK_FLAGS = ("--enable-native-access=ALL-UNNAMED", "--sun-misc-unsafe-memory-access=allow", *jit_workaround.OPTIONS)
 # The thread stack sbt's own JVM has (`scripts/sbtw`), where `tools/runMain` runs these tools.
 TOOL_JVM = ("-Xss8m", "-Xmx4g", *JDK_FLAGS)
 # The JVM the turbo measurements were taken in: a fixed heap, so that its sizing does not move between runs.

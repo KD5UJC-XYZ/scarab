@@ -61,4 +61,10 @@ case ${SCARAB_JVM_DIAGNOSTICS-} in
     ;;
 esac
 
-exec "$java" "${sizing[@]}" "${memory[@]}" "$@"
+# In either mode: on JDK 25, C2 miscompiled code of the ledger rules (a null `Collateral.fee`, so a NullPointerException
+# on a phase-2-invalid transaction, #1521) until its reduction of allocation merges was turned off. The one list is
+# scripts/jit_workaround.py, which scripts/check_jit_workaround.py holds this copy to. The arguments come after it, so
+# they can override it.
+jit=(-XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges)
+
+exec "$java" "${sizing[@]}" "${memory[@]}" "${jit[@]}" "$@"

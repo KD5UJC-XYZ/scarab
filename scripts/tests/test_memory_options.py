@@ -31,6 +31,8 @@ DOCKERFILE = REPO / "docker" / "candidate.Dockerfile"
 MEMORY_OPTIONS = ["-XX:-CreateCoredumpOnCrash", "-XX:ErrorFile=/dev/null", "-XX:-ErrorFileToStdout",
                   "-XX:-ErrorFileToStderr", "-XX:-DumpReplayDataOnError", "-XX:-HeapDumpOnOutOfMemoryError",
                   "-XX:+DisableAttachMechanism", "-XX:+PerfDisableSharedMem"]
+# The JIT workaround of #1521, in either mode, after the memory options and before the launcher's arguments.
+JIT_OPTIONS = ["-XX:+UnlockDiagnosticVMOptions", "-XX:-ReduceAllocationMerges"]
 VARIABLES = ["JAVA_TOOL_OPTIONS", "JDK_JAVA_OPTIONS", "_JAVA_OPTIONS", "JDK_ALTERNATE_VM"]
 STAND_IN = f"""#!{sys.executable}
 import json, os, resource, sys
@@ -109,7 +111,7 @@ class LauncherTest(unittest.TestCase):
         self.assertEqual(process.returncode, 0, stderr)
         self.assertEqual(stderr, "", "the launcher wrote to standard error with nothing to report")
         self.assertEqual((java["soft"], java["hard"]), (0, 0), "the soft or the hard core file limit is not 0")
-        self.assertEqual(java["args"], MEMORY_OPTIONS + self.ARGUMENTS,
+        self.assertEqual(java["args"], MEMORY_OPTIONS + JIT_OPTIONS + self.ARGUMENTS,
                          "the JVM did not get the memory options followed by the arguments, unchanged")
         self.assertEqual(java["pid"], process.pid, "the launcher did not exec java, so the JVM is not its process")
 
@@ -125,7 +127,7 @@ class LauncherTest(unittest.TestCase):
             self.assertRegex(lines[0], rf"(^|\s){name}(\s|$)", f"the line does not name {name}")
         for value in ["gcore", "HeapDump", "elsewhere"]:
             self.assertNotIn(value, stderr, "the line repeats a dropped value")
-        self.assertEqual(java["args"], MEMORY_OPTIONS + self.ARGUMENTS)
+        self.assertEqual(java["args"], MEMORY_OPTIONS + JIT_OPTIONS + self.ARGUMENTS)
 
     def test_neither_bash_env_nor_exported_functions_change_what_it_does(self):
         bash_env = self.stand_in.root / "bash-env"
@@ -138,7 +140,7 @@ class LauncherTest(unittest.TestCase):
         self.assertIsNotNone(java, "java did not start: a function stood in for exec")
         self.assertEqual((java["soft"], java["hard"]), (0, 0), "a function stood in for ulimit")
         self.assertEqual(java["variables"], dict.fromkeys(VARIABLES), "a function stood in for unset, or BASH_ENV ran")
-        self.assertEqual(java["args"], MEMORY_OPTIONS + self.ARGUMENTS)
+        self.assertEqual(java["args"], MEMORY_OPTIONS + JIT_OPTIONS + self.ARGUMENTS)
         self.assertEqual(java["pid"], process.pid)
 
     @unittest.skipUnless(sys.platform == "linux" and platform.machine() == "x86_64",
@@ -156,17 +158,18 @@ class LauncherTest(unittest.TestCase):
         self.assertEqual(process.returncode, 0, stderr)
         self.assertIn("memory diagnostics enabled: do not use on a forging node", stderr)
         self.assertEqual(java["variables"], given, "diagnostics dropped a variable")
-        self.assertEqual(java["args"], self.ARGUMENTS, "diagnostics still passed memory options")
+        self.assertEqual(java["args"], JIT_OPTIONS + self.ARGUMENTS, "diagnostics still passed memory options")
         self.assertEqual((java["soft"], java["hard"]), inherited, "diagnostics changed the core file limit")
 
     def test_diagnostics_off_is_the_default(self):
         _, _, java = self.launch(SCARAB_JVM_DIAGNOSTICS="0")
-        self.assertEqual(java["args"], MEMORY_OPTIONS + self.ARGUMENTS)
+        self.assertEqual(java["args"], MEMORY_OPTIONS + JIT_OPTIONS + self.ARGUMENTS)
 
     def test_heap_and_processors_become_jvm_options(self):
         process, stderr, java = self.launch(SCARAB_HEAP_SIZE="3g", SCARAB_RUN_PROCESSORS="4")
         self.assertEqual(process.returncode, 0, stderr)
-        self.assertEqual(java["args"], ["-Xmx3g", "-XX:ActiveProcessorCount=4", *MEMORY_OPTIONS, *self.ARGUMENTS])
+        self.assertEqual(java["args"], ["-Xmx3g", "-XX:ActiveProcessorCount=4", *MEMORY_OPTIONS, *JIT_OPTIONS,
+                                       *self.ARGUMENTS])
 
     def test_a_value_it_cannot_read_stops_before_the_jvm(self):
         cases = [("SCARAB_JVM_DIAGNOSTICS", value) for value in ["yes", "-S", " 1", "2"]]
@@ -241,7 +244,7 @@ class NixLauncherTest(unittest.TestCase):
         java = self.stand_in.recorded()
         self.assertEqual((java["soft"], java["hard"]), (0, 0), "the node's JVM may write a core file")
         options = java["args"][:java["args"].index("-cp")]
-        self.assertEqual(options, ["-Xmx3g", "-XX:ActiveProcessorCount=4", *MEMORY_OPTIONS,
+        self.assertEqual(options, ["-Xmx3g", "-XX:ActiveProcessorCount=4", *MEMORY_OPTIONS, *JIT_OPTIONS,
                                    "--sun-misc-unsafe-memory-access=allow", "--enable-native-access=ALL-UNNAMED"])
         self.assertIsNone(java["variables"]["JAVA_TOOL_OPTIONS"], "JAVA_TOOL_OPTIONS reached the node's JVM")
         self.assertEqual(self.build_record.read_text(), "-Dbuild=1", "the build did not get the caller's environment")

@@ -243,7 +243,7 @@ The outbound peers are chosen by the peer governor (roadmap G1.1, [design](../de
 The node follows the public Preview testnet from genesis (network magic 2):
 
 ```sh
-java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
+java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
   --config <preview config dir>/config.json --topology <preview config dir>/topology.json \
   --db "${SCARAB_DATA_DIR:-/tmp/scarab}/preview-db"
 ```
@@ -293,7 +293,7 @@ docker run --rm --user "$(id -u):$(id -g)" -w /out \
   -v "${SCARAB_DATA_DIR:-/tmp/scarab}/preprod/config":/out --entrypoint bash scarab-jdk:local -c \
   'for f in config.json topology.json peer-snapshot.json byron-genesis.json shelley-genesis.json alonzo-genesis.json conway-genesis.json; do
      curl -fsSL -o "$f" "https://book.play.dev.cardano.org/environments/preprod/$f"; done'
-java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
+java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
   --config "${SCARAB_DATA_DIR:-/tmp/scarab}/preprod/config/config.json" \
   --topology "${SCARAB_DATA_DIR:-/tmp/scarab}/preprod/config/topology.json" \
   --db "${SCARAB_DATA_DIR:-/tmp/scarab}/preprod-db"

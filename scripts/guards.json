@@ -19,6 +19,7 @@
   {"id": "roadmap", "title": "roadmap register", "argv": ["scripts/render_roadmap.py", "--check"]},
   {"id": "performance", "title": "performance register", "argv": ["scripts/render_performance.py"]},
   {"id": "flags", "title": "documented flags", "argv": ["scripts/check_flags_doc.py"]},
+  {"id": "jit-workaround", "title": "every JVM launcher carries the JIT workaround of #1521, or is classified", "argv": ["scripts/check_jit_workaround.py"]},
   {"id": "nix-jdk", "title": "the Nix shell's JDK is the JDK image's major version", "argv": ["scripts/check_nix_jdk.py"]},
   {"id": "docs", "title": "documentation drift", "argv": ["scripts/check_docs.py"]},
   {"id": "codemap", "title": "code map is current", "argv": ["scripts/render_codemap.py", "--check"]},

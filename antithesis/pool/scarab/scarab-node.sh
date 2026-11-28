@@ -82,7 +82,10 @@ fi
 if [ "${RELOAD_EXPERIMENT:-off}" = on ]; then
   printf '%s %s\n' "$$" "$(stat -c %s /logs/s1.log 2> /dev/null || echo 0)" > /tmp/node.boot
 fi
+# -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges: the JIT workaround of #1521 (scripts/jit_workaround.py,
+# which scripts/check_jit_workaround.py holds this copy to); this script is the only file of the image that starts it.
 exec java -Xmx768m -XX:+UseG1GC -XX:MaxGCPauseMillis=20 --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
+  -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges \
   -Dcats.effect.tracing.mode=none \
   -cp '/opt/scarab/*' xyz.kd5ujc.scarab.node.Main \
   follow \

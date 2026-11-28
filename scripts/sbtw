@@ -48,5 +48,8 @@ repositories=project/repositories
 # 589): the in-process tests load blst's JNI library, and Scala's lazy vals and Zinc's hashing call `Unsafe`.
 # Allowing both keeps `check` and the build's own log free of the warning, and stops a later JDK from blocking
 # the call. A forked test group takes its options from build.sbt instead.
-jvm_options=(--enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow)
+# The last two are the JIT workaround of #1521 (scripts/jit_workaround.py, which scripts/check_jit_workaround.py holds
+# this copy to): the in-process test groups and `tools/runMain` run Scarab's code in this JVM.
+jvm_options=(--enable-native-access=ALL-UNNAMED --sun-misc-unsafe-memory-access=allow
+  -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges)
 exec java "${jvm_options[@]}" -Dsbt.server.autostart=false -Dsbt.server.forcestart=true -Dsbt.boot.directory="$cache/boot" -Dsbt.global.base="${SBT_GLOBAL_BASE:-$cache/global}" -Dsbt.ivy.home="$cache/ivy" -XX:ActiveProcessorCount="$processors" -Xms256m -Xmx4g -Xss8m -Dsbt.override.build.repos=true -Dsbt.repository.config="$repositories" -Dsbt.supershell=false -jar "$jar" "$@"

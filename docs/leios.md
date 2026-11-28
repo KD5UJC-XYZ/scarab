@@ -1022,7 +1022,7 @@ docker run --rm -v "$PWD":/work -v "$scarab_cache":/work/.cache \
 docker run --rm --network none --cpus 8 --memory 24g --user "$(id -u):$(id -g)" -e HOME=/tmp \
   -v "$PWD":/work:ro -v "$scarab_cache":/work/.cache:ro \
   -v <reference node directory>:/ref:ro -v <reference ledger states>:/states:ro -v <scratch>:/scratch \
-  -w /work scarab-jdk:local java -Xmx16g --enable-native-access=ALL-UNNAMED \
+  -w /work scarab-jdk:local java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -Xmx16g --enable-native-access=ALL-UNNAMED \
   --sun-misc-unsafe-memory-access=allow -cp "$(cat "$scarab_cache/tools-classpath.txt")" \
   xyz.kd5ujc.scarab.node.tools.LeiosReplayMain --config /ref/config.json --haskell-db /ref/db \
   --start /states/<start slot> --end /states/<end slot> --db /scratch/<window>/db --out /scratch/<window>/out

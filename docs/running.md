@@ -57,7 +57,7 @@ The refusal is an `error` event of kind `NativeLibraryError` and exit code 1.
 To check a build on a machine (for example a bundle on an old CPU; run it in the bundle directory, whose `classpath.txt` names `/app` paths):
 
 ```sh
-docker run --rm -v "$PWD":/app:ro scarab-jdk:local sh -c 'java -cp "$(cat /app/classpath.txt)" xyz.kd5ujc.scarab.node.tools.BlstCheckMain bench'
+docker run --rm -v "$PWD":/app:ro scarab-jdk:local sh -c 'java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -cp "$(cat /app/classpath.txt)" xyz.kd5ujc.scarab.node.tools.BlstCheckMain bench'
 ```
 
 It prints one JSON line: the platform, the CPU features, the library, three Plutus V3 scripts with the
@@ -68,12 +68,14 @@ operations per second (`opsPerSecond`); exit code 0 when all pass. It runs on th
 ## `follow`: the node
 
 ```sh
-java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
+java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges \
+  -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
   (--genesis-dir <dir> | --config <config.json>) (--peer <host>:<port> | --topology <topology.json>) [options]
 ```
 
 (Inside the JDK image with the checkout mounted, or on a host with JDK 25: a developer's path, with JVM options on its
-command line.) The release image and the Nix apps start the node through their launcher instead, which takes the heap,
+command line. The two `-XX` options are the [JIT workaround](running/launcher.md#the-jit-workaround-1521) that every
+JVM of Scarab's code takes.) The release image and the Nix apps start the node through their launcher instead, which takes the heap,
 the processor count and diagnostics from environment variables and, unless diagnostics are on, drops
 `JAVA_TOOL_OPTIONS` ([Starting the node's JVM](running/launcher.md)). The sbt form is
 `sbt "node/runMain xyz.kd5ujc.scarab.node.Main follow ..."`. The node logs one JSON object per line on stdout

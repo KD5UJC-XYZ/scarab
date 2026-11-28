@@ -169,7 +169,7 @@ than repairing it in a migration step or at the hard fork, is the owner's decisi
 ## `import-haskell-db`: start from a Haskell node's blocks
 
 ```sh
-java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-haskell-db \
+java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-haskell-db \
   --haskell-db <haskell db dir> (--genesis-dir <dir> | --config <config.json>) --db <dir> [--stop-slot N] \
   [--reference-build <build>]
 ```
@@ -216,7 +216,7 @@ files into the JDK container. Mount the destination's parent writable so its sib
 and staging directory share the same filesystem. Then run inside the container:
 
 ```sh
-java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-mithril \
+java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-mithril \
   --artifact <exact lowercase artifact hash> --aggregator <https aggregator URL> \
   --genesis-verification-key <trusted genesis.vkey> \
   --ancillary-verification-key <trusted ancillary.vkey> \
@@ -266,7 +266,7 @@ Run offline in the JDK container, with the extracted ancillary archive and confi
 read-only, and the destination database and its sibling ownership lease mounted writable (as above):
 
 ```sh
-java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-ledger-snapshot \
+java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-ledger-snapshot \
   --haskell-ledger <archive>/ledger/<slot> --db <database> --config <config.json> \
   --ancillary-verification-key <trusted-ancillary.vkey> [--reference-build <build>]
 ```
@@ -315,7 +315,7 @@ writable. The source's sibling ownership lease must be writable too (see the Doc
 example above); source database files can remain read-only.
 
 ```sh
-java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main export-ledger-snapshot \
+java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main export-ledger-snapshot \
   --db <database> --out <ledger directory> [--slot N] [--reference-build <build>]
 ```
 
@@ -350,10 +350,10 @@ and local configuration/genesis inputs for the complete network identity. The su
 SCLS profile and lossy fields are described in [the design](../design/scls-interchange.md).
 
 ```sh
-java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main export-scls \
+java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main export-scls \
   --db <complete base DB> --scratch <external scratch dir> --genesis-dir <genesis dir> \
   --slot <slot> --block-no <block number> --block-hash <64 hex digits> --out <new file>
-java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-scls \
+java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main import-scls \
   --db <complete base DB> --scratch <external scratch dir> --genesis-dir <genesis dir> \
   --slot <slot> --block-no <block number> --block-hash <64 hex digits> \
   --input <SCLS file> --target-db <separate DB with immutable blocks>

@@ -10,6 +10,7 @@ import subprocess
 import tempfile
 import uuid
 
+import jit_workaround
 from publication_candidate import checked_candidate, descriptors, release_checksums
 from publication_common import GitHub, asset_name, canonical, decode_json, digest, file_digest, load_json, require, safe_path, sha256
 from publication_coordinator import state_from_release, server_tag, find_release
@@ -110,10 +111,11 @@ def jar_smoke(artifact, source):
     import reproducible_build
     with tempfile.TemporaryDirectory(prefix="scarab-independent-jar-") as temporary:
         reproducible_build.jvm_resources(Path(temporary), artifact, source)
-        usage = subprocess.run(["java", "-jar", str(artifact), "--help"], stdout=subprocess.PIPE,
+        usage = subprocess.run(["java", *jit_workaround.OPTIONS, "-jar", str(artifact), "--help"], stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, text=True, timeout=60)
         require(usage.returncode == 2 and "usage: follow" in usage.stdout, "downloaded standalone JAR failed")
-        native = subprocess.run(["java", "-cp", str(artifact), "xyz.kd5ujc.scarab.node.tools.BlstCheckMain"],
+        native = subprocess.run(["java", *jit_workaround.OPTIONS, "-cp", str(artifact),
+                                 "xyz.kd5ujc.scarab.node.tools.BlstCheckMain"],
                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=120)
         rows = [decode_json(line) for line in native.stdout.splitlines() if line.startswith("{")]
         require(native.returncode == 0 and any(row.get("ok") is True and row.get("library") == "portable" for row in rows),
@@ -162,13 +164,13 @@ def image_runtime_smoke(reference, expected_oci, jar_hash, output, jdk_image, so
                     "-v", f"{extracted}:/artifact.jar:ro", "-w", "/checks", jdk_image,
                     "javac", "-cp", "/artifact.jar", "ArtifactResourcesCheck.java"], check=True,
                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
-    subprocess.run([*common, "-v", f"{checks}:/checks:ro", "--entrypoint", "java", reference,
+    subprocess.run([*common, "-v", f"{checks}:/checks:ro", "--entrypoint", "java", reference, *jit_workaround.OPTIONS,
                     "-cp", "/checks:/opt/scarab/scarab.jar", "ArtifactResourcesCheck", "/opt/scarab/scarab.jar", source],
                    check=True, env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
     usage = subprocess.run([*common, reference, "--help"], env=environment, stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, text=True, timeout=60)
     require(usage.returncode == 2 and "usage: follow" in usage.stdout, "published image standalone entrypoint failed")
-    native = subprocess.run([*common, "--entrypoint", "java", reference, "-cp", "/opt/scarab/scarab.jar",
+    native = subprocess.run([*common, "--entrypoint", "java", reference, *jit_workaround.OPTIONS, "-cp", "/opt/scarab/scarab.jar",
                              "xyz.kd5ujc.scarab.node.tools.BlstCheckMain"], env=environment, stdout=subprocess.PIPE,
                             stderr=subprocess.STDOUT, text=True, timeout=120)
     rows = [decode_json(line) for line in native.stdout.splitlines() if line.startswith("{")]

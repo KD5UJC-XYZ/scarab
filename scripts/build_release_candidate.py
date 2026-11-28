@@ -11,6 +11,7 @@ import tempfile
 import uuid
 
 import assembly_inventory
+import jit_workaround
 import candidate_image_inventory
 import candidate_manifest
 import candidate_oci
@@ -110,11 +111,11 @@ def build(args):
              '-v', f'{verifier}:/checks', '-v', f'{artifact}:/artifact.jar:ro', '-w', '/checks',
              jdk_image, 'javac', '-cp', '/artifact.jar', 'ArtifactResourcesCheck.java'], evidence / 'image-verifier-compile.log')
         run(['docker', 'run', '--rm', '--network', 'none', '--read-only', '--tmpfs', '/tmp:rw,exec,nosuid,size=256m',
-             '--cpus=2', '-v', f'{verifier}:/checks:ro', '--entrypoint', 'java', image_id,
+             '--cpus=2', '-v', f'{verifier}:/checks:ro', '--entrypoint', 'java', image_id, *jit_workaround.OPTIONS,
              '-cp', '/checks:/opt/scarab/scarab.jar', 'ArtifactResourcesCheck', '/opt/scarab/scarab.jar',
              identity['gitCommit']], evidence / 'image-resource-smoke.log')
         run(['docker', 'run', '--rm', '--network', 'none', '--read-only', '--tmpfs', '/tmp:rw,exec,nosuid,size=256m', '--cpus=2',
-             '--entrypoint', 'java', image_id, '-cp', '/opt/scarab/scarab.jar',
+             '--entrypoint', 'java', image_id, *jit_workaround.OPTIONS, '-cp', '/opt/scarab/scarab.jar',
              'xyz.kd5ujc.scarab.node.tools.BlstCheckMain'], evidence / 'image-native-smoke.log')
         results = [json.loads(line) for line in (evidence / 'image-native-smoke.log').read_text().splitlines() if line.startswith('{')]
         if not any(r.get('ok') and r.get('library') == 'portable' for r in results):

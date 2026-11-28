@@ -13,6 +13,7 @@ import time
 from datetime import datetime, timezone
 from . import util
 from cleanup import container_labels
+import jit_workaround
 from .util import ENV, SINGLE_FOLLOWER, cache_dir, jdk_image, MAGIC, REFERENCE_IMAGE, REPO, TX, USER, adapt_reference_config, data_root, docker, in_ref, put_file, query, read_json, ref, without_resource_statistics
 
 
@@ -642,8 +643,9 @@ def scala_container(args, root, classpath, main_class, program_args, mounts=(), 
     # a collector pause stops every thread, so it is the timers' lateness (roadmap D8).
     # Scala 3.3's lazy vals use sun.misc.Unsafe, on which Java 25 warns (docker/candidate.Dockerfile);
     # from a classpath the JAR's Enable-Native-Access attribute does not apply, so the flag says it.
+    # The JIT workaround of #1521 (jit_workaround.py): every JVM that runs Scarab's code takes it.
     jvm = ["-Xmx768m", "-XX:+UseG1GC", "-XX:MaxGCPauseMillis=20",
-           "--sun-misc-unsafe-memory-access=allow", "--enable-native-access=ALL-UNNAMED"]
+           "--sun-misc-unsafe-memory-access=allow", "--enable-native-access=ALL-UNNAMED", *jit_workaround.OPTIONS]
     return command + ["--entrypoint", "java", jdk_image(), *jvm, "-cp", classpath, main_class, *program_args]
 
 

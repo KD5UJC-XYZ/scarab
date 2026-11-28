@@ -36,6 +36,11 @@ tests of all modules (`crypto`'s `BlstSuite` among them: the pinned jblst librar
 cached under `.cache/` (gitignored). `bash scripts/sbtw node/runtimeClasspathFile` writes
 `node/target/runtime-classpath.txt`, which the scenarios use.
 
+Every JVM that runs Scarab's code starts with `-XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges`, the
+JIT workaround of #1521: `scripts/sbtw`, `build.sbt`, the devnet and the launchers set it, and a JVM you start by hand
+needs it on its command line ([launcher.md](docs/running/launcher.md#the-jit-workaround-1521) says why, where and how
+to check; `scripts/check_jit_workaround.py` fails on a launcher without it).
+
 A linked worktree's `.git` file points outside the mounted checkout. The read-only common Git
 metadata mount above keeps its `worktrees/` metadata and shared refs visible at their original
 absolute paths; use it for every Docker sbt invocation, including a persistent server. The build

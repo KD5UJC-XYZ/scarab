@@ -66,7 +66,7 @@ snapshot is written (with a pipe, the signal goes to the shell and the JVM may b
 ```sh
 #!/bin/sh
 # run.sh: the node is the container's process; no pipe
-exec java -Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20 \
+exec java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -Xms3g -Xmx3g -XX:+UseG1GC -XX:MaxGCPauseMillis=20 \
   -cp "$(cat /work/node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow \
   --config /data/config/config.json --topology /data/config/topology.json --db /data/db \
   --log-file /data/sync.jsonl --log-file-size 256M --log-file-keep 20 \
