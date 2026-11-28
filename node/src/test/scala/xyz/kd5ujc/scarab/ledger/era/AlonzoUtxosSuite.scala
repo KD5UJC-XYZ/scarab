@@ -56,6 +56,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
 import xyz.kd5ujc.scarab.ledger.rules.{
   Counted,
   Globals,
+  Judge,
   Judgment,
   PpupEnv as FlatPpupEnv,
   RuleT,
@@ -185,6 +186,27 @@ class AlonzoUtxosSuite extends FunSuite:
     ): Either[UDefect, Either[NonEmptyChain[URec], US]] =
       given ScriptEvaluator[U] = request => Monad[U].unit.map(_ => evaluator.evaluate(request))
       given Phase2Deferral[U, Alonzo] = Phase2Deferral.now
+      Judgment
+        .judge(
+          AlonzoUtxos.utxosTransition[U, Alonzo](env, stAnnTx, validation),
+          RuleT.Policy.Accumulate
+        )(globals, (gov, Chain.empty))
+        .map(_.map(_._1))
+
+    /** UTXOS judged with `ValidateNone` (`Judge.validateNone`): no predicate checked and no
+      * labelled clause run, whatever `validation` says.
+      */
+    def runUnchecked(
+        globals: Globals,
+        env: UtxosEnv[Alonzo],
+        stAnnTx: AlonzoStAnnTx[Alonzo],
+        gov: ShelleyGovState[Alonzo],
+        evaluator: ScriptEvaluator[Id],
+        validation: TxEnv.Validation
+    ): Either[UDefect, Either[NonEmptyChain[URec], US]] =
+      given ScriptEvaluator[U] = request => Monad[U].unit.map(_ => evaluator.evaluate(request))
+      given Phase2Deferral[U, Alonzo] = Phase2Deferral.now
+      given Judge[U, URec] = Judge.validateNone[U, URec]
       Judgment
         .judge(
           AlonzoUtxos.utxosTransition[U, Alonzo](env, stAnnTx, validation),
@@ -1345,19 +1367,7 @@ class AlonzoUtxosSuite extends FunSuite:
     */
   test("UTXOS: a translation failure only the node gives, a missing clock, is recorded (#1534)") {
     val c = caseNamed("alonzo-pv6-v1-plain")
-    val base = v1Judged(c)
-    val raw = c.tx.body.raw
-    val head = raw.value.head & 0xff
-    assert(head >= 0xa0 && head < 0xb7, s"${c.name}: a body of fewer than 23 keys")
-    // the time to live (key 3) at slot 1,000,000, the case's slot being 1000
-    val body = Bytes(((head + 1).toByte +: raw.value.tail) ++ hex("031a000f4240").value)
-    val witnesses = c.tx.witnesses.raw.getOrElse(fail(s"${c.name}: no witness bytes"))
-    val parts = Block.Transaction(body, witnesses, c.tx.auxiliary, c.tx.isValid)
-    val ttl = base.copy(
-      name = s"${c.name} with a time to live",
-      flat = right("flat")(FlatTx.fromBlock(parts, ProtocolEra.Alonzo)),
-      typed = right("typed")(AlonzoTx.decode(parts, StateLayout.Node11_1))
-    )
+    val ttl = withTtl(c)
     // with the clock, its script runs and passes
     same(ttl) match
       case Outcome.Accepted(_, (1, 0, 1)) => ()
@@ -1383,6 +1393,69 @@ class AlonzoUtxosSuite extends FunSuite:
         TranslationOrigin.Node
       )
     )
+  }
+
+  /** `j` annotated with the clock `clock`, its parameters and governance state as the era reads
+    * them.
+    */
+  private def annotated(j: Judged, clock: BigInt => Either[TranslationError, BigInt]) =
+    val pp = PParams[Alonzo](right("pp")(AlonzoPParams.fromStored(j.pp)))
+    val stAnnTx = AlonzoStAnnTx.mkAlonzoStAnnTx[Alonzo](
+      clock,
+      pp,
+      right("utxo")(AlonzoEraUTxO.fromStored(j.known)),
+      Map.empty,
+      j.typed
+    )
+    (pp, stAnnTx, right("gov")(ShelleyGovStateRecord.fromStored[Alonzo](j.state.gov)))
+
+  /** A V1-context case's body with a time to live at slot 1,000,000 (key 3), the case's slot being
+    * 1000, so that its context translates the validity interval.
+    */
+  private def withTtl(c: PlutusCase): Judged =
+    val base = v1Judged(c)
+    val raw = c.tx.body.raw
+    val head = raw.value.head & 0xff
+    assert(head >= 0xa0 && head < 0xb7, s"${c.name}: a body of fewer than 23 keys")
+    val body = Bytes(((head + 1).toByte +: raw.value.tail) ++ hex("031a000f4240").value)
+    val witnesses = c.tx.witnesses.raw.getOrElse(fail(s"${c.name}: no witness bytes"))
+    val parts = Block.Transaction(body, witnesses, c.tx.auxiliary, c.tx.isValid)
+    base.copy(
+      name = s"${c.name} with a time to live",
+      flat = right("flat")(FlatTx.fromBlock(parts, ProtocolEra.Alonzo)),
+      typed = right("typed")(AlonzoTx.decode(parts, StateLayout.Node11_1))
+    )
+
+  /** `ValidateNone` runs no labelled clause (`Extended.hs:709-712, 727-730`, cardano-ledger
+    * f649f975), so the scripts are not evaluated even under the policy that validates every check;
+    * PPUP still runs and changes the state.
+    */
+  test("UTXOS: a judgment of ValidateNone evaluates no script, and PPUP still records its update") {
+    val never: ScriptEvaluator[Id] = _ => fail("a script was evaluated")
+    Vector("alonzo-pv6-v1-plain", "alonzo-pv6-v1-plain-fail-valid-tag").foreach { name =>
+      val j = withGenesis(withUpdate(caseNamed(name), 10, valid = true))
+      val (pp, stAnnTx, gov) = annotated(j, slot => Right(j.posix(slot)))
+      UtxosRun.runUnchecked(
+        j.globals,
+        UtxosEnv(slotNo(j.slot), pp, j.cert),
+        stAnnTx,
+        gov,
+        never,
+        TxEnv.Validation.All
+      ) match
+        case Right(Right((after, events))) =>
+          assertEquals(after.sgsCurProposals.updates.keySet, Set(genesis(1)), name)
+          assertEquals(
+            events.toList,
+            List(
+              AlonzoUtxosEvent.AlonzoPpupToUtxosEvent[Alonzo](
+                ShelleyPpupEvent.PpupNewEpoch(right("epoch")(EpochNo.fromBigInt(11)))
+              )
+            ),
+            name
+          )
+        case other => fail(s"$name: not passed: $other")
+    }
   }
 
   test(

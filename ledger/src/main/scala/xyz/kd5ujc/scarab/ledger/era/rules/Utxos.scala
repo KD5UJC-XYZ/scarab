@@ -27,7 +27,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   StAnnTx,
   TxLevel
 }
-import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts, ValidationPolicy}
 import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Babbage, CertState, Conway, Dijkstra, EraTag, SlotNo}
 import xyz.kd5ujc.scarab.plutus.{EvalFailure, ScriptEvaluator}
 
@@ -286,6 +286,17 @@ object AlonzoUtxos:
       case TxEnv.Validation.All       => fa
       case TxEnv.Validation.NonStatic => Applicative[F].unit
 
+  /** `when2Phase` as the judgment interprets a labelled clause (`runClause (Label ...)`,
+    * `libs/small-steps/src/Control/State/Transition/Extended.hs:709-712, 727-730`, cardano-ledger
+    * f649f975): under `ValidateNone` no label is run, so `fa` is skipped whatever `validation`
+    * says; under `ValidateAll` it is [[when2Phase]].
+    */
+  private def judged2Phase[F[_]: Applicative, Rec](validation: TxEnv.Validation)(fa: => F[Unit])(
+      using judge: Judge[F, Rec]
+  ): F[Unit] = judge.policy match
+    case ValidationPolicy.ValidateAll  => when2Phase[F](validation)(fa)
+    case ValidationPolicy.ValidateNone => Applicative[F].unit
+
   /** The event of the scripts that passed, if any did (`mapM_ (tellEvent ...) (nonEmpty ps)`). */
   private def tellPassed[F[_]: Applicative, E <: EraTag](passed: List[PlutusWithContext])(using
       inject: InjectAlonzoUtxos[E],
@@ -355,12 +366,12 @@ object AlonzoUtxos:
     * of the collection of the transaction's scripts with their contexts recorded (`failOnNonEmpty`,
     * `CollectErrors`) but a translation's, which Alonzo does not record ("BadTranslation was
     * introduced in Babbage"), and `action` on the scripts' evaluation only under the policy that
-    * validates every check (`when2Phase`) and only if nothing failed so far in the judgment
-    * (`whenFailureFree`). A collection whose failures are all a translation's records nothing and
-    * evaluates nothing. Where the scripts are evaluated is the run's ([[Phase2Deferral]]), as in
-    * Babbage's functions; a transaction whose collection's failures are recorded is told to the run
-    * with them before they are recorded ([[Phase2Deferral.uncollected]]), which the reference has
-    * no counterpart for.
+    * validates every check (`when2Phase`, skipped too by a judgment of `ValidateNone`, which runs
+    * no labelled clause) and only if nothing failed so far in the judgment (`whenFailureFree`). A
+    * collection whose failures are all a translation's records nothing and evaluates nothing. Where
+    * the scripts are evaluated is the run's ([[Phase2Deferral]]), as in Babbage's functions; a
+    * transaction whose collection's failures are recorded is told to the run with them before they
+    * are recorded ([[Phase2Deferral.uncollected]]), which the reference has no counterpart for.
     */
   def scriptsTransition[F[_]: Monad, E <: EraTag](
       stAnnTx: StAnnTx[TxLevel.Top, E],
@@ -387,7 +398,7 @@ object AlonzoUtxos:
               judge.fail(inject.injectFailure(AlonzoUtxosPredFailure.CollectErrors(errors)))
           )
       )
-      _ <- when2Phase[F](validation)(
+      _ <- judged2Phase[F, UtxosPredFailure[E]](validation)(
         Sts.whenFailureFree[F, UtxosPredFailure[E]](
           scriptsWithContextEither.toOption.traverse_ { scriptsWithContext =>
             val now = PlutusEvaluation.evalPlutusScripts[F](scriptsWithContext).flatMap(action)
@@ -434,9 +445,11 @@ object AlonzoUtxos:
         alonzoEvalScriptsTxInvalid[F, E](stAnnTx, validation)
 
   /** `alonzoEvalScriptsTxValid` (`Alonzo/Rules/Utxos.hs:189-221`, cardano-ledger f649f975): the
-    * scripts of a transaction flagged valid must pass (`scriptsTransition`), a failure being
-    * `ValidationTagMismatch` with each script's failure and the scripts that passed told; then
-    * PPUP, after the scripts as Alonzo runs it (Babbage runs it before them), whatever they gave.
+    * scripts of a transaction flagged valid must pass (`scriptsTransition`): if any fails,
+    * `ValidationTagMismatch` with each failing script's failure, and the scripts that passed beside
+    * them are not told (`Fails _ps fs`); if all pass, they are told
+    * (`SuccessfulPlutusScriptsEvent`). Then PPUP, after the scripts as Alonzo runs it (Babbage runs
+    * it before them), whatever they gave.
     */
   def alonzoEvalScriptsTxValid[F[_]: Monad, E <: EraTag](
       env: UtxosEnv[E],

@@ -86,11 +86,11 @@
   },
   "def ledger.era.rules.AlonzoUtxos.scriptsTransition": {
    "class": "Mirror",
-   "digest": "cbb3aeeb4472c6ac",
+   "digest": "1579b83e1cfa8805",
    "evidence": [
     "AlonzoUtxosSuite"
    ],
-   "note": "the collection, its failures but a translation's recorded, and the evaluation, which a run may defer (Phase2Deferral), as in Babbage's functions; a transaction whose collection's failures are recorded is told to the run (Phase2Deferral.uncollected)",
+   "note": "the collection, its failures but a translation's recorded, and the evaluation, which a run may defer (Phase2Deferral), as in Babbage's functions; a transaction whose collection's failures are recorded is told to the run (Phase2Deferral.uncollected); the evaluation, the labelled when2Phase clause, skipped under the judgment's ValidateNone as the reference's Label is (Extended.hs:709-712, 727-730), as well as under the transaction policy NonStatic",
    "structure": "differs",
    "upstream": [
     {
