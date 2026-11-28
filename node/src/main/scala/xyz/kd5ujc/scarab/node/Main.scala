@@ -1539,6 +1539,8 @@ object Main extends IOApp:
 
   /** What every phase of a run reads: the completed options and setup, and what was opened before
     * the run ([[started]]). `setup` is `loaded` with the verification cache as its verdicts.
+    * `plutus` is the Plutus backend, one for the run: the rules, the mempool and the forger
+    * evaluate and admit scripts with it, and with nothing else (ADR 0027).
     */
   private final case class Startup(
       options: Options,
@@ -1556,14 +1558,10 @@ object Main extends IOApp:
       credentials: Option[PoolCredentials],
       listening: Option[Listening],
       hangup: StartupHangup,
-      layout: ReferenceLayout
+      layout: ReferenceLayout,
+      plutus: PlutusBackend
   ):
     def genesis: xyz.kd5ujc.scarab.ledger.ShelleyGenesis = setup.genesis
-
-    /** The Plutus backend, one for the run: the rules, the mempool and the forger evaluate and
-      * admit scripts with it, and with nothing else (ADR 0027).
-      */
-    val plutus: PlutusBackend = PlutusBackend.default
 
   /** What a SIGHUP does before the node runs its forger and its network: the reference's initial
     * handler (cardano-node 11.1.3, `cardano-node/src/Cardano/Node/Run.hs` 412-435), installed
@@ -1710,53 +1708,57 @@ object Main extends IOApp:
     val setup = loaded.copy(praos = loaded.praos.copy(verdicts = cache))
     // the node's LeiosTxCache, before the chain database whose collections evict it
     // (`newHashTableLeiosTxCache`, `Node.hs:560-581` at ouroboros-consensus 2416493b)
-    LeiosTxCache.create[IO].flatMap { txCache =>
-      val run =
-        Startup(
-          options,
-          cliPeers,
-          loaded,
-          setup,
-          topology,
-          store,
-          warm,
-          leios,
-          txCache,
-          cache,
-          scheduling,
-          settling,
-          credentials,
-          listening,
-          hangup,
-          layout
-        )
-      instrumented(run, background)
-        .flatTap(i => hangup.events.set(forgeEvents(i.measured)))
-        .flatMap { instruments =>
-          given Metrics[IO] = instruments.metrics
-          ruled(run).flatMap { rules =>
-            // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
-            // node has seen begin so far.
-            given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(instruments.eraStarts.get)
-            // A restored state no chain of the build reaches is refused (`StateAdmission`).
-            given SnapshotFormat[IO, MirrorState] =
-              SnapshotV10
-                .format[IO](options.snapshotCheck, layout)
-                .admitting(StateAdmission.restored(layout.build))
-            // What a scrape reads besides the counters the events keep: each source answers for itself
-            // and is added when it exists, so the endpoint can listen before the stores are opened (a
-            // collector that is not there yet leaves its gauges absent).
-            val exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
-              MetricsServer.resource[IO](address, instruments.collectors.scrape).void
-            )
-            exposed
-              .surround(
-                storage(run, instruments, rules, backing).use(following(run, instruments, rules, _))
+    // the Plutus backend of the run, its program cache bounded by the heap
+    (LeiosTxCache.create[IO], IO(Runtime.getRuntime.maxMemory).map(PlutusBackend.forHeap))
+      .flatMapN { (txCache, plutus) =>
+        val run =
+          Startup(
+            options,
+            cliPeers,
+            loaded,
+            setup,
+            topology,
+            store,
+            warm,
+            leios,
+            txCache,
+            cache,
+            scheduling,
+            settling,
+            credentials,
+            listening,
+            hangup,
+            layout,
+            plutus
+          )
+        instrumented(run, background)
+          .flatTap(i => hangup.events.set(forgeEvents(i.measured)))
+          .flatMap { instruments =>
+            given Metrics[IO] = instruments.metrics
+            ruled(run).flatMap { rules =>
+              // The mirror's environment as the snapshots ask for it: the configuration, and the eras this
+              // node has seen begin so far.
+              given Ask[IO, ConsensusMirrorEnv] = setup.mirrorAsk(instruments.eraStarts.get)
+              // A restored state no chain of the build reaches is refused (`StateAdmission`).
+              given SnapshotFormat[IO, MirrorState] =
+                SnapshotV10
+                  .format[IO](options.snapshotCheck, layout)
+                  .admitting(StateAdmission.restored(layout.build))
+              // What a scrape reads besides the counters the events keep: each source answers for itself
+              // and is added when it exists, so the endpoint can listen before the stores are opened (a
+              // collector that is not there yet leaves its gauges absent).
+              val exposed = options.metricsListen.fold(Resource.unit[IO])(address =>
+                MetricsServer.resource[IO](address, instruments.collectors.scrape).void
               )
-              .map(exitCode)
+              exposed
+                .surround(
+                  storage(run, instruments, rules, backing)
+                    .use(following(run, instruments, rules, _))
+                )
+                .map(exitCode)
+            }
           }
-        }
-    }
+      }
 
   /** The run's instruments, in the order the run makes them. */
   private def instrumented(run: Startup, background: IO[Unit] => IO[Unit])(using

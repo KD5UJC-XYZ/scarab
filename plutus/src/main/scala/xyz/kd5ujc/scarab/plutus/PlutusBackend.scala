@@ -25,3 +25,11 @@ object PlutusBackend:
       ScarabEvaluator.defaultDecoder,
       ScarabEvaluator.interruptible
     )
+
+  /** The node's backend for a maximum heap of `maxHeap` bytes: an interpreter of Scarab's own
+    * evaluator of its own, whose program cache is bounded by the heap
+    * ([[ScarabEvaluator.programs]]), as evaluator, decoder and interruptible evaluator.
+    */
+  def forHeap(maxHeap: Long): PlutusBackend =
+    val interpreter = ScarabEvaluator.Interpreter(ScarabEvaluator.programs(maxHeap))
+    PlutusBackend(interpreter, interpreter, ScarabEvaluator.interruptible(interpreter))

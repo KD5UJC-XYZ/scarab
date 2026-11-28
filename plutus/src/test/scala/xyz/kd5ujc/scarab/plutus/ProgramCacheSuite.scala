@@ -157,6 +157,42 @@ class ProgramCacheSuite extends munit.FunSuite:
     assertEquals(cold.count(_.isRight), recorded.size, "every recorded script is well formed")
   }
 
+  test("the program cache's bounds change no result: none kept, the default's and a heap's") {
+    // every recorded request with its own arguments and budget, three times over, so that a cache
+    // that keeps the programs answers the later rounds from them
+    val models = GeneratedReplay.rows(leios.resolve("models.jsonl"))
+    val requests = GeneratedReplay
+      .rows(leios.resolve("requests.jsonl"))
+      .map { r =>
+        EvalRequest(
+          PlutusLanguage.fromOrdinal(field[Int](r, "language") - 1),
+          field[Int](r, "protocol"),
+          hex(field[String](r, "script")),
+          field[Vector[String]](r, "arguments")
+            .map(a => PlutusData.decode(hex(a)).fold(e => fail(s"argument: $e"), identity)),
+          field[Vector[Long]](models(field[Int](r, "model")), "costModel"),
+          ExUnits(BigInt(field[Long](r, "memory")), BigInt(field[Long](r, "cpu")))
+        )
+      }
+    def all(interpreter: ScarabEvaluator.Interpreter): Vector[EvalResult] =
+      Vector.fill(3)(requests).flatten.map(interpreter.evaluate)
+    val none = ScarabEvaluator.Interpreter(Limits(0, Weight.zero))
+    val default = ScarabEvaluator.Interpreter()
+    val heap = ScarabEvaluator.Interpreter(ScarabEvaluator.programs(16L << 30))
+    val expected = all(none)
+    assertEquals(none.held, (0, Weight.zero))
+    assertEquals(all(default), expected)
+    assertEquals(all(heap), expected)
+    assert(heap.held._1 > 0, "the heap's interpreter keeps the programs")
+    assertEquals(expected.filterNot(verdict), Vector.empty)
+  }
+
+  test("the node's bound is a sixteenth of the heap, never below the default's") {
+    assertEquals(ScarabEvaluator.programs(768L << 20), ScarabEvaluator.Programs)
+    assertEquals(ScarabEvaluator.programs(16L << 30).weight, Weight.mebibytes(1024))
+    assertEquals(ScarabEvaluator.programs(16L << 30).entries, ScarabEvaluator.Programs.entries)
+  }
+
   // The heap each shape's program holds, measured with `ProgramCacheHeapMain programs` (module
   // `tools`): 40 programs of each, after full collections, in a 768 MiB heap (`docs/performance.md`
   // section 59).
@@ -214,7 +250,8 @@ class ProgramCacheSuite extends munit.FunSuite:
         Program(ProgramVersion.V1_0_0, Term.constant(types)),
         Program(ProgramVersion.V1_0_0, Term.constant(Constant.Data(data)))
       )
-      programs.foreach(p => assert(ProgramWeight.of(p).toLong > depth.toLong * 64))
+      // every node of each walked: a `lam` weighs 40 bytes, a list or a `data` node more
+      programs.foreach(p => assert(ProgramWeight.of(p).toLong > depth.toLong * 40))
     }
   }
 
