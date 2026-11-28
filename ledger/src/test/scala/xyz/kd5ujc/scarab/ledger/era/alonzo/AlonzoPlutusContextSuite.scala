@@ -174,7 +174,21 @@ class AlonzoPlutusContextSuite extends munit.FunSuite:
         .map((tx, i) => s"$f transaction $i" -> tx)
     ) ++ AlonzoTestKit.immutablePreviewTxs.zipWithIndex.map((tx, i) =>
       s"fixtures/haskell-immutable/preview transaction $i" -> tx
-    )
+    ) ++ minFeeBlockTxs.zipWithIndex.map((tx, i) => s"$minFeeBlock transaction $i" -> tx)
+
+  private val minFeeBlock = "fixtures/reference/alonzo-min-fee/hex-block-node-issue-4228.cbor"
+
+  /** The transactions of the upstream golden block of cardano-node issue 4228
+    * (`fixtures/reference/alonzo-min-fee`): the hex of an Alonzo block alone, read after the era
+    * tag (5) BlockFetch puts before it.
+    */
+  private lazy val minFeeBlockTxs: Vector[Block.Transaction] =
+    val block = hex(Files.readString(Path.of(minFeeBlock)).trim)
+    Block.decodeShelley(Bytes(Vector(0x82.toByte, 0x05.toByte)) ++ block) match
+      case Right(b: Block.Shelley) =>
+        assertEquals(b.era, Era.Alonzo)
+        b.transactions
+      case other => fail(s"not an Alonzo block: $other")
 
   private def refusalTxs: Vector[(String, Bytes)] =
     Files
@@ -272,16 +286,16 @@ class AlonzoPlutusContextSuite extends munit.FunSuite:
 
   test("the corpus: every Alonzo transaction the repository holds, with or without its outputs") {
     assertEquals(cases.size, cases.map(_.name).distinct.size)
-    // the matrix's 20 Alonzo rows, every one collected; the 10 transactions of the blocks and the
-    // ImmutableDB chunks, the 13 of the refusal corpora (1 + 4 + 8) and the 16 distinct ones of the
-    // admission corpora
+    // the matrix's 20 Alonzo rows, every one collected; the 28 transactions of the blocks, the
+    // ImmutableDB chunks and the golden block of issue 4228 (18), the 13 of the refusal corpora
+    // (1 + 4 + 8) and the 16 distinct ones of the admission corpora
     assertEquals(
       (oracleCases.size, oracleCases.count(c => field[Boolean](c.oracle, "collected"))),
       (20, 20)
     )
     assertEquals(
       (blockTxs.size, refusalTxs.size, admissionTxs.size),
-      (10, 1 + 4 + 8, 16)
+      (10 + 18, 1 + 4 + 8, 16)
     )
     // the matrix retains every Alonzo transaction of the v1-context corpus whole
     val v1Context = Vector("alonzo-pv5", "alonzo-pv6").flatMap(f =>
@@ -557,12 +571,12 @@ class AlonzoPlutusContextSuite extends munit.FunSuite:
         u.getSupplementalDataHashes[TxLevel.Top](utxo, body).size
       )
     }
-    // what the cases exercise: scripts needed and the spending datums of the cases with their
-    // outputs; no recorded Alonzo body has an output with a datum hash, so the supplemental datums
-    // are the crafted case's below
+    // what the cases exercise: scripts needed, the spending datums of the cases with their outputs,
+    // and the supplemental datums, of the five outputs with a datum hash of the golden block of
+    // issue 4228
     assertEquals(
       (counts.map(_._1).sum, counts.map(_._2).sum, counts.map(_._3).sum),
-      (37, 4, 0)
+      (38, 4, 5)
     )
   }
 
@@ -577,8 +591,8 @@ class AlonzoPlutusContextSuite extends munit.FunSuite:
         c.name
       )
     )
-    // what the cases reach: 59 compared, 10 of them balanced (a stand-in case is not, as its inputs
-    // spend stand-ins), 25 that mint or burn assets and 4 whose certificates take deposits
+    // what the cases reach: 77 compared, 10 of them balanced (a stand-in case is not, as its inputs
+    // spend stand-ins), 26 that mint or burn assets and 4 whose certificates take deposits
     assertEquals(
       (
         balances.size,
@@ -588,7 +602,52 @@ class AlonzoPlutusContextSuite extends munit.FunSuite:
           ShelleyDeposits.of(flatParams(c), Empty.certState[Alonzo], c.flat.body)._1 > 0
         )
       ),
-      (59, 10, 25, 4)
+      (77, 10, 26, 4)
+    )
+  }
+
+  test("each output's datum hash is in the V1 TxInfo's outputs, on every case") {
+    val withHash = cases.map { c =>
+      val outs = t.bodyOf.outputs[TxLevel.Top](t.body[TxLevel.Top](c.era))
+      val o = t.bodyOf.outputsOf
+      // the outputs at a Shelley address, which the context keeps, with their datum hashes
+      val kept = outs.filter(out =>
+        o.address(out).kind match
+          case Address.Kind.Shelley(_, _, _, _) => true
+          case Address.Kind.Byron(_)            => false
+      )
+      assertEquals(
+        v1Info(c.copy(posix = slot => Right(slot * 1000))).txInfoOutputs.map(_.txOutDatumHash),
+        kept.map(o.dataHash(_).map(PlutusTxInfos.transDataHash)),
+        c.name
+      )
+      kept.count(o.dataHash(_).isDefined)
+    }
+    // the five bodies of the golden block of issue 4228 with an output's datum hash, one output each
+    assertEquals(
+      (withHash.sum, cases.zip(withHash).count((c, n) => n > 0 && c.name.startsWith(minFeeBlock))),
+      (5, 5)
+    )
+  }
+
+  test("the first transaction of the golden block of issue 4228 has the minimum fee 1,006,053") {
+    // the golden's parameters: a fee per byte of 44, a fixed fee of 155,381 and the prices of
+    // 0.0577 (memory) and 0.0000721 (steps) (`fixtures/reference/alonzo-min-fee/README.md`)
+    val c = cases
+      .find(_.name == s"$minFeeBlock transaction 0")
+      .getOrElse(fail("no golden transaction"))
+    val pp = flatParams(c).copy(
+      minFeeA = 44,
+      minFeeB = 155381,
+      priceMem = xyz.kd5ujc.scarab.codec.Rational(577, 10000),
+      priceSteps = xyz.kd5ujc.scarab.codec.Rational(721, 10000000)
+    )
+    val eraPp = PParams[Alonzo](AlonzoPParams.fromStored(pp).fold(e => fail(e.toString), identity))
+    assertEquals(u.getMinFeeTxUtxo[TxLevel.Top](eraPp, c.era, utxoOf(c)).value, BigInt(1006053))
+    assertEquals(t.bodyOf.fee(t.body[TxLevel.Top](c.era)).value, BigInt(1001829))
+    assertEquals(
+      AlonzoTestKit.sameBalance(c.era, c.flat, c.known, pp, Empty.certState[Alonzo], c.name)._3,
+      BigInt(1006053)
     )
   }
 
@@ -927,6 +986,13 @@ class AlonzoPlutusContextSuite extends munit.FunSuite:
     )
     val c = withRedeemers.copy(name = "no redeemer", era = built.tx, flat = built.flat)
     val errors = sameCollection(c).fold(identity, rs => fail(s"collected $rs"))
-    assert(errors.forall(_.productPrefix == "NoRedeemer"), errors)
+    assert(
+      errors.forall {
+        case Collected.NoRedeemer(_, _) => true
+        case Collected.NoWitness(_) | Collected.NoCostModel(_) | Collected.BadTranslation(_) =>
+          false
+      },
+      errors
+    )
     assert(errors.nonEmpty)
   }
