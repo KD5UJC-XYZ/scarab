@@ -3856,6 +3856,48 @@ Conway's rules on the classes follow as the rest of stage 2.
     refuses too (`mir-signed-intermediate-*`), whose DELEG failures are compared with the flat rule's only. Not yet:
     Alonzo's instances, on Alonzo's state classes now in place. Nothing in the node runs these rules;
     the flat path stays.
+- **Babbage's UTXO** (stage 4, plan slice 1; `era/rules/Utxo.scala`, `UtxoFailures.scala`, `Utxos.scala`;
+  cardano-ledger f649f975 `Babbage/Rules/Utxo.hs:100-122, 415-447, 528-537`, `Alonzo/Rules/Utxo.hs:730-750`,
+  `Babbage/Rules/Utxos.hs:54-55`):
+  - Babbage's cases of the UTXO failure and event families, its injections (Alonzo's, PPUP's through UTXOS's,
+    Allegra's through `allegraToAlonzoUtxoPredFailure`, UTXOS's), Shelley's chosen by reference build as Conway's
+    is, and `EmbedUtxosInUtxo[Babbage]`. PPUP's failure is made UTXOS's by `InjectUtxosFailure`, the reference's
+    `InjectRuleFailure "UTXOS"` for the failure of the rule UTXOS runs. No ranged class is new.
+  - `BabbageUtxo.utxoTransition`: `babbageUtxoValidation`, every failure recorded, then Babbage's UTXOS as a sub-rule
+    on the governance state, then Babbage's `updateUTxOState` from the state it was given. The governance state is
+    the era's record, a capability of its own beside the UTxO state, whose stored form UTXO leaves as it was: the
+    block run reads it once and writes it back once (slice 6). A slot outside a `SlotNo`, which UTXOS's environment
+    holds, is raised as the state's defect.
+  - Babbage's script evaluation (`BabbageUtxos.evalScripts`), which Conway's and Dijkstra's UTXOS share, is skipped
+    by a judgment of `ValidateNone` as well as under `NonStatic`, as the reference runs no labelled clause there
+    (`Extended.hs:709-712, 727-730`) and as Alonzo's is, through the same guard (`AlonzoUtxos.judged2Phase`).
+    Nothing changes on the node's path: its one judgment of `ValidateNone` (`DijkstraClosure.applyUnchecked`) also
+    passes `NonStatic`. Conway's UTXOS corpus, every case
+    under both flags, and two Babbage cases ask no script of an evaluator that must not be asked, and ask it under
+    `ValidateAll`.
+  - Against the flat UTXO at Babbage (`ShelleyUtxo.sts`, with UTXOS and PPUP), both two levels below the root as a
+    submitted transaction's UTXO runs, under each reference build and both validation policies
+    (`BabbageUtxoSuite`): the same verdict, failures whole and in order, state after (the UTxO set and its totals,
+    deposits, fees, instant stake, governance state, donation) and scripts' counters on
+    - the 22 V1-context submissions, four of them accepted (two flagged invalid), every refusal UTXOS's;
+    - the 32 Babbage cases of the refusal corpora with their states, 17 refused by UTXO; the 15 refused by UTXO, UTXOS
+      or PPUP alone are the reference's refusals byte for byte;
+    - the three Babbage cases of the forecast-horizon corpora with their cluster's era history at the tip, the two
+      past the horizon refused by the scripts' context as the reference's bytes, never by `OutsideForecast`;
+    - the 17 Babbage bodies of `fixtures/reference/pre-conway-utxo`, each predicate the reference measured
+      (bootstrap attributes, output networks, collateral count) refusing as it recorded, under each build's
+      injection;
+    - crafted cases: every predicate of the parameters and the UTxO set at once in the reference's order, with
+      UTXOS's collection after them and no script evaluated; a phase-1 failure beside a script that contradicts its
+      flag; each collateral failure; the validity interval either side; an empty input set; an input that is also
+      a reference input, refused at protocol 9 and 10 only; and the networks of the outputs, the body and the
+      withdrawals.
+
+    Every comparison agrees; two mutants (UTXOS before the predicates, 11.1's injection under every build) fail
+    the suite. The flat UTXO has no `validateOutsideForecast`: the corpora other than the forecast-horizon ones are
+    judged with an era history that never ends, and a crafted history that ends before the slot gives
+    `OutsideForecast` with the transaction's end, as the reference's extension from the slot does. Nothing in the
+    node runs Babbage's UTXO yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
