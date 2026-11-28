@@ -648,11 +648,11 @@
   },
   "def ledger.era.PlutusWithContext.evalRequest": {
    "class": "Mirror",
-   "digest": "b47a209776eb5ae9",
+   "digest": "533d0e7fee33f7bc",
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "what `evaluatePlutusWithContext` hands Plutus, as the request the `plutus` module's evaluator takes, a capability: the version, the binary, the arguments as the language applies them, the cost model's parameters and the budget; equal to the flat path's request for every script of the Conway corpus",
+   "note": "what `evaluatePlutusWithContext` hands Plutus, as the request the `plutus` module's evaluator takes, a capability: the version, the binary, the arguments as the language applies them, the cost model's parameters and the budget; equal to the flat path's request for every script of the Conway corpus; the request is made once a script (`PlutusWithContext#request`, #1499)",
    "structure": "differs",
    "upstream": [
     {
@@ -989,6 +989,13 @@
     "def ledger.era.SupportedPlutusRunnable#toString"
    ],
    "reason": "Scala runtime support with no counterpart: a hashCode consistent with the equality the reference derives, and a toString, which the reference's derived Show renders differently"
+  },
+  {
+   "definitions": [
+    "def ledger.era.PlutusWithContext#request",
+    "def ledger.era.PlutusWithContext.kept"
+   ],
+   "reason": "a script's request to the evaluator, which evalRequest gives, made from its immutable fields; made once by a script collected ahead of the selection worker (PlutusWithContext.kept), so that every evaluation of it takes one request, which the results kept ahead are found by (#1499)"
   },
   {
    "definitions": [

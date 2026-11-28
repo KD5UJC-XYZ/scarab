@@ -558,7 +558,8 @@ object ShelleyLedgers:
     * Conway ([[ledgersFold]]): each transaction annotated by `mkStAnnTx`, here Alonzo's
     * [[AlonzoStAnnTx.mkAlonzoStAnnTx]] with the cache the one before left, its epoch information
     * and system start `slotToPOSIXTime`, and judged by Conway's LEDGER, its failures and events
-    * embedded ([[EmbedLedgerInLedgers]]).
+    * embedded ([[EmbedLedgerInLedgers]]). Its contexts are those made `ahead` of the rules where
+    * they are its collection ([[ContextInputs.collected]], #1499).
     */
   def ledgersTransition[F[_]: Monad, E <: EraTag](
       env: LedgersEnv[E],
@@ -566,7 +567,8 @@ object ShelleyLedgers:
       utxoContext: UtxoContext[E],
       verdicts: Verdicts,
       decoder: ScriptDecoder[Id],
-      slotToPOSIXTime: BigInt => Either[TranslationError, BigInt]
+      slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
+      ahead: ContextsAhead[E] = ContextsAhead.none[E]
   )(using
       e: EraUTxO[E],
       t: AlonzoEraTx[E],
@@ -629,7 +631,7 @@ object ShelleyLedgers:
     ledgersFold[F, E](env, txs, cached.flip(Map.empty))((utxo, cache, tx) =>
       annotated(
         AlonzoStAnnTx
-          .mkAlonzoStAnnTx[E](slotToPOSIXTime, env.ledgersPp, utxo, cached(cache), tx)(using
+          .mkAlonzoStAnnTx[E](slotToPOSIXTime, env.ledgersPp, utxo, cached(cache), tx, ahead)(using
             pa,
             t,
             u,

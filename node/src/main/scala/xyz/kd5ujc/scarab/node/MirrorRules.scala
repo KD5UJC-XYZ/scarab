@@ -38,7 +38,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Prepared,
   ValidationError
 }
-import xyz.kd5ujc.scarab.ledger.era.{Block as EraBlockOf, PParams}
+import xyz.kd5ujc.scarab.ledger.era.{Block as EraBlockOf, ContextsAhead, PParams}
 import xyz.kd5ujc.scarab.ledger.era.conway.{
   ConwayBlock,
   ConwayBlockError,
@@ -142,7 +142,8 @@ final class MirrorRules[F[_]: Monad](
     compute: Option[Compute[F]] = None,
     parallelPlutus: Option[ParallelPlutus[F]] = None,
     leios: Option[MirrorRules.Leios[F]] = None,
-    dijkstraObserver: Option[DijkstraPhase2.Observation => Unit] = None
+    dijkstraObserver: Option[DijkstraPhase2.Observation => Unit] = None,
+    ahead: MirrorRules.Ahead = MirrorRules.Ahead.none
 ) extends BlockRules[F, MirrorState]:
 
   private val cpu: Compute[F] = compute.getOrElse(Compute.inline[F])
@@ -174,7 +175,8 @@ final class MirrorRules[F[_]: Monad](
               phase2Observer,
               prepared,
               dijkstra,
-              dijkstraObserver
+              dijkstraObserver,
+              ahead
             )
           )
         case Some(workers) =>
@@ -192,7 +194,8 @@ final class MirrorRules[F[_]: Monad](
               phase2Observer,
               prepared,
               dijkstra,
-              dijkstraObserver
+              dijkstraObserver,
+              ahead
             )([A] => (body: Phase2.Program[A]) => workers(body))
           )
       applied
@@ -351,6 +354,17 @@ final class MirrorRules[F[_]: Monad](
     }
 
 object MirrorRules:
+
+  /** What the node made ahead of the rules for its blocks' scripts (#1499, [[ScriptsAhead]]): the
+    * collections of the flat rules' transactions and the contexts of Conway's, which the rules take
+    * only where one is their own collection (`Phase2.collected`, `ContextInputs.collected`).
+    */
+  final case class Ahead(flat: Phase2.Ahead, conway: ContextsAhead[Conway])
+
+  object Ahead:
+    /** Nothing made ahead. */
+    val none: Ahead = Ahead(Phase2.Ahead.none, ContextsAhead.none[Conway])
+
   /** The node's phase-2 observer (`--plutus-cases`) of the blocks of the eras before Dijkstra, told
     * of each transaction whose scripts the rules evaluate or could not collect: of the flat rules'
     * observation of a block of an era before Conway (`Phase2.Observation`, `flat`), and of Conway's
@@ -564,7 +578,8 @@ object MirrorRules:
       phase2Observer: Option[MirrorRules.Phase2Observer] = None,
       prepared: Option[Prepared] = None,
       dijkstra: MirrorDijkstra.Read = MirrorDijkstra.Read.none,
-      dijkstraObserver: Option[DijkstraPhase2.Observation => Unit] = None
+      dijkstraObserver: Option[DijkstraPhase2.Observation => Unit] = None,
+      ahead: MirrorRules.Ahead = MirrorRules.Ahead.none
   ): MirrorDijkstra.Applied =
     applyBlockWith[cats.Id](
       state,
@@ -579,7 +594,8 @@ object MirrorRules:
       phase2Observer,
       prepared,
       dijkstra,
-      dijkstraObserver
+      dijkstraObserver,
+      ahead
     )([A] => (body: Phase2.Program[A]) => body.serial)
 
   /** [[applyBlock]] with the body of a Shelley-based block run by `validate`: serially, or through
@@ -599,7 +615,8 @@ object MirrorRules:
       phase2Observer: Option[MirrorRules.Phase2Observer],
       prepared: Option[Prepared],
       dijkstra: MirrorDijkstra.Read,
-      dijkstraObserver: Option[DijkstraPhase2.Observation => Unit]
+      dijkstraObserver: Option[DijkstraPhase2.Observation => Unit],
+      ahead: MirrorRules.Ahead
   )(validate: [A] => Phase2.Program[A] => F[A]): F[MirrorDijkstra.Applied] =
     header match
       // a Dijkstra block of the Leios build, on the era types, whose checkpoints Praos2's envelope
@@ -657,7 +674,8 @@ object MirrorRules:
                   byronParams,
                   plutus,
                   phase2Observer,
-                  prepared
+                  prepared,
+                  ahead
                 )
                 ready match
                   case Left(failure) => (Right(Left(failure)): MirrorDijkstra.Applied).pure[F]
@@ -698,7 +716,8 @@ object MirrorRules:
       byronParams: EraHistory.ByronParams,
       backend: PlutusBackend,
       phase2Observer: Option[MirrorRules.Phase2Observer],
-      prepared: Option[Prepared]
+      prepared: Option[Prepared],
+      ahead: MirrorRules.Ahead
   ): Ready =
     val geometry = config.geometry
     val placement = Placement(geometry, byronParams, config.forks)
@@ -711,7 +730,8 @@ object MirrorRules:
         evaluator = backend.evaluator,
         observer = phase2Observer.map(_.flat),
         decoder = backend.decoder,
-        clock = Some(clock)
+        clock = Some(clock),
+        ahead = ahead.flat
       )
     val front = Front(state, pre, announced, config, globals, placement)
     if announced.era == Era.Conway then
@@ -722,7 +742,8 @@ object MirrorRules:
         context,
         backend,
         phase2Observer,
-        prepared.collect { case Prepared.Conway(read) => read }
+        prepared.collect { case Prepared.Conway(read) => read },
+        ahead.conway
       )
     else
       flat(
@@ -855,7 +876,8 @@ object MirrorRules:
       context: PosixClock => EraBlock.Context,
       backend: PlutusBackend,
       phase2Observer: Option[MirrorRules.Phase2Observer],
-      prepared: Option[ConwayBlock.Read]
+      prepared: Option[ConwayBlock.Read],
+      ahead: ContextsAhead[Conway]
   ): Ready =
     val announced = front.announced
     val slot = announced.slot
@@ -892,7 +914,8 @@ object MirrorRules:
                   clock,
                   backend,
                   front.config.verdicts,
-                  phase2Observer.map(_.conway)
+                  phase2Observer.map(_.conway),
+                  ahead
                 ).fold(
                   defect => Ready.Done(Left(ChainError.ConwayBlock(slot, defect))),
                   body =>
@@ -935,7 +958,8 @@ object MirrorRules:
       clock: PosixClock.Forecast,
       backend: PlutusBackend,
       verdicts: xyz.kd5ujc.scarab.ledger.Verdicts,
-      conwayObserver: Option[ConwayPhase2.Observation => Unit]
+      conwayObserver: Option[ConwayPhase2.Observation => Unit],
+      ahead: ContextsAhead[Conway] = ContextsAhead.none[Conway]
   ): Either[ConwayBlockDefect, ConwayBlockRun.Body] =
     val ls = ticked.es.ls
     ConwayPParams
@@ -958,7 +982,8 @@ object MirrorRules:
           verdicts,
           backend.decoder,
           clock.posix,
-          conwayObserver.map(ConwayBlockRun.Observing(_, Some(clock)))
+          conwayObserver.map(ConwayBlockRun.Observing(_, Some(clock))),
+          ahead
         )
       }
 

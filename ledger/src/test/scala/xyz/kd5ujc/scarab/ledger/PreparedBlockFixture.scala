@@ -76,6 +76,11 @@ object PreparedBlockFixture:
     )
     Vector(first, second, txs(2))
 
+  /** [[txs]] with a validity interval ending at slot 5,000 (the block is at 1,000), so that their
+    * contexts read the clock.
+    */
+  val bounded: Vector[Tx] = txs.map(tx => resign(tx.copy(body = tx.body.copy(ttl = Some(5000)))))
+
   private val utxo = Utxo.empty ++ txs.flatMap(tx =>
     tx.body.inputs.map(_ -> scriptOutput) ++
       tx.body.collateral.map(_ -> TestLedger.out(owner.address(), 10000000))

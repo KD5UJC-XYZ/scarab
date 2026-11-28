@@ -170,6 +170,32 @@
       "page": "docs/compatibility/bounded-parallel-plutus.md"
     },
     {
+      "id": "scripts-ahead",
+      "component": "Plutus scripts collected and evaluated ahead of the selection worker (#1499)",
+      "status": "implemented",
+      "summary": "Queued blocks' script collections and results made ahead and taken by the rules only where equal to their own; nothing observable changes",
+      "evidence": {
+        "suites": [
+          "ScriptsAheadSuite",
+          "ScriptsAheadKeySuite",
+          "ScriptsAheadSameSuite",
+          "ContextInputsSuite"
+        ],
+        "docs": [
+          "docs/design/parallel-plutus.md#scripts-collected-and-evaluated-ahead-of-the-worker"
+        ],
+        "issues": [
+          1499
+        ]
+      },
+      "limitations": {
+        "issues": [
+          1499
+        ]
+      },
+      "page": "docs/compatibility/scripts-ahead.md"
+    },
+    {
       "id": "ntc-backlog-harness",
       "component": "NtC backlog verification harness",
       "status": "implemented",

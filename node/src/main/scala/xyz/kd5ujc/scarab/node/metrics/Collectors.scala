@@ -130,12 +130,15 @@ object Collectors:
         metrics.advance(preverifySkipped, c.skipped.toDouble)
     )
 
-  /** How the rules found their Plutus scripts against the results evaluated ahead of the worker,
-    * and what the speculator did ([[ScriptsAhead]]).
+  /** How the rules found their Plutus scripts and their transactions' collections against those
+    * made ahead of the worker, and what the speculator did ([[ScriptsAhead]]).
     */
   def scriptsAhead[F[_]: Sync](ahead: ScriptsAhead[F])(using metrics: Metrics[F]): F[Unit] =
     import Catalogue.*
-    (Sync[F].delay(ahead.results.counts), ahead.tallied).flatMapN((found, t) =>
+    (
+      Sync[F].delay((ahead.results.counts, ahead.results.collectionCounts)),
+      ahead.tallied
+    ).flatMapN { case ((found, collections), t) =>
       metrics.advance(plutusAheadHit, found.hit.toDouble) *>
         metrics.advance(plutusAheadMiss, found.miss.toDouble) *>
         metrics.advance(plutusAheadStale, found.stale.toDouble) *>
@@ -147,8 +150,27 @@ object Collectors:
         metrics.advance(plutusAheadNotKept, AheadLabel.Retaining, t.retaining.toDouble) *>
         metrics.advance(plutusAheadBlocks, AheadBlockLabel.Dropped, t.dropped.toDouble) *>
         metrics.advance(plutusAheadBlocks, AheadBlockLabel.Unread, t.unread.toDouble) *>
-        metrics.advance(plutusAheadBlocks, AheadBlockLabel.Failed, t.failed.toDouble)
-    )
+        metrics.advance(plutusAheadBlocks, AheadBlockLabel.Failed, t.failed.toDouble) *>
+        metrics.advance(plutusAheadCollectionOffered, collections.offered.toDouble) *>
+        metrics.advance(plutusAheadCollectionMiss, collections.missed.toDouble) *>
+        metrics.advance(plutusAheadCollectionScripts, collections.handed.toDouble) *>
+        metrics.advance(plutusAheadHitByRequest, collections.byRequest.toDouble) *>
+        metrics.advance(plutusAheadCollected, t.collected.toDouble) *>
+        metrics.advance(plutusAheadCollectionsFull, t.collectedFull.toDouble) *>
+        metrics.advance(plutusAheadReached, AheadStageLabel.Queued, t.reached.queued.toDouble) *>
+        metrics.advance(
+          plutusAheadReached,
+          AheadStageLabel.Preparing,
+          t.reached.preparing.toDouble
+        ) *>
+        metrics.advance(
+          plutusAheadReached,
+          AheadStageLabel.Evaluating,
+          t.reached.evaluating.toDouble
+        ) *>
+        metrics.advance(plutusAheadReached, AheadStageLabel.Done, t.reached.done.toDouble) *>
+        metrics.advance(plutusAheadReached, AheadStageLabel.Unasked, t.reached.unasked.toDouble)
+    }
 
   /** The bodies the block pool holds in memory. */
   def pool[F[_]: Monad](pool: BlockPool[F])(using metrics: Metrics[F]): F[Unit] =

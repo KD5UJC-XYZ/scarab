@@ -89,6 +89,10 @@ enum AheadLabel derives LabelValue:
 enum AheadBlockLabel derives LabelValue:
   case Dropped, Unread, Failed
 
+/** Where the speculation of a block's scripts was when the selection worker reached the block. */
+enum AheadStageLabel derives LabelValue:
+  case Queued, Preparing, Evaluating, Done, Unasked
+
 /** The two boards of the peer metrics. */
 enum MetricsBoardLabel derives LabelValue:
   case Headers, Blocks
@@ -656,6 +660,35 @@ object Catalogue:
     MetricName("scarab_plutus_ahead_blocks_unspeculated_total"),
     "Queued blocks whose scripts were not speculated ahead of the selection worker, by reason: the speculator's queue full (`Dropped`), not a block of the tip's era with scripts to speculate (`Unread`), the speculation failed (`Failed`).",
     Labels.one[AheadBlockLabel](LabelName("reason"))
+  )
+  val plutusAheadCollectionOffered = CounterDef(
+    MetricName("scarab_plutus_ahead_collection_offered_total"),
+    "Lookups of the block rules for a transaction's script collection that found one made ahead of the selection worker, which they take where it is their own."
+  )
+  val plutusAheadCollectionMiss = CounterDef(
+    MetricName("scarab_plutus_ahead_collection_miss_total"),
+    "Lookups of the block rules for a transaction's script collection that found none made ahead of the selection worker."
+  )
+  val plutusAheadCollectionScripts = CounterDef(
+    MetricName("scarab_plutus_ahead_collection_scripts_total"),
+    "Plutus scripts the block rules evaluated with the request a collection made ahead of the selection worker handed them, the collection being their own."
+  )
+  val plutusAheadHitByRequest = CounterDef(
+    MetricName("scarab_plutus_ahead_hit_by_request_total"),
+    "Plutus scripts the block rules evaluated whose result they found by the request itself, which a collection made ahead of the selection worker handed them."
+  )
+  val plutusAheadCollected = CounterDef(
+    MetricName("scarab_plutus_ahead_collected_total"),
+    "Collections of the scripts of queued blocks' transactions kept ahead of the selection worker."
+  )
+  val plutusAheadCollectionsFull = CounterDef(
+    MetricName("scarab_plutus_ahead_collections_full_total"),
+    "Collections of the scripts of queued blocks' transactions not kept ahead of the selection worker, the bounds full."
+  )
+  val plutusAheadReached = CounterDef(
+    MetricName("scarab_plutus_ahead_reached_total"),
+    "Blocks the selection worker reached, by where the speculation of their scripts was: in the speculator's queue (`Queued`), being read and collected (`Preparing`), its scripts being evaluated or waiting to be (`Evaluating`), done (`Done`), never asked for or gone (`Unasked`).",
+    Labels.one[AheadStageLabel](LabelName("stage"))
   )
   val preverifyAheadHit = CounterDef(
     MetricName("scarab_preverify_ahead_hit_total"),
@@ -1388,6 +1421,13 @@ object Catalogue:
     plutusAheadSkipped,
     plutusAheadNotKept,
     plutusAheadBlocks,
+    plutusAheadCollectionOffered,
+    plutusAheadCollectionMiss,
+    plutusAheadCollectionScripts,
+    plutusAheadHitByRequest,
+    plutusAheadCollected,
+    plutusAheadCollectionsFull,
+    plutusAheadReached,
     preverifyAheadHit,
     preverifyAheadJoined,
     preverifyAheadMiss,

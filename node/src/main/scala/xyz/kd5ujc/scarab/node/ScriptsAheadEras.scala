@@ -111,23 +111,50 @@ private[node] object ScriptsAheadEras:
         else made ++ ScriptsAhead.created(f)
       }
       val pp = PParams[Conway](params)
+      val scriptedTxs = scripted.map(_._2)
       ScriptsAhead.Scripts(
         scripted.size,
         created,
-        reads(scripted.map(_._1)),
+        scriptedTxs.iterator.flatMap(conwayReads).toSet,
         stored.maxBlockExUnits,
         outputs =>
-          scripted.foldLeft(ScriptsAhead.Collected(Vector.empty, 0)) { case (acc, (f, e)) =>
-            (f.body.inputs ++ f.body.referenceInputs)
-              .traverse(in => outputs(in).map(in -> _))
-              .flatMap(found => ConwayUTxO.fromStored(found.toMap).toOption)
-              .flatMap(utxo =>
-                AlonzoPlutusEvaluate
-                  .collectPlutusScriptsWithContext[Conway](slot => clock.posix(slot), pp, e, utxo)
-                  .toOption
+          scriptedTxs.foldLeft(ScriptsAhead.Collected.empty) { (acc, e) =>
+            conwayCollection(pp, slot => clock.posix(slot), e, outputs).fold(
+              acc.copy(skipped = acc.skipped + 1)
+            ) { collection =>
+              acc.copy(
+                requests = acc.requests ++ collection.requests,
+                collections = acc.collections :+ collection
               )
-              .fold(acc.copy(skipped = acc.skipped + 1))(found =>
-                acc.copy(requests = acc.requests ++ found.map(PlutusWithContext.evalRequest))
-              )
+            }
           }
       )
+
+  /** What LEDGERS reads of the UTxO set for the Conway transaction `e` (`ledgersFold`): its spent,
+    * collateral and reference inputs (`allInputs`).
+    */
+  private[node] def conwayReads(e: Tx[TxLevel.Top, Conway]): Set[TxIn] =
+    val t = EraTx.conway
+    given t.bodyOf.Level[TxLevel.Top] = t.bodyOf.top
+    t.bodyOf.allInputs(t.body[TxLevel.Top](e))
+
+  /** The contexts of the Conway transaction `e` 's scripts collected with the parameters `pp` and
+    * the clock `posix` from the outputs `outputs` gives for what LEDGERS reads ([[conwayReads]]),
+    * read into the era as LEDGERS reads them (`ConwayUTxO.fromStored`), and collected from what its
+    * annotation collects them from (`mkAlonzoStAnnTx`, `AlonzoStAnnTx.resolve`), here without the
+    * runnables of the block's earlier transactions, which the comparison of the scripts used looks
+    * through; none where an output is not given or they are not collected.
+    */
+  private[node] def conwayCollection(
+      pp: PParams[Conway],
+      posix: xyz.kd5ujc.scarab.ledger.Phase2.Posix,
+      e: Tx[TxLevel.Top, Conway],
+      outputs: TxIn => Option[FlatTxOut]
+  ): Option[ScriptsAhead.Collection] =
+    conwayReads(e).toVector
+      .traverse(in => outputs(in).map(in -> _))
+      .flatMap(found => ConwayUTxO.fromStored(found.toMap).toOption)
+      .flatMap(utxo =>
+        KeptContexts.of(AlonzoStAnnTx.resolve[Conway](pp, utxo, Map.empty, e).inputs, posix)
+      )
+      .map(ScriptsAhead.Collection.Conway(ScriptsAhead.conwayTxId(e), _))

@@ -275,11 +275,11 @@
   },
   "def ledger.era.rules.ShelleyLedgers.ledgersTransition": {
    "class": "Mirror",
-   "digest": "b6a8aa9100ef6f18",
+   "digest": "23883bcb603b9199",
    "evidence": [
     "ConwayLedgerChecksSuite"
    ],
-   "note": "Conway's LEDGERS, Babbage's (Conway/Era.hs:244), through the fold it shares with Dijkstra's (ledgersFold); mkStAnnTx is Alonzo's mkAlonzoStAnnTx given the cache the annotation before left, its epoch information and system start one function, the UTxO set the stored outputs of the transaction's inputs; the index by TxIx.enumerate, zip [minBound ..]; the proposals the caller's capability, which each transaction's LEDGER judges",
+   "note": "Conway's LEDGERS, Babbage's (Conway/Era.hs:244), through the fold it shares with Dijkstra's (ledgersFold); mkStAnnTx is Alonzo's mkAlonzoStAnnTx given the cache the annotation before left, its epoch information and system start one function, the UTxO set the stored outputs of the transaction's inputs; the index by TxIx.enumerate, zip [minBound ..]; the proposals the caller's capability, which each transaction's LEDGER judges; mkAlonzoStAnnTx takes the contexts made `ahead` of the selection worker only where they are its own collection (#1499, an Optimisation approved for #1499 item 4)",
    "structure": "differs",
    "upstream": [
     {

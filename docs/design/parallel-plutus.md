@@ -357,6 +357,47 @@ full validation or follower throughput, so they are not comparable with the full
 [recorded for D2](../performance/rewards-and-evaluation.md#bounded-parallel-plutus-after-ordered-preparation-d2-2026-10-18)
 (1.29× at four workers, an earlier source); the raw run output is not published.
 
+## Scripts collected and evaluated ahead of the worker
+
+As built for [#1499](https://github.com/KD5UJC-XYZ/scarab/issues/1499) item 4 (PRs
+[#1509](https://github.com/KD5UJC-XYZ/scarab/pull/1509) and
+[#1525](https://github.com/KD5UJC-XYZ/scarab/pull/1525)), an Optimisation (REF-6) approved on 2026-11-27.
+The node's speculator (`ScriptsAhead`) takes the blocks waiting in the add-block queue in their order. It works
+in two stages that run beside each other:
+
+- **Reading.** It reads each block on the selection worker's tip, with the outputs of the blocks before it.
+  It collects each transaction's scripts with the rules' own collection: `Phase2.collect` before Conway,
+  through `Phase2.Kept`, and `mkAlonzoStAnnTx`'s contexts in Conway, through `KeptContexts`. It keeps the
+  collections for the rules at once.
+- **Evaluating.** It evaluates the requests of two blocks at once on threads of its own (`ScriptsAhead.parallelism`)
+  and keeps the results.
+
+Each kept collection holds what it was collected from and the clock's answer to each slot it asked for:
+
+- before Conway, `Phase2.Inputs`: the era, the transaction, the parameters, the scripts it has, and the outputs
+  it spends and reads;
+- in Conway, `ContextInputs`: the protocol version, the outputs of `allInputs`, the transaction, the scripts used
+  as resolved, and the cost models.
+
+UTXOS (`TxChecks.phase2`) and Conway's annotation take a kept collection only where it is their own
+(`Phase2.collected`, `ContextInputs.collected`): their inputs are equal, and their clock answers the same slots
+alike. The collection is a deterministic function of those, so what they take is what they would collect.
+Otherwise they collect as before, and with nothing kept they are unchanged. The clock's answers are compared
+rather than the clock, because the era history's horizon moves with the tip.
+
+The evaluator answers a request from a result kept for an equal request (`ScriptsAhead.Results`), looking for
+the same request object first. That is the one a taken collection hands over. Results and collections are kept
+within bounds of blocks, entries and bytes, and dropped once the worker is done with their block. The prepared
+body's jobs are built from the requests the rules collected, so a taken collection's requests reach the workers
+unchanged.
+
+The reference collects a transaction's scripts and evaluates them where its rule reaches them:
+`collectPlutusScriptsWithContext` and `evalPlutusScripts` (cardano-ledger f649f975
+`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Evaluate.hs` 83-118 and 188-207), and `mkAlonzoStAnnTx`
+(cardano-ledger 9df9f98c `eras/alonzo/impl/src/Cardano/Ledger/Alonzo.hs` 125-166). Equivalence evidence:
+`ScriptsAheadSuite`, `ScriptsAheadKeySuite`, `ScriptsAheadSameSuite` and `ContextInputsSuite`. Dijkstra blocks
+are not speculated.
+
 ## Reference correspondence
 
 Pinned ledger source: `f649f9751074d2ab3de033fc3912f29c9862c1f5`,

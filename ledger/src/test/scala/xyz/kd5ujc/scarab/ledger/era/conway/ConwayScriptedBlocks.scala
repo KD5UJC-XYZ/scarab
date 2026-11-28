@@ -52,7 +52,7 @@ object ConwayScriptedBlocks extends Assertions:
   /** The `i` th transaction, minting one token of `script` 's policy, its redeemer declaring
     * `units`.
     */
-  private def transaction(i: Int, script: Bytes, units: ExUnits): Built =
+  private def transaction(i: Int, script: Bytes, units: ExUnits, ttl: Option[BigInt]): Built =
     val policy = B.scriptHash(tagOf(PlutusLanguage.V3), script)
     val assets = B.cmap(B.bytes(name) -> B.uint(1))
     val spec = Spec(
@@ -64,7 +64,8 @@ object ConwayScriptedBlocks extends Assertions:
       mint = Some(policy -> assets),
       collateral = SortedSet(collateral(i)),
       redeemers = Map(Purpose.Minting(policy) -> (B.uint(0), units)),
-      plutusScripts = Map(policy -> TestScript(PlutusLanguage.V3, script, B.uint(0), None))
+      plutusScripts = Map(policy -> TestScript(PlutusLanguage.V3, script, B.uint(0), None)),
+      ttl = ttl
     )
     val integrity = ScriptIntegrity
       .mkScriptIntegrity[Conway, TxLevel.Top](
@@ -78,7 +79,7 @@ object ConwayScriptedBlocks extends Assertions:
   /** The block of `n` transactions whose redeemers each declare `units`, on the state of their
     * inputs.
     */
-  def declaring(n: Int, script: Bytes, units: ExUnits): Scripted =
+  def declaring(n: Int, script: Bytes, units: ExUnits, ttl: Option[BigInt] = None): Scripted =
     val funds = outputs((0 until n).flatMap { i =>
       Vector(
         funding(i) -> Out(keyAddress(payer), 20000000),
@@ -86,7 +87,7 @@ object ConwayScriptedBlocks extends Assertions:
       )
     }*)
     val ls = Build.funded[Conway](Build.nes[Conway](0L, stored(major)), funds).es.ls
-    val txs = (0 until n).toVector.map(transaction(_, script, units))
+    val txs = (0 until n).toVector.map(transaction(_, script, units, ttl))
     Scripted(blockOf(major, txs), ls, txs.map(_.id))
 
   /** The units `script` spends, as its one transaction's run reports. */
