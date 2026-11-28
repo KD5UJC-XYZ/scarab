@@ -88,7 +88,7 @@
   },
   "def ledger.era.rules.DELPL.delplTransition": {
    "class": "Mirror",
-   "digest": "f3c5add7e1f48db8",
+   "digest": "26314ea1cbb881f2",
    "evidence": [
     "BabbageDelegsSuite",
     "BabbageDelegsCorpusSuite"
@@ -131,12 +131,12 @@
   },
   "def ledger.era.rules.ShelleyDELEG.checkSlotNotTooLate": {
    "class": "Mirror",
-   "digest": "e98ec28243fec8bd",
+   "digest": "951aca905abc2b5c",
    "evidence": [
     "BabbageDelegsSuite",
     "BabbageDelegsCorpusSuite"
    ],
-   "note": "the next epoch a Word64 sum that wraps (addEpochInterval); its first slot from Globals less the window by monus; a first slot outside SlotNo raised (LedgerFailure.Vocab), which no chain reaches",
+   "note": "the next epoch a Word64 sum that wraps (addEpochInterval); its first slot from Globals cut to 64 bits as epochInfoFirst's Word64 arithmetic wraps (fixedEpochInfoFirst, cardano-slotting/src/Cardano/Slotting/EpochInfo/Impl.hs:37-39, cardano-base c1e1ed8d), then less the window by monus (*-, Slot.hs:63-64)",
    "structure": "differs",
    "upstream": [
     {
@@ -153,7 +153,7 @@
   },
   "def ledger.era.rules.ShelleyDELEG.delegationTransition": {
    "class": "Mirror",
-   "digest": "94fea6ee65fde615",
+   "digest": "09436ca8a032b703",
    "evidence": [
     "BabbageDelegsSuite",
     "BabbageDelegsCorpusSuite"

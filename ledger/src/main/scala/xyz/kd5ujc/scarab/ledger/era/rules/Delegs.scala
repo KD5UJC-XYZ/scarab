@@ -55,8 +55,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
 // (`ShelleyEraAccounts`) and the certificates' of the eras up to Babbage
 // (`ShelleyEraTxCertToBabbage`). POOL is the rule Conway runs too (`Certs.scala`). Each rule records
 // the reference's own failures (`DelegsFailures.scala`), a sub-rule's embedded in its caller's as
-// the reference's `Embed` instances do. A value outside the state's vocabulary is raised as a defect
-// (`LedgerDefect`).
+// the reference's `Embed` instances do. POOL raises a defect (`LedgerDefect`) for parameters of
+// another layout than the state's; DELEG raises none.
 
 /** `DelegsEnv` (`Shelley/Rules/Delegs.hs:66-74`, cardano-ledger f649f975): the slot, the epoch, the
   * transaction's position in its block, the parameters, the transaction, which the rule does not
@@ -184,7 +184,6 @@ object DELPL:
           p,
           ask,
           st,
-          defect,
           wrapped(judge)(embed.wrapDelegFailed),
           told(events)(embed.wrapDelegEvent)
         )
@@ -226,7 +225,6 @@ object ShelleyDELEG:
       p: EraPParams[E],
       ask: Ask[F, Globals],
       st: Stateful[F, CertState[E]],
-      defect: Raise[F, LedgerDefect],
       judge: Judge[F, ShelleyDelegPredFailure[E]],
       events: Tell[F, Chain[ShelleyDelegEvent[E]]]
   ): F[Unit] =
@@ -308,8 +306,8 @@ object ShelleyDELEG:
             }.toVector
         for
           globals <- ask.ask[Globals]
-          // `slot +* Duration sp` (`Slot.hs`, cardano-slotting, cardano-base c1e1ed8d): a `Word64`
-          // sum, which wraps
+          // `slot +* Duration sp` (`libs/cardano-ledger-core/src/Cardano/Ledger/Slot.hs:59-60`,
+          // cardano-ledger f649f975): a `Word64` sum, which wraps
           due = SlotNo.fromUnsigned(
             Word64.wrappingAdd(env.slot.word, globals.geometry.stabilityWindow).bits
           )
@@ -419,24 +417,27 @@ object ShelleyDELEG:
     }
 
   /** `checkSlotNotTooLate` (`Shelley/Rules/Deleg.hs:387-404`, cardano-ledger f649f975): the first
-    * slot of the epoch after `curEpochNo` (`addEpochInterval`, a `Word64` sum that wraps) less the
-    * stability window, by monus (`*-`, `Slot.hs:63-64`, cardano-slotting, cardano-base c1e1ed8d),
-    * from `Globals`; the next epoch told (`DelegNewEpoch`) before the slot is checked against it. A
-    * first slot outside `SlotNo` is raised ([[LedgerDefect]]).
+    * slot of the epoch after `curEpochNo` (`addEpochInterval`, a `Word64` sum that wraps), from
+    * `Globals`, as the reference's `SlotNo` (`epochInfoFirst`, whose `Word64` arithmetic wraps:
+    * `fixedEpochInfoFirst`, `cardano-slotting/src/Cardano/Slotting/EpochInfo/Impl.hs:37-39`,
+    * cardano-base c1e1ed8d), less the stability window by monus (`*-`,
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/Slot.hs:63-64`, cardano-ledger f649f975): the
+    * first slot is cut to 64 bits before the window is taken off. The next epoch is told
+    * (`DelegNewEpoch`) before the slot is checked against it.
     */
   def checkSlotNotTooLate[E <: EraTag, F[_]: Monad](slot: SlotNo, curEpochNo: EpochNo)(using
       ask: Ask[F, Globals],
-      defect: Raise[F, LedgerDefect],
       judge: Judge[F, ShelleyDelegPredFailure[E]],
       events: Tell[F, Chain[ShelleyDelegEvent[E]]]
   ): F[Unit] =
     val newEpoch = curEpochNo.addInterval(EpochInterval.one)
     for
       globals <- ask.ask[Globals]
-      tooLate <- vocab[F, SlotNo](
-        SlotNo.fromBigInt(
-          (globals.firstSlot(newEpoch.toBigInt) - globals.stabilityWindow).max(0)
-        )
+      firstSlot = globals.firstSlot(newEpoch.toBigInt).mod(BigInt(1) << 64)
+      window = globals.stabilityWindow
+      // below 2^64 and not negative, so its low 64 bits are the slot
+      tooLate = SlotNo.fromUnsigned(
+        (if firstSlot > window then firstSlot - window else BigInt(0)).toLong
       )
       _ <- events.tell(Chain.one(ShelleyDelegEvent.DelegNewEpoch(newEpoch)))
       _ <- Sts.predicate[F, Rec[E]](

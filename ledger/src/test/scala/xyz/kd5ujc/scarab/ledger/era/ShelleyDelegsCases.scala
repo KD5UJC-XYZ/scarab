@@ -596,6 +596,46 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
     )
   }
 
+  test(
+    s"$name: the MIR cutoff is the next epoch's first slot cut to 64 bits, less the window by monus"
+  ) {
+    // epochs of 16 slots and a window of 3: at slot 2^64 - 16 the next epoch's first slot is 2^64,
+    // which the reference's Word64 product wraps to slot 0 (`fixedEpochInfoFirst`), so the cutoff
+    // is 0 and the certificate is too late; an unbounded first slot would make it 2^64 - 3
+    val geometry = EpochGeometry
+      .checked(Instant.EPOCH, 1000L, 16L, TestGeometry.k(1), TestGeometry.f("1"))
+      .fold(e => fail(e.message), identity)
+    val wrapping = Globals(g.ledger, geometry)
+    assertEquals(wrapping.stabilityWindow, BigInt(3))
+    val at = right("slot")(SlotNo.fromBigInt((BigInt(1) << 64) - 16))
+    val e = right("epoch")(EpochNo.fromBigInt(wrapping.epochOf(at.toBigInt)))
+    assertEquals(e.toBigInt, (BigInt(1) << 60) - 1)
+    val env = DelegsEnv[E](at, e, TxIx.minBound, d.pparams(pp8), d.tx(), account)
+    EraDelegsRun.era[E](
+      wrapping,
+      env,
+      d.certState.flip(populated),
+      Vector(mir(MIRPot.ReservesMIR, 1 -> 1)),
+      RuleT.Policy.Accumulate
+    ) match
+      case Right(Left(fs)) =>
+        assertEquals(
+          fs.toList.map(EraDelegsRun.flatOf[E]),
+          List(
+            delegF(
+              DelegFailure.MIRCertificateTooLateinEpoch(FlatMismatch((BigInt(1) << 64) - 16, 0))
+            )
+          )
+        )
+      case other => fail(s"$other")
+    // the epoch before, whose next first slot fits: the cutoff 2^64 - 19, so 2^64 - 32 is in time
+    val earlier = right("slot")(SlotNo.fromBigInt((BigInt(1) << 64) - 32))
+    assert(
+      judged(populated, Vector(mir(MIRPot.ReservesMIR, 1 -> 1)), at = earlier, globals = wrapping)
+        .isInstanceOf[Outcome.Accepted]
+    )
+  }
+
   test(s"$name: DELEG alone refuses a pool's certificate, which DELPL never gives it") {
     val env = DelegEnv[E](slot, epoch, Ptr(1000, 0, 0), account, d.pparams(pp8))
     Vector(regPool(1), retire(1, epoch.toBigInt + 1)).foreach { c =>
