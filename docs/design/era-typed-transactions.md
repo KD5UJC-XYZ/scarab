@@ -3672,16 +3672,17 @@ Conway's rules on the classes follow as the rest of stage 2.
     typed update's site, the two repeated parameter keys named as the reference names them, seven envelopes
     refused where the reference reads the record, and the redeemer's detached units. As at Babbage, three refused
     envelopes (a head over the wrong count of items, and a detached record) and the redeemer's detached units keep a
-    cause other than the reference's, the verdict being the reference's (Gaps). No recorded Alonzo witness set
-    holds a native script and no recorded Alonzo transaction holds metadata, so the comparison's faults for those
-    are made on a crafted witness set and the envelope corpus's metadata. Nothing in the node reads these types
+    cause other than the reference's, the verdict being the reference's (Gaps). No Alonzo witness set this
+    differential loads holds a native script and no Alonzo transaction it loads holds metadata, so the comparison's
+    faults for those are made on a crafted witness set and the envelope corpus's metadata (the golden block of
+    cardano-node issue 4228, which the Plutus side's suite loads, holds both). Nothing in the node reads these types
     yet; Alonzo's Plutus side is the next part.
 - **Alonzo's Plutus side** (stage 4, eighth part; `era/alonzo/AlonzoEraUTxO.scala`, `era/AlonzoTxInfo.scala`,
   `era/EraUTxO.scala`, `era/PlutusContext.scala`; cardano-ledger f649f975 `Alonzo/UTxO.hs:112-242`, `Alonzo.hs:82`,
   `Alonzo/Plutus/TxInfo.hs:130-211`, which governs Alonzo's behaviour; the contexts' shape of cardano-ledger 9df9f98c,
   `Alonzo/Plutus/TxInfo.hs:132-220`, `Alonzo/Plutus/Context.hs:282-289`):
   - Alonzo's `EraUTxO` and `AlonzoEraUTxO`: Mary's values, the witnesses' scripts alone as the scripts provided,
-    Alonzo's `getAlonzoScriptsNeeded`, `getAlonzoWitsVKeyNeeded`, Shelley's minimum fee, the supplemental datums
+    Alonzo's `getAlonzoScriptsNeeded`, `getAlonzoWitsVKeyNeeded`, the minimum fee through `alonzoMinFeeTx` (its execution units priced), the supplemental datums
     of the body's outputs alone (`getAlonzoSupplementalDataHashes`), the spending datum by its hash among the
     witnesses' datums (`getAlonzoSpendingDatum`), and the annotated transaction's four members, with `mkStAnnTx`.
     The genesis delegations are read from the certificate state's delegation state, as Alonzo has no
@@ -3722,16 +3723,16 @@ Conway's rules on the classes follow as the rest of stage 2.
       (the reference accepted it) and one at index 1 is UTXOW's extra redeemer, not a failure to collect;
     - the reference's own bytes: each of the matrix's 26 Alonzo requests is the era's, by its script, arguments,
       budget and cost model, and encoded whole as the reference's `PlutusWithContext` bytes;
-    - crafted cases for what the corpora do not reach: an input and an output at a Byron address, outputs with
-      datum hashes, a refund of a registered credential and a
+    - crafted cases for what the corpora do not reach: an input and an output at a Byron address, a refund of a registered credential and a
       pool registered again, an end alone,
       a clock that cannot translate a slot together with a missing input, a genesis delegation and a move of
       rewards, a repeated script certificate, an update whose genesis delegates must sign, a Plutus script needed
       with no redeemer, and an annotated transaction with a warm cache.
 
     The era path and the flat path agree on all of these, and both agree with the reference where it recorded a
-    context. Not compared: the spending scripts and datums of the 57 stand-in transactions, as the corpora that
-    hold them record no spent outputs. Not yet: the genesis delegations read through `EraCertState[Alonzo]`, with
+    context. Not compared: the spending scripts and datums of the 57 stand-in transactions in the ledger suite, whose
+    spent outputs are not loaded there; the 13 refusal cases among them are compared again with their recorded UTxO
+    in the node suite. Not yet: the genesis delegations read through `EraCertState[Alonzo]`, with
     Alonzo's state classes; and the flat purpose of an Alonzo purpose (`toStored`, for `MissingRedeemers`), with
     Alonzo's UTXOW. Nothing in the node reads these types yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that

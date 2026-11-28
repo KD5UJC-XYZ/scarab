@@ -480,7 +480,7 @@ class AlonzoPlutusContextSuite extends munit.FunSuite:
         request.language
       }
     }
-    // the 28 requests of the 20 rows: one each, and four of each all-purposes row
+    // the 26 requests of the 20 rows: one each, and four of each all-purposes row
     assertEquals(matched.size, 18 + 2 * 4)
     assertEquals(matched.toSet, Set(PlutusLanguage.V1))
   }
