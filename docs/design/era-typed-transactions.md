@@ -3854,7 +3854,8 @@ Conway's rules on the classes follow as the rest of stage 2.
 
     Every comparison agrees. Not compared byte for byte: the two refusal cases of moves of rewards that UTXOW
     refuses too (`mir-signed-intermediate-*`), whose DELEG failures are compared with the flat rule's only. Not yet:
-    Alonzo's instances, with Alonzo's state classes. Nothing in the node runs these rules; the flat path stays.
+    Alonzo's instances, on Alonzo's state classes now in place. Nothing in the node runs these rules;
+    the flat path stays.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
