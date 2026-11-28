@@ -309,8 +309,10 @@ object AlonzoUtxos:
     * says; under `ValidateAll` it is [[when2Phase]]. Babbage's UTXOS runs it too, as it runs
     * `Alonzo.when2Phase` (`Babbage/Rules/Utxos.hs:145, 208`, cardano-ledger f649f975).
     */
-  private[rules] def judged2Phase[F[_]: Applicative, Rec](validation: TxEnv.Validation)(fa: => F[Unit])(
-      using judge: Judge[F, Rec]
+  private[rules] def judged2Phase[F[_]: Applicative, Rec](
+      validation: TxEnv.Validation
+  )(fa: => F[Unit])(using
+      judge: Judge[F, Rec]
   ): F[Unit] = judge.policy match
     case ValidationPolicy.ValidateAll  => when2Phase[F](validation)(fa)
     case ValidationPolicy.ValidateNone => Applicative[F].unit

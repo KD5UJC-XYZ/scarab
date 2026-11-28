@@ -84,6 +84,39 @@
     }
    ]
   },
+  "def ledger.era.rules.AlonzoUtxos.judged2Phase": {
+   "class": "Mirror",
+   "digest": "842a2a48b2dd4f79",
+   "evidence": [
+    "EraUtxosSuite",
+    "BabbageUtxosSuite",
+    "AlonzoUtxosSuite"
+   ],
+   "note": "when2Phase as the judgment's interpreter runs a labelled clause: under ValidateNone validateIf is False and the clause is skipped whatever the flag, under ValidateAll it is when2Phase; the policy is the judgment's (Judge.policy), read where the reference's interpreter reads vp; Alonzo's and Babbage's UTXOS share it, as Babbage's calls Alonzo.when2Phase",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
+     "lines": [
+      709,
+      712
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "runClause"
+    },
+    {
+     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
+     "lines": [
+      727,
+      730
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateIf"
+    }
+   ]
+  },
   "def ledger.era.rules.AlonzoUtxos.scriptsTransition": {
    "class": "Mirror",
    "digest": "1579b83e1cfa8805",
