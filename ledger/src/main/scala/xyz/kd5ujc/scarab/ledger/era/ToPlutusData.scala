@@ -121,11 +121,6 @@ object ToPlutusData:
     */
   given maxPledgeLeverage: ToPlutusData[MaxPledgeLeverage] = m => m.unMaxPledgeLeverage.toPlutusData
 
-  /** `instance ConwayEraPParams era => ToPlutusData (PParamsUpdate era)`
-    * (`eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs:199-205`, cardano-ledger f649f975):
-    * the fields the update sets, each under its tag, in the order of the era's descriptions
-    * (`eraPParams`); a parameter an update cannot set has no tag and is left out.
-    */
   // `instance ToPlutusData Nonce` and `instance ToPlutusData CoinPerWord` are `error
   // "unsupported"` (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/ToPlutusData.hs:159-161`,
   // `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs:405-407`, cardano-ledger f649f975): they
@@ -149,6 +144,11 @@ object ToPlutusData:
   @SuppressWarnings(Array("xyz.kd5ujc.scarab.warts.SystemTimeAndUnsafeRun"))
   private[era] val unsupportedCoinPerWord: ToPlutusData[CoinPerWord] = _ => sys.error("unsupported")
 
+  /** `instance ConwayEraPParams era => ToPlutusData (PParamsUpdate era)`
+    * (`eras/conway/impl/src/Cardano/Ledger/Conway/PParams.hs:199-205`, cardano-ledger f649f975):
+    * the fields the update sets, each under its tag, in the order of the era's descriptions
+    * (`eraPParams`); a parameter an update cannot set has no tag and is left out.
+    */
   given pparamsUpdate[E <: EraTag](using p: ConwayEraPParams[E]): ToPlutusData[PParamsUpdate[E]] =
     ppu =>
       PlutusData.Map(p.eraPParams.flatMap { pp =>
