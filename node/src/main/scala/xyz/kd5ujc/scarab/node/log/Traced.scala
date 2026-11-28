@@ -144,7 +144,7 @@ object Traced:
     case FollowerEvent.Reconnecting(reason, attempt) =>
       EventKind.Reconnecting.line("reason" -> reason.message.asJson, "attempt" -> attempt.asJson)
     case FollowerEvent.NoVerdict(at, cause, attempt, retry) =>
-      EventKind.BlockNoVerdict.line(
+      val fields = List(
         "block" -> point(at),
         "kind" -> noVerdictKind(cause).asJson,
         "reason" -> cause.message.asJson,
@@ -153,8 +153,40 @@ object Traced:
           case xyz.kd5ujc.scarab.consensus.NoVerdictRetry.Never        => Json.Null
           case xyz.kd5ujc.scarab.consensus.NoVerdictRetry.After(delay) => delay.toMillis.asJson)
       )
+      // the first judgement of a block the rules threw on says where they threw (#1521); the
+      // retries of the same block repeat only the reason
+      val stack = cause match
+        case xyz.kd5ujc.scarab.consensus.BlockNoVerdict.Defect(thrown) if attempt == 1 =>
+          List("stack" -> stackOf(thrown).asJson)
+        case _ => Nil
+      EventKind.BlockNoVerdict.line(fields ++ stack*)
     case FollowerEvent.NoVerdictRetried(at, attempt) =>
       EventKind.BlockNoVerdictRetry.line("block" -> point(at), "attempt" -> attempt.asJson)
+
+  /** The most causes and frames of each that [[stackOf]] gives. */
+  private val StackCauses = 8
+  private val StackFrames = 64
+
+  /** A throwable's stack trace as lines, as `printStackTrace` prints it: the throwable and its
+    * first [[StackFrames]] frames, then each cause (`Caused by: ...`) and its frames, at most
+    * [[StackCauses]] throwables, and a cause already printed ends the chain.
+    */
+  private[log] def stackOf(thrown: Throwable): Vector[String] =
+    val chain = Iterator
+      .iterate(Option(thrown))(_.flatMap(t => Option(t.getCause)))
+      .takeWhile(_.isDefined)
+      .flatten
+      .take(StackCauses)
+      .toVector
+    chain.zipWithIndex
+      .takeWhile((t, i) => !chain.take(i).exists(_ eq t))
+      .flatMap { (t, i) =>
+        val frames = t.getStackTrace.toVector
+        val shown = frames.take(StackFrames).map(f => s"\tat $f")
+        val more = frames.length - shown.length
+        val head = if i == 0 then t.toString else s"Caused by: $t"
+        (head +: shown) ++ Option.when(more > 0)(s"\t... $more more")
+      }
 
   /** The `kind` field of a cause of no verdict. */
   private[log] def noVerdictKind(cause: xyz.kd5ujc.scarab.consensus.BlockNoVerdict): String =
