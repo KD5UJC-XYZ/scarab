@@ -41,13 +41,19 @@ import xyz.kd5ujc.scarab.ledger.era.babbage.{
   BabbageTx
 }
 import xyz.kd5ujc.scarab.ledger.era.rules.{
+  AllegraUtxoPredFailure,
   AlonzoUtxoEvent,
   AlonzoUtxoPredFailure,
   AlonzoUtxosEvent,
   AlonzoUtxosPredFailure,
   BabbageUtxo,
   BabbageUtxoPredFailure,
+  EmbedPpupInUtxos,
+  EmbedUtxosInUtxo,
   FailureDescription,
+  InjectUtxoFailure,
+  InjectUtxosFailure,
+  ShelleyUtxoPredFailure,
   TagMismatchDescription,
   UtxoContext,
   UtxoEnv,
@@ -1067,4 +1073,81 @@ class BabbageUtxoSuite extends FunSuite:
     EraRun.run(j, context, j.ctx.evaluator) match
       case Left(Left(Right(UtxoStateDefect.StoredOutput(in, _)))) => assertEquals(in, ref)
       case other => fail(s"not the stored output's defect: $other")
+  }
+
+  /** Babbage's injections into its UTXO failure, each on its own (`Babbage/Rules/Utxo.hs:102-120`,
+    * cardano-ledger f649f975), on failures the refusal corpora's cases give and on crafted ones:
+    * the constructor each wraps with, and the same failure the transition records through its
+    * embeddings (PPUP's into UTXOS's, `Babbage/Rules/Utxos.hs:54-55, 93-102`, and UTXOS's into
+    * UTXO's, `Babbage/Rules/Utxo.hs:528-537`).
+    */
+  test("each injection into Babbage's UTXO failure, against the transition's embeddings") {
+    def recorded(name: String): List[Rec] =
+      eraFailures(
+        refusals.find(_.judged.name.endsWith(s"/$name")).getOrElse(fail(s"no case $name")).judged
+      ).toList
+    // PPUP's failure, as UTXOS's `UpdateFailure` in UTXO's `UtxosFailure`
+    val (fromPpup, ppup) = recorded("ppup-non-genesis-proposer")
+      .collectFirst {
+        case f @ BabbageUtxoPredFailure.AlonzoInBabbageUtxoPredFailure(
+              AlonzoUtxoPredFailure.UtxosFailure(AlonzoUtxosPredFailure.UpdateFailure(p))
+            ) =>
+          (f, p)
+      }
+      .getOrElse(fail("no failure of PPUP"))
+    assertEquals(InjectUtxoFailure.babbagePpup.injectFailure(ppup), fromPpup)
+    assertEquals(
+      InjectUtxosFailure.babbagePpup.injectFailure(ppup),
+      AlonzoUtxosPredFailure.UpdateFailure[Babbage](ppup)
+    )
+    assertEquals(
+      EmbedPpupInUtxos.babbage.wrapFailed(ppup),
+      InjectUtxosFailure.babbagePpup.injectFailure(ppup)
+    )
+    // UTXOS's own failure, as UTXO's `UtxosFailure`
+    val (fromUtxos, utxos) = recorded("utxos-script-fails-flag-true")
+      .collectFirst {
+        case f @ BabbageUtxoPredFailure.AlonzoInBabbageUtxoPredFailure(
+              AlonzoUtxoPredFailure.UtxosFailure(
+                u @ AlonzoUtxosPredFailure.ValidationTagMismatch(_, _)
+              )
+            ) =>
+          (f, u)
+      }
+      .getOrElse(fail("no tag mismatch"))
+    assertEquals(InjectUtxoFailure.babbageAlonzoUtxos.injectFailure(utxos), fromUtxos)
+    assertEquals(EmbedUtxosInUtxo.babbage.wrapFailed(utxos), fromUtxos)
+    // Alonzo's and Allegra's, PPUP's by Allegra's `UpdateFailure` too, and Shelley's by build
+    val out = eraUtxo(v1Judged(caseNamed(plain))).unUTxO.values.head
+    val outs = cats.data.NonEmptyList.one(out)
+    def babbage(f: AlonzoUtxoPredFailure[Babbage]): Rec =
+      BabbageUtxoPredFailure.AlonzoInBabbageUtxoPredFailure(f)
+    assertEquals(
+      InjectUtxoFailure.babbageAlonzo.injectFailure(AlonzoUtxoPredFailure.NoCollateralInputs()),
+      babbage(AlonzoUtxoPredFailure.NoCollateralInputs())
+    )
+    assertEquals(
+      InjectUtxoFailure.babbageAllegra.injectFailure(AllegraUtxoPredFailure.UpdateFailure(ppup)),
+      fromPpup
+    )
+    assertEquals(
+      InjectUtxoFailure.babbageAllegra.injectFailure(AllegraUtxoPredFailure.OutputTooBigUTxO(outs)),
+      babbage(AlonzoUtxoPredFailure.OutputTooBigUTxO(outs.map((0, 0, _))))
+    )
+    val tooBig = ShelleyUtxoPredFailure.OutputBootAddrAttrsTooBig[Babbage](outs)
+    assertEquals(
+      builds.map(b => b -> BabbageUtxo.injectShelleyFailure(b).injectFailure(tooBig)),
+      builds.map {
+        case b @ ReferenceBuild.Release11_1 =>
+          b -> babbage(AlonzoUtxoPredFailure.OutputTooBigUTxO(outs.map((0, 0, _))))
+        case b @ (ReferenceBuild.Release11_2 | ReferenceBuild.Leios) =>
+          b -> babbage(AlonzoUtxoPredFailure.OutputBootAddrAttrsTooBig(outs))
+      }
+    )
+    assertEquals(
+      BabbageUtxo.injectShelleyFailure11_1.injectFailure(
+        ShelleyUtxoPredFailure.InputSetEmptyUTxO()
+      ),
+      babbage(AlonzoUtxoPredFailure.InputSetEmptyUTxO())
+    )
   }
