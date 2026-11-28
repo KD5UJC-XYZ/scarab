@@ -90,6 +90,15 @@ object RecordedRequests:
 
   def sha256(path: Path): String = sha256(Files.readAllBytes(path))
 
+  /** Every recorded case, by its id, each read anew from its file: for what a collection is made
+    * from (`ScriptsAheadHitBench`).
+    */
+  def recordedCases: Vector[(String, PlutusCase)] =
+    Sources.flatMap((network, directory) => files(directory).flatMap(cases(network, _)))
+
+  /** The scripts a case's transaction has: its witnesses' and its outputs' reference scripts. */
+  def scriptsFor(c: PlutusCase): Map[Bytes, Script] = scriptsOf(c)
+
   /** Every recorded case file, with its digest and the requests collected for it. */
   def sources: Vector[Source] =
     Sources.flatMap((network, directory) =>
