@@ -171,28 +171,48 @@ object InjectDelegsFailure:
     def injectFailure(failure: ShelleyDelegsPredFailure[Alonzo]): DelegsPredFailure[Alonzo] =
       failure
 
-  /** `Alonzo/Rules/Delegs.hs:17-24` (cardano-ledger f649f975): DELPL's failure, and each of the
-    * rules below it through DELPL's injection, wrapped in `DelplFailure`.
+  /** `Alonzo/Rules/Delegs.hs:17-18` (cardano-ledger f649f975): DELPL's failure, `DelplFailure`. */
+  given alonzoDelpl: InjectDelegsFailure[ShelleyDelplPredFailure[Alonzo], Alonzo] with
+    def injectFailure(failure: ShelleyDelplPredFailure[Alonzo]): DelegsPredFailure[Alonzo] =
+      ShelleyDelegsPredFailure.DelplFailure(failure)
+
+  /** `Alonzo/Rules/Delegs.hs:20-21` (cardano-ledger f649f975): POOL's failure,
+    * `DelplFailure . injectFailure`.
     */
-  given alonzoDelpl[F](using
-      inject: InjectDelplFailure[F, Alonzo]
-  ): InjectDelegsFailure[F, Alonzo] with
-    def injectFailure(failure: F): DelegsPredFailure[Alonzo] =
-      ShelleyDelegsPredFailure.DelplFailure(inject.injectFailure(failure))
+  given alonzoPool: InjectDelegsFailure[ShelleyPoolPredFailure[Alonzo], Alonzo] with
+    def injectFailure(failure: ShelleyPoolPredFailure[Alonzo]): DelegsPredFailure[Alonzo] =
+      ShelleyDelegsPredFailure.DelplFailure(InjectDelplFailure.alonzoPool.injectFailure(failure))
+
+  /** `Alonzo/Rules/Delegs.hs:23-24` (cardano-ledger f649f975): DELEG's failure,
+    * `DelplFailure . injectFailure`.
+    */
+  given alonzoDeleg: InjectDelegsFailure[ShelleyDelegPredFailure[Alonzo], Alonzo] with
+    def injectFailure(failure: ShelleyDelegPredFailure[Alonzo]): DelegsPredFailure[Alonzo] =
+      ShelleyDelegsPredFailure.DelplFailure(InjectDelplFailure.alonzoDeleg.injectFailure(failure))
 
   /** `Babbage/Rules/Delegs.hs:15` (cardano-ledger f649f975): the identity. */
   given babbage: InjectDelegsFailure[ShelleyDelegsPredFailure[Babbage], Babbage] with
     def injectFailure(failure: ShelleyDelegsPredFailure[Babbage]): DelegsPredFailure[Babbage] =
       failure
 
-  /** `Babbage/Rules/Delegs.hs:17-24` (cardano-ledger f649f975): DELPL's failure, and each of the
-    * rules below it through DELPL's injection, wrapped in `DelplFailure`.
+  /** `Babbage/Rules/Delegs.hs:17-18` (cardano-ledger f649f975): DELPL's failure, `DelplFailure`. */
+  given babbageDelpl: InjectDelegsFailure[ShelleyDelplPredFailure[Babbage], Babbage] with
+    def injectFailure(failure: ShelleyDelplPredFailure[Babbage]): DelegsPredFailure[Babbage] =
+      ShelleyDelegsPredFailure.DelplFailure(failure)
+
+  /** `Babbage/Rules/Delegs.hs:20-21` (cardano-ledger f649f975): POOL's failure,
+    * `DelplFailure . injectFailure`.
     */
-  given babbageDelpl[F](using
-      inject: InjectDelplFailure[F, Babbage]
-  ): InjectDelegsFailure[F, Babbage] with
-    def injectFailure(failure: F): DelegsPredFailure[Babbage] =
-      ShelleyDelegsPredFailure.DelplFailure(inject.injectFailure(failure))
+  given babbagePool: InjectDelegsFailure[ShelleyPoolPredFailure[Babbage], Babbage] with
+    def injectFailure(failure: ShelleyPoolPredFailure[Babbage]): DelegsPredFailure[Babbage] =
+      ShelleyDelegsPredFailure.DelplFailure(InjectDelplFailure.babbagePool.injectFailure(failure))
+
+  /** `Babbage/Rules/Delegs.hs:23-24` (cardano-ledger f649f975): DELEG's failure,
+    * `DelplFailure . injectFailure`.
+    */
+  given babbageDeleg: InjectDelegsFailure[ShelleyDelegPredFailure[Babbage], Babbage] with
+    def injectFailure(failure: ShelleyDelegPredFailure[Babbage]): DelegsPredFailure[Babbage] =
+      ShelleyDelegsPredFailure.DelplFailure(InjectDelplFailure.babbageDeleg.injectFailure(failure))
 
 /** `Embed (Shelley.POOL era) (DELPL era)` and `Embed (DELEG era) (DELPL era)`
   * (`Shelley/Rules/Delpl.hs:205-228`, cardano-ledger f649f975): how the failures and events of the

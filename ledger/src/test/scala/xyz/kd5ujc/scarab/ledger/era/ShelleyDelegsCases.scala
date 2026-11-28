@@ -736,6 +736,18 @@ class BabbageDelegsSuite extends ShelleyDelegsCases[Babbage]("Babbage", 8):
   ) {
     import xyz.kd5ujc.scarab.ledger.era.rules.*
     def ok[A](e: Either[?, A]): A = e.fold(x => fail(s"$x"), identity)
+    // each family reduces at the era to Shelley's type, as the era's rules are Shelley's
+    val families: List[? =:= ?] = List(
+      summon[DelegPredFailure[Babbage] =:= ShelleyDelegPredFailure[Babbage]],
+      summon[DelegEvent[Babbage] =:= ShelleyDelegEvent[Babbage]],
+      summon[PoolPredFailure[Babbage] =:= ShelleyPoolPredFailure[Babbage]],
+      summon[PoolRuleEvent[Babbage] =:= PoolEvent[Babbage]],
+      summon[DelplPredFailure[Babbage] =:= ShelleyDelplPredFailure[Babbage]],
+      summon[DelplEvent[Babbage] =:= ShelleyDelplEvent[Babbage]],
+      summon[DelegsPredFailure[Babbage] =:= ShelleyDelegsPredFailure[Babbage]],
+      summon[DelegsEvent[Babbage] =:= ShelleyDelegsEvent[Babbage]]
+    )
+    assertEquals(families.size, 8)
     val cred = Credential.KeyHashObj[Staking](
       ok(KeyHash.fromBytes[Staking](Bytes.fromArray(Array.fill(28)(1.toByte))))
     )
@@ -840,6 +852,18 @@ class AlonzoDelegsSuite extends ShelleyDelegsCases[Alonzo]("Alonzo", 6):
   ) {
     import xyz.kd5ujc.scarab.ledger.era.rules.*
     def ok[A](e: Either[?, A]): A = e.fold(x => fail(s"$x"), identity)
+    // each family reduces at the era to Shelley's type, as the era's rules are Shelley's
+    val families: List[? =:= ?] = List(
+      summon[DelegPredFailure[Alonzo] =:= ShelleyDelegPredFailure[Alonzo]],
+      summon[DelegEvent[Alonzo] =:= ShelleyDelegEvent[Alonzo]],
+      summon[PoolPredFailure[Alonzo] =:= ShelleyPoolPredFailure[Alonzo]],
+      summon[PoolRuleEvent[Alonzo] =:= PoolEvent[Alonzo]],
+      summon[DelplPredFailure[Alonzo] =:= ShelleyDelplPredFailure[Alonzo]],
+      summon[DelplEvent[Alonzo] =:= ShelleyDelplEvent[Alonzo]],
+      summon[DelegsPredFailure[Alonzo] =:= ShelleyDelegsPredFailure[Alonzo]],
+      summon[DelegsEvent[Alonzo] =:= ShelleyDelegsEvent[Alonzo]]
+    )
+    assertEquals(families.size, 8)
     val cred = Credential.KeyHashObj[Staking](
       ok(KeyHash.fromBytes[Staking](Bytes.fromArray(Array.fill(28)(1.toByte))))
     )

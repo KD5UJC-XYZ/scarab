@@ -411,6 +411,66 @@
     }
    ]
   },
+  "given ledger.era.rules.InjectDelegsFailure.alonzoDeleg": {
+   "class": "Mirror",
+   "digest": "2373103818530520",
+   "evidence": [
+    "AlonzoDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Delegs.hs",
+     "lines": [
+      23,
+      24
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"DELEGS\" Shelley.ShelleyDelegPredFailure AlonzoEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectDelegsFailure.alonzoDelpl": {
+   "class": "Mirror",
+   "digest": "b9e306cafcc44b7b",
+   "evidence": [
+    "AlonzoDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Delegs.hs",
+     "lines": [
+      17,
+      18
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"DELEGS\" Shelley.ShelleyDelplPredFailure AlonzoEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectDelegsFailure.alonzoPool": {
+   "class": "Mirror",
+   "digest": "123917aa901bbe87",
+   "evidence": [
+    "AlonzoDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Delegs.hs",
+     "lines": [
+      20,
+      21
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"DELEGS\" Shelley.ShelleyPoolPredFailure AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.rules.InjectDelegsFailure.babbage": {
    "class": "Mirror",
    "digest": "b80dadfc5b9f8f0a",
@@ -432,45 +492,63 @@
     }
    ]
   },
-  "given ledger.era.rules.InjectDelegsFailure.given_alonzoDelpl_F_using": {
+  "given ledger.era.rules.InjectDelegsFailure.babbageDeleg": {
    "class": "Mirror",
-   "digest": "33557d57ad885e94",
+   "digest": "a51225e6f90a9ebc",
    "evidence": [
-    "AlonzoDelegsSuite"
+    "BabbageDelegsSuite"
    ],
-   "note": "the three instances of DELPL's failure and of the rules below it as one, DelplFailure of DELPL's injection",
-   "structure": "differs",
+   "structure": "same",
    "upstream": [
     {
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Delegs.hs",
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Delegs.hs",
      "lines": [
-      17,
+      23,
       24
      ],
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "symbol": "InjectRuleFailure \"DELEGS\" Shelley.ShelleyDelplPredFailure AlonzoEra"
+     "symbol": "InjectRuleFailure \"DELEGS\" Shelley.ShelleyDelegPredFailure BabbageEra"
     }
    ]
   },
-  "given ledger.era.rules.InjectDelegsFailure.given_babbageDelpl_F_using": {
+  "given ledger.era.rules.InjectDelegsFailure.babbageDelpl": {
    "class": "Mirror",
-   "digest": "dcd8392683320fad",
+   "digest": "dbec538bee977d25",
    "evidence": [
     "BabbageDelegsSuite"
    ],
-   "note": "the three instances of DELPL's failure and of the rules below it as one, DelplFailure of DELPL's injection",
-   "structure": "differs",
+   "structure": "same",
    "upstream": [
     {
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Delegs.hs",
      "lines": [
       17,
-      24
+      18
      ],
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "InjectRuleFailure \"DELEGS\" Shelley.ShelleyDelplPredFailure BabbageEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectDelegsFailure.babbagePool": {
+   "class": "Mirror",
+   "digest": "70b88423a05d8e82",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Delegs.hs",
+     "lines": [
+      20,
+      21
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"DELEGS\" Shelley.ShelleyPoolPredFailure BabbageEra"
     }
    ]
   },
