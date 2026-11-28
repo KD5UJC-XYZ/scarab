@@ -193,7 +193,9 @@ are read per model, and a model whose controls fail night after night, or whose 
 change to the code, is the evidence that would restrict the check to some models.
 
 **A reading on one CPU model that is not explained.** On the AMD EPYC 7763, and on no other model the check has met,
-`[k]B` with the all-zero scalar as the fixed class reads above 10 on unchanged source. It was seen on GitHub-hosted
+`[k]B` with the all-zero scalar as the fixed class read above 10 on unchanged source. The readings below are the
+check's statistic (the largest |t| over the crops) of single comparisons; whether the rule would count them was not
+decided, since these were not runs of the check. It was seen on GitHub-hosted
 `ubuntu-24.04` runners on 2026-11-27, in two experiment jobs of three runs each while the check was built (their
 comparisons were wider than the nightly's targets); by that date the check as merged had not run on that model,
 where `kb-zero` is the target that would show it.
@@ -211,10 +213,11 @@ step of the multiplication measured alone showed it, and `[k]H` with the zero sc
 scalars (2.1 to 8.3). The same model also gave single readings of 18.5 and 16.5 in one run for `[k]H` between two
 fixed scalars, one of them with no zero digit, that the other two runs of that job (1.8 to 3.6) and no other model
 repeated, so that part of what this model shows is not about the scalar's value. Whether the rest is the processor,
-the JIT's code for it or the vendored multiplication is not known. No scalar a key or a nonce takes is all zero,
-and scalars shaped like real ones read as the controls did; this is a limit of what the check can tell on that
-model, not a finding about a secret. A nightly job that lands there may therefore end in a confirmed leak of
-`kb-zero` alone with nothing changed in the code. The rule is not changed for it: such a night is read as below.
+the JIT's code for it or the vendored multiplication is not known, and these few experiments do not rule out an
+effect of the scalar's value. In them, scalars shaped like a key's read as the controls did; an all-zero scalar is
+not a value a clamped key takes, and a reduced nonce takes it only by chance. What it means for a real secret is
+therefore open, not settled. A nightly job that lands on this model may end in a confirmed leak of `kb-zero` alone
+with nothing changed in the code. The rule is not changed for it: such a night is red, and is read as below.
 One other reading in those experiments is recorded for the same reason: `[k]H`, zero against random scalars, read
 8.9 to 16.9 on the AMD EPYC 9V74 in an experiment job before the pools were paired, and the unchanged source under
 the merged method had by that date run only on the two Xeon models and the EPYC 9V45.
@@ -222,10 +225,11 @@ the merged method had by that date run only on the two Xeon models and the EPYC 
 ## What a result means, and what to do
 
 - **Leak confirmed.** One secret target, the same one, counted in two runs. Read the summary: which target, how far
-  above, the floor of each run, and the CPU. If the CPU is an AMD EPYC 7763 and the only target counted is `kb-zero`
-  (or the readings sit on the zero-scalar targets while proving, the output and KES read low), it is first the
-  [reading that is not explained](#the-nightly-check) on that model: dispatch again until a job lands on another
-  model, and treat it as a leak only if it repeats there. Otherwise find what changed since the last night that was not red: the vendored curve code,
+  above, the floor of each run, and the CPU. Every red night is investigated, whatever the CPU. If the CPU is an
+  AMD EPYC 7763 and the target counted is `kb-zero`, the [reading that is not explained](#the-nightly-check) on that
+  model is one candidate cause: say so in what you record, and dispatch again until a job lands on another model, to
+  learn whether the reading follows the CPU or the code; neither outcome closes the night by
+  itself. Then find what changed since the last night that was not red: the vendored curve code,
   the `secret` packages, `Sum6Key`, `Leaf` or `Draft03Key`, the JDK image (a new JDK compiles differently), or
   `SecretPathTiming` itself. Dispatch the workflow again (with five runs), and run it by hand on an idle machine. A
   reading that repeats there is still a reading of time: it says the classes' times differ, which the harness, the
