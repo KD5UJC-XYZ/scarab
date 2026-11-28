@@ -5,5 +5,6 @@
   checked and recorded as the reference does, the pointer of each registration narrowed as the reference's is, and
   any number of certificates judged in constant stack. On every Babbage state of the era-walking captures with the
   certificates each state makes, on the refusal corpora's Babbage cases with certificates and on crafted cases,
-  they give the current rules' failures and states, and the reference's refusals byte for byte. The node does not
-  run them yet, so neither behaviour nor the persisted format changes.
+  they give the current rules' failures and states. Of the nine recorded cases, the seven refused by these rules
+  alone give the reference's refusals byte for byte; the other two, which UTXOW refuses too, are compared with the
+  current rules. The node does not run them yet, so neither behaviour nor the persisted format changes.

@@ -3808,19 +3808,24 @@ Conway's rules on the classes follow as the rest of stage 2.
     `Ptr.ofCertificate`'s, the flat rule's: the slot cut to its low 32 bits and the position to its low 16
     (`Delegs.hs:193-195`). DELPL reads the certificate's representation through evidence only the era's certificate
     file makes (`IsShelleyTxCert`, the reference's `TxCert era ~ ShelleyTxCert era`), and runs POOL on the pool
-    state. The evidence is a class of one reader, not a function: a `<:<` given in the opaque type's companion was
-    found to convert a certificate to its representation implicitly, which a test now refuses. DELEG reads the certificate through the class's readers in the reference's order, MIR and genesis
-    delegation among them, the stability window and the next epoch's first slot from `Globals`; it reads no quorum,
-    which is UTXOW's (`validateMIRInsufficientGenesisSigs`).
+    state. The evidence is a final class of one reader with a private constructor, made only from the compiler's
+    proof of the equality, which only the era's certificate file can give, so no caller makes or implements one;
+    not being a function, it converts nothing implicitly (a `<:<` given in the opaque type's companion was found
+    to, which a test now refuses). DELEG reads the certificate through the class's readers in the reference's
+    order, MIR and genesis delegation among them, the stability window and the next epoch's first slot from
+    `Globals`, that slot cut to 64 bits as the reference's `epochInfoFirst` wraps before the window is taken off;
+    it reads no quorum, which is UTXOW's (`validateMIRInsufficientGenesisSigs`).
   - The failure and event types of the three rules, their families (`DelplPredFailure`, `DelplEvent`,
     `DelegsEvent`, and Babbage's cases of `DelegsPredFailure`, `DelegPredFailure`, `DelegEvent`, `PoolPredFailure`
     and `PoolRuleEvent`), Babbage's injections and the embeddings of POOL and DELEG in DELPL and of DELPL in DELEGS.
     At 9df9f98c `StakeKeyAlreadyRegisteredDELEG` is `DelegAccountAlreadyRegistered`, the same tag and bytes; the era
     types follow the 11.1 build's ledger. No ranged class is new.
-  - Two boundaries the flat rule handles otherwise, neither reachable: a genesis delegation's due slot is the
-    reference's `Word64` sum, which wraps past 2^64 - 1 where the flat rule refuses the slot; and below protocol
-    version 5 a pot pays from itself alone (`Deleg.hs:358-360`), where the flat rule adds the epoch's delta, which no
-    chain has below version 5, where no transfer is allowed.
+  - Three boundaries the flat rule handles otherwise, none reachable: a genesis delegation's due slot is the
+    reference's `Word64` sum, which wraps past 2^64 - 1 where the flat rule refuses the slot; a MIR certificate's
+    cutoff is the next epoch's first slot as a `Word64`, which wraps to slot 0 in the last epoch before 2^64, where
+    the flat rule's unbounded first slot accepts what the reference refuses; and below protocol version 5 a pot pays
+    from itself alone (`Deleg.hs:358-360`), where the flat rule adds the epoch's delta, which no chain has below
+    version 5, where no transfer is allowed.
   - Against the flat `ShelleyDelegs` (`BabbageDelegsSuite`, `BabbageDelegsCorpusSuite`), every judgment compared
     whole (the failures in order, or the certificate state) and what the era rules tell checked against the
     certificates:
@@ -3841,9 +3846,11 @@ Conway's rules on the classes follow as the rest of stage 2.
       fails and still makes a fresh account, which a later certificate sees; genesis delegations (an unknown key,
       duplicates current and future, a key's own pairs, the last slot); MIR to accounts from either pot, transfers,
       insufficient funds, negative entries kept for the next certificate, the rules below version 5, the slot too
-      late and a window longer than the epoch; DELEG alone on a pool's certificate; the pointer at the slots
+      late, a window longer than the epoch and the cutoff at slot 2^64 - 16 with epochs of 16 slots and a window of
+      3, refused as the reference's wrapping first slot refuses it; DELEG alone on a pool's certificate; the pointer at the slots
       2^32 - 1, 2^32, 2^32 + 7 and 2^64 - 1 and the last transaction index; 65,538 certificates on a 256 KiB stack,
-      the 65,537th's index wrapping to the first's pointer, and 30,000 failing ones.
+      the 65,537th's index wrapping to the first's pointer, and 30,000 failing ones; and each of Babbage's
+      injections and embeddings, its failure nested as the reference's.
 
     Every comparison agrees. Not compared byte for byte: the two refusal cases of moves of rewards that UTXOW
     refuses too (`mir-signed-intermediate-*`), whose DELEG failures are compared with the flat rule's only. Not yet:
