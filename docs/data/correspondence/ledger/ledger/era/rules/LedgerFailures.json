@@ -1416,12 +1416,13 @@
   },
   "type ledger.era.rules.DelegsPredFailure": {
    "class": "Mirror",
-   "digest": "5522905a3af561b1",
+   "digest": "31de793133839874",
    "evidence": [
+    "BabbageDelegsSuite",
     "ConwayLedgerChecksSuite",
     "DijkstraLedgerSuite"
    ],
-   "note": "the failure of DELEGS by era, Nothing at Conway and at Dijkstra, where the reference's injections call it impossible (error)",
+   "note": "the failure of DELEGS by era: Babbage's Shelley's; Nothing at Conway and at Dijkstra, where the reference's injections call it impossible (error)",
    "structure": "differs",
    "upstream": [
     {
@@ -1453,6 +1454,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "shelleyToDijkstraLedgerPredFailure"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Delegs.hs",
+     "lines": [
+      13,
+      13
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure \"DELEGS\" BabbageEra"
     }
    ]
   },

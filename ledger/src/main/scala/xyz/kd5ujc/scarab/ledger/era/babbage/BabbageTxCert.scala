@@ -54,6 +54,12 @@ object BabbageTxCert:
     /** The shared representation, read only. */
     def rep: ShelleyTxCertRep = c
 
+  /** `TxCert BabbageEra ~ ShelleyTxCert BabbageEra`, which DELPL asks for
+    * (`Shelley/Rules/Delpl.hs:184`, cardano-ledger f649f975): one way only, so it reads a
+    * certificate's representation and makes no certificate of one.
+    */
+  given shelleyTxCert: (BabbageTxCert <:< ShelleyTxCertRep) = <:<.refl
+
   /** The Babbage certificate of a flat one that the flat certificate reader read at Babbage
     * (`DecCBOR (ShelleyTxCert era)`,
     * `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs:469-488`, cardano-ledger f649f975).

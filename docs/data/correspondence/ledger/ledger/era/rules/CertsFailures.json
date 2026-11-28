@@ -898,6 +898,27 @@
     }
    ]
   },
+  "given ledger.era.rules.InjectDelegFailure.babbage": {
+   "class": "Mirror",
+   "digest": "de8d9a245e02cfc3",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "note": "Shelley's failure, the identity; 9df9f98c's injection of AccountAlreadyRegistered (Babbage/Rules/Deleg.hs:16-17) is not the 11.1 build's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Deleg.hs",
+     "lines": [
+      14,
+      14
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"DELEG\" Shelley.ShelleyDelegPredFailure BabbageEra"
+    }
+   ]
+  },
   "given ledger.era.rules.InjectDelegFailure.dijkstra": {
    "class": "Mirror",
    "digest": "39c41bee211d718a",
@@ -956,6 +977,36 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "InjectRuleFailure \"GOVCERT\" Conway.ConwayGovCertPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectPool.babbage": {
+   "class": "Mirror",
+   "digest": "8918018c3918aab5",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Pool.hs",
+     "lines": [
+      14,
+      14
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"POOL\" Shelley.ShelleyPoolPredFailure BabbageEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Pool.hs",
+     "lines": [
+      18,
+      18
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleEvent \"POOL\" Shelley.PoolEvent BabbageEra"
     }
    ]
   },
@@ -1410,12 +1461,13 @@
   },
   "type ledger.era.rules.DelegEvent": {
    "class": "Mirror",
-   "digest": "c52d273283fbdfa5",
+   "digest": "c1cc29433b484ba8",
    "evidence": [
+    "BabbageDelegsSuite",
     "ConwayCertsChecksSuite",
     "DijkstraCertsSuite"
    ],
-   "note": "the type family EraRuleEvent at the rule DELEG as a match type, Nothing at Conway for the reference's VoidEraRule, with Dijkstra's case",
+   "note": "Event (EraRule \"DELEG\" era) as a match type: Babbage's ShelleyDelegEvent, Nothing at Conway for the reference's VoidEraRule, with Dijkstra's case",
    "structure": "differs",
    "upstream": [
     {
@@ -1447,17 +1499,28 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "EraRuleEvent \"DELEG\" DijkstraEra"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Deleg.hs",
+     "lines": [
+      147,
+      147
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Event (DELEG era)"
     }
    ]
   },
   "type ledger.era.rules.DelegPredFailure": {
    "class": "Mirror",
-   "digest": "0ed4511c8067d89e",
+   "digest": "ee50ebaf1bcc7fd7",
    "evidence": [
+    "BabbageDelegsSuite",
     "ConwayCertsChecksSuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "the type family EraRuleFailure at the rule DELEG as a match type with the eras whose DELEG is typed, with Dijkstra's case",
+   "note": "the type family EraRuleFailure at the rule DELEG as a match type with the eras whose DELEG is typed: Babbage's Shelley's, Conway's its own, with Dijkstra's case",
    "structure": "differs",
    "upstream": [
     {
@@ -1489,6 +1552,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "EraRuleFailure \"DELEG\" DijkstraEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Deleg.hs",
+     "lines": [
+      12,
+      12
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure \"DELEG\" BabbageEra"
     }
    ]
   },
@@ -1578,12 +1651,13 @@
   },
   "type ledger.era.rules.PoolPredFailure": {
    "class": "Mirror",
-   "digest": "e789775473c9bdb3",
+   "digest": "d1bff967cf235176",
    "evidence": [
+    "BabbageDelegsSuite",
     "ConwayCertsChecksSuite",
     "DijkstraRulesOracleSuite"
    ],
-   "note": "the type family EraRuleFailure at the rule POOL, Conway's Shelley's POOL, as a match type, with Dijkstra's case",
+   "note": "the type family EraRuleFailure at the rule POOL as a match type: Babbage's and Conway's Shelley's POOL, with Dijkstra's case",
    "structure": "differs",
    "upstream": [
     {
@@ -1615,13 +1689,24 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "EraRuleFailure \"POOL\" DijkstraEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Pool.hs",
+     "lines": [
+      12,
+      12
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure \"POOL\" BabbageEra"
     }
    ]
   },
   "type ledger.era.rules.PoolRuleEvent": {
    "class": "Mirror",
-   "digest": "3319754248ec0eb1",
+   "digest": "fafef8fea30ba2d2",
    "evidence": [
+    "BabbageDelegsSuite",
     "ConwayCertsChecksSuite",
     "DijkstraCertsSuite"
    ],
@@ -1657,6 +1742,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "EraRuleEvent \"POOL\" DijkstraEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Pool.hs",
+     "lines": [
+      16,
+      16
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleEvent \"POOL\" BabbageEra"
     }
    ]
   }

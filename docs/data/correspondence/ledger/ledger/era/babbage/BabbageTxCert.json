@@ -1,5 +1,36 @@
 {
  "entries": {
+  "given ledger.era.babbage.BabbageTxCert.shelleyTxCert": {
+   "class": "Mirror",
+   "digest": "c849bee75d59346c",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "note": "TxCert BabbageEra ~ ShelleyTxCert BabbageEra, which DELPL asks for, as one-way evidence that reads a certificate's representation and makes no certificate",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxCert.hs",
+     "lines": [
+      12,
+      12
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "type TxCert BabbageEra = ShelleyTxCert BabbageEra"
+    },
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delpl.hs",
+     "lines": [
+      184,
+      184
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxCert era ~ ShelleyTxCert era"
+    }
+   ]
+  },
   "type ledger.era.babbage.BabbageTxCert": {
    "class": "Mirror",
    "digest": "860ffecd910cc4f8",

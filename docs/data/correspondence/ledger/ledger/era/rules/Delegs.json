@@ -1,0 +1,200 @@
+{
+ "entries": {
+  "class ledger.era.rules.DelegEnv": {
+   "class": "Mirror",
+   "digest": "02dc195f8c64cf9b",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Deleg.hs",
+     "lines": [
+      73,
+      80
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DelegEnv"
+    }
+   ]
+  },
+  "class ledger.era.rules.DelegsEnv": {
+   "class": "Mirror",
+   "digest": "fe2aa16221b30645",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "note": "the slot a SlotNo, as the reference's is",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delegs.hs",
+     "lines": [
+      66,
+      74
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DelegsEnv"
+    }
+   ]
+  },
+  "class ledger.era.rules.DelplEnv": {
+   "class": "Mirror",
+   "digest": "06fd7a1278a30adf",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delpl.hs",
+     "lines": [
+      52,
+      58
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DelplEnv"
+    }
+   ]
+  },
+  "def ledger.era.rules.DELEGS.delegsTransition": {
+   "class": "Mirror",
+   "digest": "7b665299c0d3477c",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "note": "the recursion on the prefix as a fold, each step a sub-rule over the previous, which the interpreter runs in constant stack, as CERTS is; the pointer by Ptr.ofCertificate, the slot cut to its low 32 bits and the index to its low 16 (fromIntegral to Word32 and Word16), the flat DELEGS's; DELPL's failures and events embedded (EmbedDelplInDelegs)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delegs.hs",
+     "lines": [
+      169,
+      197
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "delegsTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.DELPL.delplTransition": {
+   "class": "Mirror",
+   "digest": "b76f86700f1863c6",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "note": "TxCert era ~ ShelleyTxCert era as one-way evidence (<:<) that only the era's certificate file gives; POOL on the pool state through certPStateL, DELEG on the certificate state, each a sub-rule whose failures and events DELPL's embed (EmbedInDelpl)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delpl.hs",
+     "lines": [
+      174,
+      203
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "delplTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyDELEG.availableAfterMIR": {
+   "class": "Mirror",
+   "digest": "f7e89a6b8844fd2f",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/LedgerState/NewEpochState.hs",
+     "lines": [
+      37,
+      41
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "availableAfterMIR"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyDELEG.checkSlotNotTooLate": {
+   "class": "Mirror",
+   "digest": "e98ec28243fec8bd",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "note": "the next epoch a Word64 sum that wraps (addEpochInterval); its first slot from Globals less the window by monus; a first slot outside SlotNo raised (LedgerFailure.Vocab), which no chain reaches",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Deleg.hs",
+     "lines": [
+      387,
+      404
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "checkSlotNotTooLate"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyDELEG.delegationTransition": {
+   "class": "Mirror",
+   "digest": "94fea6ee65fde615",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "note": "the certificate read through ShelleyEraTxCertToBabbage's readers in the reference's order (its pattern synonyms); the key deposit the parameters' compact one (compactCoinOrError of the lens over it); the genesis delegation's slot slot +* Duration sp a Word64 sum that wraps, as the reference's does, where the flat rule refuses a slot past 2^64 - 1; the stability window from Globals; no quorum, which is UTXOW's",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Deleg.hs",
+     "lines": [
+      252,
+      385
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "delegationTransition"
+    }
+   ]
+  },
+  "def ledger.era.rules.ShelleyDELEG.updateReservesAndTreasury": {
+   "class": "Mirror",
+   "digest": "a01c3435faad1b80",
+   "evidence": [
+    "BabbageDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Deleg.hs",
+     "lines": [
+      406,
+      426
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "updateReservesAndTreasury"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.rules.DELEGS",
+    "object ledger.era.rules.DELPL",
+    "object ledger.era.rules.ShelleyDELEG"
+   ],
+   "reason": "objects that hold an era's instances of the accounts and certificate-state classes, the reference's functions over those classes (each mapped by itself), or CanEqual; Scala containers with no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/rules/Delegs.scala"
+}
