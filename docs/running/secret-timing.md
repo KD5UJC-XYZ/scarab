@@ -192,10 +192,40 @@ elsewhere. That is an argument from the design. A statistic's size does move wit
 are read per model, and a model whose controls fail night after night, or whose secret targets are above 10 with no
 change to the code, is the evidence that would restrict the check to some models.
 
+**A reading on one CPU model that is not explained.** On the AMD EPYC 7763, and on no other model the check has met,
+`[k]B` with the all-zero scalar as the fixed class reads above 10 on unchanged source. It was seen on GitHub-hosted
+`ubuntu-24.04` runners on 2026-11-27, in two experiment jobs of three runs each while the check was built (their
+comparisons were wider than the nightly's targets); by that date the check as merged had not run on that model,
+where `kb-zero` is the target that would show it.
+
+| `[k]B`, 100,000 measurements | AMD EPYC 7763 | Xeon 6975P-C, Xeon Platinum 8573C, EPYC 9V45, EPYC 9V74 |
+|---|---|---|
+| zero scalar against random scalars | 17.5 to 30.9 (six readings) | 1.1 to 7.3 |
+| zero scalar against one other fixed scalar | 1.8 to 32.8 (nine readings, five above 10) | 0.8 to 4.2 |
+| zero scalar against zero scalar | 1.2 to 2.5 | 1.1 to 3.0 |
+| a fixed scalar with no zero digit against another fixed scalar | 2.0 to 2.1 | 1.2 to 3.2 |
+
+The difference of the classes' mean times in those readings was at most 140 ns of 70,000 ns, about one part in 500,
+with the zero scalar the faster in most. It did not grow with the number of zero digits in the scalar, no single
+step of the multiplication measured alone showed it, and `[k]H` with the zero scalar stayed below 10 against random
+scalars (2.1 to 8.3). The same model also gave single readings of 18.5 and 16.5 in one run for `[k]H` between two
+fixed scalars, one of them with no zero digit, that the other two runs of that job (1.8 to 3.6) and no other model
+repeated, so that part of what this model shows is not about the scalar's value. Whether the rest is the processor,
+the JIT's code for it or the vendored multiplication is not known. No scalar a key or a nonce takes is all zero,
+and scalars shaped like real ones read as the controls did; this is a limit of what the check can tell on that
+model, not a finding about a secret. A nightly job that lands there may therefore end in a confirmed leak of
+`kb-zero` alone with nothing changed in the code. The rule is not changed for it: such a night is read as below.
+One other reading in those experiments is recorded for the same reason: `[k]H`, zero against random scalars, read
+8.9 to 16.9 on the AMD EPYC 9V74 in an experiment job before the pools were paired, and the unchanged source under
+the merged method had by that date run only on the two Xeon models and the EPYC 9V45.
+
 ## What a result means, and what to do
 
 - **Leak confirmed.** One secret target, the same one, counted in two runs. Read the summary: which target, how far
-  above, and the floor of each run. Find what changed since the last night that was not red: the vendored curve code,
+  above, the floor of each run, and the CPU. If the CPU is an AMD EPYC 7763 and the only target counted is `kb-zero`
+  (or the readings sit on the zero-scalar targets while proving, the output and KES read low), it is first the
+  [reading that is not explained](#the-nightly-check) on that model: dispatch again until a job lands on another
+  model, and treat it as a leak only if it repeats there. Otherwise find what changed since the last night that was not red: the vendored curve code,
   the `secret` packages, `Sum6Key`, `Leaf` or `Draft03Key`, the JDK image (a new JDK compiles differently), or
   `SecretPathTiming` itself. Dispatch the workflow again (with five runs), and run it by hand on an idle machine. A
   reading that repeats there is still a reading of time: it says the classes' times differ, which the harness, the
