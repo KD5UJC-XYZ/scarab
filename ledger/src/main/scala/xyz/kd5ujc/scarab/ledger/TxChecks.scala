@@ -232,17 +232,24 @@ object TxChecks:
   /** The collateral a transaction with redeemers of the era `E` pays if it fails phase 2, from
     * Alonzo whatever the protocol version (`Phase2Invalid`, `Alonzo/Rules/Utxo.hs:775-784`,
     * cardano-ledger f649f975): the outputs of its collateral inputs the UTxO set holds, and their
-    * ada less the collateral return (`collAdaBalance`, `Babbage/Collateral.hs:30-41`). None before
-    * Alonzo, whose UTXO has no collateral, and for a transaction without redeemers.
+    * ada less the collateral return's (`collAdaBalance`, `Babbage/Collateral.hs:30-41`): the sum of
+    * the outputs' coins (`sumAllCoin`), less the return's coin (`coinTxOutL`), with no multi-asset
+    * value summed. None before Alonzo, whose UTXO has no collateral, and for a transaction without
+    * redeemers.
     */
+  // Summing the outputs' whole values with `Value.sum` and taking the coin of that sum, or of the
+  // sum less the return, gave a null fee once C2 had compiled this method with `Value.sum` inlined
+  // (Temurin 25.0.4.1, its `ReduceAllocationMerges` on by default): a phase-2-invalid transaction
+  // then threw in `ShelleyUtxo.update`, and the node withheld its block for good (#1521).
+  // `MainnetCollateralJitSuite` runs this method under C2 in a JVM of its own.
   private[ledger] def collateral[E <: EraTag](utxo: Utxo, tx: Tx)(using
       era: ShelleyBasedEra[E]
   ): Collateral =
     if !era.atLeast(ShelleyBasedEra.SAlonzo) || tx.witnesses.redeemers.isEmpty then Collateral.none
     else
       val outs = collateralInputs(tx.body).flatMap(utxo.get)
-      val total = Value.sum(outs.iterator.map(_.value))
-      Collateral(outs, tx.body.collateralReturn.fold(total)(r => total - r.value).coin)
+      val colbal = outs.foldLeft(BigInt(0))(_ + _.value.coin)
+      Collateral(outs, tx.body.collateralReturn.fold(colbal)(r => colbal - r.value.coin))
 
   /** Collateral outputs and the ada they pay as fees when the transaction fails phase 2. */
   private[ledger] final case class Collateral(outputs: Vector[TxOut], fee: BigInt)

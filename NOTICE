@@ -134,7 +134,7 @@ Amaru; their verbatim licenses are fixtures/licenses/cardano-ledger-conformance-
 cardano-ledger-conformance-NOTICE, blueprint-conformance-LICENSE and amaru-LICENSE.
 
 Captured chain data (fixtures/mainnet, fixtures/preview, fixtures/mempack): public blockchain data fetched from the
-public Cardano relays (fixtures/mempack: 95 ledger outputs of the Mithril preprod snapshot); fixtures/preview also holds records derived from the Koios public API
+public Cardano relays (fixtures/mempack: 95 ledger outputs of the Mithril preprod snapshot); fixtures/preview and fixtures/mainnet also hold records derived from the Koios public API
 (https://koios.rest). fixtures/reference/leios-testnet-chain-contexts and fixtures/reference/leios-testnet-chain-scripts
 hold transactions, spent outputs and script arguments of the public Leios testnet's chain (network magic 164), read
 from a node of the testnet's own build that followed it. fixtures/eras, fixtures/haskell-state (ledger snapshots written by the reference
