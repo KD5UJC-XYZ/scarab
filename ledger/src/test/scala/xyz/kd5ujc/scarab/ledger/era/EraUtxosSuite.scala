@@ -675,6 +675,7 @@ class EraUtxosSuite extends munit.FunSuite:
     "a judgment of ValidateNone evaluates no script, whatever the flag (each case, both flags)"
   ) {
     val never: ScriptEvaluator[Id] = _ => throw new Asked
+    val u = EraUTxO.conway
     val asked = everyCase.map { c =>
       given ScriptEvaluator[F] = lifted[F](never)
       given Phase2Deferral[F, Conway] = Phase2Deferral.now
@@ -685,17 +686,20 @@ class EraUtxosSuite extends munit.FunSuite:
         )(TestLedger.globals, Chain.empty)
         .map(_.map(_._1))
       assertEquals(judged(using Judge.validateNone[F, Rec]), Right(Right(Chain.empty)), c.name)
-      // the control: the default judgment asks the evaluator wherever a script is collected
-      scala.util.Try(judged).failed.toOption.exists {
-        case _: Asked => true
-        case _        => false
-      }
+      // the control: the default judgment asks the evaluator for a case whose scripts are collected,
+      // none of them missing, and for no other
+      val collected = u
+        .plutusScriptsWithContextStAnnTx[TxLevel.Top](stAnnTx(c))(using u.txOf.bodyOf.top)
+        .toOption
+        .exists(_.nonEmpty)
+      if collected then intercept[Asked](judged)
+      else assert(judged.isRight, c.name)
+      collected
     }
-    assert(asked.count(identity) > 0)
+    // both flags reach the evaluator under ValidateAll
     assertEquals(
-      everyCase.zip(asked).filter(_._2).map(c => t.isValid(c._1.typed)).distinct.size,
-      2,
-      "both flags reach the evaluator under ValidateAll"
+      everyCase.zip(asked).filter(_._2).map(c => t.isValid(c._1.typed)).toSet,
+      Set(IsPhase2Valid.Phase2Valid, IsPhase2Valid.Phase2Invalid)
     )
   }
 
