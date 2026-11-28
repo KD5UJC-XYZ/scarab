@@ -362,8 +362,7 @@
    "class": "Mirror",
    "digest": "dcd8392683320fad",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "BabbageDelegsSuite"
    ],
    "note": "the three instances of DELPL's failure and of the rules below it as one, DelplFailure of DELPL's injection",
    "structure": "differs",

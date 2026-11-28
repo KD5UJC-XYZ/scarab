@@ -3822,7 +3822,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     types follow the 11.1 build's ledger. No ranged class is new.
   - Three boundaries the flat rule handles otherwise, none reachable: a genesis delegation's due slot is the
     reference's `Word64` sum, which wraps past 2^64 - 1 where the flat rule refuses the slot; a MIR certificate's
-    cutoff is the next epoch's first slot as a `Word64`, which wraps to slot 0 in the last epoch before 2^64, where
+    cutoff is the next epoch's first slot as a `Word64`, which wraps modulo 2^64 past the last epoch boundary below it, where
     the flat rule's unbounded first slot accepts what the reference refuses; and below protocol version 5 a pot pays
     from itself alone (`Deleg.hs:358-360`), where the flat rule adds the epoch's delta, which no chain has below
     version 5, where no transfer is allowed.
