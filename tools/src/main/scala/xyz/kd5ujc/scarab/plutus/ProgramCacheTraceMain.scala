@@ -91,7 +91,9 @@ object ProgramCacheTraceMain extends IOApp:
   private def percentiles(xs: Vector[Double]): String =
     val sorted = xs.sorted
     def at(q: Double) = sorted(((sorted.size - 1) * q).toInt)
-    f"median ${at(0.5)}%.2f, p90 ${at(0.9)}%.2f, max ${sorted.last}%.2f, mean ${xs.sum / xs.size}%.2f"
+    sorted.lastOption.fold("none")(max =>
+      f"median ${at(0.5)}%.2f, p90 ${at(0.9)}%.2f, max $max%.2f, mean ${xs.sum / xs.size}%.2f"
+    )
 
   private def decoded(known: Map[String, Script]): IO[Unit] =
     val all = known.values.toVector
@@ -102,10 +104,9 @@ object ProgramCacheTraceMain extends IOApp:
       before <- settled
       held <- all.traverse(decode)
       after <- settled
-      programs = held.flatMap(_._2.toOption)
-      weights = programs
-        .zip(all)
-        .map((p, s) => ProgramWeight.entry(s.bytes, p, Weight.unbounded).toLong)
+      admitted = all.zip(held).flatMap((s, h) => h._2.toOption.map(s -> _))
+      programs = admitted.map(_._2)
+      weights = admitted.map((s, p) => ProgramWeight.entry(s.bytes, p, Weight.unbounded).toLong)
       _ <- IO.println(
         s"${all.size} scripts, ${programs.size} admitted; " +
           s"script KiB: ${percentiles(all.map(_.bytes.size / 1024.0))}"

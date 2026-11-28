@@ -38,9 +38,10 @@ private[plutus] object Weight:
   * version; and every integer, byte string and string at the size of its representation. A node the
   * decoder shares (`()`, a constant of units and pairs repeated in a list) is counted at each place
   * it occurs, so the estimate only errs upwards. The sizes assume what the JVM uses below a 32 GiB
-  * heap: 12-byte object headers and 4-byte references. `ProgramCacheHeapMain` (module `tools`)
-  * measures the heap of the shapes `AmplifyingScripts` (tests) makes and of recorded scripts
-  * against their weight (`docs/performance.md` section 59).
+  * heap: 12-byte object headers, 4-byte references and objects aligned to 8 bytes (the default of
+  * `ObjectAlignmentInBytes`; a larger alignment makes a term hold more than its weight).
+  * `ProgramCacheHeapMain` (module `tools`) measures the heap of the shapes `AmplifyingScripts`
+  * (tests) makes and of recorded scripts against their weight (`docs/performance.md` section 59).
   *
   * Terms, constants and `data` nest as deep as their script makes them, so each is walked with its
   * pending nodes on a list on the heap. The walk of the terms is written out, not `Schemes.cata`:

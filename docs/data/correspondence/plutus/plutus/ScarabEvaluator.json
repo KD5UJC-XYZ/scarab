@@ -13,6 +13,7 @@
  "glue": [
   {
    "definitions": [
+    "def plutus.ScarabEvaluator.interruptible",
     "val plutus.ScarabEvaluator.interruptible"
    ],
    "reason": "Scarab's means of ending an evaluation its caller has cancelled, the mempool's hard time limit: the reference's mempool ends the evaluation with GHC's asynchronous exception (`timeout`, ouroboros-consensus `Mempool/Update.hs` 239-245 at 82ecba32, 240-246 at 808e4005), which the JVM cannot deliver to a running computation, so the machine asks a stop each time it spends its counted steps, and one that never answers is the reference's machine; plutus has no counterpart"
@@ -22,11 +23,13 @@
     "class plutus.ScarabEvaluator.Interpreter",
     "def plutus.ScarabEvaluator.Interpreter#evaluate",
     "def plutus.ScarabEvaluator.Interpreter#held",
+    "def plutus.ScarabEvaluator.Interpreter#holds",
     "def plutus.ScarabEvaluator.Interpreter#scripts",
     "def plutus.ScarabEvaluator.Interpreter#validate",
+    "def plutus.ScarabEvaluator.programs",
     "val plutus.ScarabEvaluator.Programs"
    ],
-   "reason": "Scarab's memoisation of the programs its own evaluator decodes, bounded by their number and by an estimate of the heap they hold: the least-recently-used map and its bounds, the weight of a decoded program, and the interpreter that holds the cache; internal to Scarab, it changes no result"
+   "reason": "Scarab's memoisation of the programs its own evaluator decodes, bounded by their number and by an estimate of the heap they hold, for the node a sixteenth of its heap (#1529): the least-recently-used map and its bounds, the weight of a decoded program, and the interpreter that holds the cache; internal to Scarab, it changes no result"
   }
  ],
  "source": "plutus/src/main/scala/xyz/kd5ujc/scarab/plutus/ScarabEvaluator.scala"

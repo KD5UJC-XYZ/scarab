@@ -18,8 +18,11 @@ final case class PlutusBackend(
 )
 
 object PlutusBackend:
-  /** The node's backend: the shared interpreter of Scarab's own evaluator ([[ScarabEvaluator]]). */
-  val default: PlutusBackend =
+  /** The shared interpreter of Scarab's own evaluator ([[ScarabEvaluator]]), its program cache not
+    * sized for a heap: the tools' and the suites' backend. Lazy, so that a node, which builds its
+    * own ([[forHeap]]), never makes it.
+    */
+  lazy val default: PlutusBackend =
     PlutusBackend(
       ScarabEvaluator.default,
       ScarabEvaluator.defaultDecoder,
