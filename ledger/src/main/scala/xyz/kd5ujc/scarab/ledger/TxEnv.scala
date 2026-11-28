@@ -183,6 +183,9 @@ object LedgerFailure:
   *   Whether the static checks run ([[TxEnv.Validation]]).
   * @param referenceBuild
   *   The build whose rules the transaction is judged by ([[LedgerGlobals.referenceBuild]]).
+  * @param ahead
+  *   The collections of scripts made ahead of the rules (#1499), which UTXOS takes for a
+  *   transaction only where one is its own collection ([[Phase2.collected]]); none by default.
   */
 final case class TxEnv(
     slot: BigInt,
@@ -199,6 +202,7 @@ final case class TxEnv(
     verdicts: xyz.kd5ujc.scarab.ledger.Verdicts = xyz.kd5ujc.scarab.ledger.Verdicts.Direct,
     private[ledger] val preparation: Option[Phase2.Preparation] = None,
     validation: TxEnv.Validation = TxEnv.Validation.All,
+    ahead: Phase2.Ahead = Phase2.Ahead.none,
     referenceBuild: ReferenceBuild = ReferenceBuild.Default
 ):
   /** `check` when the static checks run, and a pass otherwise: `runTestOnSignal`

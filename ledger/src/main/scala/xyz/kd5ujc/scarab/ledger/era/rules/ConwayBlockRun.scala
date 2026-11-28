@@ -26,6 +26,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   AlonzoTx,
   Block,
   CollectError,
+  ContextsAhead,
   EraBlockBody,
   EraBlockHeader,
   EraTx,
@@ -617,7 +618,8 @@ object ConwayBlockRun:
     * information the caller gives (`systemStart`, `epochInfo`), and every check validated, so that
     * no caller runs the block's rules under another policy or on another network. A script the
     * evaluator gives no verdict for is named by its transaction and redeemer where the rules met it
-    * ([[ConwayRuleDefect.ScriptUnavailable]]).
+    * ([[ConwayRuleDefect.ScriptUnavailable]]). The contexts of its scripts are those made `ahead`
+    * of the rules where they are LEDGERS's collection ([[ContextInputs.collected]], #1499).
     */
   def bbody[H](
       globals: Globals,
@@ -630,7 +632,8 @@ object ConwayBlockRun:
       verdicts: Verdicts,
       decoder: ScriptDecoder[Id],
       slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
-      observing: Option[Observing] = None
+      observing: Option[Observing] = None,
+      ahead: ContextsAhead[Conway] = ContextsAhead.none[Conway]
   )(using
       h: EraBlockHeader[H, Conway],
       pv: PraosEraBlockHeader[H, Conway]
@@ -646,7 +649,8 @@ object ConwayBlockRun:
       verdicts,
       decoder,
       slotToPOSIXTime,
-      observing
+      observing,
+      ahead
     ).serial
 
   /** [[bbody]] as a body program ([[Body]]): run serially, or prepared for the node's bounded
@@ -663,7 +667,8 @@ object ConwayBlockRun:
       verdicts: Verdicts,
       decoder: ScriptDecoder[Id],
       slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
-      observing: Option[Observing] = None
+      observing: Option[Observing] = None,
+      ahead: ContextsAhead[Conway] = ContextsAhead.none[Conway]
   )(using
       h: EraBlockHeader[H, Conway],
       pv: PraosEraBlockHeader[H, Conway]
@@ -724,7 +729,7 @@ object ConwayBlockRun:
         case Mode.Evaluating(answers) => answers
         case Mode.Preparing(_)        => Nil
       ConwayBbody
-        .conwayBbody[F, H](env, block, context, verdicts, decoder, slotToPOSIXTime)
+        .conwayBbody[F, H](env, block, context, verdicts, decoder, slotToPOSIXTime, ahead)
         .judge(
           RuleT.Policy.Accumulate,
           globals,

@@ -270,6 +270,108 @@ object Phase2:
       .value
       .map(_.toVector)
 
+  /** A slot's start in POSIX milliseconds, as a collection asks its clock for it. */
+  type Posix = BigInt => Either[TranslationError, BigInt]
+
+  /** What the collection of a transaction's scripts reads but its clock ([[collect]]): the era, the
+    * transaction, the parameters, the scripts it has, and the outputs its inputs spend and its
+    * reference inputs read. [[collect]] is a function of these and of the clock's answers alone:
+    * every value here is immutable data compared by structure (`Tx`, `ProtocolParams`, `Script` and
+    * `TxOut` are case classes of data, `NativeScript` compares its tree, the era is a singleton of
+    * an enum), so equal inputs, their maps in the same order ([[ordered]]), are read alike.
+    */
+  final case class Inputs[E <: EraTag](
+      era: ShelleyBasedEra[E],
+      tx: Tx,
+      pp: ProtocolParams,
+      scripts: Map[Bytes, Script],
+      spent: Map[TxIn, TxOut],
+      references: Map[TxIn, TxOut]
+  ):
+    /** [[Phase2.collect]] of these inputs with the clock `posix`. */
+    def collect(posix: Posix): Collected[Vector[(Redeemer, EvalRequest)]] =
+      Phase2.collect[E](tx, pp, scripts, spent, references, posix)(using era)
+
+    /** Whether the maps of `other`, equal to these, are in the same order as these: equal maps may
+      * iterate in another order, which a collection that iterated one would see.
+      */
+    def ordered(other: Inputs[?]): Boolean =
+      scripts.keysIterator.sameElements(other.scripts.keysIterator) &&
+        spent.keysIterator.sameElements(other.spent.keysIterator) &&
+        references.keysIterator.sameElements(other.references.keysIterator)
+
+  /** The slots a collection asked its clock for, each with its answer, in the order it asked. */
+  type Asked = Vector[(BigInt, Either[TranslationError, BigInt])]
+
+  /** `run` with the clock `posix`, and what it asked of it ([[Asked]]). */
+  @SuppressWarnings(Array("org.wartremover.warts.MutableDataStructures"))
+  private[ledger] def asking[A](posix: Posix)(run: Posix => A): (A, Asked) =
+    // a builder local to this run, which its clock alone appends to
+    val asked = Vector.newBuilder[(BigInt, Either[TranslationError, BigInt])]
+    val result = run { slot =>
+      val time = posix(slot)
+      val _ = asked.addOne(slot -> time)
+      time
+    }
+    (result, asked.result())
+
+  /** Whether the clock `posix` answers every slot of `asked` as it was answered. */
+  private[ledger] def answered(asked: Asked, posix: Posix): Boolean =
+    asked.forall((slot, time) => posix(slot) == time)
+
+  /** A transaction's scripts collected ahead of the rules (#1499): the [[Inputs]] they were
+    * collected from, each slot the collection asked the clock for with its answer, in order, and
+    * the requests it collected. Made only by [[Kept.of]], which runs the collection itself, so the
+    * requests are the collection of the inputs with those answers.
+    */
+  final class Kept private (
+      val inputs: Inputs[?],
+      val asked: Asked,
+      val requests: Vector[(Redeemer, EvalRequest)]
+  ):
+    /** Whether the collection of `inputs` with the clock `posix` is this one: `posix` answers every
+      * slot this one asked as it was answered, and the inputs are equal. The collection is a
+      * deterministic function of its inputs and of the answers to what it asks, so with the same
+      * inputs it asks the same slots in the same order, given the same answers, and collects the
+      * same requests: [[requests]].
+      */
+    def answers(inputs: Inputs[?], posix: Posix): Boolean =
+      answered(asked, posix) && this.inputs == inputs && this.inputs.ordered(inputs)
+
+  object Kept:
+    /** The collection of `inputs` with `posix`, kept with what it asked the clock, where it
+      * collected; none where it did not.
+      */
+    def of[E <: EraTag](inputs: Inputs[E], posix: Posix): Option[Kept] =
+      val (collected, asked) = asking(posix)(inputs.collect)
+      collected.toOption.map(new Kept(inputs, asked, _))
+
+  /** The collections made ahead of the rules (#1499): the one kept for a transaction like that of
+    * `inputs`, if any, which the rules take only where it is the collection of their inputs
+    * ([[collected]]). It is memoisation only, read by the rules.
+    */
+  trait Ahead:
+    def flat(inputs: Inputs[?]): Option[Kept]
+
+  object Ahead:
+    /** Nothing made ahead: every collection is the rules' own. */
+    val none: Ahead = new Ahead:
+      def flat(inputs: Inputs[?]): Option[Kept] = None
+
+  /** The collection of `inputs` with the clock `posix`: the one made ahead where it is that
+    * collection ([[Kept.answers]]), and otherwise [[collect]]. Either is the collection of `inputs`
+    * with `posix`.
+    */
+  def collected[E <: EraTag](
+      inputs: Inputs[E],
+      posix: Posix,
+      ahead: Ahead
+  ): Collected[Vector[(Redeemer, EvalRequest)]] =
+    ahead
+      .flat(inputs)
+      .filter(_.answers(inputs, posix))
+      .fold(inputs.collect(posix))(kept => Right(kept.requests))
+
   /** `posix` converts a slot to POSIX milliseconds. All contexts are prepared before evaluation; a
     * script failure cannot hide a later setup failure, whichever validity flag the tx carries.
     */

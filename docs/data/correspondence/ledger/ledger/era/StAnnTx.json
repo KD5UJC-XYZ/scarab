@@ -23,13 +23,13 @@
   },
   "def ledger.era.AlonzoStAnnTx.mkAlonzoStAnnTx": {
    "class": "Mirror",
-   "digest": "56f0b1088423fc43",
+   "digest": "49c7a6bfa3ece343",
    "evidence": [
     "EraPlutusContextSuite",
     "BabbagePlutusContextSuite",
     "BabbagePlutusContextRefusalsSuite"
    ],
-   "note": "the epoch information and the system start as the one clock function of `LedgerTxInfo` (#85's item on its two fields); a function, which `ApplyTx`'s member `mkStAnnTx` is for Conway when the mempool comes",
+   "note": "the epoch information and the system start as the one clock function of `LedgerTxInfo` (#85's item on its two fields); a function, which `ApplyTx`'s member `mkStAnnTx` is for Conway when the mempool comes; its contexts are those the node made ahead of the selection worker where they are its own collection, else collected here (`ContextInputs.collected`, #1499, an Optimisation approved for #1499 item 4), with what it resolves first in `resolve`",
    "structure": "differs",
    "upstream": [
     {
@@ -141,6 +141,37 @@
     "object ledger.era.AlonzoStAnnTx"
    ],
    "reason": "the annotated transaction's and Alonzo's auxiliary data's companions, holding their functions, and the defect of a script the `plutus` module's decoder gives no verdict for, with the flat checks' form of it"
+  },
+  {
+   "definitions": [
+    "class ledger.era.AlonzoStAnnTx.Resolved",
+    "class ledger.era.ContextInputs",
+    "class ledger.era.KeptContexts",
+    "def ledger.era.AlonzoStAnnTx.resolve",
+    "def ledger.era.ContextInputs#collect",
+    "def ledger.era.ContextInputs#equals",
+    "def ledger.era.ContextInputs#hashCode",
+    "def ledger.era.ContextInputs#outputBytes",
+    "def ledger.era.ContextInputs#toString",
+    "def ledger.era.ContextInputs.collected",
+    "def ledger.era.ContextsAhead#contexts",
+    "def ledger.era.ContextsAhead.none",
+    "def ledger.era.KeptContexts#answers",
+    "def ledger.era.KeptContexts.of",
+    "object ledger.era.ContextInputs",
+    "object ledger.era.ContextsAhead",
+    "object ledger.era.KeptContexts",
+    "trait ledger.era.ContextsAhead",
+    "val ledger.era.ContextInputs#costModels",
+    "val ledger.era.ContextInputs#protVer",
+    "val ledger.era.ContextInputs#tx",
+    "val ledger.era.ContextInputs#used",
+    "val ledger.era.ContextInputs#utxo",
+    "val ledger.era.KeptContexts#asked",
+    "val ledger.era.KeptContexts#inputs",
+    "val ledger.era.KeptContexts#scripts"
+   ],
+   "reason": "the contexts of Conway's transactions' scripts the node makes ahead of the selection worker (#1499, an Optimisation, REF-6, approved for #1499 item 4; the reference collects them where mkAlonzoStAnnTx annotates a transaction): what mkAlonzoStAnnTx collects them from but the clock (ContextInputs, its collect and its comparison, finer than the runnables' own equality), what it resolves before (AlonzoStAnnTx.Resolved, resolve), the contexts kept with the clock's answers to the slots they asked (KeptContexts), the annotation's taking of kept contexts only where they are its own collection (ContextInputs.collected), and the capability that holds them (ContextsAhead)"
   }
  ],
  "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/StAnnTx.scala"

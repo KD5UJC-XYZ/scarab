@@ -121,12 +121,12 @@
   },
   "def ledger.era.rules.ConwayBbody.conwayBbody": {
    "class": "Mirror",
-   "digest": "2a788d0a59e92520",
+   "digest": "dd2b9b7dce975cda",
    "evidence": [
     "ConwayBbodySuite",
     "ConwayBbodyImpSuite"
    ],
-   "note": "conwayBbodyTransition >> alonzoBbodyTransition on Conway's LEDGERS, its failures and events embedded; the parameters of LEDGERS's transactions (context, verdicts, decoder, the clock) and the proposals GOV judges, a capability beside the BBODY state, given by the caller; ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them",
+   "note": "conwayBbodyTransition >> alonzoBbodyTransition on Conway's LEDGERS, its failures and events embedded; the parameters of LEDGERS's transactions (context, verdicts, decoder, the clock) and the proposals GOV judges, a capability beside the BBODY state, given by the caller; ConwayBbodySuite's expectations are the reference's own on the 53 recorded Conway blocks the reference accepted; ConwayBbodyImpSuite holds Conway's run (ConwayBlockRun) to the reference's own BBODY cases for Conway at versions 9 to 11 (the Imp's of f649f975, and Shelley's of 9df9f98c), refusals among them; LEDGERS is given the contexts made ahead of the selection worker (`ahead`, #1499), which it takes only where they are its own collection",
    "structure": "differs",
    "upstream": [
     {

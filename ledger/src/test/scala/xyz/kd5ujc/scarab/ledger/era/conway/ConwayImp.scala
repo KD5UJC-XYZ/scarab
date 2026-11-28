@@ -351,7 +351,8 @@ object ConwayImp extends Assertions:
       plutusScripts: Map[Bytes, TestScript] = Map.empty,
       datums: Vector[Node] = Vector.empty,
       integrity: Option[Bytes] = None,
-      valid: Boolean = true
+      valid: Boolean = true,
+      ttl: Option[BigInt] = None
   ):
     def redeemerKey(p: Purpose): Node = p match
       case Purpose.Spending(in)   => B.arr(B.uint(0), B.uint(inputs.toVector.indexOf(in)))
@@ -378,6 +379,7 @@ object ConwayImp extends Assertions:
       Some(0 -> set(spec.inputs)),
       Some(1 -> B.arr(spec.outputs.map(_.node)*)),
       Some(2 -> B.uint(spec.fee)),
+      spec.ttl.map(t => 3 -> B.uint(t)),
       Option.when(spec.certs.nonEmpty)(4 -> B.set(spec.certs.map(_.node)*)),
       Option.when(spec.withdrawals.nonEmpty)(
         5 -> B.cmap(spec.withdrawals.sortBy(_._1.hex).map((a, c) => B.bytes(a) -> B.uint(c))*)
@@ -529,6 +531,18 @@ object ConwayImp extends Assertions:
       evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id],
       observing: Option[ConwayBlockRun.Observing]
   ): ConwayBlockRun.Body =
+    programAhead(raw, state, params)(
+      evaluator,
+      observing,
+      xyz.kd5ujc.scarab.ledger.era.ContextsAhead.none[Conway]
+    )
+
+  /** [[program]] whose LEDGERS takes the contexts made `ahead` where they are its own (#1499). */
+  def programAhead(raw: Bytes, state: LedgerState[Conway], params: PParams[Conway])(
+      evaluator: xyz.kd5ujc.scarab.plutus.ScriptEvaluator[Id],
+      observing: Option[ConwayBlockRun.Observing],
+      ahead: xyz.kd5ujc.scarab.ledger.era.ContextsAhead[Conway]
+  ): ConwayBlockRun.Body =
     ConwayBlockRun.program(
       globals,
       BbodyEnv[Conway](params, ChainAccountState(Coin(0), Coin(0))),
@@ -540,7 +554,8 @@ object ConwayImp extends Assertions:
       flat.Verdicts.Direct,
       ScarabEvaluator.defaultDecoder,
       slotToPosix,
-      observing
+      observing,
+      ahead
     )
 
   // ---- the Imp's state --------------------------------------------------------------------------

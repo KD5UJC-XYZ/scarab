@@ -198,6 +198,19 @@ sealed abstract class PlutusWithContext:
   def pwcExUnits: ExUnits
   def pwcCostModel: CostModel[L]
 
+  /** [[PlutusWithContext.evalRequest]] of this script: made each time it is asked for, but by one
+    * made ahead of the rules ([[PlutusWithContext.kept]]), which makes it once.
+    */
+  private[era] def request: EvalRequest =
+    EvalRequest(
+      plutusLanguage.language,
+      pwcProtocolVersion.value,
+      pwcScript.plutusRunnableBinary.binary,
+      plutusLanguage.plutusArgsToData(pwcArgs),
+      pwcCostModel.cmValues,
+      pwcExUnits
+    )
+
   private def fields: Any =
     (plutusLanguage.language, pwcProtocolVersion, pwcScript, pwcArgs, pwcExUnits, pwcCostModel)
   override def equals(that: Any): Boolean = that match
@@ -226,20 +239,28 @@ object PlutusWithContext:
 
   given CanEqual[PlutusWithContext, PlutusWithContext] = CanEqual.derived
 
+  /** `pwc` with its request made once (#1499): the same script with its context, equal to `pwc`,
+    * whose every evaluation takes one request, so that a result kept ahead of the rules for it is
+    * found by the request itself. Only the scripts collected ahead are so; the rules' own make
+    * their request when they evaluate.
+    */
+  def kept(pwc: PlutusWithContext): PlutusWithContext =
+    new PlutusWithContext:
+      type L = pwc.L
+      def plutusLanguage: PlutusLanguage[pwc.L] = pwc.plutusLanguage
+      def pwcProtocolVersion: Version = pwc.pwcProtocolVersion
+      def pwcScript: PlutusRunnable[pwc.L] = pwc.pwcScript
+      def pwcArgs: PlutusArgs[pwc.L] = pwc.pwcArgs
+      def pwcExUnits: ExUnits = pwc.pwcExUnits
+      def pwcCostModel: CostModel[pwc.L] = pwc.pwcCostModel
+      override private[era] lazy val request: EvalRequest = pwc.request
+
   /** The request the `plutus` module's evaluator takes for `pwc`: what the reference's
     * `evaluatePlutusWithContext` hands Plutus (`Evaluate.hs:382-392`, cardano-ledger f649f975), the
     * arguments as the language applies them ([[PlutusLanguage.plutusArgsToData]]) and the model of
     * the script's language.
     */
-  def evalRequest(pwc: PlutusWithContext): EvalRequest =
-    EvalRequest(
-      pwc.plutusLanguage.language,
-      pwc.pwcProtocolVersion.value,
-      pwc.pwcScript.plutusRunnableBinary.binary,
-      pwc.plutusLanguage.plutusArgsToData(pwc.pwcArgs),
-      pwc.pwcCostModel.cmValues,
-      pwc.pwcExUnits
-    )
+  def evalRequest(pwc: PlutusWithContext): EvalRequest = pwc.request
 
 /** Why the scripts of a transaction of era `E` cannot be collected with their contexts (`data
   * CollectError era`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs:357-361`,

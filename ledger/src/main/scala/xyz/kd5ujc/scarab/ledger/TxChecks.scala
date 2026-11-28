@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.GenDelegPair
 import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Test}
 import xyz.kd5ujc.scarab.ledger.state.{EraTag, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.plutus.EvalRequest
 
 /** The checks of the transaction rules before Conway and the checks Conway shares with them (UTXO,
   * UTXOW, UTXOS): the pure predicates over a transaction and what it reads of the state, which the
@@ -65,28 +66,25 @@ object TxChecks:
       else checkedPhase2(stats, tx, Right(Phase2.Outcome.Passed(Phase2.Report(Vector.empty))))
     else
       val posix = env.clock.toRight(TranslationError.NoEraHistory).map(c => c.posix)
+      // the collection made ahead of the rules where it is this one, else the rules' own (#1499)
+      def collected: Phase2.Collected[Vector[(Redeemer, EvalRequest)]] =
+        Phase2.collected[E](
+          Phase2.Inputs(summon[ShelleyBasedEra[E]], tx, pp, scripts, spent, references),
+          slot => posix.flatMap(_(slot)),
+          env.ahead
+        )
       env.preparation match
         case Some(recording) if env.validation == TxEnv.Validation.All =>
-          val requests =
-            Phase2.collect[E](tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
+          val requests = collected
           recording.append(
             Phase2.job(env.txIndex, tx, pp, env.slot, spent, references, env.clock, requests)
           )
           requests.fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
         case _ if !evaluate =>
-          Phase2
-            .collect[E](tx, pp, scripts, spent, references, slot => posix.flatMap(_(slot)))
-            .fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
+          collected.fold(errors => checkedPhase2(stats, tx, Left(errors)), _ => Right(stats))
         case _ =>
-          val outcome = Phase2.evaluate[E](
-            tx,
-            pp,
-            scripts,
-            spent,
-            references,
-            slot => posix.flatMap(_(slot)),
-            env.evaluator
-          )
+          // `Phase2.evaluate`: the collection, then its scripts run
+          val outcome = collected.map(Phase2.run(_, env.evaluator))
           env.observer.foreach(
             _(Phase2.Observation(tx, pp, env.slot, spent, references, env.clock, outcome))
           )

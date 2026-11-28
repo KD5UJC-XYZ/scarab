@@ -30,6 +30,30 @@
  "glue": [
   {
    "definitions": [
+    "class ledger.Phase2.Inputs",
+    "class ledger.Phase2.Kept",
+    "def ledger.Phase2.Ahead#flat",
+    "def ledger.Phase2.Inputs#collect",
+    "def ledger.Phase2.Inputs#ordered",
+    "def ledger.Phase2.Kept#answers",
+    "def ledger.Phase2.Kept.of",
+    "def ledger.Phase2.answered",
+    "def ledger.Phase2.asking",
+    "def ledger.Phase2.collected",
+    "object ledger.Phase2.Ahead",
+    "object ledger.Phase2.Kept",
+    "trait ledger.Phase2.Ahead",
+    "type ledger.Phase2.Asked",
+    "type ledger.Phase2.Posix",
+    "val ledger.Phase2.Ahead.none",
+    "val ledger.Phase2.Kept#asked",
+    "val ledger.Phase2.Kept#inputs",
+    "val ledger.Phase2.Kept#requests"
+   ],
+   "reason": "the collections of transactions' scripts the node makes ahead of the selection worker (#1499, an Optimisation, REF-6, approved for #1499 item 4; the reference collects a transaction's scripts where UTXOS reaches it): what a collection is made from but the clock (Phase2.Inputs and its collect), a collection kept with the clock's answers to the slots it asked (Phase2.Kept, asking, answered, Asked, Posix), the rules' taking of a kept collection only where it is their own collection and else their own (collected), and the capability that holds them (Phase2.Ahead)"
+  },
+  {
+   "definitions": [
     "class ledger.Phase2.Recorder",
     "def ledger.Phase2.Plan#batches",
     "def ledger.Phase2.Plan#execute",

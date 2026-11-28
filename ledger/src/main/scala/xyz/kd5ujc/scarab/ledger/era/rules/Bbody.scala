@@ -341,6 +341,7 @@ object ConwayBbody:
     * is LEDGERS's alone. The signal is the reference's `BbodySignal`: a block whose header `H` has
     * the two header classes. LEDGERS raises its own defects. The proposals GOV judges are the
     * caller's, beside the BBODY state (`proposals`), as LEDGER takes them ([[ConwayLedger]]).
+    * LEDGERS takes the contexts made `ahead` of the rules where they are its collection (#1499).
     */
   def conwayBbody[F[_]: Monad, H](
       env: BbodyEnv[Conway],
@@ -348,7 +349,8 @@ object ConwayBbody:
       context: UtxoContext[Conway],
       verdicts: Verdicts,
       decoder: ScriptDecoder[Id],
-      slotToPOSIXTime: BigInt => Either[TranslationError, BigInt]
+      slotToPOSIXTime: BigInt => Either[TranslationError, BigInt],
+      ahead: ContextsAhead[Conway] = ContextsAhead.none[Conway]
   )(using
       h: EraBlockHeader[H, Conway],
       pv: PraosEraBlockHeader[H, Conway],
@@ -380,7 +382,8 @@ object ConwayBbody:
           context,
           verdicts,
           decoder,
-          slotToPOSIXTime
+          slotToPOSIXTime,
+          ahead
         )
       }
     yield ()

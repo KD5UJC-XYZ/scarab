@@ -39,7 +39,8 @@ object EraBlock:
     * scripts, the era history of the ledger state the block is applied to (the node's blocks always
     * carry it); none is the geometry alone, without a forecast horizon, for fixtures with no era
     * history. The evaluator and the decoder have no default: the node passes its backend
-    * (`PlutusBackend`).
+    * (`PlutusBackend`). `ahead` holds the collections of scripts the node made ahead of the rules
+    * (#1499), which UTXOS takes only where one is its own ([[Phase2.collected]]).
     */
   final case class Context(
       globals: Globals,
@@ -50,7 +51,8 @@ object EraBlock:
       observer: Option[Phase2.Observation => Unit] = None,
       decoder: ScriptDecoder[cats.Id],
       clock: Option[PosixClock] = None,
-      private[ledger] val preparation: Option[Phase2.Preparation] = None
+      private[ledger] val preparation: Option[Phase2.Preparation] = None,
+      ahead: Phase2.Ahead = Phase2.Ahead.none
   )
 
   /** What became of the block. */
@@ -283,7 +285,8 @@ object EraBlock:
       observer = ctx.observer,
       verdicts = ctx.verdicts,
       preparation = ctx.preparation,
-      referenceBuild = globals.ledger.referenceBuild
+      referenceBuild = globals.ledger.referenceBuild,
+      ahead = ctx.ahead
     )
 
   /** The pool that made the block (the hash of the issuer's key). */
