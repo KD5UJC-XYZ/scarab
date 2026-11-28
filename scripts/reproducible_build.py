@@ -11,6 +11,8 @@ import subprocess
 import tarfile
 import tempfile
 import uuid
+
+import jit_workaround
 import zipfile
 
 from check_native_identity import pins as native_pins
@@ -225,7 +227,7 @@ class ArtifactResourcesCheck {
 
 def jvm_resources(runtime, artifact, commit):
     source = resource_check_source(runtime)
-    result = subprocess.run(["java", "-cp", str(artifact), source.name, str(artifact), commit],
+    result = subprocess.run(["java", *jit_workaround.OPTIONS, "-cp", str(artifact), source.name, str(artifact), commit],
                             cwd=runtime, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
     if result.returncode:
         raise ValueError(f"fat JAR resource/service/identity check failed: {result.stdout}")
@@ -236,11 +238,11 @@ def smoke(artifact, source, classpath, commit, build_identity=None):
     with tempfile.TemporaryDirectory(prefix="scarab-fatjar-runtime-") as scratch:
         runtime = Path(scratch)
         jvm_resources(runtime, artifact, commit)
-        cli = subprocess.run(["java", "-jar", str(artifact), "--help"], cwd=runtime,
+        cli = subprocess.run(["java", *jit_workaround.OPTIONS, "-jar", str(artifact), "--help"], cwd=runtime,
                              text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
         if cli.returncode != 2 or "usage: follow" not in cli.stdout:
             raise ValueError(f"fat JAR java -jar smoke failed: {cli.stdout}")
-        native = subprocess.run(["java", "-cp", str(artifact),
+        native = subprocess.run(["java", *jit_workaround.OPTIONS, "-cp", str(artifact),
                                  "xyz.kd5ujc.scarab.node.tools.BlstCheckMain"], cwd=runtime,
                                 text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
         if native.returncode or not any(

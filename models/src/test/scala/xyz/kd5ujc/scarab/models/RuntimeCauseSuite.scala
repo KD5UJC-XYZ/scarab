@@ -105,6 +105,8 @@ class RuntimeCauseSuite extends FunSuite:
     try
       val builder = new ProcessBuilder(
         javaCommand,
+        "-XX:+UnlockDiagnosticVMOptions",
+        "-XX:-ReduceAllocationMerges",
         "-XX:ActiveProcessorCount=2",
         "-Xss256k",
         "-Xmx128m",
