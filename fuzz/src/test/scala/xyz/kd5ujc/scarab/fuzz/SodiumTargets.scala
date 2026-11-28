@@ -663,13 +663,12 @@ object SodiumTargets:
     * `cardano-crypto-praos/src/Cardano/Crypto/VRF/Praos.hs:502-512` hands its length to
     * `crypto_vrf_ietfdraft03_verify` unchecked). The limit came with the research prototype's first
     * publication (commit 58172e52d, "alpha exceeds 1 MiB research limit"), and became the typed
-    * case in #188; no issue or row of the decisions register records it. No caller reaches it: both
-    * verify alphas the node builds itself, 32 bytes each (`PraosVrfCertificate.alpha`,
-    * `TPraos.seed`), as the reference's `mkInputVRF` and `mkSeed` are 32-byte Blake2b-256 hashes.
-    * The question of the limit is with the owner (#1418). At the limit both verify the proof to the
-    * same output; one byte over it, the oracle verifies it and Scarab refuses exactly so. The bound
-    * is written out ([[RecordedAlphaBound]]), not read from `StrictDraft03`, so that moving it
-    * fails this case.
+    * case in #188; it is kept by decision (decisions register, #1418). No caller in the node
+    * reaches it: both verify alphas the node builds itself, 32 bytes each
+    * (`PraosVrfCertificate.alpha`, `TPraos.seed`), as the reference's `mkInputVRF` and `mkSeed` are
+    * 32-byte Blake2b-256 hashes. At the limit both verify the proof to the same output; one byte
+    * over it, the oracle verifies it and Scarab refuses exactly so. The bound is written out
+    * ([[RecordedAlphaBound]]), not read from `StrictDraft03`, so that moving it fails this case.
     */
   private def alphaBound(): Unit =
     val name = "sodium-vrf-verify alpha bound"

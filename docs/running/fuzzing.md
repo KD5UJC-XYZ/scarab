@@ -195,9 +195,9 @@ kind of the random run must reach.
 `StrictDraft03.MaxAlphaBytes` (1 MiB) as `AlphaTooLarge`, before verifying, and the reference verifies a proof over
 an alpha of any length: cardano-base `060819b5` `cardano-crypto-praos/src/Cardano/Crypto/VRF/Praos.hs:502-512`
 passes its length to `crypto_vrf_ietfdraft03_verify` unchecked. The limit came with the research prototype's first
-publication (commit `58172e52d`, as "alpha exceeds 1 MiB research limit") and became its typed case in #188; no
-issue or [decisions register](../decisions.md) row records it. No caller reaches it: the node verifies only alphas it
-builds, of 32 bytes (`PraosVrfCertificate.alpha`, and `TPraos.seed` for the eras before Babbage), as the reference's
+publication (commit `58172e52d`, as "alpha exceeds 1 MiB research limit") and became its typed case in #188; it is
+kept by decision ([decisions register](../decisions.md#reference-fidelity), #1418, 2026-11-28). No caller in the node
+reaches it: the node verifies only alphas it builds, of 32 bytes (`PraosVrfCertificate.alpha`, and `TPraos.seed` for the eras before Babbage), as the reference's
 `mkInputVRF` and `mkSeed` are Blake2b-256 hashes (cardano-ledger `f649f975`,
 `libs/cardano-protocol/src/Cardano/Protocol/Praos/VRF.hs:64-78` and
 `libs/cardano-protocol/src/Cardano/Protocol/TPraos/BlockHeader.hs:411-431`), and UPLC has no VRF builtin. The
