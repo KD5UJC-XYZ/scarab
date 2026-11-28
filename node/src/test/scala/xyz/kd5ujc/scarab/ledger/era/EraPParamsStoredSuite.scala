@@ -372,7 +372,7 @@ class EraPParamsStoredSuite extends FunSuite:
 
   /** Each delegate's typed update applied to `base` as Alonzo applies it, against the flat rule's
     * application of the bytes the node stores it by: an update the stored form read wrongly, or
-    * read as empty, gives another record.
+    * read as empty, gives another record unless each field it loses already held its value.
     */
   private def appliedAlike(
       what: String,

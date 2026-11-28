@@ -3595,9 +3595,10 @@ Conway's rules on the classes follow as the rest of stage 2.
   - `AlonzoPParams[F]`, its instances of `EraPParams` and `AlonzoEraPParams`, and three ranged classes at
     Alonzo: `AlonzoEraPParamsExactAlonzo` (`hkdCoinsPerUTxOWordL`, `ExactEra AlonzoEra`), `EraPParamsToAlonzo`
     (`hkdDL`, `hkdExtraEntropyL` and `ppDG` from them, `AtMostEra "Alonzo"`) and `EraPParamsToBabbage`, as
-    decided 2026-11-15; so `KeptUpdate` reads Alonzo's proposals unchanged. A proposal the node stored is read
-    as the flat rule applies it (`DecodeAt.Reading.Stored`): its extra entropy a byte string of any form and a
-    neutral nonce of any number of fields, which an earlier build took; a body's is held to its version. The reference's `ToPlutusData` of
+    decided 2026-11-15; so `KeptUpdate` reads Alonzo's proposals unchanged. A proposal's extra entropy the node
+    stored is read as the flat rule applies it (`DecodeAt.Reading.Stored`): a byte string of any form and a
+    neutral nonce of any number of fields, which an earlier build took; a body's is held to its version. The
+    other fields' stored legacy forms (an indefinite execution-units list) are not yet (#85). The reference's `ToPlutusData` of
     `Nonce` and of `CoinPerWord` is `error "unsupported"`, which only these two descriptions are given, as kept
     sites: their one reader asks for `ConwayEraPParams`. Babbage's upgrade from Alonzo (`upgradeBabbagePParams
     True` and, for a transaction's proposal, `False`) and downgrade to it are Babbage's functions; the class

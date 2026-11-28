@@ -226,7 +226,7 @@ class AlonzoPParamsSuite extends ScalaCheckSuite:
     assert(compileErrors("summon[ToPlutusData[PParamsUpdate[Alonzo]]]").nonEmpty)
     assert(compileErrors("summon[ConwayEraPParams[Alonzo]]").nonEmpty)
 
-  test("a nonce is read alike at every decoder version, as Summands and decodeRecordSum read it"):
+  test("a nonce is read as Summands and decodeRecordSum read it, a hash in chunks from 12 only"):
     val forms = Vector(
       "8100" -> true,
       "9f00ff" -> true,
