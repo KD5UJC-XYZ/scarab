@@ -1,5 +1,37 @@
 {
  "entries": {
+  "class ledger.era.AlonzoTxInfoResult": {
+   "class": "Mirror",
+   "digest": "e16d4e92aeab1416",
+   "evidence": [
+    "AlonzoPlutusContextSuite",
+    "AlonzoPlutusContextRefusalsSuite"
+   ],
+   "note": "its field computed when first read, as the reference's newtype over a lazy value is",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      198,
+      199
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoTxInfoResult"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      207,
+      208
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "AlonzoTxInfoResult"
+    }
+   ]
+  },
   "def ledger.era.AlonzoTxInfo.spendingDatum": {
    "class": "Mirror",
    "digest": "9f8b53d69dbe9474",
@@ -588,6 +620,102 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "Missing TxInfoResult for"
+    }
+   ]
+  },
+  "val ledger.era.AlonzoTxInfo.context": {
+   "class": "Mirror",
+   "digest": "691edb564209bd08",
+   "evidence": [
+    "AlonzoPlutusContextSuite",
+    "AlonzoPlutusContextRefusalsSuite"
+   ],
+   "note": "Plutus V1 alone, its information computed when first looked up",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      196,
+      211
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPlutusContext AlonzoEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      205,
+      220
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraPlutusContext AlonzoEra"
+    }
+   ]
+  },
+  "val ledger.era.AlonzoTxInfo.plutusV1": {
+   "class": "Mirror",
+   "digest": "bde552e9f636bcf7",
+   "evidence": [
+    "AlonzoPlutusContextSuite",
+    "AlonzoPlutusContextRefusalsSuite"
+   ],
+   "note": "the validity interval, the inputs and the certificates in that order; an input or output at a Byron address left out (catMaybes, mapMaybe transTxOut), so no output is read by its index",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      130,
+      165
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 AlonzoEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      132,
+      164
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 AlonzoEra"
+    }
+   ]
+  },
+  "val ledger.era.AlonzoTxInfoResult#tirPlutusV1": {
+   "class": "Mirror",
+   "digest": "98e2c7a8e52f4390",
+   "evidence": [
+    "AlonzoPlutusContextSuite",
+    "AlonzoPlutusContextRefusalsSuite"
+   ],
+   "note": "the field the reference's lookup matches",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      210,
+      210
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "lookupTxInfoResult SPlutusV1"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      219,
+      219
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "lookupTxInfoResult SPlutusV1"
     }
    ]
   }

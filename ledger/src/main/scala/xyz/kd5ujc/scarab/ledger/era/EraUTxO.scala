@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.ledger.{Address, GenDelegPair, TxIn, Unsigned}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.ledger.state.{
   Accounts,
+  Alonzo,
   Babbage,
   CertState,
   Coin,
@@ -316,6 +317,39 @@ object AlonzoUTxO:
   def getAlonzoScriptsHashesNeeded[E <: EraTag](scriptsNeeded: AlonzoScriptsNeeded[E]): Set[Bytes] =
     scriptsNeeded.unAlonzoScriptsNeeded.map(_._2).toSet
 
+  /** `getAlonzoSupplementalDataHashes` (`Alonzo/UTxO.hs:216-224`, cardano-ledger f649f975): the
+    * hashes of the datums of the body's outputs; Alonzo has no reference input and no collateral
+    * return.
+    */
+  def getAlonzoSupplementalDataHashes[E <: EraTag, L <: TxLevel](txBody: TxBody[L, E])(using
+      b: EraTxBody[E],
+      l: b.Level[L],
+      o: AlonzoEraTxOut[E]
+  ): Set[Bytes] =
+    b.outputs[L](txBody).flatMap(o.dataHash).toSet
+
+  /** `getAlonzoSpendingDatum` (`Alonzo/UTxO.hs:227-239`, cardano-ledger f649f975): of a spending
+    * purpose whose input the UTxO set holds, the witnesses' datum of the output's datum hash; none
+    * for another purpose. Alonzo's output has no inline datum, so nothing is read here and the
+    * answer never fails.
+    */
+  def getAlonzoSpendingDatum[E <: EraTag, L <: TxLevel](
+      utxo: UTxO[E],
+      tx: Tx[L, E],
+      sp: PlutusPurpose[AsItem, E]
+  )(using
+      t: AlonzoEraTx[E],
+      l: t.bodyOf.Level[L],
+      o: AlonzoEraTxOut[E],
+      s: AlonzoEraScript[E]
+  ): Option[Data] =
+    for
+      AsItem(txIn) <- s.toSpendingPurpose(sp)
+      txOut <- utxo.unUTxO.get(txIn)
+      hash <- o.dataHash(txOut)
+      data <- t.witsOf.datsTxWits(t.wits[L](tx)).datums.get(hash)
+    yield data
+
 /** The core's functions of the UTxO set (`State/UTxO.hs`, cardano-ledger f649f975). */
 object UTxOs:
   /** `txouts` (`State/UTxO.hs:146-158`, cardano-ledger f649f975): the outputs a body creates, each
@@ -607,13 +641,17 @@ object BabbageUTxO:
     val ins: Set[TxIn] = b.referenceInputs[L](txBody)(using lb) ++ b.inputs[L](txBody)(using lb)
     ScriptsProvided(t.witsOf.scriptTxWits(t.wits[L](tx)) ++ getReferenceScripts(utxo, ins))
 
-/** The instances of each era, the one place that lists them: Babbage's (`instance EraUTxO
-  * BabbageEra` and `instance AlonzoEraUTxO BabbageEra`,
+/** The instances of each era, the one place that lists them: Alonzo's (`instance EraUTxO AlonzoEra`
+  * and `instance AlonzoEraUTxO AlonzoEra`,
+  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs:112-175`, cardano-ledger f649f975),
+  * Babbage's (`instance EraUTxO BabbageEra` and `instance AlonzoEraUTxO BabbageEra`,
   * `eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs:43-72`, cardano-ledger f649f975), Conway's
   * (`eras/conway/impl/src/Cardano/Ledger/Conway/UTxO.hs:119-147`, cardano-ledger f649f975) and
   * Dijkstra's (`Dijkstra/UTxO.hs:148-163, 200-211, 291-298`, cardano-ledger 9df9f98c).
   */
 object EraUTxO:
+  given alonzo: (AlonzoEraUTxO[Alonzo] { val txOf: EraTx.alonzo.type }) =
+    xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoEraUTxO.instance
   given babbage: (AlonzoEraUTxO[Babbage] { val txOf: EraTx.babbage.type }) =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageEraUTxO.instance
   given conway: AlonzoEraUTxO[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayUTxO.instance

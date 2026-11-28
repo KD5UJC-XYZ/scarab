@@ -3672,10 +3672,69 @@ Conway's rules on the classes follow as the rest of stage 2.
     typed update's site, the two repeated parameter keys named as the reference names them, seven envelopes
     refused where the reference reads the record, and the redeemer's detached units. As at Babbage, three refused
     envelopes (a head over the wrong count of items, and a detached record) and the redeemer's detached units keep a
-    cause other than the reference's, the verdict being the reference's (Gaps). No recorded Alonzo witness set
-    holds a native script and no recorded Alonzo transaction holds metadata, so the comparison's faults for those
-    are made on a crafted witness set and the envelope corpus's metadata. Nothing in the node reads these types
+    cause other than the reference's, the verdict being the reference's (Gaps). No Alonzo witness set this
+    differential loads holds a native script and no Alonzo transaction it loads holds metadata, so the comparison's
+    faults for those are made on a crafted witness set and the envelope corpus's metadata (the golden block of
+    cardano-node issue 4228, which the Plutus side's suite loads, holds both). Nothing in the node reads these types
     yet; Alonzo's Plutus side is the next part.
+- **Alonzo's Plutus side** (stage 4, eighth part; `era/alonzo/AlonzoEraUTxO.scala`, `era/AlonzoTxInfo.scala`,
+  `era/EraUTxO.scala`, `era/PlutusContext.scala`; cardano-ledger f649f975 `Alonzo/UTxO.hs:112-242`, `Alonzo.hs:82`,
+  `Alonzo/Plutus/TxInfo.hs:130-211`, which governs Alonzo's behaviour; the contexts' shape of cardano-ledger 9df9f98c,
+  `Alonzo/Plutus/TxInfo.hs:132-220`, `Alonzo/Plutus/Context.hs:282-289`):
+  - Alonzo's `EraUTxO` and `AlonzoEraUTxO`: Mary's values, the witnesses' scripts alone as the scripts provided,
+    Alonzo's `getAlonzoScriptsNeeded`, `getAlonzoWitsVKeyNeeded`, the minimum fee through `alonzoMinFeeTx` (its execution units priced), the supplemental datums
+    of the body's outputs alone (`getAlonzoSupplementalDataHashes`), the spending datum by its hash among the
+    witnesses' datums (`getAlonzoSpendingDatum`), and the annotated transaction's four members, with `mkStAnnTx`.
+    The genesis delegations are read from the certificate state's delegation state, as Alonzo has no
+    `EraCertState` instance yet.
+  - Alonzo's context for Plutus V1 and its `EraPlutusContext`, with Alonzo's cases of `ContextError` (Alonzo's own
+    error), `TxInfoResult` and `PlutusTxInInfo` (`Maybe PV1.TxInInfo`): the validity interval, the inputs and the
+    certificates in that order, an end alone closed at its end, a genesis delegation and a move of rewards as
+    `DCertGenesis` and `DCertMir`, and an input or output at a Byron address left out, not refused (`catMaybes`,
+    `mapMaybe transTxOut`), so no output is read by its index. `upgradePlutusPurposeAsIx` has no Alonzo member to
+    port: the reference's is `error`, Alonzo's previous era having no Plutus purpose. No ranged class is new.
+  - Against the flat path at Alonzo (`AlonzoPlutusContextSuite`, `AlonzoPlutusContextRefusalsSuite`):
+    - the context matrix's 20 Alonzo rows (10 retained, the v1-context corpus's Alonzo transactions, and 10
+      derived), each with the outputs it spends and gives as collateral and its cost models;
+    - 57 more Alonzo transactions with one stand-in output for each input, a key's at a Shelley address with no
+      datum: the 10 of the recorded blocks and the Preview ImmutableDB chunks, the 18 of the upstream golden
+      block of cardano-node issue 4228 (`fixtures/reference/alonzo-min-fee`), the 13 of the refusal corpora and
+      the 16 of the Plutus admission corpora;
+    - on those 77: the V1 `TxInfo` at each case's version and at 5 and 6 is the flat one as data (154, all
+      built), each output's datum hash among its outputs (five, of the golden block's bodies); the scripts with
+      their contexts are the flat path's 37 requests in order (11 of the stand-in cases), with no failure; the
+      38 scripts needed with each purpose's index, the scripts provided, the supplemental datums (the golden
+      block's five), the datums of the spent inputs (4 of them a datum) and the keys that must sign are the
+      flat `StAnnTx`'s and `TxChecks`'; and the value consumed and produced and the minimum fee are the flat
+      UTXO's (`UtxoChecks`, with the deposits and refunds of `ShelleyDeposits`; 26 cases mint or burn, 4 take
+      deposits), the golden block's first transaction's minimum fee being the upstream golden's 1,006,053
+      lovelace at its parameters;
+    - the 13 Alonzo cases of the refusal corpora again, with the UTxO set and state each was refused on, its
+      parameters and the state's genesis delegations, deposits and pools: the 13 `TxInfo`s (all built), the
+      three requests, the three scripts needed, the keys that must sign, and the value consumed and produced
+      and the minimum fee (12 cases balanced, one fee below the minimum) are the flat path's; and the two
+      cases of the forecast-horizon corpus with the clock of their era history, both collected as the
+      reference accepted both (Alonzo's epoch information extends past the horizon);
+    - the five Alonzo transactions of the recorded redeemer-index cases (`fixtures/devnet/redeemer-index.jsonl`),
+      with the outputs they spend and the Plutus V1 cost model in force: the `TxInfo`s and the collections
+      are the flat path's, and each failure to collect is the reference's `CollectErrors` byte for byte: the
+      four missing redeemers of every purpose in the reference's order (minting, certifying, withdrawing,
+      spending), two repeated certificates sharing their first index, so one redeemer at index 0 serves both
+      (the reference accepted it) and one at index 1 is UTXOW's extra redeemer, not a failure to collect;
+    - the reference's own bytes: each of the matrix's 26 Alonzo requests is the era's, by its script, arguments,
+      budget and cost model, and encoded whole as the reference's `PlutusWithContext` bytes;
+    - crafted cases for what the corpora do not reach: an input and an output at a Byron address, a refund of a registered credential and a
+      pool registered again, an end alone,
+      a clock that cannot translate a slot together with a missing input, a genesis delegation and a move of
+      rewards, a repeated script certificate, an update whose genesis delegates must sign, a Plutus script needed
+      with no redeemer, and an annotated transaction with a warm cache.
+
+    The era path and the flat path agree on all of these, and both agree with the reference where it recorded a
+    context. Not compared: the spending scripts and datums of the 57 stand-in transactions in the ledger suite, whose
+    spent outputs are not loaded there; the 13 refusal cases among them are compared again with their recorded UTxO
+    in the node suite. Not yet: the genesis delegations read through `EraCertState[Alonzo]`, with
+    Alonzo's state classes; and the flat purpose of an Alonzo purpose (`toStored`, for `MissingRedeemers`), with
+    Alonzo's UTXOW. Nothing in the node reads these types yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

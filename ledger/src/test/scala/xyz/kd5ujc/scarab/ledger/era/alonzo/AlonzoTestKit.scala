@@ -1,22 +1,52 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era.alonzo
 
+import java.nio.file.{Files, Path}
 import scala.collection.immutable.SortedSet
+import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   Block,
   Certificate,
   DecoderVersion,
   LedgerDecodeError,
+  PredicateFailure,
+  ProtocolParams,
+  TestLedger,
+  TranslationError,
   Tx,
   TxBody as FlatTxBody,
+  TxIn,
+  TxOut,
+  UtxoFailure,
+  UtxowFailure,
+  Utxo,
+  Value as FlatValue,
   Witnesses as FlatWitnesses
 }
-import xyz.kd5ujc.scarab.ledger.era.{Data, IsPhase2Valid, KeptUpdate, Network, ValidityInterval}
+import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoContextError,
+  Data,
+  EraUTxO,
+  PParams,
+  TxLevel,
+  IsPhase2Valid,
+  KeptUpdate,
+  Network,
+  ValidityInterval
+}
 import xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTestKit
 import xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTestKit.{AuxView, WitsView}
-import xyz.kd5ujc.scarab.ledger.rules.Convert
-import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Coin, PoolParamsBlsKey}
+import xyz.kd5ujc.scarab.ledger.rules.{
+  Convert,
+  ShelleyCertLens,
+  ShelleyDeposits,
+  StAnnTx,
+  Test,
+  UtxoChecks,
+  UtxoEnv
+}
+import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Coin, PoolParamsBlsKey, ShelleyCertState}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
@@ -60,6 +90,112 @@ object AlonzoTestKit extends munit.Assertions:
   // ---- the projection onto the flat values
 
   def flatCert(c: AlonzoTxCert): Certificate = BabbageTestKit.flatCertRep(c.rep)
+
+  /** The flat failure a typed context failure of Alonzo is, case by case. */
+  def flatContextError(e: AlonzoContextError[Alonzo]): TranslationError = e match
+    case AlonzoContextError.TranslationLogicMissingInput(in) => TranslationError.UnresolvedInput(in)
+    case AlonzoContextError.TimeTranslationPastHorizon(cause) => cause
+    case AlonzoContextError.Undecodable(site, _)              => TranslationError.Undecodable(site)
+    case AlonzoContextError.CertificateNotSupported(cert) =>
+      TranslationError.CertificateNotSupported(flatCert(cert))
+    case AlonzoContextError.PlutusPurposeNotSupported(_) |
+        AlonzoContextError.ImpossibleContextError(_) =>
+      fail(s"no Alonzo translation fails with $e")
+
+  /** What the flat UTXO computes of `flat` against the outputs `known`, the parameters `pp` and the
+    * certificate state `cert`: the value consumed and produced and the minimum fee, as its checks
+    * compute them ([[xyz.kd5ujc.scarab.ledger.rules.UtxoChecks.of]], with the deposits and refunds
+    * of [[xyz.kd5ujc.scarab.ledger.rules.ShelleyDeposits.of]]). The checks report the values only
+    * when they fail, so the refunds and the fixed fee are raised by an offset no transaction
+    * balances, which the failures' values are taken back by.
+    */
+  def flatBalance(
+      flat: Tx,
+      known: Map[TxIn, TxOut],
+      pp: ProtocolParams,
+      cert: ShelleyCertState
+  ): (FlatValue, FlatValue, BigInt) =
+    val offset = BigInt(10).pow(15)
+    val (deposits, refunds) = ShelleyDeposits.of(pp, cert, flat.body)
+    val checks = UtxoChecks.of[Alonzo](
+      UtxoEnv(TestLedger.env, pp.copy(minFeeB = pp.minFeeB + offset), cert),
+      StAnnTx(flat, Utxo(known)),
+      deposits,
+      refunds + offset
+    )
+    val failures = Test.failures(checks.beforePpup).fold(Vector.empty)(_.toChain.toVector)
+    val value = failures
+      .collectFirst {
+        case PredicateFailure.Utxow(UtxowFailure.Utxo(UtxoFailure.ValueNotConserved(m))) => m
+      }
+      .getOrElse(fail(s"the offset value is conserved: $failures"))
+    val fee = failures
+      .collectFirst { case PredicateFailure.Utxow(UtxowFailure.Utxo(UtxoFailure.FeeTooSmall(m))) =>
+        m
+      }
+      .getOrElse(fail(s"the offset fee is paid: $failures"))
+    (value.supplied - FlatValue.coin(offset), value.expected, fee.expected - offset)
+
+  /** Alonzo's consumed and produced values and minimum fee of `era` (`getConsumedValue`,
+    * `getProducedValue`, `getMinFeeTxUtxo`), each credential's deposit and each pool read from
+    * `cert`, against the flat UTXO's ([[flatBalance]]); the flat values returned.
+    */
+  def sameBalance(
+      era: AlonzoTx,
+      flat: Tx,
+      known: Map[TxIn, TxOut],
+      pp: ProtocolParams,
+      cert: ShelleyCertState,
+      what: String
+  ): (FlatValue, FlatValue, BigInt) =
+    val u = EraUTxO.alonzo
+    given u.txOf.bodyOf.Level[TxLevel.Top] = u.txOf.bodyOf.top
+    val eraPp =
+      PParams[Alonzo](AlonzoPParams.fromStored(pp).fold(e => fail(s"$what: $e"), identity))
+    val utxo = AlonzoEraUTxO.fromStored(known).fold(e => fail(s"$what: $e"), identity)
+    val body = u.txOf.body[TxLevel.Top](era)
+    val accounts = ShelleyCertLens.states.get(cert)
+    val pools = ShelleyCertLens.pools.get(cert)
+    val consumed = u.getConsumedValue[TxLevel.Top](
+      eraPp,
+      c => accounts.get(c).map(_.deposit.toCoin),
+      utxo,
+      body
+    )
+    val produced = u.getProducedValue(eraPp, pools.contains, body)
+    val minFee = u.getMinFeeTxUtxo[TxLevel.Top](eraPp, era, utxo)
+    val expected = flatBalance(flat, known, pp, cert)
+    assertEquals((consumed.stored, produced.stored, minFee.value), expected, what)
+    expected
+
+  /** The transactions of the Preview ImmutableDB chunks (`fixtures/haskell-immutable/preview`), cut
+    * by the lengths `expected-blocks.tsv` lists, in order: each block a `[era tag, block]`, all of
+    * them Alonzo's.
+    */
+  def immutablePreviewTxs: Vector[Block.Transaction] =
+    val dir = "fixtures/haskell-immutable/preview"
+    val lengths = Files
+      .readAllLines(Path.of(s"$dir/expected-blocks.tsv"))
+      .asScala
+      .toVector
+      .filter(_.trim.nonEmpty)
+      .map(_.split("\t").last.toInt)
+    val chunks = Bytes.fromArray(
+      Vector("00000", "00001", "00002")
+        .flatMap(c => Files.readAllBytes(Path.of(s"$dir/immutable/$c.chunk")).toVector)
+        .toArray
+    )
+    val (blocks, rest) = lengths.foldLeft((Vector.empty[Bytes], chunks)) { case ((acc, r), n) =>
+      (acc :+ r.take(n), r.drop(n))
+    }
+    assertEquals(rest.size, 0)
+    blocks.flatMap { raw =>
+      Block.decodeShelley(raw) match
+        case Right(b: Block.Shelley) =>
+          assertEquals(b.era, Era.Alonzo)
+          b.transactions
+        case other => fail(s"not a Shelley-based block: $other")
+    }
 
   /** One field of the era's value against the flat value's, a difference named by the field. */
   private def check[A](field: String, era: A, flat: A): Vector[String] =

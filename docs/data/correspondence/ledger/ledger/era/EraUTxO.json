@@ -213,6 +213,48 @@
     }
    ]
   },
+  "def ledger.era.AlonzoUTxO.getAlonzoSpendingDatum": {
+   "class": "Mirror",
+   "digest": "f53bdd6c623bfa95",
+   "evidence": [
+    "AlonzoPlutusContextSuite",
+    "AlonzoPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      227,
+      239
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getAlonzoSpendingDatum"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoUTxO.getAlonzoSupplementalDataHashes": {
+   "class": "Mirror",
+   "digest": "c13a5f81a15e8e5e",
+   "evidence": [
+    "AlonzoPlutusContextSuite",
+    "AlonzoPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      216,
+      224
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getAlonzoSupplementalDataHashes"
+    }
+   ]
+  },
   "def ledger.era.AlonzoUTxO.getAlonzoWitsVKeyNeeded": {
    "class": "Mirror",
    "digest": "323cfa5f1c5d8910",
@@ -1020,6 +1062,7 @@
  "glue": [
   {
    "definitions": [
+    "given ledger.era.EraUTxO.alonzo",
     "given ledger.era.EraUTxO.babbage",
     "given ledger.era.EraUTxO.conway",
     "given ledger.era.EraUTxO.dijkstra",

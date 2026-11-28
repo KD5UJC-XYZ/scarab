@@ -956,6 +956,37 @@
     }
    ]
   },
+  "given ledger.era.EraPlutusContext.alonzo": {
+   "class": "Mirror",
+   "digest": "ccba9ac7a8e3c362",
+   "evidence": [
+    "AlonzoPlutusContextSuite",
+    "AlonzoPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      196,
+      211
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPlutusContext AlonzoEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      205,
+      220
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraPlutusContext AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.EraPlutusContext.babbage": {
    "class": "Mirror",
    "digest": "7bd7c339d034dc08",
@@ -1037,6 +1068,37 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "EraPlutusContext DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.EraPlutusTxInfo.alonzoPlutusV1": {
+   "class": "Mirror",
+   "digest": "dcb1b49155cef450",
+   "evidence": [
+    "AlonzoPlutusContextSuite",
+    "AlonzoPlutusContextRefusalsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      130,
+      165
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 AlonzoEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      132,
+      164
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "EraPlutusTxInfo 'PlutusV1 AlonzoEra"
     }
    ]
   },
@@ -1580,13 +1642,15 @@
   },
   "type ledger.era.ContextError": {
    "class": "Mirror",
-   "digest": "21eabf4183134642",
+   "digest": "68b7b9d3d17236e4",
    "evidence": [
-    "EraPlutusContextSuite",
+    "AlonzoPlutusContextRefusalsSuite",
+    "AlonzoPlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite",
     "BabbagePlutusContextSuite",
-    "BabbagePlutusContextRefusalsSuite"
+    "EraPlutusContextSuite"
    ],
-   "note": "Babbage's case, Conway's and Dijkstra's; Dijkstra's, `DijkstraContextError`, has no translation that gives it yet (#85's item on Dijkstra's script contexts)",
+   "note": "Alonzo's case, Babbage's, Conway's and Dijkstra's (`DijkstraContextError`, which Dijkstra's translations give)",
    "structure": "same",
    "upstream": [
     {
@@ -1628,6 +1692,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "ContextError BabbageEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      197,
+      197
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ContextError AlonzoEra"
     }
    ]
   },
@@ -1741,13 +1815,15 @@
   },
   "type ledger.era.PlutusTxInInfo": {
    "class": "Mirror",
-   "digest": "32de61e0a1a6851f",
+   "digest": "195ec651db7ee728",
    "evidence": [
-    "EraPlutusContextSuite",
+    "AlonzoPlutusContextRefusalsSuite",
+    "AlonzoPlutusContextSuite",
     "ConwayPlutusContextRefusalsSuite",
+    "EraPlutusContextSuite",
     "PlutusLedgerApiV4Suite"
    ],
-   "note": "every case but Alonzo's for Plutus V1 (`Maybe PV1.TxInInfo`): Alonzo is not among the era types yet, and no later era has the case; the Plutus V4 case is V4's type, as at 9df9f98c and 29a7d656, where f649f975's is V3's",
+   "note": "by the language, as the family's equations of Plutus V2 to V4 name no era, so those reduce for any era; Plutus V1's by the era through PlutusV1TxInInfo (Alonzo's `Maybe PV1.TxInInfo`); the Plutus V4 case is V4's type, as at 9df9f98c and 29a7d656, where f649f975's is V3's",
    "structure": "differs",
    "upstream": [
     {
@@ -1805,6 +1881,30 @@
     }
    ]
   },
+  "type ledger.era.PlutusV1TxInInfo": {
+   "class": "Mirror",
+   "digest": "73c5da257248358b",
+   "evidence": [
+    "AlonzoPlutusContextRefusalsSuite",
+    "AlonzoPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "the family's Plutus V1 equations, Alonzo's and every other era's; the other languages' name no era and are PlutusTxInInfo's own cases",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "lines": [
+      285,
+      286
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "PlutusTxInInfo"
+    }
+   ]
+  },
   "type ledger.era.SupportedLanguage#L": {
    "class": "Mirror",
    "digest": "80d2442cf18e1964",
@@ -1829,14 +1929,16 @@
   },
   "type ledger.era.TxInfoResult": {
    "class": "Mirror",
-   "digest": "cc6bb8cf7689fb40",
+   "digest": "95b93b8ff2a7e5f9",
    "evidence": [
-    "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite",
+    "AlonzoPlutusContextRefusalsSuite",
+    "AlonzoPlutusContextSuite",
+    "BabbagePlutusContextRefusalsSuite",
     "BabbagePlutusContextSuite",
-    "BabbagePlutusContextRefusalsSuite"
+    "ConwayPlutusContextRefusalsSuite",
+    "EraPlutusContextSuite"
    ],
-   "note": "Babbage's case, Conway's and Dijkstra's; Dijkstra's has no translation that gives it yet (#85's item on Dijkstra's script contexts)",
+   "note": "Alonzo's case, Babbage's, Conway's and Dijkstra's (`DijkstraTxInfoResult`, of its four languages)",
    "structure": "same",
    "upstream": [
     {
@@ -1878,6 +1980,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "TxInfoResult BabbageEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      198,
+      199
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxInfoResult AlonzoEra"
     }
    ]
   },
