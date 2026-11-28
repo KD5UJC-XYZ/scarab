@@ -61,6 +61,7 @@ class AlonzoStateStoredSuite extends FunSuite:
       val stored = StoredUpdate(ps.map((k, u) => k.bytes -> u).toMap, BigInt(0))
       val kept = right(s"$what proposals")(KeptUpdate.fromStored[Alonzo](stored))
       assertEquals(kept.stored, stored, what)
+      appliedAlike(what, gov.curPParams, ps, kept)
       kept.update.proposals.updates.size
     }
     val outputs = nes.es.ls.utxo.utxo.utxo.valuesIterator.toVector
@@ -71,6 +72,35 @@ class AlonzoStateStoredSuite extends FunSuite:
     }
     assertEquals(codec.write(nes), Right(node.original), what)
     (records.size, proposals.sum, outputs.size)
+
+  /** Each delegate's typed update applied to `base` as Alonzo applies it, against the flat rule's
+    * application of the bytes the node stores it by: an update the stored form read wrongly, or
+    * read as empty, gives another record.
+    */
+  private def appliedAlike(
+      what: String,
+      base: xyz.kd5ujc.scarab.ledger.ProtocolParams,
+      ps: scala.collection.immutable.SortedMap[
+        xyz.kd5ujc.scarab.ledger.state.KeyHash[xyz.kd5ujc.scarab.ledger.state.Genesis],
+        xyz.kd5ujc.scarab.ledger.ParamUpdate
+      ],
+      kept: KeptUpdate[Alonzo]
+  ): Unit =
+    val pp = PParams[Alonzo](right(s"$what base")(AlonzoPParams.fromStored(base)))
+    assertEquals(kept.update.proposals.updates.keySet, ps.keySet, what)
+    ps.foreach { (k, stored) =>
+      val typed = kept.update.proposals.updates.getOrElse(k, fail(s"$what: no update of $k"))
+      assertEquals(
+        Right(
+          AlonzoPParams.toStored(
+            xyz.kd5ujc.scarab.ledger.era.EraPParams.alonzo.applyPPUpdates(pp, typed).hkd,
+            base
+          )
+        ),
+        xyz.kd5ujc.scarab.ledger.ProtocolParams.update(base, stored)(using ShelleyBasedEra.SAlonzo),
+        what
+      )
+    }
 
   test("the recorded Haskell Alonzo state's parameters, proposals and outputs are the era's") {
     val path = "fixtures/haskell-state/alonzo-3013/state"

@@ -226,9 +226,11 @@ object BabbagePParams:
 
   /** `coinsPerUTxOWordToCoinsPerUTxOByte` (`Babbage/PParams.hs:389-391`, cardano-ledger f649f975):
     * the coin divided by 8, rounded down (`div`), and made a `Word64` by `fromIntegral`, which
-    * keeps the low 64 bits of the quotient, as here. A cost per word read by the update's or the
-    * genesis's decoder is a `Word64`, so its eighth fits and nothing wraps; only a coin the
-    * reference's type holds and no decoder gives (negative, or 2^67 and over) would.
+    * keeps the low 64 bits of the quotient, as here. A cost per word an update proposes is read as
+    * a `Word64`, whose eighth fits; the Alonzo genesis reads `lovelacePerUTxOWord` as a JSON
+    * `Integer` coin (`Alonzo/Genesis.hs:222-224`, and `Coin` 's newtype `FromJSON`,
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/Coin.hs:93-101`), so a negative cost or one of
+    * 2^67 and over reaches the wrap from a genesis file.
     */
   private[era] def coinsPerUTxOWordToCoinsPerUTxOByte(w: CoinPerWord): CoinPerByte =
     val c = w.unCoinPerWord.value

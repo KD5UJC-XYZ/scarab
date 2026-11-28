@@ -347,6 +347,7 @@ class EraPParamsStoredSuite extends FunSuite:
           xyz.kd5ujc.scarab.ledger.Update(ps.map((k, u) => k.bytes -> u).toMap, BigInt(0))
         val kept = right("stored proposals")(KeptUpdate.fromStored[Alonzo](stored))
         assertEquals(kept.stored, stored)
+        appliedAlike("era walk", gov.curPParams, ps, kept)
         given DecodeAt = DecodeAt(version(5), DecodeField.ParameterUpdate)
         kept.update.proposals.updates.values.foreach(u =>
           assertEquals(
@@ -368,6 +369,32 @@ class EraPParamsStoredSuite extends FunSuite:
     }
     // 187 proposal maps, of 561 delegates' updates; the 5 distinct outputs the walk's UTxO sets hold
     assertEquals((proposals.size, proposals.sum, outputs.size, written), (187, 561, 5, 5))
+
+  /** Each delegate's typed update applied to `base` as Alonzo applies it, against the flat rule's
+    * application of the bytes the node stores it by: an update the stored form read wrongly, or
+    * read as empty, gives another record.
+    */
+  private def appliedAlike(
+      what: String,
+      base: xyz.kd5ujc.scarab.ledger.ProtocolParams,
+      ps: scala.collection.immutable.SortedMap[
+        xyz.kd5ujc.scarab.ledger.state.KeyHash[xyz.kd5ujc.scarab.ledger.state.Genesis],
+        xyz.kd5ujc.scarab.ledger.ParamUpdate
+      ],
+      kept: KeptUpdate[Alonzo]
+  ): Unit =
+    val pp = PParams[Alonzo](right(s"$what base")(AlonzoPParams.fromStored(base)))
+    assertEquals(kept.update.proposals.updates.keySet, ps.keySet, what)
+    ps.foreach { (k, stored) =>
+      val typed = kept.update.proposals.updates.getOrElse(k, fail(s"$what: no update of $k"))
+      assertEquals(
+        Right(
+          AlonzoPParams.toStored(EraPParams.alonzo.applyPPUpdates(pp, typed).hkd, base)
+        ),
+        xyz.kd5ujc.scarab.ledger.ProtocolParams.update(base, stored)(using ShelleyBasedEra.SAlonzo),
+        what
+      )
+    }
 
   private def dijkstraParams(p: ProtocolParams): PParams[Dijkstra] =
     PParams[Dijkstra](right("Dijkstra's parameters")(DijkstraPParams.fromStored(p)))
