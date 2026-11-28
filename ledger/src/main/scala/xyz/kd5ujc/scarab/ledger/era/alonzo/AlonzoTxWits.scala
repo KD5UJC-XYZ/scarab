@@ -35,7 +35,7 @@ import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.protocol.Era
 
 /** Alonzo's witness set: `AlonzoTxWits AlonzoEra` (`type TxWits AlonzoEra = AlonzoTxWits
-  * AlonzoEra`, cardano-ledger f649f975 `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs:476`),
+  * AlonzoEra`, cardano-ledger f649f975 `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs:467`),
   * the representation Alonzo's witness set has ([[AlonzoTxWitsRep]]) with Alonzo's scripts, by
   * hash, and its redeemers keyed by Alonzo's purposes, a type of its own. Made only by
   * [[AlonzoTxWits.decode]].
