@@ -6,7 +6,9 @@ import io.circe.parser.parse
 import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
+import cats.data.NonEmptyVector
 import cats.syntax.all.*
+import scala.util.chaining.*
 import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger.{
   Block,
@@ -397,4 +399,133 @@ class AlonzoPlutusContextRefusalsSuite extends FunSuite:
     }
     // 20 rows, all collected: one request each, four of each all-purposes row
     assertEquals((rows.size, requests.size), (20, 18 + 2 * 4))
+  }
+
+  // ---- the recorded redeemer-index transactions, with the outputs they spend
+
+  /** One Alonzo transaction of `fixtures/devnet/redeemer-index.jsonl`: the case, the transaction
+    * with the outputs it spends and gives as collateral, the Plutus V1 cost model and protocol
+    * version in force, and the reference's verdict, a refusal with its `ApplyTxErr` bytes.
+    */
+  private final case class Indexed(seen: Seen, kind: String, reason: Option[Bytes])
+
+  private def storedOutput(text: String): FlatTxOut =
+    right("output")(
+      right("output CBOR")(Cbor.decode(hex(text))).pipe(node =>
+        FlatTxOut.decode(
+          node,
+          xyz.kd5ujc.scarab.ledger.Address.Mode.Rigorous,
+          FlatTxOut.Forms.Stored,
+          xyz.kd5ujc.scarab.ledger.ScriptKind.newestKnown
+        )
+      )
+    )
+
+  private lazy val redeemerIndex: Vector[Indexed] =
+    Files
+      .readAllLines(Path.of("fixtures/devnet/redeemer-index.jsonl"))
+      .asScala
+      .toVector
+      .filter(_.trim.nonEmpty)
+      .map(line => parse(line).fold(e => fail(e.message), identity))
+      .filter(field[String](_, "era") == "alonzo")
+      .map { json =>
+        val label = field[String](json, "label")
+        val raw = hex(field[String](json, "tx"))
+        val major = right(s"$label version")(
+          json.hcursor.downField("protocol").downField("protocolVersion").get[Int]("major")
+        )
+        val known = field[Map[String, String]](json, "spent").map { (key, out) =>
+          key.split('#') match
+            case Array(id, ix) => TxIn(hex(id), BigInt(ix)) -> storedOutput(out)
+            case _             => fail(s"$label: input $key")
+        }
+        val accepted = field[String](json, "verdict") match
+          case "accepted" => true
+          case "refused"  => false
+          case other      => fail(s"$label: verdict $other")
+        val reason = json.hcursor.get[String]("reason").toOption.map(hex)
+        assertEquals(reason.isEmpty, accepted, label)
+        Indexed(
+          Seen(
+            label,
+            right(s"$label flat")(FlatTx.fromEnvelope(raw, Era.Alonzo)),
+            right(s"$label typed")(AlonzoTx.fromEnvelope(raw, StateLayout.Node11_1)),
+            known,
+            TestLedger
+              .params(major)
+              .copy(costModels = Map(0 -> field[Vector[BigInt]](json, "costModelPlutusV1"))),
+            Map.empty,
+            Empty.certState[Alonzo],
+            clock
+          ),
+          label.stripPrefix("alonzo-"),
+          reason
+        )
+      }
+
+  /** The flat path's failures to collect `s` 's scripts, none where it collects them. */
+  private def flatCollectErrors(s: Seen): Vector[FlatCollectError] =
+    Phase2
+      .collect[Alonzo](
+        s.flat,
+        s.params,
+        s.flat.witnesses.scriptsByHash,
+        s.spent,
+        Map.empty,
+        s.posix
+      )
+      .fold(_.toVector, _ => Vector.empty)
+
+  test(
+    "the recorded redeemer-index transactions: the collections are the flat path's, and the reference's failures"
+  ) {
+    val outcomes = redeemerIndex.map { r =>
+      val collected = sameCollection(r.seen)
+      sameTxInfo(r.seen)
+      // a failure to collect is among the reference's failures, as UTXOS's `CollectErrors`, byte for
+      // byte
+      NonEmptyVector.fromVector(flatCollectErrors(r.seen)).foreach { errors =>
+        val utxos = ContextFailureCbor
+          .utxos(ContextFailureCbor.ContextEra.Alonzo, errors)
+          .getOrElse(fail(s"${r.kind}: no encoding"))
+        val reason = r.reason.getOrElse(fail(s"${r.kind}: accepted, though not collected"))
+        assert(
+          reason.hex.sliding(utxos.hex.length, 2).contains(utxos.hex),
+          s"${r.kind}: ${utxos.hex} not in ${reason.hex}"
+        )
+      }
+      r.kind -> collected.fold(
+        _.map {
+          case Collected.NoRedeemer(tag, ix) => (tag, ix)
+          case Collected.NoWitness(_) | Collected.NoCostModel(_) | Collected.BadTranslation(_) =>
+            fail(s"${r.kind}: not a missing redeemer")
+        },
+        requests => List.fill(requests.size)((-1, BigInt(-1)))
+      )
+    }
+    // each case's missing redeemers by tag and index, in the reference's order (minting, certifying,
+    // withdrawing, spending), and a collected script as (-1, -1): the two repeated certificates
+    // share the first one's index, so a redeemer at index 0 serves both, and one at index 1 is
+    // UTXOW's extra redeemer, not a failure to collect
+    assertEquals(
+      outcomes.toMap,
+      Map(
+        "missing-redeemers-every-purpose" -> List(
+          (1, BigInt(0)),
+          (2, BigInt(0)),
+          (3, BigInt(0)),
+          (0, BigInt(0))
+        ),
+        "repeated-certificate-redeemers-0-1" -> List((-1, BigInt(-1)), (-1, BigInt(-1))),
+        "repeated-certificate-no-redeemer" -> List((2, BigInt(0)), (2, BigInt(0))),
+        "distinct-certificates-redeemer-0" -> List((2, BigInt(1))),
+        "repeated-certificate-redeemer-0" -> List((-1, BigInt(-1)), (-1, BigInt(-1)))
+      )
+    )
+    // the one the reference accepted
+    assertEquals(
+      redeemerIndex.filter(_.reason.isEmpty).map(_.kind),
+      Vector("repeated-certificate-redeemer-0")
+    )
   }
