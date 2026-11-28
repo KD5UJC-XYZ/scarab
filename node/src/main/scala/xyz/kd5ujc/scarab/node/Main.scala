@@ -436,8 +436,9 @@ object Main extends IOApp:
     * tip as the committed chain gives it, its blocks' scripts by `rules`, the outputs of its UTxO
     * set read from its diff and else from the store, taking nothing the worker's read-ahead keeps
     * (`ReadAheadStore.peekFor`); and the machines run by the rules' own evaluator `underlying` on
-    * [[ScriptsAhead.parallelism]] threads of their own, the results kept in `results`, which the
-    * rules' evaluator answers from. Idle on a machine with fewer than four processors.
+    * [[ScriptsAhead.parallelism]] threads of their own, the results and collections kept in
+    * `results`, which the rules' evaluator and collections take from (`MirrorRules.Ahead`). Idle on
+    * a machine with fewer than four processors.
     */
   private[node] def speculator(
       follower: Follower[IO, MirrorState],
@@ -450,40 +451,42 @@ object Main extends IOApp:
     ScriptsAhead
       .parallelism(Runtime.getRuntime.availableProcessors())
       .fold(Resource.eval(ScriptsAhead.idle[IO](results))) { threads =>
-        Resource.eval(ScriptsAhead.evaluating[IO](underlying, threads)).flatMap { evaluate =>
-          val tip = follower.committedChain.get.map { chain =>
-            val state = chain.state
-            new ScriptsAhead.Tip[IO]:
-              def hash: Option[xyz.kd5ujc.scarab.codec.Bytes] = chain.tipRef.map(_.hash)
-              def scripts(header: Header, raw: xyz.kd5ujc.scarab.codec.Bytes) =
-                rules.scriptsAhead(state, header, raw)
-              def outputs(keys: Set[xyz.kd5ujc.scarab.ledger.TxIn]) =
-                xyz.kd5ujc.scarab.consensus.state.MirrorStep
-                  .utxoOf(state)
-                  .fold(
-                    IO.pure(
-                      Map.empty[xyz.kd5ujc.scarab.ledger.TxIn, xyz.kd5ujc.scarab.ledger.TxOut]
-                    )
-                  ) { utxo =>
-                    val known = keys.iterator.flatMap(k => utxo.get(k).map(k -> _)).toMap
-                    val missing = utxo.missing(keys)
-                    if missing.isEmpty then IO.pure(known)
-                    else
-                      xyz.kd5ujc.scarab.network.Fibers
-                        .scoped[IO, xyz.kd5ujc.scarab.ledger.StorageError, Map[
-                          xyz.kd5ujc.scarab.ledger.TxIn,
-                          xyz.kd5ujc.scarab.ledger.TxOut
-                        ]](xyz.kd5ujc.scarab.ledger.StorageError.Io("scripts ahead", _))(
-                          readAhead.peekFor(utxo, missing)
-                        )
-                        .map(read => known ++ read.getOrElse(Map.empty))
-                  }
+        Resource
+          .pure[IO, ScriptsAhead.Evaluate[IO]](ScriptsAhead.evaluating[IO](underlying))
+          .flatMap { evaluate =>
+            val tip = follower.committedChain.get.map { chain =>
+              val state = chain.state
+              new ScriptsAhead.Tip[IO]:
+                def hash: Option[xyz.kd5ujc.scarab.codec.Bytes] = chain.tipRef.map(_.hash)
+                def scripts(header: Header, raw: xyz.kd5ujc.scarab.codec.Bytes) =
+                  rules.scriptsAhead(state, header, raw)
+                def outputs(keys: Set[xyz.kd5ujc.scarab.ledger.TxIn]) =
+                  xyz.kd5ujc.scarab.consensus.state.MirrorStep
+                    .utxoOf(state)
+                    .fold(
+                      IO.pure(
+                        Map.empty[xyz.kd5ujc.scarab.ledger.TxIn, xyz.kd5ujc.scarab.ledger.TxOut]
+                      )
+                    ) { utxo =>
+                      val known = keys.iterator.flatMap(k => utxo.get(k).map(k -> _)).toMap
+                      val missing = utxo.missing(keys)
+                      if missing.isEmpty then IO.pure(known)
+                      else
+                        xyz.kd5ujc.scarab.network.Fibers
+                          .scoped[IO, xyz.kd5ujc.scarab.ledger.StorageError, Map[
+                            xyz.kd5ujc.scarab.ledger.TxIn,
+                            xyz.kd5ujc.scarab.ledger.TxOut
+                          ]](xyz.kd5ujc.scarab.ledger.StorageError.Io("scripts ahead", _))(
+                            readAhead.peekFor(utxo, missing)
+                          )
+                          .map(read => known ++ read.getOrElse(Map.empty))
+                    }
+            }
+            ScriptsAhead.resource[IO](
+              ScriptsAhead.Speculator[IO](wanted(follower, pool), tip, evaluate, threads),
+              results
+            )
           }
-          ScriptsAhead.resource[IO](
-            ScriptsAhead.Speculator[IO](wanted(follower, pool), tip, evaluate, threads),
-            results
-          )
-        }
       }
 
   private def createGenesisRuntime(
@@ -1856,8 +1859,8 @@ object Main extends IOApp:
               logged(NodeEvent.VerificationCache(cache.summary)).whenA(n % 20000 == 0)
             }
       parallelPlutus <- ParallelPlutus.create[IO](options.plutusWorkers)
-      // the results of the scripts evaluated ahead of the worker, which the rules' evaluator answers
-      // from (#1499); the mempool and the forger keep the backend's own
+      // the results and collections of the scripts made ahead of the worker, which the rules'
+      // evaluator and collections take from (#1499); the mempool and the forger keep their own
       scripts <- IO(ScriptsAhead.Results.create(ScriptsAhead.Bounds))
       committees <- Ref.of[IO, Option[
         (
@@ -1881,7 +1884,8 @@ object Main extends IOApp:
         compute = Some(scheduling.compute),
         parallelPlutus = Some(parallelPlutus),
         leios = run.leios.map(MirrorRules.Leios(_, committees)),
-        dijkstraObserver = cases.map(c => c.observeDijkstra)
+        dijkstraObserver = cases.map(c => c.observeDijkstra),
+        ahead = scripts.ahead
       ),
       scripts
     )

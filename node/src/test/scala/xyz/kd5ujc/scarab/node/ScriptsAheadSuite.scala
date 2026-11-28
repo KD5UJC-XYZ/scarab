@@ -159,6 +159,7 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         assertEquals(answered, deterministic(_ => false).evaluate(request))
         assertEquals(calls.get, 1) // the speculator's evaluation only
         assertEquals(tallies.evaluated, 1L)
+        assertEquals(tallies.reached, ScriptsAhead.Reached.zero.copy(done = 1))
         assertEquals(ahead.results.counts.hit, 1L)
     }
   }
@@ -170,7 +171,7 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         (ahead, calls, _) =>
           for
             running <- ahead.held.discrete
-              .find(_.get(block(1)).contains(ScriptsAhead.Slot.Running))
+              .find(_.get(block(1)).contains(ScriptsAhead.Slot.Preparing))
               .compile
               .drain
               .start
@@ -184,6 +185,7 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
           yield
             assertEquals(calls.get, 0)
             assertEquals(tallies.abandoned, 1L)
+            assertEquals(tallies.reached, ScriptsAhead.Reached.zero.copy(preparing = 1))
             assertEquals(ahead.results.held._1, 0)
       }
     yield ()
@@ -411,17 +413,18 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assertEquals((first.skipped, second.skipped), (0, 0))
     assertEquals(second.requests.size, 2)
     val rules = results.evaluator(counting(underlying, calls))
-    val (afterA, observedA) = applied(fixture.state, a, rules)
+    val (afterA, observedA) = applied(fixture.state, a, rules, results.flat)
     val (baseA, baseObservedA) = applied(fixture.state, a, underlying)
     assertEquals(afterA, baseA)
     assertEquals(observedA, baseObservedA)
     val nes = babbage(afterA)
-    val (afterB, observedB) = applied(nes, b, rules)
+    val (afterB, observedB) = applied(nes, b, rules, results.flat)
     val (baseB, baseObservedB) = applied(babbage(baseA), b, underlying)
     assertEquals(afterB, baseB)
     assertEquals(observedB, baseObservedB)
     assertEquals(calls.get, 0)
     assertEquals(results.counts.hit, 3L)
+    assertEquals(results.collectionCounts, ScriptsAhead.Collections(3, 0, 3))
   }
 
   test("an input that changed between the speculation and the application is not found") {
@@ -434,7 +437,16 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
         if in == spent then out.copy(value = out.value.copy(coin = out.value.coin + 1)) else out
       )
     speculate(results, block(1), fixture.txs, fixture.params, other, underlying)
-    check(results, fixture.txs, underlying, hits = 2, stale = 1, calls = 1)
+    check(
+      results,
+      fixture.txs,
+      underlying,
+      hits = 2,
+      stale = 1,
+      calls = 1,
+      collected = 2,
+      collectedStale = 1
+    )
   }
 
   test(
@@ -453,7 +465,16 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       tipOutputs,
       underlying
     )
-    check(results, fixture.txs, underlying, hits = 0, stale = 3, calls = 3)
+    check(
+      results,
+      fixture.txs,
+      underlying,
+      hits = 0,
+      stale = 3,
+      calls = 3,
+      collected = 0,
+      collectedStale = 3
+    )
     val versioned = ScriptsAhead.Results.create(ScriptsAhead.Bounds)
     speculate(
       versioned,
@@ -463,7 +484,16 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
       tipOutputs,
       underlying
     )
-    check(versioned, fixture.txs, underlying, hits = 0, stale = 0, calls = 3)
+    check(
+      versioned,
+      fixture.txs,
+      underlying,
+      hits = 0,
+      stale = 0,
+      calls = 3,
+      collected = 0,
+      collectedStale = 3
+    )
   }
 
   test("failing scripts: a valid-flagged block refused, an invalid-flagged one taking collateral") {
@@ -475,12 +505,80 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     equivalent(invalid, failing = _ => false, hits = 1)
   }
 
+  test("another era history: the collections made with its clock not taken where it differs") {
+    val txs = fixture.bounded
+    val underlying = deterministic(_ => false)
+    // the transactions' validity intervals end at slot 5,000: their contexts read the clock there
+    val same = ScriptsAhead.Results.create(ScriptsAhead.Bounds)
+    speculate(same, block(1), txs, fixture.params, tipOutputs, underlying)
+    check(same, txs, underlying, hits = 3, stale = 0, calls = 0, collected = 3)
+    // a history whose slots start a second later: no collection taken, every context another
+    val later = ScriptsAhead.Results.create(ScriptsAhead.Bounds)
+    speculate(later, block(1), txs, fixture.params, tipOutputs, underlying, posixLater)
+    check(later, txs, underlying, hits = 0, stale = 3, calls = 3, collected = 0, collectedStale = 3)
+  }
+
+  test("the speculator reads and collects the next block while the scripts of one run") {
+    val second = request.copy(budget = ExUnits(1, 2))
+    for
+      entered <- Deferred[IO, Unit]
+      release <- Deferred[IO, Unit]
+      _ <- withSpeculator(
+        Map(block(1) -> Vector(request), block(2) -> Vector(second)),
+        hold = r => (entered.complete(()) *> release.get).whenA(r == request)
+      ) { (ahead, _, _) =>
+        for
+          one <- settled(ahead, block(1))
+          two <- settled(ahead, block(2))
+          _ <- ahead.ahead(header(1, 0), Bytes.empty)
+          // block 1's script is being evaluated, and held there
+          _ <- entered.get
+          _ <- ahead.ahead(header(2, 1), Bytes.empty)
+          // block 2 is read and collected, and its script run, while block 1's is still held
+          _ <- two
+          _ <- IO(assertEquals(ahead.results.lookup(second).isDefined, true))
+          _ <- IO(assertEquals(ahead.results.lookup(request), None))
+          _ <- release.complete(())
+          _ <- one
+          tallies <- ahead.tallied
+        yield
+          assertEquals(tallies.evaluated, 2L)
+          assertEquals(ahead.results.lookup(request).isDefined, true)
+      }
+    yield ()
+  }
+
+  test("a collection is charged its requests' arguments whole, and kept only within the bytes") {
+    val collection = ScriptsAhead
+      .flat[Babbage](fixture.txs.take(1), fixture.params, slot => posixOf(slot), tipOutputs)(using
+        ShelleyBasedEra.SBabbage
+      )
+      .collections
+      .headOption
+      .getOrElse(fail("not collected"))
+    val weighed = ScriptsAhead.Results.Weighed.of(collection)
+    val total = weighed.own + weighed.shared.iterator.map(_._2).sum
+    // each request's arguments, as a result kept for it is charged them
+    val args = collection.requests.iterator.map { r =>
+      ScriptsAhead.Results.weight(r, EvalResult.Success(ExUnits.zero, Vector.empty)) - 256L -
+        r.script.size - 24L * r.costModel.size
+    }.sum
+    assert(total >= args + 4L * fixture.txs(0).size, s"$total < $args")
+    val tight = ScriptsAhead.Results.create(ScriptsAhead.Limits(4, 4, total - 1))
+    assertEquals(tight.collected(block(1), Vector(collection)), 0)
+    val room = ScriptsAhead.Results.create(ScriptsAhead.Limits(4, 4, total))
+    assertEquals(room.collected(block(1), Vector(collection)), 1)
+    assertEquals(room.held, (1, total))
+    room.drop(block(1))
+    assertEquals(room.held, (0, 0L))
+  }
+
   test("the own evaluator on the recorded script: the same outcome with its results found") {
     val results = ScriptsAhead.Results.create(ScriptsAhead.Bounds)
     val real = ScarabEvaluator.pure
     speculate(results, block(1), fixture.txs, fixture.params, tipOutputs, real)
     val (outcome, observed) =
-      applied(fixture.state, fixture.txs, results.evaluator(ScarabEvaluator.pure))
+      applied(fixture.state, fixture.txs, results.evaluator(ScarabEvaluator.pure), results.flat)
     val (base, baseObserved) = applied(fixture.state, fixture.txs, ScarabEvaluator.pure)
     // the script fails, and a failure's machine cause compares by identity: compared by its text,
     // which names its error, trace, request and budget
@@ -497,31 +595,43 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     val results = ScriptsAhead.Results.create(ScriptsAhead.Bounds)
     val underlying = deterministic(failing)
     speculate(results, block(1), txs, fixture.params, tipOutputs, underlying)
-    check(results, txs, underlying, hits = hits, stale = 0, calls = 0)
+    check(results, txs, underlying, hits = hits, stale = 0, calls = 0, collected = hits)
 
+  /** `txs` applied with the rules taking what `results` holds against the same block without: the
+    * same outcome and observations, serially and prepared through four workers; the rules found
+    * `hits` results and `stale` results kept under other requests, evaluated `calls` scripts
+    * themselves, and took `collected` collections kept ahead (`collectedStale` of those kept for
+    * their transactions not theirs).
+    */
   private def check(
       results: ScriptsAhead.Results,
       txs: Vector[Tx],
       underlying: ScriptEvaluator[Id],
       hits: Long,
       stale: Long,
-      calls: Int
+      calls: Int,
+      collected: Long,
+      collectedStale: Long = 0
   ): Unit =
     val counted = new AtomicInteger()
     val rules = results.evaluator(counting(underlying, counted))
-    val (outcome, observed) = applied(fixture.state, txs, rules)
+    val (outcome, observed) = applied(fixture.state, txs, rules, results.flat)
     val (base, baseObserved) = applied(fixture.state, txs, underlying)
     assertEquals(outcome, base)
     assertEquals(observed, baseObserved)
     assertEquals(results.counts.hit, hits)
     assertEquals(results.counts.stale, stale)
     assertEquals(counted.get, calls)
+    // a collection kept for each transaction looked for; a taken one's script found by its request
+    assertEquals(results.collectionCounts.offered, collected + collectedStale)
+    assertEquals(results.collectionCounts.missed, 0L)
+    assertEquals(results.collectionCounts.byRequest, collected)
     // prepared through the node's workers, the same again
     val prepared = ParallelPlutus
       .create[IO](ParallelPlutus.Workers.from(4).fold(e => fail(e.toString), identity))
       .flatMap(workers =>
         (
-          workers(AlwaysPrepared(program(fixture.state, txs, rules, _ => ()))),
+          workers(AlwaysPrepared(program(fixture.state, txs, rules, _ => (), results.flat))),
           workers(AlwaysPrepared(program(fixture.state, txs, underlying, _ => ())))
         ).tupled
       )
@@ -558,6 +668,13 @@ object ScriptsAheadSuite:
   private val posix: PosixClock =
     PosixClock.total(TestLedger.globals.systemStart, TestLedger.globals.geometry)
 
+  /** The fixture's slot to time translation, as a collection asks it. */
+  def posixOf(slot: BigInt): Either[xyz.kd5ujc.scarab.ledger.TranslationError, BigInt] =
+    posix.posix(slot)
+
+  /** Another era history: each slot starting a second later. */
+  val posixLater: Phase2.Posix = slot => posix.posix(slot).map(_ + 1000)
+
   def tipOutputs(in: TxIn): Option[TxOut] = PreparedBlockFixture.state.es.ls.utxo.utxo.utxo.get(in)
 
   def created(txs: Vector[Tx]): Map[TxIn, TxOut] =
@@ -572,15 +689,17 @@ object ScriptsAheadSuite:
       txs: Vector[Tx],
       pp: ProtocolParams,
       outputs: TxIn => Option[TxOut],
-      underlying: ScriptEvaluator[Id]
+      underlying: ScriptEvaluator[Id],
+      clock: Phase2.Posix = slot => posix.posix(slot)
   ): ScriptsAhead.Collected =
     val own = created(txs)
     val collected = ScriptsAhead.flat[Babbage](
       txs.filter(_.witnesses.redeemers.nonEmpty),
       pp,
-      slot => posix.posix(slot),
+      clock,
       in => own.get(in).orElse(outputs(in))
     )(using ShelleyBasedEra.SBabbage)
+    assert(results.collected(hash, collected.collections) == collected.collections.size)
     collected.requests.foreach(r => assert(results.put(hash, r, underlying.evaluate(r))))
     collected
 
@@ -588,7 +707,8 @@ object ScriptsAheadSuite:
       state: NewEpochState[Babbage],
       txs: Vector[Tx],
       evaluator: ScriptEvaluator[Id],
-      observe: Phase2.Observation => Unit
+      observe: Phase2.Observation => Unit,
+      ahead: Phase2.Ahead = Phase2.Ahead.none
   ): EraBlock.Body[Babbage] =
     val header = PreparedBlockFixture.babbageHeader
     val body = Block.Shelley(
@@ -604,7 +724,8 @@ object ScriptsAheadSuite:
       0L,
       evaluator = evaluator,
       observer = Some(observe),
-      decoder = ScarabEvaluator.defaultDecoder
+      decoder = ScarabEvaluator.defaultDecoder,
+      ahead = ahead
     )
     EraBlock.program(ctx)(state, header, body, txs.map(Right(_)), PlutusStats.zero)
 
@@ -621,14 +742,16 @@ object ScriptsAheadSuite:
   def applied(
       state: NewEpochState[Babbage],
       txs: Vector[Tx],
-      evaluator: ScriptEvaluator[Id]
+      evaluator: ScriptEvaluator[Id],
+      ahead: Phase2.Ahead = Phase2.Ahead.none
   ): (EraBlock.Outcome, Vector[Seen]) =
     val seen = new ConcurrentLinkedQueue[Seen]()
     val outcome = program(
       state,
       txs,
       evaluator,
-      o => { val _ = seen.add((o.tx, o.params, o.slot, o.spent, o.references, o.outcome)) }
+      o => { val _ = seen.add((o.tx, o.params, o.slot, o.spent, o.references, o.outcome)) },
+      ahead
     ).serial
     (outcome, seen.asScala.toVector)
 
@@ -648,7 +771,8 @@ object ScriptsAheadSuite:
       created: Map[Bytes, Map[TxIn, TxOut]] = Map.empty,
       needs: Map[Bytes, TxIn] = Map.empty,
       gate: Option[Deferred[IO, Unit]] = None,
-      underlying: ScriptEvaluator[Id] = deterministic(_ => false)
+      underlying: ScriptEvaluator[Id] = deterministic(_ => false),
+      hold: EvalRequest => IO[Unit] = _ => IO.unit
   )(body: (ScriptsAhead[IO], AtomicInteger, ScriptsAhead.Results) => IO[Unit]): IO[Unit] =
     val calls = new AtomicInteger()
     val results = ScriptsAhead.Results.create(ScriptsAhead.Bounds)
@@ -663,15 +787,15 @@ object ScriptsAheadSuite:
             ExUnits(BigInt(1) << 40, BigInt(1) << 40),
             outputs =>
               if needs.get(header.hash).forall(outputs(_).isDefined) then
-                ScriptsAhead.Collected(requests, 0)
-              else ScriptsAhead.Collected(Vector.empty, 1)
+                ScriptsAhead.Collected(requests, Vector.empty, 0)
+              else ScriptsAhead.Collected(Vector.empty, Vector.empty, 1)
           )
         }
       def outputs(keys: Set[TxIn]): IO[Map[TxIn, TxOut]] = IO.pure(Map.empty)
     val speculator = ScriptsAhead.Speculator[IO](
       _ => IO.pure(true),
       gate.fold(IO.unit)(_.get).as(tip),
-      request => IO.blocking(counting(underlying, calls).evaluate(request)),
+      request => hold(request) *> IO.blocking(counting(underlying, calls).evaluate(request)),
       2
     )
     ScriptsAhead.resource[IO](speculator, results).use(ahead => body(ahead, calls, results))
