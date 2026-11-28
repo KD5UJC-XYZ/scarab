@@ -172,8 +172,10 @@
    "class": "Mirror",
    "digest": "f3255938d7a322e0",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -193,8 +195,10 @@
    "class": "Mirror",
    "digest": "029a74aa49e69fc0",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "note": "StakeKeyAlreadyRegisteredDELEG is DelegAccountAlreadyRegistered at 9df9f98c, over AccountAlreadyRegistered, with the same tag and bytes",
    "structure": "same",
@@ -215,8 +219,10 @@
    "class": "Mirror",
    "digest": "de5dcdd21439ac30",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -236,8 +242,10 @@
    "class": "Mirror",
    "digest": "da2fa73e8c6a9d45",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -257,8 +265,10 @@
    "class": "Mirror",
    "digest": "93aa3a50da032b3d",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -278,8 +288,10 @@
    "class": "Mirror",
    "digest": "18ded35c54ac8b91",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -292,6 +304,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "ShelleyDelplPredFailure"
+    }
+   ]
+  },
+  "given ledger.era.rules.EmbedDelplInDelegs.alonzo": {
+   "class": "Mirror",
+   "digest": "3f5cdc34eaa7caa8",
+   "evidence": [
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delegs.hs",
+     "lines": [
+      207,
+      208
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "wrapFailed = DelplFailure"
     }
    ]
   },
@@ -316,6 +349,27 @@
     }
    ]
   },
+  "given ledger.era.rules.EmbedInDelpl.alonzo": {
+   "class": "Mirror",
+   "digest": "19470c8d6cd51a18",
+   "evidence": [
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delpl.hs",
+     "lines": [
+      205,
+      228
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "wrapFailed = PoolFailure"
+    }
+   ]
+  },
   "given ledger.era.rules.EmbedInDelpl.babbage": {
    "class": "Mirror",
    "digest": "1fa8650d69e2f696",
@@ -334,6 +388,26 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "wrapFailed = PoolFailure"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectDelegsFailure.alonzo": {
+   "class": "Mirror",
+   "digest": "fa8c7c33ba89be23",
+   "evidence": [
+    "AlonzoDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Delegs.hs",
+     "lines": [
+      15,
+      15
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"DELEGS\" Shelley.ShelleyDelegsPredFailure AlonzoEra"
     }
    ]
   },
@@ -358,6 +432,27 @@
     }
    ]
   },
+  "given ledger.era.rules.InjectDelegsFailure.given_alonzoDelpl_F_using": {
+   "class": "Mirror",
+   "digest": "33557d57ad885e94",
+   "evidence": [
+    "AlonzoDelegsSuite"
+   ],
+   "note": "the three instances of DELPL's failure and of the rules below it as one, DelplFailure of DELPL's injection",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Delegs.hs",
+     "lines": [
+      17,
+      24
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"DELEGS\" Shelley.ShelleyDelplPredFailure AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.rules.InjectDelegsFailure.given_babbageDelpl_F_using": {
    "class": "Mirror",
    "digest": "dcd8392683320fad",
@@ -376,6 +471,66 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "InjectRuleFailure \"DELEGS\" Shelley.ShelleyDelplPredFailure BabbageEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectDelplFailure.alonzo": {
+   "class": "Mirror",
+   "digest": "8d0ee77642fc1fa1",
+   "evidence": [
+    "AlonzoDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Delpl.hs",
+     "lines": [
+      16,
+      16
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"DELPL\" Shelley.ShelleyDelplPredFailure AlonzoEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectDelplFailure.alonzoDeleg": {
+   "class": "Mirror",
+   "digest": "1e7139c4c8553a48",
+   "evidence": [
+    "AlonzoDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Delpl.hs",
+     "lines": [
+      21,
+      22
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"DELPL\" Shelley.ShelleyDelegPredFailure AlonzoEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectDelplFailure.alonzoPool": {
+   "class": "Mirror",
+   "digest": "c2f9bb04d7152889",
+   "evidence": [
+    "AlonzoDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Delpl.hs",
+     "lines": [
+      18,
+      19
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"DELPL\" Shelley.ShelleyPoolPredFailure AlonzoEra"
     }
    ]
   },
@@ -542,10 +697,11 @@
   },
   "type ledger.era.rules.DelegsEvent": {
    "class": "Mirror",
-   "digest": "68d96330fead9d6a",
+   "digest": "9698850ef06aa85b",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "note": "Event (EraRule \"DELEGS\" era) as a match type with the eras whose DELEGS is typed",
    "structure": "differs",
@@ -569,15 +725,26 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "Event (DELEGS era)"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Era.hs",
+     "lines": [
+      93,
+      93
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRule \"DELEGS\" AlonzoEra"
     }
    ]
   },
   "type ledger.era.rules.DelplEvent": {
    "class": "Mirror",
-   "digest": "d068caf3eec7fe9a",
+   "digest": "9914c301a10edda4",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "note": "Event (EraRule \"DELPL\" era) as a match type with the eras whose DELPL is typed",
    "structure": "differs",
@@ -601,15 +768,26 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "Event (DELPL era)"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Era.hs",
+     "lines": [
+      95,
+      95
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRule \"DELPL\" AlonzoEra"
     }
    ]
   },
   "type ledger.era.rules.DelplPredFailure": {
    "class": "Mirror",
-   "digest": "e437efe486def8df",
+   "digest": "4f5e95a885b59ae0",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "note": "the type family EraRuleFailure at the rule DELPL as a match type with the eras whose DELPL is typed",
    "structure": "differs",
@@ -633,6 +811,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "EraRuleFailure \"DELPL\" BabbageEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Delpl.hs",
+     "lines": [
+      14,
+      14
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure \"DELPL\" AlonzoEra"
     }
    ]
   }

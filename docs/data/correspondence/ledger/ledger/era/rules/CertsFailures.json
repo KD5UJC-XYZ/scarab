@@ -898,6 +898,27 @@
     }
    ]
   },
+  "given ledger.era.rules.InjectDelegFailure.alonzo": {
+   "class": "Mirror",
+   "digest": "6bd8016acfa8491c",
+   "evidence": [
+    "AlonzoDelegsSuite"
+   ],
+   "note": "Shelley's failure, the identity; 9df9f98c's injection of AccountAlreadyRegistered (Alonzo/Rules/Deleg.hs:16-17) is not the 11.1 build's",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Deleg.hs",
+     "lines": [
+      14,
+      14
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"DELEG\" Shelley.ShelleyDelegPredFailure AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.rules.InjectDelegFailure.babbage": {
    "class": "Mirror",
    "digest": "de8d9a245e02cfc3",
@@ -978,6 +999,37 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "InjectRuleFailure \"GOVCERT\" Conway.ConwayGovCertPredFailure DijkstraEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectPool.alonzo": {
+   "class": "Mirror",
+   "digest": "408cd7a487b3142f",
+   "evidence": [
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Pool.hs",
+     "lines": [
+      14,
+      14
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"POOL\" Shelley.ShelleyPoolPredFailure AlonzoEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Pool.hs",
+     "lines": [
+      18,
+      18
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleEvent \"POOL\" Shelley.PoolEvent AlonzoEra"
     }
    ]
   },
@@ -1463,14 +1515,15 @@
   },
   "type ledger.era.rules.DelegEvent": {
    "class": "Mirror",
-   "digest": "c1cc29433b484ba8",
+   "digest": "b35c5a95af662d07",
    "evidence": [
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
     "BabbageDelegsSuite",
     "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite",
-    "BabbageDelegsCorpusSuite"
+    "DijkstraCertsSuite"
    ],
-   "note": "Event (EraRule \"DELEG\" era) as a match type: Babbage's ShelleyDelegEvent, Nothing at Conway for the reference's VoidEraRule, with Dijkstra's case",
+   "note": "Event (EraRule \"DELEG\" era) as a match type: Alonzo's and Babbage's ShelleyDelegEvent, Nothing at Conway for the reference's VoidEraRule, with Dijkstra's case",
    "structure": "differs",
    "upstream": [
     {
@@ -1512,19 +1565,30 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "Event (DELEG era)"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Era.hs",
+     "lines": [
+      91,
+      91
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRule \"DELEG\" AlonzoEra"
     }
    ]
   },
   "type ledger.era.rules.DelegPredFailure": {
    "class": "Mirror",
-   "digest": "ee50ebaf1bcc7fd7",
+   "digest": "a2e96d4dcd00ca94",
    "evidence": [
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
     "BabbageDelegsSuite",
     "ConwayCertsChecksSuite",
-    "DijkstraRulesOracleSuite",
-    "BabbageDelegsCorpusSuite"
+    "DijkstraRulesOracleSuite"
    ],
-   "note": "the type family EraRuleFailure at the rule DELEG as a match type with the eras whose DELEG is typed: Babbage's Shelley's, Conway's its own, with Dijkstra's case",
+   "note": "the type family EraRuleFailure at the rule DELEG as a match type with the eras whose DELEG is typed: Alonzo's and Babbage's Shelley's, Conway's its own, with Dijkstra's case",
    "structure": "differs",
    "upstream": [
     {
@@ -1566,6 +1630,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "EraRuleFailure \"DELEG\" BabbageEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Deleg.hs",
+     "lines": [
+      12,
+      12
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure \"DELEG\" AlonzoEra"
     }
    ]
   },
@@ -1655,14 +1729,15 @@
   },
   "type ledger.era.rules.PoolPredFailure": {
    "class": "Mirror",
-   "digest": "d1bff967cf235176",
+   "digest": "c5aeab9974ccb2a1",
    "evidence": [
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
     "BabbageDelegsSuite",
     "ConwayCertsChecksSuite",
-    "DijkstraRulesOracleSuite",
-    "BabbageDelegsCorpusSuite"
+    "DijkstraRulesOracleSuite"
    ],
-   "note": "the type family EraRuleFailure at the rule POOL as a match type: Babbage's and Conway's Shelley's POOL, with Dijkstra's case",
+   "note": "the type family EraRuleFailure at the rule POOL as a match type: Alonzo's, Babbage's and Conway's Shelley's POOL, with Dijkstra's case",
    "structure": "differs",
    "upstream": [
     {
@@ -1704,17 +1779,28 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "EraRuleFailure \"POOL\" BabbageEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Pool.hs",
+     "lines": [
+      12,
+      12
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure \"POOL\" AlonzoEra"
     }
    ]
   },
   "type ledger.era.rules.PoolRuleEvent": {
    "class": "Mirror",
-   "digest": "fafef8fea30ba2d2",
+   "digest": "e9fa0cf534ee3852",
    "evidence": [
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
     "BabbageDelegsSuite",
     "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite",
-    "BabbageDelegsCorpusSuite"
+    "DijkstraCertsSuite"
    ],
    "note": "the type family EraRuleEvent at the rule POOL as a match type, named apart from the data type PoolEvent it reduces to, with Dijkstra's case",
    "structure": "differs",
@@ -1758,6 +1844,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "EraRuleEvent \"POOL\" BabbageEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Pool.hs",
+     "lines": [
+      16,
+      16
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleEvent \"POOL\" AlonzoEra"
     }
    ]
   }

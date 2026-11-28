@@ -37,6 +37,28 @@
      "symbol": "EraTxCert AlonzoEra"
     }
    ]
+  },
+  "val ledger.era.alonzo.AlonzoTxCert.isShelleyTxCert": {
+   "class": "Mirror",
+   "digest": "00044ee2f0355d86",
+   "evidence": [
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite"
+   ],
+   "note": "made in the file of the opaque type, where it is the representation",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxCert.hs",
+     "lines": [
+      12,
+      12
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "type TxCert AlonzoEra = ShelleyTxCert AlonzoEra"
+    }
+   ]
   }
  },
  "glue": [

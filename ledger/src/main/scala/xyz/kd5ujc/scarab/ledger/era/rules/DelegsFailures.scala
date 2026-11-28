@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era.rules
 import xyz.kd5ujc.scarab.ledger.era.{MIRPot, Mismatch}
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
 import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
   Babbage,
   Coin,
   Credential,
@@ -94,33 +95,54 @@ enum ShelleyDelegsPredFailure[E <: EraTag]:
 enum ShelleyDelegsEvent[E <: EraTag]:
   case DelplEvent(event: xyz.kd5ujc.scarab.ledger.era.rules.DelplEvent[E])
 
-/** `EraRuleFailure "DELPL" era`: Babbage's is Shelley's (`Babbage/Rules/Delpl.hs:14`,
-  * cardano-ledger f649f975). DELPL is a rule of the eras up to Babbage only.
+/** `EraRuleFailure "DELPL" era`: Alonzo's and Babbage's are Shelley's (`Alonzo/Rules/Delpl.hs:14`,
+  * `Babbage/Rules/Delpl.hs:14`, cardano-ledger f649f975). DELPL is a rule of the eras up to Babbage
+  * only.
   */
 type DelplPredFailure[E <: EraTag] = E match
+  case Alonzo  => ShelleyDelplPredFailure[Alonzo]
   case Babbage => ShelleyDelplPredFailure[Babbage]
 
-/** `Event (EraRule "DELPL" era)`: Babbage's DELPL is Shelley's (`type instance EraRule "DELPL"
-  * BabbageEra = Shelley.DELPL BabbageEra`, `Babbage/Era.hs:92`, cardano-ledger f649f975), whose
-  * event is `ShelleyDelplEvent` (`Shelley/Rules/Delpl.hs:132`).
+/** `Event (EraRule "DELPL" era)`: Alonzo's and Babbage's DELPL are Shelley's (`type instance
+  * EraRule "DELPL" AlonzoEra = Shelley.DELPL AlonzoEra`, `Alonzo/Era.hs:95`, and
+  * `Babbage/Era.hs:92`, cardano-ledger f649f975), whose event is `ShelleyDelplEvent`
+  * (`Shelley/Rules/Delpl.hs:132`).
   */
 type DelplEvent[E <: EraTag] = E match
+  case Alonzo  => ShelleyDelplEvent[Alonzo]
   case Babbage => ShelleyDelplEvent[Babbage]
 
-/** `Event (EraRule "DELEGS" era)`: Babbage's DELEGS is Shelley's (`Babbage/Era.hs:90`,
-  * cardano-ledger f649f975), whose event is `ShelleyDelegsEvent` (`Shelley/Rules/Delegs.hs:138`).
+/** `Event (EraRule "DELEGS" era)`: Alonzo's and Babbage's DELEGS are Shelley's (`Alonzo/Era.hs:93`,
+  * `Babbage/Era.hs:90`, cardano-ledger f649f975), whose event is `ShelleyDelegsEvent`
+  * (`Shelley/Rules/Delegs.hs:138`).
   */
 type DelegsEvent[E <: EraTag] = E match
+  case Alonzo  => ShelleyDelegsEvent[Alonzo]
   case Babbage => ShelleyDelegsEvent[Babbage]
 
-/** `InjectRuleFailure "DELPL" f era` (`Babbage/Rules/Delpl.hs:16-22`, cardano-ledger f649f975): how
-  * era `E` 's DELPL reports a failure `F` of its own or of a rule it runs. One instance per era and
-  * failure type, in the companion.
+/** `InjectRuleFailure "DELPL" f era` (`Alonzo/Rules/Delpl.hs:16-22`,
+  * `Babbage/Rules/Delpl.hs:16-22`, cardano-ledger f649f975): how era `E` 's DELPL reports a failure
+  * `F` of its own or of a rule it runs. One instance per era and failure type, in the companion.
   */
 trait InjectDelplFailure[F, E <: EraTag]:
   def injectFailure(failure: F): DelplPredFailure[E]
 
 object InjectDelplFailure:
+  /** `Alonzo/Rules/Delpl.hs:16` (cardano-ledger f649f975): the identity. */
+  given alonzo: InjectDelplFailure[ShelleyDelplPredFailure[Alonzo], Alonzo] with
+    def injectFailure(failure: ShelleyDelplPredFailure[Alonzo]): DelplPredFailure[Alonzo] =
+      failure
+
+  /** `Alonzo/Rules/Delpl.hs:18-19` (cardano-ledger f649f975): `PoolFailure`. */
+  given alonzoPool: InjectDelplFailure[ShelleyPoolPredFailure[Alonzo], Alonzo] with
+    def injectFailure(failure: ShelleyPoolPredFailure[Alonzo]): DelplPredFailure[Alonzo] =
+      ShelleyDelplPredFailure.PoolFailure(failure)
+
+  /** `Alonzo/Rules/Delpl.hs:21-22` (cardano-ledger f649f975): `DelegFailure`. */
+  given alonzoDeleg: InjectDelplFailure[ShelleyDelegPredFailure[Alonzo], Alonzo] with
+    def injectFailure(failure: ShelleyDelegPredFailure[Alonzo]): DelplPredFailure[Alonzo] =
+      ShelleyDelplPredFailure.DelegFailure(failure)
+
   /** `Babbage/Rules/Delpl.hs:16` (cardano-ledger f649f975): the identity. */
   given babbage: InjectDelplFailure[ShelleyDelplPredFailure[Babbage], Babbage] with
     def injectFailure(failure: ShelleyDelplPredFailure[Babbage]): DelplPredFailure[Babbage] =
@@ -144,6 +166,20 @@ trait InjectDelegsFailure[F, E <: EraTag]:
   def injectFailure(failure: F): DelegsPredFailure[E]
 
 object InjectDelegsFailure:
+  /** `Alonzo/Rules/Delegs.hs:15` (cardano-ledger f649f975): the identity. */
+  given alonzo: InjectDelegsFailure[ShelleyDelegsPredFailure[Alonzo], Alonzo] with
+    def injectFailure(failure: ShelleyDelegsPredFailure[Alonzo]): DelegsPredFailure[Alonzo] =
+      failure
+
+  /** `Alonzo/Rules/Delegs.hs:17-24` (cardano-ledger f649f975): DELPL's failure, and each of the
+    * rules below it through DELPL's injection, wrapped in `DelplFailure`.
+    */
+  given alonzoDelpl[F](using
+      inject: InjectDelplFailure[F, Alonzo]
+  ): InjectDelegsFailure[F, Alonzo] with
+    def injectFailure(failure: F): DelegsPredFailure[Alonzo] =
+      ShelleyDelegsPredFailure.DelplFailure(inject.injectFailure(failure))
+
   /** `Babbage/Rules/Delegs.hs:15` (cardano-ledger f649f975): the identity. */
   given babbage: InjectDelegsFailure[ShelleyDelegsPredFailure[Babbage], Babbage] with
     def injectFailure(failure: ShelleyDelegsPredFailure[Babbage]): DelegsPredFailure[Babbage] =
@@ -170,6 +206,17 @@ trait EmbedInDelpl[E <: EraTag]:
   def wrapDelegEvent(event: ShelleyDelegEvent[E]): ShelleyDelplEvent[E]
 
 object EmbedInDelpl:
+  given alonzo: EmbedInDelpl[Alonzo] with
+    def wrapPoolFailed(failure: PoolPredFailure[Alonzo]): ShelleyDelplPredFailure[Alonzo] =
+      ShelleyDelplPredFailure.PoolFailure(failure)
+    def wrapPoolEvent(event: PoolRuleEvent[Alonzo]): ShelleyDelplEvent[Alonzo] =
+      ShelleyDelplEvent.PoolEvent(event)
+    def wrapDelegFailed(
+        failure: ShelleyDelegPredFailure[Alonzo]
+    ): ShelleyDelplPredFailure[Alonzo] = ShelleyDelplPredFailure.DelegFailure(failure)
+    def wrapDelegEvent(event: ShelleyDelegEvent[Alonzo]): ShelleyDelplEvent[Alonzo] =
+      ShelleyDelplEvent.DelegEvent(event)
+
   given babbage: EmbedInDelpl[Babbage] with
     def wrapPoolFailed(failure: PoolPredFailure[Babbage]): ShelleyDelplPredFailure[Babbage] =
       ShelleyDelplPredFailure.PoolFailure(failure)
@@ -189,6 +236,12 @@ trait EmbedDelplInDelegs[E <: EraTag]:
   def wrapEvent(event: ShelleyDelplEvent[E]): ShelleyDelegsEvent[E]
 
 object EmbedDelplInDelegs:
+  given alonzo: EmbedDelplInDelegs[Alonzo] with
+    def wrapFailed(failure: ShelleyDelplPredFailure[Alonzo]): ShelleyDelegsPredFailure[Alonzo] =
+      ShelleyDelegsPredFailure.DelplFailure(failure)
+    def wrapEvent(event: ShelleyDelplEvent[Alonzo]): ShelleyDelegsEvent[Alonzo] =
+      ShelleyDelegsEvent.DelplEvent(event)
+
   given babbage: EmbedDelplInDelegs[Babbage] with
     def wrapFailed(failure: ShelleyDelplPredFailure[Babbage]): ShelleyDelegsPredFailure[Babbage] =
       ShelleyDelegsPredFailure.DelplFailure(failure)

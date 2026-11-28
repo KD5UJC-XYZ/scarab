@@ -5,6 +5,7 @@ import cats.data.{NonEmptyList, NonEmptyMap}
 import xyz.kd5ujc.scarab.ledger.MempoolProblem
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
+  Alonzo,
   Babbage,
   Coin,
   Conway,
@@ -26,15 +27,16 @@ import xyz.kd5ujc.scarab.protocol.ReferenceBuild
 // `AccountAlreadyRegistered` through DELEG (`StakeKeyRegisteredDELEG` here, the same credential and
 // bytes), a function of the build (`InjectLedgerFailure.conwayAccountAlreadyRegistered`).
 
-/** `EraRuleFailure "DELEGS" era`: Babbage's is Shelley's (`Babbage/Rules/Delegs.hs:13`,
-  * cardano-ledger f649f975; DELEGS is a rule of the eras up to Babbage only). DELEGS is the rule
-  * Conway's LEDGER no longer runs: no failure at Conway, where the reference's injection calls it
-  * impossible (`shelleyToConwayLedgerPredFailure`, `Conway/Rules/Ledger.hs:189-196`, cardano-ledger
-  * f649f975), which this type makes so; none at Dijkstra either
-  * (`shelleyToDijkstraLedgerPredFailure`, `Dijkstra/Rules/Ledger.hs:551`, cardano-ledger 9df9f98c).
-  * The eras before Conway add their case.
+/** `EraRuleFailure "DELEGS" era`: Alonzo's and Babbage's are Shelley's
+  * (`Alonzo/Rules/Delegs.hs:13`, `Babbage/Rules/Delegs.hs:13`, cardano-ledger f649f975; DELEGS is a
+  * rule of the eras up to Babbage only). DELEGS is the rule Conway's LEDGER no longer runs: no
+  * failure at Conway, where the reference's injection calls it impossible
+  * (`shelleyToConwayLedgerPredFailure`, `Conway/Rules/Ledger.hs:189-196`, cardano-ledger f649f975),
+  * which this type makes so; none at Dijkstra either (`shelleyToDijkstraLedgerPredFailure`,
+  * `Dijkstra/Rules/Ledger.hs:551`, cardano-ledger 9df9f98c). The eras before Conway add their case.
   */
 type DelegsPredFailure[E <: EraTag] = E match
+  case Alonzo   => ShelleyDelegsPredFailure[Alonzo]
   case Babbage  => ShelleyDelegsPredFailure[Babbage]
   case Conway   => Nothing
   case Dijkstra => Nothing
