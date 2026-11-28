@@ -319,8 +319,9 @@ class AlonzoTxDifferentialSuite extends FunSuite:
     seen(withMetadata, arr((parts.init.map(_.original) :+ lost)*), "auxiliary data metadata")
   }
 
-  /** Four faults of a reading that the comparison by bytes, by hash and by set alone passes, each
-    * put into the era's values of a recorded transaction: the comparison of the values
+  /** Four faults of a reading that the comparison by bytes, by hash and by set alone passes: the
+    * datum and the redeemer data put into a recorded witness set, the native script into a crafted
+    * one and the lost Plutus script into crafted auxiliary data. The comparison of the values
     * (`BabbageTestKit.witsViewDifferences`, `BabbageTestKit.auxViewDifferences`,
     * [[AlonzoTestKit.redeemerDataDifferences]]) names each.
     */
