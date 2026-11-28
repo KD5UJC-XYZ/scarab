@@ -3807,8 +3807,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     previous, so the first certificate is the deepest and the failures come in the reference's order. Its pointer is
     `Ptr.ofCertificate`'s, the flat rule's: the slot cut to its low 32 bits and the position to its low 16
     (`Delegs.hs:193-195`). DELPL reads the certificate's representation through evidence only the era's certificate
-    file gives (`TxCert era ~ ShelleyTxCert era`, one way, so no certificate is made from it) and runs POOL on the
-    pool state. DELEG reads the certificate through the class's readers in the reference's order, MIR and genesis
+    file makes (`IsShelleyTxCert`, the reference's `TxCert era ~ ShelleyTxCert era`), and runs POOL on the pool
+    state. The evidence is a class of one reader, not a function: a `<:<` given in the opaque type's companion was
+    found to convert a certificate to its representation implicitly, which a test now refuses. DELEG reads the certificate through the class's readers in the reference's order, MIR and genesis
     delegation among them, the stability window and the next epoch's first slot from `Globals`; it reads no quorum,
     which is UTXOW's (`validateMIRInsufficientGenesisSigs`).
   - The failure and event types of the three rules, their families (`DelplPredFailure`, `DelplEvent`,
@@ -3828,11 +3829,15 @@ Conway's rules on the classes follow as the rest of stage 2.
       makes: each account delegated again, registered again and unregistered, an unknown account delegated, each
       pool registered again and retired, a genesis key delegated to its own pair and to another key's, MIR from
       each pot and a transfer. They are judged as one transaction and each alone; of the 8,832 single
-      certificates, 5,202 are accepted and 3,630 refused;
-    - the refusal corpora's 9 Babbage cases with certificates, each on the reference's state ticked to its slot: the
-      same judgment both ways, refused exactly where the reference refused DELEG or POOL; the 7 refused by them
+      certificates, 5,202 are accepted and 3,630 refused, reaching six of DELEG's failures (a balance left, a
+      registration again, a delegation of no account, a genesis delegate and VRF key held by another, MIR too
+      late). The certificates each state accepts alone are judged again together, with a fresh account
+      registered and delegated: all 384 states accept them, the fresh account at its certificate's pointer;
+    - the refusal corpora's 9 Babbage cases with certificates, each on the reference's state ticked to its slot, the
+      flat decoder's certificates equal to the era decoder's: the same judgment both ways, refused exactly where the reference refused DELEG or POOL; the 7 refused by them
       alone encode, one level below LEDGER, to the reference's refusal bytes;
-    - crafted cases: each failure of DELEG and POOL, in order and under the first-failure policy; a registration that
+    - crafted cases: each failure of DELEG and POOL, in order and under the first-failure policy (POOL's network,
+      metadata hash and, at version 11, VRF key among them); a registration that
       fails and still makes a fresh account, which a later certificate sees; genesis delegations (an unknown key,
       duplicates current and future, a key's own pairs, the last slot); MIR to accounts from either pot, transfers,
       insufficient funds, negative entries kept for the next certificate, the rules below version 5, the slot too
@@ -3840,8 +3845,9 @@ Conway's rules on the classes follow as the rest of stage 2.
       2^32 - 1, 2^32, 2^32 + 7 and 2^64 - 1 and the last transaction index; 65,538 certificates on a 256 KiB stack,
       the 65,537th's index wrapping to the first's pointer, and 30,000 failing ones.
 
-    Every comparison agrees. Not yet: Alonzo's instances, with Alonzo's state classes. Nothing in the node runs
-    these rules; the flat path stays.
+    Every comparison agrees. Not compared byte for byte: the two refusal cases of moves of rewards that UTXOW
+    refuses too (`mir-signed-intermediate-*`), whose DELEG failures are compared with the flat rule's only. Not yet:
+    Alonzo's instances, with Alonzo's state classes. Nothing in the node runs these rules; the flat path stays.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
