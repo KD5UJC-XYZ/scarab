@@ -53,6 +53,9 @@ Then:
   (`scarab-jdk:local`, built from `docker/jdk.Dockerfile`) or in the Nix shell ([docs/nix.md](docs/nix.md)), as
   [CONTRIBUTING.md](CONTRIBUTING.md#build-docker-or-the-nix-shell) shows; `scripts/preflight --check` and the
   scenarios need Docker either way.
+- A JVM you start by hand to run Scarab's code (`java -cp ...`, `java -jar`, `--entrypoint java`) takes
+  `-XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges`, the JIT workaround of #1521; the repository's
+  launchers already pass it ([launcher.md](docs/running/launcher.md#the-jit-workaround-1521)).
 - For many small edits use a persistent sbt server container **of your own**, with a private sbt global
   directory (`-e SBT_GLOBAL_BASE=/tmp/sbt-global`); `scripts/sbtw` keeps the server's sockets in the
   container's own temporary directory

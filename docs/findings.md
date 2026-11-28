@@ -218,6 +218,12 @@ listed (self calls found with a script over `*/src/main`, `foldRight`, `reduceRi
 Not found: `foldRight` or `reduceRight` on a strict collection, a `LazyList` or `Stream` recursion, or
 a mutual recursion over a count in `main` sources.
 
+## The JVM
+
+| Finding | Where found | Pinned by |
+|---|---|---|
+| **C2 on JDK 25 can miscompile the ledger rules' collateral arithmetic.** On Temurin 25.0.4.1, `TxChecks.collateral` returned a `Collateral` with a null `fee` once C2 had compiled it, so the phase-2-invalid branch of `ShelleyUtxo.update`, the only reader of that field, threw a `NullPointerException` (`... because "that" is null`) and the node stopped extending its chain. Valid transactions do not read the field, so nothing showed until a phase-2-invalid one came. It depends on compile order and profile: one JVM of a build fails and another passes the same block, and a JVM that has compiled the bad code keeps failing. `Value.sum`'s `(BigInt, TreeMap)` tuple accumulator is the likely trigger. The workaround is `-XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges` on every JVM that runs Scarab's code ([launcher.md](running/launcher.md#the-jit-workaround-1521)); it goes when a JDK without the fault is pinned and the source change of [#1521](https://github.com/KD5UJC-XYZ/scarab/issues/1521) has landed. | Mainnet sync from genesis, Babbage: the stall at slot 120,650,699 and again at slot 124,115,106; reproduced single-threaded by a loop over the transactions of the two captured blocks, failing in 2 JVMs of 8 with the defaults, 0 of 8 with `-XX:-ReduceAllocationMerges` and 0 of 8 with `-XX:-DoEscapeAnalysis` (slower), [#1521](https://github.com/KD5UJC-XYZ/scarab/issues/1521). | `scripts/check_jit_workaround.py` keeps the options on every launcher; the regression test in a forked JVM comes with the source change of #1521. |
+
 ## Method
 
 The recurring pattern: compare per-epoch aggregates (reserves, treasury, rewards, pool stake) with

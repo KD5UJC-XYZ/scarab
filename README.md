@@ -122,11 +122,13 @@ docker build -f docker/jdk.Dockerfile -t scarab-jdk:local .
 docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" -e HOME=/work/.cache/home \
   scarab-jdk:local bash scripts/sbtw check node/runtimeClasspathFile
 
-# 3. Follow a network from genesis (the JVM flags, every follow flag and the Preview example are in docs/running.md)
+# 3. Follow a network from genesis (the JVM flags, every follow flag and the Preview example are in docs/running.md;
+#    the -XX pair is the JIT workaround every Scarab JVM takes, docs/running/launcher.md)
 mkdir -p "${SCARAB_DATA_DIR:-/tmp/scarab}"
 docker run --rm -v "$PWD":/work -w /work --user "$(id -u):$(id -g)" \
   -v "<absolute config dir>:/config:ro" -v "${SCARAB_DATA_DIR:-/tmp/scarab}:/data" \
   scarab-jdk:local bash -c 'exec java --sun-misc-unsafe-memory-access=allow --enable-native-access=ALL-UNNAMED \
+    -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges \
     -cp "$(cat node/target/runtime-classpath.txt)" \
     xyz.kd5ujc.scarab.node.Main follow --genesis-dir /config --peer "<host>:<port>" --db /data/db'
 ```

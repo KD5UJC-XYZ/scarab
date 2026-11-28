@@ -40,7 +40,7 @@ docker run -d --name scarab-k1-haskell-preview --cpus 6 --memory 32g --user "$(i
   --topology /config/topology.json --database-path /db --socket-path /ipc/node.socket --port 3001 --host-addr 0.0.0.0
 
 # 2. The Scala node from genesis, writing a digest at every epoch boundary (the same configuration as above).
-java -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow --genesis-dir "$D/preview/config" \
+java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -Xmx3g -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.Main follow --genesis-dir "$D/preview/config" \
   --peer preview-node.play.dev.cardano.org:3001 --db "$D/preview-scala-db" --keep-snapshots 2000 \
   --dump-state "$D/preview-dump" --dump-state-at epoch-boundaries
 

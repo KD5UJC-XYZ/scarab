@@ -104,6 +104,12 @@ environment variables of its own ([launcher.md](launcher.md)). Its lines on stan
   on, on a separate node that has never loaded keys only, and their start prints the line that begins
   `scarab-jvm: memory diagnostics enabled` ([diagnostics](launcher.md#diagnostics)). The release image has no `jcmd`
   of its own: run it from a JDK image.
+- **The rules throw a `NullPointerException` on a phase-2-invalid transaction** (`Cannot invoke
+  "scala.math.BigInt.longEncoding()" because "that" is null`, from `ShelleyUtxo`), and the node stops extending its
+  chain at that block, while another start of the same build may pass it: the JVM runs without the JIT workaround of
+  #1521. Check its command line for `-XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges` and for a later
+  `-XX:+ReduceAllocationMerges` ([the JIT workaround](launcher.md#the-jit-workaround-1521)); a node started with
+  `java` by hand or with `--entrypoint java` needs the two options on its own command line.
 - **The container stops at once with exit status 2** and a `scarab-jvm:` line that names `SCARAB_HEAP_SIZE`,
   `SCARAB_RUN_PROCESSORS` or `SCARAB_JVM_DIAGNOSTICS`: the value is not one the launcher accepts
   ([environment variables](launcher.md#environment-variables)).

@@ -8,7 +8,8 @@ through one launcher, `scripts/scarab-jvm`. It keeps the JVM from writing its me
 forging node ([forging.md](forging.md#keys-in-memory) says why, and what stays the host's), and it is where the heap,
 the processor count and diagnostics are set. The `java ... -cp "$(cat node/target/runtime-classpath.txt)"` commands
 elsewhere in this guide start the node from a class path in the JDK image: that is a developer's path, which takes JVM
-options on its own command line and does none of what follows.
+options on its own command line and does none of what follows; those commands name the
+[JIT workaround](#the-jit-workaround-1521) themselves.
 
 ## The calling form
 
@@ -68,6 +69,9 @@ it, and starts the JVM with these options, after the sizing options and before i
 | `-XX:+DisableAttachMechanism` | HotSpot's attach mechanism, which its tools use: `jcmd`, `jmap` and `jstack` from another process, so a heap dump on request, a JFR recording started from outside and heap dump options set in the running JVM. It does not stop a debugger or a reader of `/proc/<pid>/mem` |
 | `-XX:+PerfDisableSharedMem` | the performance data file `/tmp/hsperfdata_<user>/<pid>`, through which `jps` and `jstat` find the JVM and read its counters; the counters, not a copy of the heap, stay in the JVM's memory |
 
+In either mode it also passes the [JIT workaround](#the-jit-workaround-1521), after these options and before its own
+arguments.
+
 The node writes no heap dump or JFR recording of its own: `--stall-dump` writes the runtime's fiber snapshot to a file
 and `kill -QUIT` prints a thread dump on standard output, both stack traces rather than the contents of the heap.
 Those two, `--memory-report-seconds` and the metrics need no attach.
@@ -75,8 +79,8 @@ Those two, `--memory-report-seconds` and the metrics need no attach.
 ## Diagnostics
 
 With `SCARAB_JVM_DIAGNOSTICS=1` the launcher still checks and passes the sizing variables and its own arguments, but
-passes none of the eight options above, removes none of the four variables, leaves the core file limit as it found
-it, and prints:
+passes none of the eight options above (the [JIT workaround](#the-jit-workaround-1521) it still passes), removes none
+of the four variables, leaves the core file limit as it found it, and prints:
 
 ```text
 scarab-jvm: memory diagnostics enabled: do not use on a forging node (core files, crash reports, heap dumps and attach are the JVM's defaults, with JAVA_TOOL_OPTIONS, JDK_JAVA_OPTIONS, _JAVA_OPTIONS and JDK_ALTERNATE_VM as given)
@@ -154,6 +158,65 @@ MALLOC_ARENA_MAX=2 bash -p scripts/scarab-jvm "$JAVA_HOME/bin/java" -Xms3g -Xmx3
 ```
 
 (`D` is the apps' `SCARAB_DATA_DIR`, and the configuration is the one the app downloaded.)
+
+## The JIT workaround (#1521)
+
+On JDK 25 (Temurin 25.0.4.1, the JDK of the release image and of the JDK image) the C2 compiler miscompiled code that
+the ledger rules reach from `TxChecks.collateral`: the `Collateral` it returned had a null `fee`, so on a
+phase-2-invalid transaction the rules threw a `NullPointerException` and the node stopped extending its chain
+([#1521](https://github.com/KD5UJC-XYZ/scarab/issues/1521)). Whether a JVM is affected depends on the order in which it
+compiles, so two JVMs of one build can differ, and a restart can pass the block that stopped the last one. Every JVM
+that runs Scarab's code therefore starts with:
+
+```text
+-XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges
+```
+
+The second turns off C2's reduction of allocation merges; it is a diagnostic option, so the first, which unlocks it,
+comes before it. In the recorded reproduction (one thread applying the transactions of two captured mainnet blocks in
+a loop, eight JVMs for each setting), 2 runs of 8 failed with the JVM's defaults and none with this option; that is a
+measured mitigation of that reproduction, not a proof that no other code is affected. `-XX:-DoEscapeAnalysis` also
+gave none of 8, at a larger cost in speed.
+
+| JVM | Where the options are set |
+|---|---|
+| the release image and the Nix apps | this launcher, in either diagnostics mode, after its memory options and before its own arguments |
+| the devnet scenarios | `scripts/devnet/cluster.py` (`scala_container`) |
+| sbt's own JVM: compilation, the in-process test groups, `runMain` | `scripts/sbtw` |
+| forked test JVMs and `node / run` | `build.sbt` (`jdk25Flags`) |
+| the conformance tools | `scripts/conformance/scenarios.py` (`JDK_FLAGS`) |
+| the Antithesis trial's node | `antithesis/pool/scarab/scarab-node.sh` |
+
+`scripts/jit_workaround.py` holds the list. The guard `scripts/check_jit_workaround.py`, which preflight and CI run,
+fails when one of these loses the options and when a new place in the repository starts a JVM without being
+classified; the few JVMs it leaves alone (one-shot checks of a built artifact, `java -version` probes, the
+secret-timing measurement's own JVM, and the miscompilation's own regression test, which must run on the JIT's
+defaults to test anything) are listed there with the reason.
+
+A JVM started any other way gets none of this: `java -cp ... xyz.kd5ujc.scarab.node.Main`, `java -jar` of the fat JAR
+(its manifest cannot carry JVM options), and `docker run --entrypoint java <image>`, which replaces the launcher. Put
+the two options on its command line, as the commands of these guides do. An argument after them wins, so
+`-XX:+ReduceAllocationMerges` on the launcher's command line turns the workaround off again; do not.
+
+To check a running node: a JVM the launcher started has no attach mechanism ([above](#what-it-sets)) and the release
+image has no `jcmd`, so read its command line, which must hold both options with no later `-XX:+ReduceAllocationMerges`:
+
+```sh
+docker exec <container> sh -c 'tr "\0" " " < /proc/1/cmdline; echo'   # the release image: the JVM is process 1
+tr '\0' ' ' < /proc/<pid>/cmdline; echo                              # the Nix apps, on the host
+```
+
+A JVM that allows attach (a devnet node, a class-path run in the JDK image, a node with diagnostics on) answers `jcmd`,
+run as the JVM's user from a JDK (in the devnet's containers, the JDK image's own):
+
+```sh
+jcmd <pid> VM.flags -all | grep ReduceAllocationMerges
+```
+
+which prints `bool ReduceAllocationMerges = false {C2 diagnostic} {command line}`; `= true` and `{default}` mean the
+JVM runs without the workaround.
+
+The options go, everywhere at once, when a JDK without the fault is pinned and the source change of #1521 has landed.
 
 ## Exit statuses
 

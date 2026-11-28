@@ -8,7 +8,7 @@ Part of [Running the node and the devnet scenarios](../running.md).
 `xyz.kd5ujc.scarab.node.tools.CaptureMain` records raw blocks (one hex-encoded block per line) for offline replay tests:
 
 ```sh
-java -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.tools.CaptureMain capture \
+java -XX:+UnlockDiagnosticVMOptions -XX:-ReduceAllocationMerges -cp "$(cat node/target/runtime-classpath.txt)" xyz.kd5ujc.scarab.node.tools.CaptureMain capture \
   --peer <host>:<port> --magic M --blocks N|all --out <file> [--from <slot>.<hashhex> --from-block-no N]
 ```
 
