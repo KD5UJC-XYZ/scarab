@@ -719,7 +719,10 @@ What the benchmark does not time, the program cache's lookup, was 2.3% of the pr
 ## 71. The program cache against a cycle of 586 scripts: weight thrash from mainnet block 10,490,500 (#1529)
 
 From about block 10,490,500 (epoch 493, protocol 8) the mainnet sync applied about one block a second, and
-`scarab_block_apply_seconds` averaged 1.1 s. A 90-second flight recording of the sync put 11,806 of its 23,597
+`scarab_block_apply_seconds` averaged 1.1 s; from about block 10,493,500 it ran at its usual speed again. Koios
+places a burst there: 4,139 transactions, in blocks 10,490,603 to 10,492,231, each with about 194 stake-withdrawal
+redeemers, which run 802,966 evaluations of 582 distinct scripts; a block of the burst runs about 450 to 600
+evaluations, and the blocks just before and after it about 15. A 90-second flight recording of the sync put 11,806 of its 23,597
 execution samples in decoding scripts (`LedgerEval.deserialiseScript` under `ScarabEvaluator`'s program cache), on
 the rules' threads and on the speculator's alike, and about 1,400 more in weighing and scope-checking each new entry;
 the machine itself took about 190.
