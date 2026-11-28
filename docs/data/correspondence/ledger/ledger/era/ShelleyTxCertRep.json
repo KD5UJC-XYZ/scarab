@@ -17,6 +17,28 @@
     }
    ]
   },
+  "class ledger.era.IsShelleyTxCert": {
+   "class": "Mirror",
+   "digest": "4e5eb43fb16ecb67",
+   "evidence": [
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
+   ],
+   "note": "the type equality TxCert era ~ ShelleyTxCert era, which DELPL asks for, as one-way evidence: a final class with a private constructor, made only from the compiler's proof of the equality (of), which only the era's certificate file can give, so no caller makes or implements one; not a function, so it converts nothing implicitly",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delpl.hs",
+     "lines": [
+      184,
+      184
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxCert era ~ ShelleyTxCert era"
+    }
+   ]
+  },
   "class ledger.era.MIRCert": {
    "class": "Mirror",
    "digest": "ca956d1e648a2f7a",
@@ -31,6 +53,50 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "MIRCert"
+    }
+   ]
+  },
+  "def ledger.era.IsShelleyTxCert#shelleyTxCert": {
+   "class": "Mirror",
+   "digest": "c160cc1de9180946",
+   "evidence": [
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
+   ],
+   "note": "the equality read one way",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delpl.hs",
+     "lines": [
+      184,
+      184
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxCert era ~ ShelleyTxCert era"
+    }
+   ]
+  },
+  "def ledger.era.IsShelleyTxCert.of": {
+   "class": "Mirror",
+   "digest": "1bee0238f0e56580",
+   "evidence": [
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
+   ],
+   "note": "the evidence of the compiler's proof that the era's certificate is the representation, which only the file of the era's opaque certificate can give",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delpl.hs",
+     "lines": [
+      184,
+      184
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxCert era ~ ShelleyTxCert era"
     }
    ]
   },
@@ -146,6 +212,27 @@
      "symbol": "ShelleyTxCert"
     }
    ]
+  },
+  "given ledger.era.IsShelleyTxCert.babbage": {
+   "class": "Mirror",
+   "digest": "12ce5179d43724ff",
+   "evidence": [
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/TxCert.hs",
+     "lines": [
+      12,
+      12
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "type TxCert BabbageEra = ShelleyTxCert BabbageEra"
+    }
+   ]
   }
  },
  "glue": [
@@ -154,6 +241,12 @@
     "object ledger.era.ShelleyTxCertRep"
    ],
    "reason": "Babbage's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives, and the index of a purpose; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Babbage's (fromFlat), and the certificate's representation read only in Babbage's files. Scala containers and helpers with no counterpart of their own"
+  },
+  {
+   "definitions": [
+    "object ledger.era.IsShelleyTxCert"
+   ],
+   "reason": "objects that hold an era's instances of the accounts and certificate-state classes, the reference's functions over those classes (each mapped by itself), or CanEqual; Scala containers with no counterpart (#85)"
   }
  ],
  "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/ShelleyTxCertRep.scala"

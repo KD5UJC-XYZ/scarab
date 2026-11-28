@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era.rules
 
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
+  Babbage,
   ColdCommittee,
   Coin,
   Conway,
@@ -122,19 +123,23 @@ enum ConwayCertsPredFailure[E <: EraTag]:
   case WithdrawalsNotInRewardsCERTS(withdrawals: CertsWithdrawals[E])
   case CertFailure(failure: CertPredFailure[E])
 
-/** `EraRuleFailure "DELEG" era`: Conway's is its own (`Conway/Rules/Deleg.hs:116`, cardano-ledger
+/** `EraRuleFailure "DELEG" era`: Babbage's is Shelley's (`Babbage/Rules/Deleg.hs:12`,
+  * cardano-ledger f649f975), Conway's is its own (`Conway/Rules/Deleg.hs:116`, cardano-ledger
   * f649f975), and Dijkstra's is Conway's (`Dijkstra/Rules/Deleg.hs:13`, cardano-ledger 9df9f98c).
   * Each era adds its case with its rule.
   */
 type DelegPredFailure[E <: EraTag] = E match
+  case Babbage  => ShelleyDelegPredFailure[Babbage]
   case Conway   => ConwayDelegPredFailure[Conway]
   case Dijkstra => ConwayDelegPredFailure[Dijkstra]
 
-/** `EraRuleFailure "POOL" era`: Conway's is Shelley's (`Conway/Rules/Cert.hs`, `Embed (Shelley.POOL
-  * era) (CERT era)`, `:236-246`, cardano-ledger f649f975); Dijkstra's is its own
-  * (`Dijkstra/Rules/Pool.hs:138`, cardano-ledger 9df9f98c).
+/** `EraRuleFailure "POOL" era`: Babbage's is Shelley's (`Babbage/Rules/Pool.hs:12`, cardano-ledger
+  * f649f975), and so is Conway's (`Conway/Rules/Cert.hs`, `Embed (Shelley.POOL era) (CERT era)`,
+  * `:236-246`, cardano-ledger f649f975); Dijkstra's is its own (`Dijkstra/Rules/Pool.hs:138`,
+  * cardano-ledger 9df9f98c).
   */
 type PoolPredFailure[E <: EraTag] = E match
+  case Babbage  => ShelleyPoolPredFailure[Babbage]
   case Conway   => ShelleyPoolPredFailure[Conway]
   case Dijkstra => DijkstraPoolPredFailure[Dijkstra]
 
@@ -167,19 +172,24 @@ enum PoolEvent[E <: EraTag]:
   case RegisterPool(pool: KeyHash[StakePool])
   case ReregisterPool(pool: KeyHash[StakePool])
 
-/** `EraRuleEvent "POOL" era`: Conway's is Shelley's `PoolEvent` (`Shelley/Rules/Pool.hs:120`,
-  * cardano-ledger f649f975), and so is Dijkstra's (`Dijkstra/Rules/Pool.hs:140`, cardano-ledger
-  * 9df9f98c). Named apart from the data type it reduces to.
+/** `EraRuleEvent "POOL" era`: Babbage's is Shelley's `PoolEvent` (`Babbage/Rules/Pool.hs:16`,
+  * cardano-ledger f649f975), and so are Conway's (`Shelley/Rules/Pool.hs:120`, cardano-ledger
+  * f649f975) and Dijkstra's (`Dijkstra/Rules/Pool.hs:140`, cardano-ledger 9df9f98c). Named apart
+  * from the data type it reduces to.
   */
 type PoolRuleEvent[E <: EraTag] = E match
+  case Babbage  => PoolEvent[Babbage]
   case Conway   => PoolEvent[Conway]
   case Dijkstra => PoolEvent[Dijkstra]
 
-/** `EraRuleEvent "DELEG" era`: Conway's is void (`VoidEraRule`, `Conway/Rules/Deleg.hs:118`,
-  * cardano-ledger f649f975), and so is Dijkstra's (`Dijkstra/Rules/Deleg.hs:15`, cardano-ledger
-  * 9df9f98c): DELEG tells nothing, and the type has no value.
+/** `Event (EraRule "DELEG" era)`: Babbage's DELEG is Shelley's (`Babbage/Era.hs:88`, cardano-ledger
+  * f649f975), which tells `ShelleyDelegEvent` (`Shelley/Rules/Deleg.hs:147`). Conway's is void
+  * (`VoidEraRule`, `Conway/Rules/Deleg.hs:118`, cardano-ledger f649f975), and so is Dijkstra's
+  * (`Dijkstra/Rules/Deleg.hs:15`, cardano-ledger 9df9f98c): their DELEG tells nothing, and the type
+  * has no value.
   */
 type DelegEvent[E <: EraTag] = E match
+  case Babbage  => ShelleyDelegEvent[Babbage]
   case Conway   => Nothing
   case Dijkstra => Nothing
 
@@ -238,6 +248,15 @@ trait InjectDelegFailure[F, E <: EraTag]:
   def injectFailure(failure: F): DelegPredFailure[E]
 
 object InjectDelegFailure:
+  /** `Babbage/Rules/Deleg.hs:14` (cardano-ledger f649f975): Shelley's failure, the identity. At
+    * 9df9f98c Babbage's DELEG injects `AccountAlreadyRegistered` too (`:16-17`), as the constructor
+    * of the same tag and bytes; the 11.1 build's ledger, which the era types follow, has no such
+    * instance.
+    */
+  given babbage: InjectDelegFailure[ShelleyDelegPredFailure[Babbage], Babbage] with
+    def injectFailure(failure: ShelleyDelegPredFailure[Babbage]): DelegPredFailure[Babbage] =
+      failure
+
   /** `Dijkstra/Rules/Deleg.hs:19-20` (cardano-ledger 9df9f98c): Shelley's
     * `AccountAlreadyRegistered` as Conway's `DelegAccountAlreadyRegistered`
     * (`StakeKeyRegisteredDELEG` here, tag 2). Conway's era types follow the 11.1 build's ledger,
@@ -256,6 +275,12 @@ sealed trait InjectPool[E <: EraTag]:
   def injectEvent(event: PoolEvent[E]): PoolRuleEvent[E]
 
 object InjectPool:
+  /** `Babbage/Rules/Pool.hs:14, 18` (cardano-ledger f649f975): the identities. */
+  given babbage: InjectPool[Babbage] with
+    def injectFailure(failure: ShelleyPoolPredFailure[Babbage]): PoolPredFailure[Babbage] =
+      failure
+    def injectEvent(event: PoolEvent[Babbage]): PoolRuleEvent[Babbage] = event
+
   /** The identities. */
   given conway: InjectPool[Conway] with
     def injectFailure(failure: ShelleyPoolPredFailure[Conway]): PoolPredFailure[Conway] = failure
