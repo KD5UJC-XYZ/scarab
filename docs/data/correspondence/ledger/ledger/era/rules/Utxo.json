@@ -102,6 +102,48 @@
     }
    ]
   },
+  "def ledger.era.rules.AlonzoUtxo.sumAllCoin": {
+   "class": "Mirror",
+   "digest": "84011f4793d0b0a4",
+   "evidence": [
+    "AlonzoUtxosSuite"
+   ],
+   "note": "the Word64 sum that wraps, of the outputs' lovelace, as a BigInt",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs",
+     "lines": [
+      207,
+      212
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "sumAllCoin"
+    }
+   ]
+  },
+  "def ledger.era.rules.AlonzoUtxo.updateUTxOState": {
+   "class": "Mirror",
+   "digest": "c764e2d37cbc91d5",
+   "evidence": [
+    "AlonzoUtxosSuite"
+   ],
+   "note": "on the node's UTxOState, whose UTxO set holds stored outputs: those spent are read into the era (StoredTxOut.fromStored) and those created written back (toStored); the events are told through Tell[F, Chain[AlonzoUtxoEvent]]; a damaged store or the state's vocabulary is a raised UtxoStateDefect",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxo.hs",
+     "lines": [
+      751,
+      784
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "updateUTxOState"
+    }
+   ]
+  },
   "def ledger.era.rules.AlonzoUtxo.vKeyLocked": {
    "class": "Mirror",
    "digest": "5addaf9c76b6cf98",

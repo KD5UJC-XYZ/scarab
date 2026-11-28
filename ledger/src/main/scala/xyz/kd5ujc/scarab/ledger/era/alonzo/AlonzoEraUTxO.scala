@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   AsItem,
   CollectError,
   Data,
+  EraCertState,
   EraScript,
   EraTx,
   EraTxError,
@@ -111,9 +112,8 @@ object AlonzoEraUTxO:
 
       // `getWitsVKeyNeeded = getAlonzoWitsVKeyNeeded`, `Alonzo/UTxO.hs:125`, cardano-ledger
       // f649f975: the genesis delegations read from the certificate state's delegation state
-      // (`dsGenDelegs (certState ^. certDStateL)`, `Shelley/UTxO.hs:263`), which Alonzo's
-      // certificate-state class, not yet among the era types, would give; a body of the top level
-      // only
+      // through Alonzo's certificate-state class (`dsGenDelegs (certState ^. certDStateL)`,
+      // `Shelley/UTxO.hs:263`), a body of the top level only
       override def getWitsVKeyNeeded[L <: TxLevel](
           certState: ShelleyCertState,
           utxo: UTxO[Alonzo],
@@ -121,9 +121,11 @@ object AlonzoEraUTxO:
       )(using l: txOf.bodyOf.Level[L]): Set[Bytes] =
         l match
           case TopOnly.Top =>
-            AlonzoUTxO.getAlonzoWitsVKeyNeeded[Alonzo](certState.dState.genDelegs, utxo, body)(using
-              b
-            )
+            AlonzoUTxO.getAlonzoWitsVKeyNeeded[Alonzo](
+              EraCertState.alonzo.certDStateL.get(certState).genDelegs,
+              utxo,
+              body
+            )(using b)
 
       // `getMinFeeTxUtxo pp tx _ = getShelleyMinFeeTxUtxo pp tx`, `Alonzo/UTxO.hs:127`,
       // cardano-ledger f649f975

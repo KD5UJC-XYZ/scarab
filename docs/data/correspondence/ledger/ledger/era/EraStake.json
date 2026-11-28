@@ -185,6 +185,27 @@
     }
    ]
   },
+  "given ledger.era.EraStake.alonzo": {
+   "class": "Mirror",
+   "digest": "11e4fb32351563c4",
+   "evidence": [
+    "AlonzoStakeSuite"
+   ],
+   "note": "without resolveInstantStake, which the class here does not have",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/State/Stake.hs",
+     "lines": [
+      18,
+      23
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraStake AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.EraStake.babbage": {
    "class": "Mirror",
    "digest": "5f9e37d86d5ffc85",

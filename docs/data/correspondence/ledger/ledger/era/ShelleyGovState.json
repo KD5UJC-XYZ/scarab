@@ -178,11 +178,12 @@
     "def ledger.era.ShelleyGovStateRecord.toStored",
     "enum ledger.era.ShelleyGovStateReadError",
     "enum ledger.era.ShelleyProposals",
+    "given ledger.era.ShelleyGovStateRecord.alonzo",
     "given ledger.era.ShelleyGovStateRecord.babbage",
     "object ledger.era.ShelleyGovStateRecord",
     "trait ledger.era.ShelleyGovStateRecord"
    ],
-   "reason": "Babbage's governance state read from the node's flat record and written back over it, until the ledger state holds the era's record (#85): the era's parameter fields read from and written over the flat parameters, which hold every era's, and each proposed update read from and written as the bytes it keeps; the reference has no stored form to read, so it has no counterpart; a record whose stored proposal holds a legacy field an earlier build kept unread is refused (#85 item 7222565136)"
+   "reason": "Alonzo's and Babbage's governance states read from the node's flat record and written back over it, until the ledger state holds the era's record (#85): the era's parameter fields read from and written over the flat parameters, which hold every era's, and each proposed update read from and written as the bytes it keeps; the reference has no stored form to read, so it has no counterpart; a record whose stored proposal holds a legacy field an earlier build kept unread is refused (#85 item 7222565136)"
   },
   {
    "definitions": [

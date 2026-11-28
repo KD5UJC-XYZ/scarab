@@ -710,7 +710,7 @@
     {
       "module": "ledger",
       "path": "ledger/era",
-      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, what the eras share (output and script representations, certificate parts), the protocol parameters as higher-kinded data, the governance state with its classes, read from the node's flat record where the chain enters Dijkstra (`GovStateRecord`) and held whole in Dijkstra's state (`StoredGov`), Babbage's read from the flat record and written back over it (`ShelleyGovStateRecord`), the voting thresholds and environment of ratification, and the DRep pulser computed where it starts",
+      "responsibility": "Era-specific transaction types (#85): the type families as match types, the reference's era classes with one instance per era, what the eras share (output and script representations, certificate parts), the protocol parameters as higher-kinded data, the governance state with its classes, read from the node's flat record where the chain enters Dijkstra (`GovStateRecord`) and held whole in Dijkstra's state (`StoredGov`), Alonzo's and Babbage's read from the flat record and written back over it (`ShelleyGovStateRecord`), the voting thresholds and environment of ratification, and the DRep pulser computed where it starts",
       "entryPoints": [
         "Tx",
         "TxOut",
@@ -780,7 +780,7 @@
     {
       "module": "ledger",
       "path": "ledger/era/alonzo",
-      "responsibility": "Alonzo's own types: its native, Plutus and script types and its output, opaque outside their file, with their translations from Mary; its protocol-parameter record and its instances of the parameter classes; its certificate, witness set, auxiliary data, body and transaction, made by its decoders; its UTxO classes and annotated transaction",
+      "responsibility": "Alonzo's own types: its native, Plutus and script types and its output, opaque outside their file, with their translations from Mary; its protocol-parameter record and its instances of the parameter classes; its certificate, witness set, auxiliary data, body and transaction, made by its decoders; its UTxO classes and annotated transaction; its instances of the accounts, certificate-state, governance and stake classes",
       "entryPoints": [
         "AlonzoTx",
         "AlonzoTxBody",
@@ -790,7 +790,8 @@
         "AlonzoScript",
         "AlonzoTxOut",
         "AlonzoPParams",
-        "AlonzoEraUTxO"
+        "AlonzoEraUTxO",
+        "AlonzoState"
       ],
       "suites": [
         "AlonzoTypesSuite",
@@ -800,7 +801,9 @@
         "AlonzoTxSuite",
         "AlonzoTxDifferentialSuite",
         "AlonzoPlutusContextSuite",
-        "AlonzoPlutusContextRefusalsSuite"
+        "AlonzoPlutusContextRefusalsSuite",
+        "AlonzoStateClassesSuite",
+        "AlonzoStakeSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"
@@ -908,7 +911,7 @@
     {
       "module": "ledger",
       "path": "ledger/era/rules",
-      "responsibility": "The reference's rule predicates on the era types, each generic in its era over the reference's classes, in objects named after the reference's Rules modules (among them RATIFY, ENACT and Dijkstra's TICK, NEWEPOCH and EPOCH, which the node's tick of a Dijkstra state runs); their verdicts were compared with the flat rules' (#85, stage 2), and are held to the flat rules' recorded judgments where those were deleted (stage 3), and Babbage's UTXOS with its PPUP step, compared with the flat rules while they run; Dijkstra's BBODY and closure application, run by the node on a block",
+      "responsibility": "The reference's rule predicates on the era types, each generic in its era over the reference's classes, in objects named after the reference's Rules modules (among them RATIFY, ENACT and Dijkstra's TICK, NEWEPOCH and EPOCH, which the node's tick of a Dijkstra state runs); their verdicts were compared with the flat rules' (#85, stage 2), and are held to the flat rules' recorded judgments where those were deleted (stage 3), and Alonzo's and Babbage's UTXOS with their PPUP step, compared with the flat rules while they run; Dijkstra's BBODY and closure application, run by the node on a block",
       "entryPoints": [
         "ShelleyUtxo",
         "AllegraUtxo",
@@ -928,7 +931,8 @@
         "ConwayBbody",
         "ConwayBlockRun",
         "ShelleyPpup",
-        "BabbageUtxos"
+        "BabbageUtxos",
+        "AlonzoUtxos"
       ],
       "suites": [
         "ConwayUtxoChecksSuite",
@@ -945,7 +949,8 @@
         "ConwayBbodyImpSuite",
         "ConwayBlockRunSuite",
         "DijkstraBbodyImpSuite",
-        "BabbageUtxosSuite"
+        "BabbageUtxosSuite",
+        "AlonzoUtxosSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"

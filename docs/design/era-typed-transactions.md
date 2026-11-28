@@ -3685,8 +3685,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     Alonzo's `getAlonzoScriptsNeeded`, `getAlonzoWitsVKeyNeeded`, the minimum fee through `alonzoMinFeeTx` (its execution units priced), the supplemental datums
     of the body's outputs alone (`getAlonzoSupplementalDataHashes`), the spending datum by its hash among the
     witnesses' datums (`getAlonzoSpendingDatum`), and the annotated transaction's four members, with `mkStAnnTx`.
-    The genesis delegations are read from the certificate state's delegation state, as Alonzo has no
-    `EraCertState` instance yet.
+    The genesis delegations are read through `EraCertState[Alonzo]` (since Alonzo's state classes, below).
   - Alonzo's context for Plutus V1 and its `EraPlutusContext`, with Alonzo's cases of `ContextError` (Alonzo's own
     error), `TxInfoResult` and `PlutusTxInInfo` (`Maybe PV1.TxInInfo`): the validity interval, the inputs and the
     certificates in that order, an end alone closed at its end, a genesis delegation and a move of rewards as
@@ -3732,9 +3731,74 @@ Conway's rules on the classes follow as the rest of stage 2.
     The era path and the flat path agree on all of these, and both agree with the reference where it recorded a
     context. Not compared: the spending scripts and datums of the 57 stand-in transactions in the ledger suite, whose
     spent outputs are not loaded there; the 13 refusal cases among them are compared again with their recorded UTxO
-    in the node suite. Not yet: the genesis delegations read through `EraCertState[Alonzo]`, with
-    Alonzo's state classes; and the flat purpose of an Alonzo purpose (`toStored`, for `MissingRedeemers`), with
+    in the node suite. Not yet: the flat purpose of an Alonzo purpose (`toStored`, for `MissingRedeemers`), with
     Alonzo's UTXOW. Nothing in the node reads these types yet.
+- **Alonzo's state classes, PPUP and UTXOS** (stage 4, ninth part; `era/alonzo/AlonzoState.scala`,
+  `era/rules/Utxos.scala`, `era/rules/Utxo.scala`; cardano-ledger f649f975 `Alonzo/State/Account.hs:11-29`,
+  `Alonzo/State/CertState.hs:11-24`, `Alonzo/State/Stake.hs:18-23`, `Alonzo/PParams.hs:389-399`,
+  `Alonzo/Rules/Ppup.hs:12-16`, `Alonzo/Rules/Utxos.hs:135-245, 338-343`, `Alonzo/Rules/Utxo.hs:751-784`):
+  - Alonzo's state classes are Babbage's, over the same records: Shelley's accounts and certificate state, its
+    governance state read from the node's flat record and written back over it (`ShelleyGovStateRecord`), its
+    pointer-aware instant stake and its stored output (`StoredTxOut`). Alonzo's keys that must sign read the
+    genesis delegations through `EraCertState[Alonzo]`. No ranged class is new.
+  - PPUP is B5's, generic over the era, at Alonzo. Alonzo's UTXOS differs from Babbage's in three ways, each as
+    the reference has it: a transaction flagged valid has its scripts evaluated first and PPUP run after them,
+    whatever they gave, so a tag mismatch and PPUP's failure are both recorded and the scripts' events come
+    before PPUP's; the collection of the scripts records its failures but a translation's (`scriptsTransition`,
+    `isNotBadTranslation`, "BadTranslation was introduced in Babbage"), so a collection that fails only to
+    build a context records nothing and evaluates nothing; and a transaction flagged invalid pays its collateral
+    whole as fees (`sumAllCoin`), Alonzo having no collateral return, its stake deleted. Babbage's functions are
+    unchanged: Alonzo's are its own, as the reference's are.
+  - The flat UTXOS records a translation failure where Alonzo's does not. No transaction the reference accepts
+    reaches the difference: Alonzo's contexts fail to build only for a spent input the UTxO set does not hold,
+    which UTXO refuses (`BadInputsUTxO`), and for a time past the horizon, which the linearly extended epoch
+    information of `mkStAnnTx` and `validateOutsideForecast` share (`Alonzo/Rules/Ledgers.hs:129`,
+    `Alonzo/Rules/Utxo.hs:377-385`); it shows only in a refusal's failures (#85). The filter drops only the
+    failures Alonzo's `ContextError` has at the pin (`Alonzo/Plutus/TxInfo.hs:213-216`: a missing input, a slot
+    past the horizon), classified by a total match (`TranslationOrigin`); a failure only the node gives, a clock
+    with no era history or no sample of the slot among them, is kept in `CollectErrors` as Babbage's rule keeps
+    it, so a missing clock refuses the transaction and never skips its scripts
+    ([#1534](https://github.com/KD5UJC-XYZ/scarab/issues/1534)). This differs from the reference's filter on the
+    constructor only on causes no input of the reference reaches.
+  - Against the flat path and the reference (`AlonzoStateClassesSuite`, `AlonzoStakeSuite`, `AlonzoUtxosSuite`):
+    - the state classes on `alonzo-3013`, the native V10 snapshots `alonzo-349`, `alonzo-539` and `preview-4320`
+      and the era walk's 192 Alonzo states: the governance state read and written back identical, also over a
+      sentinel holding no Alonzo value, its proposals with their stored bytes and applied as the flat rule
+      applies them (561 delegates' updates of the walk's 187 states that hold proposals; 131 states' future
+      parameters potential, 56 definite and 5 a potential update of none); the accounts (576), their pointers,
+      deposits and obligations, and each account unregistered and registered again as the flat DELEG does. The
+      snapshots keep their UTxO sets in their tables, so their outputs are not read here;
+    - the instant stake on the 32 cases of `fixtures/reference/instant-stake` (the released functions' results,
+      which agree under Shelley's and Babbage's outputs, Alonzo's instance being the same functions), the 10
+      V1-context Alonzo submissions by their verdicts (4 refused, 2 taking their collateral, 4 spending their
+      inputs), the walk's 191 blocks (2 moving outputs) and an output at each of 576 registered pointers, each
+      stored output read through `StoredTxOut[Alonzo]` and written back as stored;
+    - UTXOS and the change of the state on the 10 V1-context submissions (the reference's six acceptances, two
+      flagged invalid, and its four tag mismatches by their description), also applied again, and on the 13
+      Alonzo cases of the refusal corpora with their states ticked to their slots: the same judgment and state
+      (UTxO record, deposits, fees, instant stake, governance state, the scripts' counts). Two cases are
+      refused by UTXOS alone (`NonGenesisUpdatePPUP` and a transaction flagged invalid with no script to fail),
+      and their failures encode to the reference's refusal bytes; two cases pay deposits;
+    - PPUP on the walk's 187 Alonzo states that hold proposals, proposed again: 131 for this epoch before the
+      point of no return, each voting the next parameters, 187 for the next epoch from it and 187 for the wrong
+      epoch; and on the walk's two Alonzo transactions that propose an update, each as Alonzo's body decoder
+      keeps it;
+    - crafted cases as B5's, at Alonzo's versions (6 in force; 7 and a minor that follow, five that cannot, a
+      minor of 2^32 - 1), and for UTXOS: an update whose proposer is not a genesis key on a transaction whose
+      script passes and on one whose script fails (both failures recorded), PPUP's event after the scripts', an
+      update written wide, a translation failure not recorded (a spent input missing, no script evaluated, the
+      flat UTXOS recording it) beside a missing cost model recorded on both, a missing clock recorded on both
+      with no script evaluated and a time past the horizon (the reference's) not recorded and no script
+      evaluated (#1534), a judgment of `ValidateNone` evaluating no script while PPUP records its update (no
+      labelled clause runs, cardano-ledger f649f975
+      `libs/small-steps/src/Control/State/Transition/Extended.hs:709-712, 727-730`), a transaction flagged
+      invalid (no PPUP, its collateral's lovelace the fees), and a deregistration's refund.
+
+    Every comparison agrees, but the translation failure the flat path records. Not compared: the events of the
+    change of the state (`TotalDeposits`, `TxUTxODiff`), which the suite discards; the bytes of a spent output
+    in `TxUTxODiff` after the store's round trip are the stored form's, the known difference of
+    [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7232186984). Nothing in the node runs these
+    rules yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

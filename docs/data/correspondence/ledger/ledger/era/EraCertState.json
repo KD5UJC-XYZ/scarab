@@ -331,6 +331,26 @@
     }
    ]
   },
+  "given ledger.era.EraCertState.alonzo": {
+   "class": "Mirror",
+   "digest": "1cd653b0faf6cb62",
+   "evidence": [
+    "AlonzoStateClassesSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/State/CertState.hs",
+     "lines": [
+      11,
+      11
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraCertState AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.EraCertState.babbage": {
    "class": "Mirror",
    "digest": "6816d1e1555e1eea",

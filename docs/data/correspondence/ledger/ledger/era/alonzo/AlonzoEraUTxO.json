@@ -24,12 +24,12 @@
   },
   "val ledger.era.alonzo.AlonzoEraUTxO.instance": {
    "class": "Mirror",
-   "digest": "b58e317341038ae5",
+   "digest": "77da3f0c0369712a",
    "evidence": [
     "AlonzoPlutusContextSuite",
     "AlonzoPlutusContextRefusalsSuite"
    ],
-   "note": "every member of the reference's EraUTxO and AlonzoEraUTxO instances; getWitsVKeyNeeded reads the genesis delegations from the certificate state's delegation state, as Alonzo has no certificate-state class among the era types yet (#85)",
+   "note": "every member of the reference's EraUTxO and AlonzoEraUTxO instances; getWitsVKeyNeeded reads the genesis delegations through Alonzo's certificate-state class",
    "structure": "same",
    "upstream": [
     {

@@ -15,6 +15,7 @@ import xyz.kd5ujc.scarab.ledger.{
   GovActionId
 }
 import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
   Babbage,
   Coin,
   Conway,
@@ -359,6 +360,22 @@ object EraGov:
     * Shelley's record and lenses (`Shelley/Governance.hs:74-82, 185-192`), and no deposits
     * (`obligationGovState = const mempty`).
     */
+  /** `instance EraGov AlonzoEra` (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs:389-399`,
+    * cardano-ledger f649f975): Shelley's record and lenses (`Shelley/Governance.hs:74-82,
+    * 185-192`), and no deposits (`obligationGovState = const mempty`).
+    */
+  given alonzo: EraGov[Alonzo] with
+    val pparamsOf: EraPParams[Alonzo] = EraPParams.alonzo
+    val emptyGovState: GovState[Alonzo] =
+      ShelleyGovState.emptyShelleyGovState[Alonzo](using pparamsOf)
+    val curPParamsGovStateL: Lens[GovState[Alonzo], PParams[Alonzo]] =
+      ShelleyGovState.curPParamsShelleyGovStateL[Alonzo]
+    val prevPParamsGovStateL: Lens[GovState[Alonzo], PParams[Alonzo]] =
+      ShelleyGovState.prevPParamsShelleyGovStateL[Alonzo]
+    val futurePParamsGovStateL: Lens[GovState[Alonzo], FuturePParams[Alonzo]] =
+      ShelleyGovState.futurePParamsShelleyGovStateL[Alonzo]
+    def obligationGovState(st: GovState[Alonzo]): Obligations = cats.Monoid[Obligations].empty
+
   given babbage: EraGov[Babbage] with
     val pparamsOf: EraPParams[Babbage] = EraPParams.babbage
     val emptyGovState: GovState[Babbage] =

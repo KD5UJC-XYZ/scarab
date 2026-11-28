@@ -1,0 +1,64 @@
+{
+ "entries": {
+  "val ledger.era.alonzo.AlonzoState.accounts": {
+   "class": "Mirror",
+   "digest": "6b7323f63262d6ff",
+   "evidence": [
+    "AlonzoStateClassesSuite"
+   ],
+   "note": "Alonzo's two accounts instances in one value, given in the root class's companion",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/State/Account.hs",
+     "lines": [
+      11,
+      27
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraAccounts AlonzoEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/State/Account.hs",
+     "lines": [
+      29,
+      29
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ShelleyEraAccounts AlonzoEra"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoState.certState": {
+   "class": "Mirror",
+   "digest": "884635aa2cd33931",
+   "evidence": [
+    "AlonzoStateClassesSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/State/CertState.hs",
+     "lines": [
+      11,
+      24
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraCertState AlonzoEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "object ledger.era.alonzo.AlonzoState"
+   ],
+   "reason": "objects that hold an era's instances of the accounts and certificate-state classes, the reference's functions over those classes (each mapped by itself), or CanEqual; Scala containers with no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/alonzo/AlonzoState.scala"
+}

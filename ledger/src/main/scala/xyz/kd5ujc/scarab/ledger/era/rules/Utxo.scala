@@ -647,6 +647,65 @@ object AlonzoUtxo:
       new AlonzoUtxoPredFailure.OutputTooBigUTxO[E](_)
     )
 
+  /** `updateUTxOState` (`Alonzo/Rules/Utxo.hs:751-784`, cardano-ledger f649f975): a transaction
+    * flagged valid changes the state as Shelley's does, its deposits and outputs told as UTXO's
+    * events; one flagged invalid spends its collateral inputs the set holds and pays their lovelace
+    * as fees (`sumAllCoin`), and their stake is deleted. Alonzo has no collateral return.
+    */
+  def updateUTxOState[F[_]: Monad, E <: EraTag](
+      pp: PParams[E],
+      certState: CertState[E],
+      tx: Tx[TxLevel.Top, E],
+      utxoState: UTxOState[E]
+  )(using
+      t: AlonzoEraTx[E],
+      b: AlonzoEraTxBody[E],
+      c: EraCertState[E],
+      k: EraStake[E],
+      s: StoredTxOut[E],
+      events: Tell[F, Chain[AlonzoUtxoEvent[E]]],
+      raise: Raise[F, UtxoStateDefect],
+      stored: StoredOutputs[F, E]
+  ): F[UTxOState[E]] =
+    val txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
+    t.isValid(tx) match
+      case IsPhase2Valid.Phase2Valid =>
+        ShelleyUtxo.updateUTxOState[F, E](
+          pp,
+          txBody,
+          certState,
+          depositChange =>
+            events.tell(
+              Chain.one(
+                AlonzoUtxoEvent.TotalDeposits(b.id[TxLevel.Top](txBody)(using b.top), depositChange)
+              )
+            ),
+          (consumed, created) =>
+            events.tell(Chain.one(AlonzoUtxoEvent.TxUTxODiff(consumed, created))),
+          utxoState
+        )
+      case IsPhase2Valid.Phase2Invalid =>
+        val (utxoKeep, utxoDel) =
+          ShelleyUtxo.extractKeys(utxoState.utxo.utxo, b.collateralInputs(txBody))
+        for
+          deleted <- stored.read(utxoDel)
+          instantStake <- ShelleyUtxo.vocab[F, xyz.kd5ujc.scarab.ledger.state.InstantStake[E]](
+            k.deleteInstantStake(deleted, utxoState.instantStake)
+          )
+        yield utxoState.copy(
+          utxo = UtxoTables(utxoKeep),
+          fees =
+            Coin(utxoState.fees.value + sumAllCoin[E](deleted.unUTxO.values)(using b.outputsOf)),
+          instantStake = instantStake
+        )
+
+  /** `sumAllCoin` (`libs/cardano-ledger-core/src/Cardano/Ledger/State/UTxO.hs:207-212`,
+    * cardano-ledger f649f975): the outputs' lovelace added up in a `Word64` that wraps (`foldMap'
+    * getCoinWord64`).
+    */
+  def sumAllCoin[E <: EraTag](outs: Iterable[TxOut[E]])(using o: EraTxOut[E]): BigInt =
+    outs.iterator.map(out => o.valueOps.coin(o.value(out)).value).sum % (BigInt(1) << 64)
+
 /** The failures of Alonzo's type that Babbage's `validateTotalCollateral` reports, each predicate
   * it runs declaring its own: the injection it asks for need only take these.
   */
