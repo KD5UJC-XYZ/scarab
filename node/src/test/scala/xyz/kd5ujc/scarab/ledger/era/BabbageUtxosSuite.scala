@@ -5,20 +5,16 @@ import cats.{Functor, Id, Monad}
 import cats.data.{Chain, NonEmptyChain}
 import cats.mtl.{Raise, Stateful, Tell}
 import cats.syntax.all.*
-import io.circe.parser.parse
-import java.nio.file.{Files, Path}
 import monocle.Lens
 import munit.FunSuite
 import scala.collection.immutable.{SortedMap, TreeMap}
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{
   Block,
-  CollectError as FlatCollectError,
   GenDelegPair,
   LedgerDefect,
   PlutusCase,
   PlutusStats,
-  PosixClock,
   PpupFailure,
   PredicateFailure,
   ProtocolParams,
@@ -28,7 +24,6 @@ import xyz.kd5ujc.scarab.ledger.{
   TxChecks,
   TxEnv,
   TxIn,
-  TxOut as FlatTxOut,
   Update as StoredUpdate,
   UtxoFailure,
   UtxosFailure,
@@ -36,12 +31,7 @@ import xyz.kd5ujc.scarab.ledger.{
   ParamUpdate,
   Utxo
 }
-import xyz.kd5ujc.scarab.ledger.era.babbage.{
-  BabbageEraUTxO,
-  BabbagePParams,
-  BabbageTestKit,
-  BabbageTx
-}
+import xyz.kd5ujc.scarab.ledger.era.babbage.{BabbageEraUTxO, BabbagePParams, BabbageTx}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   AlonzoUtxoEvent,
   AlonzoUtxosEvent,
@@ -74,7 +64,6 @@ import xyz.kd5ujc.scarab.ledger.rules.{
 }
 import xyz.kd5ujc.scarab.ledger.state.{
   Babbage,
-  Build,
   EpochNo,
   FuturePParams as StoredFuturePParams,
   Genesis,
@@ -87,16 +76,13 @@ import xyz.kd5ujc.scarab.ledger.state.{
   UTxOState
 }
 import xyz.kd5ujc.scarab.consensus.state.MirrorStep
-import xyz.kd5ujc.scarab.ledger.rules.{EraNes, Sts, Tick}
-import xyz.kd5ujc.scarab.ledger.state.{SlotNo, UtxoTables}
-import xyz.kd5ujc.scarab.node.NodeSetup
+import xyz.kd5ujc.scarab.ledger.rules.EraNes
+import xyz.kd5ujc.scarab.ledger.state.UtxoTables
 import xyz.kd5ujc.scarab.node.mempool.{LocalSubmission, Rejection}
-import xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite
-import xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.{Family, RefusalEra}
+import xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.Family
 import xyz.kd5ujc.scarab.node.read.ErasStates
 import xyz.kd5ujc.scarab.plutus.{EvalRequest, ScarabEvaluator, ScriptEvaluator}
 import xyz.kd5ujc.scarab.protocol.{Era as ProtocolEra, StateLayout}
-import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
 
 /** Babbage's PPUP and UTXOS on the era types (`era/rules/Ppup.scala`,
   * `BabbageUtxos.utxosTransition`; cardano-ledger f649f975 `Shelley/Rules/Ppup.hs`,
@@ -119,6 +105,8 @@ import xyz.kd5ujc.scarab.storage.haskell.state.{HaskellState, UtxoCodecs}
   *     them a deregistration's refund, which no recorded case collects.
   */
 class BabbageUtxosSuite extends FunSuite:
+  import BabbageRecorded.*
+
   private given era: ShelleyBasedEra[Babbage] = ShelleyBasedEra.SBabbage
   private val t = EraTx.babbage
 
@@ -130,11 +118,6 @@ class BabbageUtxosSuite extends FunSuite:
     Map(("current", true) -> 132, ("next", true) -> 185, ("wrong", false) -> 185)
   private val WalkPredictions: Map[String, Int] = Map("voted" -> 132)
   private val CaptureProposals: Vector[Boolean] = Vector(true, true)
-
-  private def right[E, A](what: String)(e: Either[E, A]): A =
-    e.fold(x => fail(s"$what: $x"), identity)
-
-  private def slotNo(n: BigInt): SlotNo = right(s"slot $n")(SlotNo.fromBigInt(n))
 
   // ---- the era rules, run in one judgment
 
@@ -224,13 +207,6 @@ class BabbageUtxosSuite extends FunSuite:
 
   // ---- what each side decided, compared as one type
 
-  private enum Collect:
-    /** The purpose that has no redeemer, by its tag and index. */
-    case NoRedeemer(tag: Int, ix: BigInt)
-    case NoWitness(hash: Bytes)
-    case NoCostModel(language: xyz.kd5ujc.scarab.plutus.PlutusLanguage)
-    case BadTranslation(error: TranslationError)
-
   /** A failure of PPUP or UTXOS: PPUP's as the flat failure (whose projection it is), the scripts'
     * by their verdict, each failing script by its cause and request.
     */
@@ -240,47 +216,11 @@ class BabbageUtxosSuite extends FunSuite:
     case PassedUnexpectedly(flag: Boolean)
     case FailedUnexpectedly(flag: Boolean, failures: List[(EraUtxoRun.Cause, Option[EvalRequest])])
 
-  private def flatPpupOf(f: ShelleyPpupPredFailure[Babbage]): PpupFailure = f match
-    case ShelleyPpupPredFailure.NonGenesisUpdatePPUP(m) =>
-      PpupFailure.NonGenesisUpdate(
-        xyz.kd5ujc.scarab.ledger.Mismatch(m.supplied.map(_.bytes), m.expected.map(_.bytes))
-      )
-    case ShelleyPpupPredFailure.PPUpdateWrongEpoch(c, e, vp) =>
-      PpupFailure.PPUpdateWrongEpoch(c.toBigInt, e.toBigInt, vp)
-    case ShelleyPpupPredFailure.PVCannotFollowPPUP(pv) =>
-      PpupFailure.PVCannotFollow(BigInt(pv.pvMajor.value), pv.pvMinor.value)
-
-  /** A purpose's tag and index, of the scripts the body needs (`getScriptsNeeded`) whose item it
-    * names, as `BabbagePlutusContextRefusalsSuite` reads them.
-    */
-  private def purposeIx(
-      needed: Vector[AlonzoPlutusPurpose[AsIxItem, Babbage]],
-      purpose: AlonzoPlutusPurpose[AsItem, Babbage]
-  ): Collect.NoRedeemer =
-    val p = needed
-      .find(p =>
-        EraScript.babbage.hoistPlutusPurpose[AsIxItem, AsItem](
-          [ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsItem(a)
-        )(p) == purpose
-      )
-      .getOrElse(fail(s"$purpose is not needed"))
-    val ix = EraScript.babbage
-      .hoistPlutusPurpose[AsIxItem, AsIx]([ix, it] => (a: AsIxItem[ix, it]) => AsIxItem.toAsIx(a))(
-        p
-      )
-    Collect.NoRedeemer(ix.tag, ix.ix.value)
-
   private def seenOf(needed: Vector[AlonzoPlutusPurpose[AsIxItem, Babbage]])(f: URec): Seen =
     f match
       case AlonzoUtxosPredFailure.UpdateFailure(p) => Seen.Ppup(flatPpupOf(p))
       case AlonzoUtxosPredFailure.CollectErrors(es) =>
-        Seen.Collected(es.toList.map {
-          case CollectError.NoRedeemer(purpose) => purposeIx(needed, purpose)
-          case CollectError.NoWitness(h)        => Collect.NoWitness(h)
-          case CollectError.NoCostModel(l)      => Collect.NoCostModel(l)
-          case CollectError.BadTranslation(e) =>
-            Collect.BadTranslation(BabbageTestKit.flatContextError(e))
-        })
+        Seen.Collected(es.toList.map(collectOf(needed)))
       case AlonzoUtxosPredFailure.ValidationTagMismatch(
             flag,
             TagMismatchDescription.PassedUnexpectedly
@@ -302,12 +242,7 @@ class BabbageUtxosSuite extends FunSuite:
     case PredicateFailure.Utxow(UtxowFailure.Utxo(UtxoFailure.Utxos(u))) =>
       u match
         case UtxosFailure.CollectErrors(es) =>
-          Seen.Collected(es.toVector.toList.map {
-            case FlatCollectError.NoRedeemer(p)     => Collect.NoRedeemer(p.tag, BigInt(p.index))
-            case FlatCollectError.NoWitness(h)      => Collect.NoWitness(h)
-            case FlatCollectError.NoCostModel(l)    => Collect.NoCostModel(l)
-            case FlatCollectError.BadTranslation(e) => Collect.BadTranslation(e)
-          })
+          Seen.Collected(es.toVector.toList.map(flatCollectOf))
         case UtxosFailure.ValidationTagMismatch(flag, None) => Seen.PassedUnexpectedly(flag)
         case UtxosFailure.ValidationTagMismatch(flag, Some(fs)) =>
           Seen.FailedUnexpectedly(flag, fs.toList.map(p => EraUtxoRun.cause(p.cause) -> p.request))
@@ -329,33 +264,6 @@ class BabbageUtxosSuite extends FunSuite:
     )
 
   // ---- one judgment of UTXOS, then the change of the state, both ways
-
-  /** A transaction both ways, with the state and parameters it is judged on. */
-  private final case class Judged(
-      name: String,
-      flat: FlatTx,
-      typed: BabbageTx,
-      known: Map[TxIn, FlatTxOut],
-      pp: ProtocolParams,
-      cert: ShelleyCertState,
-      state: UTxOState[Babbage],
-      globals: Globals,
-      slot: BigInt,
-      posix: BigInt => BigInt
-  ):
-    /** The flat rules' environment at `slot`, of the same geometry the era rules ask (`Globals`).
-      */
-    def ctx: TxEnv =
-      val epoch = globals.epochOf(slot)
-      TestLedger.env.copy(
-        slot = slot,
-        epoch = epoch,
-        network = globals.networkId.wire,
-        firstSlotNextEpoch = globals.firstSlot(epoch + 1),
-        stabilityWindow = globals.stabilityWindow,
-        updateQuorum = globals.quorum,
-        clock = Some(PosixClock.Total(posix))
-      )
 
   /** What a judgment came to: its failures in order, or the state after with the scripts' counters.
     */
@@ -397,7 +305,7 @@ class BabbageUtxosSuite extends FunSuite:
       ShelleyGovStateRecord.fromStored[Babbage](j.state.gov)
     )
     val stAnnTx = AlonzoStAnnTx.mkAlonzoStAnnTx[Babbage](
-      slot => Right(j.posix(slot)),
+      j.clock.posix,
       pp,
       utxo,
       Map.empty,
@@ -498,42 +406,6 @@ class BabbageUtxosSuite extends FunSuite:
 
   // ---- the recorded V1-context submissions
 
-  private final case class Verdict(accepted: Boolean, text: String)
-
-  private lazy val v1: Vector[(PlutusCase, Verdict)] =
-    Vector("babbage-pv7", "babbage-pv8").flatMap { name =>
-      val path = Path.of(s"fixtures/reference/v1-context/$name.json")
-      if !Files.isRegularFile(path) then fail(s"missing committed fixture $path")
-      right(name)(parse(Files.readString(path))).asArray
-        .getOrElse(fail(s"$name: not an array"))
-        .map { j =>
-          val reference = j.hcursor.downField("reference")
-          PlutusCase.fromJson(j) -> Verdict(
-            right("accepted")(reference.get[Boolean]("accepted")),
-            right("error")(reference.get[String]("error"))
-          )
-        }
-    }
-
-  private def v1Judged(c: PlutusCase): Judged =
-    val witnesses = c.tx.witnesses.raw.getOrElse(fail(s"${c.name}: no witness bytes"))
-    val parts = Block.Transaction(c.tx.body.raw, witnesses, c.tx.auxiliary, c.tx.isValid)
-    val known = c.spent ++ c.references ++ c.collateral
-    val nes: NewEpochState[Babbage] = Build.funded(Build.nes[Babbage](5, c.params), known)
-    val ls = nes.es.ls
-    Judged(
-      c.name,
-      c.tx,
-      right(s"${c.name} typed")(BabbageTx.decode(parts, StateLayout.Node11_1)),
-      known,
-      c.params,
-      ls.cert,
-      ls.utxo,
-      TestLedger.globals,
-      TestLedger.env.slot,
-      TestLedger.env.clock.getOrElse(fail("no clock")).posix(_).getOrElse(fail("no time"))
-    )
-
   /** The cause the reference's refusal names, as the era rule gives it: the tag mismatch, or the
     * context error its text names, with its source (`V1ContextSuite`).
     */
@@ -626,8 +498,6 @@ class BabbageUtxosSuite extends FunSuite:
 
   private def emptyGov(pp: ProtocolParams): StoredGov =
     StoredGov(Sorted.empty, Sorted.empty, pp, pp, StoredFuturePParams.NoPParamsUpdate)
-
-  private def hex(s: String): Bytes = right(s)(Bytes.fromHex(s))
 
   /** An update's field: its key and the bytes of its value. */
   private def field(key: Int, value: String): (Int, Bytes) = key -> hex(value)
@@ -968,55 +838,6 @@ class BabbageUtxosSuite extends FunSuite:
 
   // ---- the refusal corpora's Babbage cases, with their recorded states
 
-  /** A recorded case: its judgment both ways and the reference's reason. */
-  private final case class Refused(judged: Judged, reason: Bytes, families: Vector[Family])
-
-  private lazy val refusals: Vector[Refused] =
-    val loaded = right("the refusal corpus")(
-      ReferenceRefusalSuite.load(Path.of("fixtures/reference/refusals"))
-    )
-    loaded.corpora.filter(_.era == RefusalEra.Babbage).flatMap { c =>
-      val setup = right(s"${c.path} genesis")(
-        NodeSetup.fromFiles(c.build)(name => c.genesis.get(name).map(_.toArray))
-      )
-      val globals = Globals(setup.globals, setup.geometry)
-      val codecs = right(s"${c.path} layout")(ReferenceRefusalSuite.stateCodecs(c.build))
-      c.cases.map { rc =>
-        val what = s"${c.path}/${rc.label}"
-        val nes = right(s"$what state")(
-          codecs.newEpochState[Babbage].decodeBytes(c.states(rc.state), HaskellState.limits)
-        )
-        val known = right(s"$what UTxO")(UtxoCodecs.utxo.decodeBytes(c.utxos(rc.utxo)))
-        val funded = NewEpochState
-          .ledger[Babbage]
-          .modify(ls =>
-            ls.copy[Babbage](utxo = ls.utxo.copy(utxo = UtxoTables(Utxo.fromMap(known))))
-          )(nes)
-        val slot = rc.tipSlot + 1
-        val ticked = right(s"$what tick")(
-          Sts(Tick.sts[Babbage])(globals, (), funded, right("slot")(SlotNo.fromBigInt(slot)))
-        )
-        val ls = ticked.es.ls
-        val bytes = right(s"$what item")(LocalSubmission.unwrap(rc.item)).raw
-        Refused(
-          Judged(
-            what,
-            right(s"$what flat")(FlatTx.fromEnvelope(bytes, ProtocolEra.Babbage)),
-            right(s"$what typed")(BabbageTx.fromEnvelope(bytes, StateLayout.Node11_1)),
-            known,
-            ls.utxo.gov.curPParams,
-            ls.cert,
-            ls.utxo,
-            globals,
-            slot,
-            _ * 1000
-          ),
-          rc.reason,
-          rc.families
-        )
-      }
-    }
-
   test(
     "the refusal corpora's Babbage cases: the flat rules' judgment and state, deposits among it"
   ) {
@@ -1265,9 +1086,6 @@ class BabbageUtxosSuite extends FunSuite:
       typed = right("typed")(BabbageTx.decode(parts, StateLayout.Node11_1))
     )
 
-  private def caseNamed(name: String): PlutusCase =
-    v1.map(_._1).find(_.name == name).getOrElse(fail(s"no case $name"))
-
   private def withGenesis(j: Judged): Judged =
     j.copy(cert = j.cert.copy(dState = j.cert.dState.copy(genDelegs = delegs(1, 2, 3))))
 
@@ -1318,7 +1136,7 @@ class BabbageUtxosSuite extends FunSuite:
     val g10 = withGenesis(j)
     val pp = PParams[Babbage](right("pp")(BabbagePParams.fromStored(g10.pp)))
     val stAnnTx = AlonzoStAnnTx.mkAlonzoStAnnTx[Babbage](
-      slot => Right(g10.posix(slot)),
+      g10.clock.posix,
       pp,
       right("utxo")(BabbageEraUTxO.fromStored(g10.known)),
       Map.empty,
