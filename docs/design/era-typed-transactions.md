@@ -3799,7 +3799,7 @@ Conway's rules on the classes follow as the rest of stage 2.
     in `TxUTxODiff` after the store's round trip are the stored form's, the known difference of
     [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7232186984). Nothing in the node runs these
     rules yet.
-- **Shelley's certificate rules for Babbage** (stage 4, plan slice 4; `era/rules/Delegs.scala`,
+- **Shelley's certificate rules for Babbage and Alonzo** (stage 4, plan slice 4; `era/rules/Delegs.scala`,
   `era/rules/DelegsFailures.scala`; cardano-ledger f649f975 `Shelley/Rules/Delegs.hs:66-208`,
   `Shelley/Rules/Delpl.hs:52-228`, `Shelley/Rules/Deleg.hs:73-426`, `Babbage/Rules/{Delegs,Delpl,Deleg,Pool}.hs`):
   - DELEGS, DELPL and DELEG, each generic in its era over `EraCertState`, `ShelleyEraAccounts` and
@@ -3853,9 +3853,24 @@ Conway's rules on the classes follow as the rest of stage 2.
       injections and embeddings, its failure nested as the reference's.
 
     Every comparison agrees. Not compared byte for byte: the two refusal cases of moves of rewards that UTXOW
-    refuses too (`mir-signed-intermediate-*`), whose DELEG failures are compared with the flat rule's only. Not yet:
-    Alonzo's instances, on Alonzo's state classes now in place. Nothing in the node runs these rules;
-    the flat path stays.
+    refuses too (`mir-signed-intermediate-*`), whose DELEG failures are compared with the flat rule's only.
+  - Alonzo's instances (cardano-ledger f649f975 `Alonzo/Rules/{Delegs,Delpl,Deleg,Pool}.hs`, `Alonzo/Era.hs:91-105`,
+    `Alonzo/TxCert.hs:12`), on Alonzo's state classes (`EraCertState[Alonzo]`, `ShelleyEraAccounts[Alonzo]`) and its
+    certificate class (`ShelleyEraTxCertToBabbage[Alonzo]`): Alonzo's cases of the eight families, its injections,
+    the same as Babbage's at the same lines, and its embeddings, and its `IsShelleyTxCert`, made from the proof in
+    Alonzo's certificate file alone. The same suites run at Alonzo (`AlonzoDelegsSuite`, `AlonzoDelegsCorpusSuite`):
+    - the Alonzo blocks of the captures hold no certificate either (192 of `fixtures/eras` and 198 of
+      `fixtures/chain-dep`, two transactions each). On each of their 390 Alonzo states, the certificates the state
+      makes, as one transaction and each alone: of the 8,970 single certificates, 5,883 are accepted and 3,087
+      refused, reaching the same six failures, and all 390 states accept the certificates they accept alone
+      together, with a fresh account at its pointer;
+    - the refusal corpora's 3 Alonzo cases with certificates: the same judgment both ways, refused exactly where
+      the reference refused DELEG or POOL; the 2 refused by them alone encode to the reference's refusal bytes,
+      and the third, which UTXO refuses too (`deleg-stake-key-registered`), is compared with the flat rule;
+    - the crafted cases at Alonzo's version 6 (below version 5 and at 11 as at Babbage, the protocol version being
+      the parameters'), each Alonzo injection and embedding summoned and compared, and the evidence unforgeable.
+
+    Every comparison agrees. Nothing in the node runs these rules; the flat path stays.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

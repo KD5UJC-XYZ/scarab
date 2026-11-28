@@ -955,7 +955,9 @@
         "BabbageUtxosSuite",
         "AlonzoUtxosSuite",
         "BabbageDelegsSuite",
-        "BabbageDelegsCorpusSuite"
+        "BabbageDelegsCorpusSuite",
+        "AlonzoDelegsSuite",
+        "AlonzoDelegsCorpusSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"
