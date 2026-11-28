@@ -4,6 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.Anchor
 import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
   Babbage,
   ColdCommittee,
   Coin,
@@ -227,6 +228,8 @@ trait ConwayEraTxCert[E <: EraTag] extends EraTxCert[E]:
 
 /** The instances of each era, the one place that lists the eras having each certificate class. */
 object EraTxCert:
+  given alonzo: ShelleyEraTxCertToBabbage[Alonzo] =
+    xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoTxCert.instance
   given babbage: ShelleyEraTxCertToBabbage[Babbage] =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxCert.instance
   given conway: (ConwayEraTxCert[Conway] & ShelleyEraTxCert[Conway]) =

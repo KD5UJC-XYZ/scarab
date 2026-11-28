@@ -3580,9 +3580,9 @@ Conway's rules on the classes follow as the rest of stage 2.
   `Babbage/PParams.hs:167-403`):
   - `Era[Alonzo]` (versions 5 to 6) and Alonzo's cases of the value (Mary's), output, native script, script,
     Plutus script, purpose and certificate families. The certificate (`AlonzoTxCert`, `ShelleyTxCert AlonzoEra`)
-    is there because Alonzo's certifying purpose names it; its reader and classes come with Alonzo's body. The
-    transaction, body, witness, auxiliary-data, scripts-needed, `StAnnTx`, governance-state and parameter-update
-    families other than `PParamsHKD` have no Alonzo case yet.
+    is there because Alonzo's certifying purpose names it; its reader and classes came with Alonzo's transaction
+    (below), as did the transaction's families. The governance-state and parameter-update families other than
+    `PParamsHKD` have no Alonzo case yet.
   - `AlonzoTxOut` over `AlonzoTxOutRep`: the reader of a body's output item by the flat output reader's readers,
     held to the flat output; the reference's encoder (`EncCBOR (AlonzoTxOut era)`, with Mary's value encoder,
     its maps' keys ascending bytewise), which writes the address as the output holds it: written again from its
@@ -3647,6 +3647,35 @@ Conway's rules on the classes follow as the rest of stage 2.
       decoder names the parameter (a ratio out of its interval, a cost per word not a `Word64`), the known
       diagnostic gap B1 recorded.
   - Nothing in the node reads these types yet.
+- **Alonzo's transaction** (stage 4, seventh part; `era/alonzo/AlonzoTx*.scala`; cardano-ledger f649f975
+  `Alonzo/TxBody.hs:158-510`, `Alonzo/Tx.hs:205-287, 526-554`, `Alonzo/TxCert.hs:11-65`, `Alonzo/TxWits.hs:466-703`,
+  `Alonzo/TxAuxData.hs:210-392`):
+  - Alonzo's certificate, body, witness set, auxiliary data and transaction, as Babbage's are (above), with
+    Alonzo's instances of `ShelleyEraTxCertToBabbage`, `ShelleyEraTxBody`, `AlonzoEraTxBodyToConway`,
+    `AlonzoEraTxWits`, `AlonzoEraTxAuxData` and `AlonzoEraTx`, and Alonzo's cases of the transaction, body,
+    witness, auxiliary-data, scripts-needed, `StAnnTx` and `StAnnTxCache` families; no ranged class is new. The
+    body has Alonzo's keys (0 to 9, 11, 13 to 15; Babbage's 16 to 18 are refused as unknown), its outputs are
+    `AlonzoTxOut`s, and every input it must hold is spendable, the spent and the collateral ones. The witness set
+    knows the keys 6 and 7, PlutusV2's and PlutusV3's, and refuses each list at its first script, in the order the
+    keys are written; the auxiliary data refuses PlutusV2's key 3, PlutusV3's 4 and PlutusV4's 5 before their
+    values (`guardPlutus`). Each value is read by the flat decoder's reader of its field at decoder version 5.
+  - Against the flat decoder at Alonzo, at both layouts (`AlonzoTxDifferentialSuite`, `AlonzoTxSuite`):
+    - A6's 69 Alonzo transaction rows (57 distinct; 15 flagged invalid, eight with auxiliary data), compared
+      whole as Babbage's are, block transactions also submitted whole;
+    - 47,300 byte mutants of their 50 distinct bodies, 51 distinct witness sets and 57 distinct transactions
+      (10,342 accepted), alike in verdict, an accepted one compared whole;
+    - 479 Alonzo rows of the reference's decoder corpora, three witness sets recorded at protocol version 6 and
+      read at it, and the reference's 140 verdicts on Alonzo auxiliary data, 70 at each of Alonzo's versions.
+
+    The two accept and refuse alike everywhere, and as the reference does where it recorded a verdict. Compared
+    whole, 64 refusals differ from the flat decoder's, in the kinds Babbage's do: 54 update values named at the
+    typed update's site, the two repeated parameter keys named as the reference names them, seven envelopes
+    refused where the reference reads the record, and the redeemer's detached units. As at Babbage, three refused
+    envelopes (a head over the wrong count of items, and a detached record) and the redeemer's detached units keep a
+    cause other than the reference's, the verdict being the reference's (Gaps). No recorded Alonzo witness set
+    holds a native script and no recorded Alonzo transaction holds metadata, so the comparison's faults for those
+    are made on a crafted witness set and the envelope corpus's metadata. Nothing in the node reads these types
+    yet; Alonzo's Plutus side is the next part.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

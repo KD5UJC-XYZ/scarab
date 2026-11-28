@@ -6,6 +6,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{LedgerDecodeError, RewardAccount, TxIn}
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.AccountBalanceInterval
 import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
   Babbage,
   Coin,
   Conway,
@@ -346,6 +347,11 @@ enum EraField:
 
 /** The instances of each era, the one place that lists the eras having each body class. */
 object EraTxBody:
+  given alonzo: ((ShelleyEraTxBody[Alonzo] & AlonzoEraTxBodyToConway[Alonzo]) {
+    type Level[L <: TxLevel] = TopOnly[L]
+  }) =
+    xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoTxBody.instance
+
   given babbage: ((ShelleyEraTxBody[Babbage] & BabbageEraTxBody[Babbage] &
     AlonzoEraTxBodyToConway[Babbage]) { type Level[L <: TxLevel] = TopOnly[L] }) =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxBody.instance

@@ -31,7 +31,6 @@ import xyz.kd5ujc.scarab.ledger.era.{
   NativeScriptRep,
   Plutus,
   PlutusLanguage,
-  ShelleyTxCertRep,
   Timelock,
   TimelockScripts,
   Val
@@ -184,21 +183,6 @@ object AlonzoScript:
         purpose: AlonzoPlutusPurpose[F, Alonzo]
     ): Option[F[Unsigned[Unsigned.Width.W32], AccountAddress]] =
       AlonzoPlutusPurpose.toWithdrawing(purpose)
-
-/** An Alonzo certificate: `ShelleyTxCert AlonzoEra` (`type TxCert AlonzoEra = ShelleyTxCert
-  * AlonzoEra`, cardano-ledger f649f975 `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxCert.hs:12`),
-  * the representation the reference shares from Shelley ([[ShelleyTxCertRep]]), a type of its own.
-  * It is here because Alonzo's certifying purpose names it; nothing makes one yet: its reader and
-  * the certificate classes' instances come with Alonzo's body.
-  */
-opaque type AlonzoTxCert = ShelleyTxCertRep
-
-object AlonzoTxCert:
-  given CanEqual[AlonzoTxCert, AlonzoTxCert] = CanEqual.derived
-
-  extension (c: AlonzoTxCert)
-    /** The shared representation, read only. */
-    def rep: ShelleyTxCertRep = c
 
 /** An Alonzo output: `AlonzoTxOut AlonzoEra` (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs:
   * 144-160, 303-333`, cardano-ledger f649f975), an address, a Mary value and an optional datum

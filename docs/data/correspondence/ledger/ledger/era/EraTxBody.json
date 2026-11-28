@@ -416,6 +416,23 @@
     }
    ]
   },
+  "given ledger.era.EraTxBody.alonzo": {
+   "class": "Mirror",
+   "digest": "362bf6b2693063ce",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      216,
+      216
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxBody AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.EraTxBody.babbage": {
    "class": "Mirror",
    "digest": "0f242dc5f0a0c213",

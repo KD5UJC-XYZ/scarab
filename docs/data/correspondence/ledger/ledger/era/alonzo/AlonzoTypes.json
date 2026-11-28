@@ -274,24 +274,6 @@
     }
    ]
   },
-  "type ledger.era.alonzo.AlonzoTxCert": {
-   "class": "Mirror",
-   "digest": "a685380d0e31817c",
-   "note": "ShelleyTxCert AlonzoEra over the shared representation; here because Alonzo's certifying purpose names it, its reader and classes to come with Alonzo's body (#85)",
-   "structure": "same",
-   "upstream": [
-    {
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxCert.hs",
-     "lines": [
-      12,
-      12
-     ],
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "symbol": "TxCert AlonzoEra"
-    }
-   ]
-  },
   "type ledger.era.alonzo.AlonzoTxOut": {
    "class": "Mirror",
    "digest": "c8a8e7c4b862258f",
@@ -383,17 +365,14 @@
     "def ledger.era.alonzo.AlonzoPlutusScript#kind",
     "def ledger.era.alonzo.AlonzoScript.rep",
     "def ledger.era.alonzo.AlonzoTimelock.rep",
-    "def ledger.era.alonzo.AlonzoTxCert.rep",
     "def ledger.era.alonzo.AlonzoTxOut.rep",
     "given ledger.era.alonzo.AlonzoPlutusScript.given_CanEqual_AlonzoPlutusScript_AlonzoPlutusScript",
     "given ledger.era.alonzo.AlonzoScript.given_CanEqual_AlonzoScript_AlonzoScript",
     "given ledger.era.alonzo.AlonzoTimelock.given_CanEqual_AlonzoTimelock_AlonzoTimelock",
-    "given ledger.era.alonzo.AlonzoTxCert.given_CanEqual_AlonzoTxCert_AlonzoTxCert",
     "given ledger.era.alonzo.AlonzoTxOut.given_CanEqual_AlonzoTxOut_AlonzoTxOut",
     "object ledger.era.alonzo.AlonzoPlutusScript",
     "object ledger.era.alonzo.AlonzoScript",
     "object ledger.era.alonzo.AlonzoTimelock",
-    "object ledger.era.alonzo.AlonzoTxCert",
     "object ledger.era.alonzo.AlonzoTxOut"
    ],
    "reason": "Alonzo's companions, their equality with the era itself only (design §3.1), the read-only view of the shared representation the next era's translation reads, and a Plutus script's language and bytes, which the reference reads through its Plutus type"

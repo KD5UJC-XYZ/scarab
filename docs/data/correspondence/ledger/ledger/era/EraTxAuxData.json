@@ -114,6 +114,23 @@
     }
    ]
   },
+  "given ledger.era.EraTxAuxData.alonzo": {
+   "class": "Mirror",
+   "digest": "410139af881a6eb7",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "lines": [
+      344,
+      346
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxAuxData AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.EraTxAuxData.babbage": {
    "class": "Mirror",
    "digest": "649fcee43b64e046",

@@ -1,0 +1,348 @@
+{
+ "entries": {
+  "class ledger.era.alonzo.AlonzoTxBody": {
+   "class": "Mirror",
+   "digest": "84f53361c2109cf0",
+   "evidence": [
+    "AlonzoTxDifferentialSuite",
+    "AlonzoTxSuite"
+   ],
+   "note": "the raw fields with the bytes they were read from (`MemoBytes`); the update proposal is the typed one with the form the node stores it in (KeptUpdate)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      158,
+      174
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoTxBodyRaw"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      217,
+      217
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxBody l AlonzoEra"
+    }
+   ]
+  },
+  "def ledger.era.alonzo.AlonzoTxBody.decode": {
+   "class": "Mirror",
+   "digest": "7dab8de65ca26ea4",
+   "evidence": [
+    "AlonzoTxDifferentialSuite",
+    "AlonzoTxSuite"
+   ],
+   "note": "a body read in one pass at Alonzo's decoder version, 5, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 5; its outputs by Alonzo's output reader (AlonzoTxOut.read); Babbage's keys 16 to 18 refused as unknown; held to the flat decoder's verdicts on every Alonzo transaction the repository holds (the era walk, the chain-dependent capture, the Preview Alonzo blocks and ImmutableDB chunks, the reference's refusal, v1-context, context-matrix and Plutus admission corpora) and on byte mutants of their distinct bodies, witness sets and transactions, and on 479 Alonzo rows of the reference's decoder corpora (three of them witness sets at protocol version 6, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (AlonzoTxDifferentialSuite), and to its written order on crafted cases (AlonzoTxSuite)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      452,
+      490
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (AlonzoTxBodyRaw l AlonzoEra)"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#auxDataHash": {
+   "class": "Mirror",
+   "digest": "5a4f0efa6e25cb18",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      171,
+      171
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrAuxDataHash"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#certs": {
+   "class": "Mirror",
+   "digest": "c6607b35b5900451",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      163,
+      163
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrCerts"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#collateralInputs": {
+   "class": "Mirror",
+   "digest": "17f9164cdfdc1276",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      161,
+      161
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrCollateral"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#fee": {
+   "class": "Mirror",
+   "digest": "3673d59d76eef239",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      165,
+      165
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrTxFee"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#id": {
+   "class": "Mirror",
+   "digest": "aa786b5fc73d0215",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      403,
+      404
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "hashAnnotated"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#mint": {
+   "class": "Mirror",
+   "digest": "f78375606aa48c07",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      169,
+      169
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrMint"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#networkId": {
+   "class": "Mirror",
+   "digest": "3816324c26f6aa2a",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      172,
+      172
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrTxNetworkId"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#outputs": {
+   "class": "Mirror",
+   "digest": "b31ed93eaf4caffb",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      162,
+      162
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrOutputs"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#raw": {
+   "class": "Mirror",
+   "digest": "820f2db25161a7ca",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      217,
+      217
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxBody l AlonzoEra"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#reqSignerHashes": {
+   "class": "Mirror",
+   "digest": "8dd9d955282152cc",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      168,
+      168
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrReqSignerHashes"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#scriptIntegrityHash": {
+   "class": "Mirror",
+   "digest": "c0a76a3bea8a6595",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      170,
+      170
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrScriptIntegrityHash"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#spendInputs": {
+   "class": "Mirror",
+   "digest": "d4f34ad55b237904",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      160,
+      160
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrInputs"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#update": {
+   "class": "Mirror",
+   "digest": "bfda2903c9476fa3",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      167,
+      167
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrUpdate"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#validity": {
+   "class": "Mirror",
+   "digest": "c3b94cb3e3f4381c",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      166,
+      166
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrValidityInterval"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody#withdrawals": {
+   "class": "Mirror",
+   "digest": "ff74a43c7a8f3a1e",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      164,
+      164
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "atbrWithdrawals"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxBody.instance": {
+   "class": "Mirror",
+   "digest": "4cc7893350b1ae46",
+   "evidence": [
+    "AlonzoTxSuite"
+   ],
+   "note": "its update lens gives the proposal with the bytes the node keeps (keptUpdate); every input it must hold is spendable, the spent and the collateral ones",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxBody.hs",
+     "lines": [
+      216,
+      305
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxBody AlonzoEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.alonzo.AlonzoTxBody#equals",
+    "def ledger.era.alonzo.AlonzoTxBody#hashCode",
+    "def ledger.era.alonzo.AlonzoTxBody#toString",
+    "def ledger.era.alonzo.AlonzoTxBody.fromItem",
+    "given ledger.era.alonzo.AlonzoTxBody.given_CanEqual_AlonzoTxBody_AlonzoTxBody",
+    "object ledger.era.alonzo.AlonzoTxBody"
+   ],
+   "reason": "Alonzo's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Alonzo's (fromFlat), and the certificate's representation read only in Alonzo's files. Scala containers and helpers with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/alonzo/AlonzoTxBody.scala"
+}

@@ -780,18 +780,24 @@
     {
       "module": "ledger",
       "path": "ledger/era/alonzo",
-      "responsibility": "Alonzo's own types: its native, Plutus and script types and its output, opaque outside their file, with their translations from Mary, and the certificate type its purpose names; its protocol-parameter record and its instances of the parameter classes",
+      "responsibility": "Alonzo's own types: its native, Plutus and script types and its output, opaque outside their file, with their translations from Mary; its protocol-parameter record and its instances of the parameter classes; its certificate, witness set, auxiliary data, body and transaction, made by its decoders",
       "entryPoints": [
+        "AlonzoTx",
+        "AlonzoTxBody",
+        "AlonzoTxWits",
+        "AlonzoTxAuxData",
+        "AlonzoTxCert",
         "AlonzoScript",
         "AlonzoTxOut",
-        "AlonzoTxCert",
         "AlonzoPParams"
       ],
       "suites": [
         "AlonzoTypesSuite",
         "AlonzoPParamsSuite",
         "EraPParamsStoredSuite",
-        "AlonzoStateStoredSuite"
+        "AlonzoStateStoredSuite",
+        "AlonzoTxSuite",
+        "AlonzoTxDifferentialSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"
