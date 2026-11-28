@@ -1139,11 +1139,13 @@ object BabbageUtxo:
     * it back over the stored one (`ShelleyGovStateRecord.toStored`), so the transition leaves the
     * stored form in `state` as it was (the reference's `utxosGovStateL .~`). As in Conway's UTXO,
     * only the outputs of the body's inputs, collateral inputs and reference inputs are read from
-    * the store into the era, and only for the predicates, as Dijkstra's UTXO reads its, so a
-    * judgment of `ValidateNone` reads none of them. A stored output the era does not read, a change
-    * of the instant stake outside the state's vocabulary and a slot outside a `SlotNo`, converted
-    * before any predicate, are raised ([[UtxoStateDefect]]), as is a script the evaluator gives no
-    * verdict for ([[ScriptVerdictUnavailable]]): none is a verdict of the rules.
+    * the store into the era for the predicates, inside their validating part, as Dijkstra's UTXO
+    * reads its, so a judgment of `ValidateNone` skips that read; the state update reads what it
+    * spends (a valid transaction's inputs, an invalid one's collateral). A stored output the era
+    * does not read, a change of the instant stake outside the state's vocabulary and a slot outside
+    * a `SlotNo`, converted before any predicate, are raised ([[UtxoStateDefect]]), as is a script
+    * the evaluator gives no verdict for ([[ScriptVerdictUnavailable]]): none is a verdict of the
+    * rules.
     */
   def utxoTransition[F[_]: Monad, E <: EraTag](
       env: UtxoEnv[E],

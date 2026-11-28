@@ -3868,8 +3868,9 @@ Conway's rules on the classes follow as the rest of stage 2.
     the era's record, a capability of its own beside the UTxO state, whose stored form UTXO leaves as it was: the
     block run reads it once and writes it back once (slice 6). The slot is converted to the `SlotNo` UTXOS's
     environment holds before any predicate, a slot outside one raised as the state's defect under either way of
-    recording failures. The outputs of the body's inputs are read only for the predicates, as Dijkstra's UTXO reads
-    its, so a judgment of `ValidateNone` reads none.
+    recording failures. The outputs of the body's inputs are read for the predicates only inside the validating part,
+    as Dijkstra's UTXO reads its, so a judgment of `ValidateNone` skips that read; the state update still reads
+    what it spends (a valid transaction's inputs for the instant stake, an invalid one's collateral).
   - Babbage's script evaluation (`BabbageUtxos.evalScripts`), which Conway's and Dijkstra's UTXOS share, is skipped
     by a judgment of `ValidateNone` as well as under `NonStatic`, as the reference runs no labelled clause there
     (`Extended.hs:709-712, 727-730`) and as Alonzo's is, through the same guard (`AlonzoUtxos.judged2Phase`).
@@ -3891,11 +3892,13 @@ Conway's rules on the classes follow as the rest of stage 2.
       injection, and applied again only the collateral count;
     - crafted cases: every predicate of the parameters and the UTxO set at once in the reference's order, with
       UTXOS's collection after them and no script evaluated; a phase-1 failure beside a script that contradicts its
-      flag, and without it the tag mismatch its flag gives; each collateral failure; the validity interval either
+      flag, and without it the tag mismatch its flag gives (under `All`; `NonStatic` evaluates no script); each collateral failure; the validity interval either
       side; an empty input set; an input that is also a reference input, refused at protocol 9 and 10 only; the
-      networks of the outputs, the body and the withdrawals; a slot outside a `SlotNo`; a reference input whose
-      stored output the era cannot read, not reached under `ValidateNone`; and each injection on its own, against
-      the failure the transition records through its embeddings.
+      networks of the outputs, the body and the withdrawals; and each of the PPUP, AlonzoUtxos, Alonzo, Allegra and
+      Shelley injections on its own, against the failure the transition records through its embeddings.
+    - Of the era rule alone, at the 11.1 build: a slot outside a `SlotNo`, a defect under both ways of recording
+      failures; and a reference input whose stored output the era cannot read, not reached under `ValidateNone` and
+      `StoredOutput` under `ValidateAll`.
 
     Every comparison agrees; three mutants, each alone (UTXOS before the predicates, 11.1's injection under every
     build, and the guard removed), fail the suites. The flat UTXO has no `validateOutsideForecast`: the corpora other than the forecast-horizon ones are
