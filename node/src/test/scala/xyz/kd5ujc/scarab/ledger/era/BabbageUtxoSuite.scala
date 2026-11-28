@@ -53,6 +53,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   FailureDescription,
   InjectUtxoFailure,
   InjectUtxosFailure,
+  ShelleyPpupPredFailure,
   ShelleyUtxoPredFailure,
   TagMismatchDescription,
   UtxoContext,
@@ -287,12 +288,19 @@ class BabbageUtxoSuite extends FunSuite:
     case BabbageUtxoPredFailure.BabbageNonDisjointRefInputs(ins) =>
       Right(UtxoFailure.BabbageNonDisjointRefInputs(ins.toList.toVector))
 
+  /** UTXOS's failure as UTXO's, matched on its own: a pattern nested inside `UtxosFailure` infers
+    * an era of its own, at which PPUP's failure (a match type) does not reduce.
+    */
+  private def flatUtxoOfUtxos(
+      u: AlonzoUtxosPredFailure[Babbage]
+  ): Either[AlonzoUtxosPredFailure[Babbage], UtxoFailure] = u match
+    case AlonzoUtxosPredFailure.UpdateFailure(p) => Right(UtxoFailure.Update(flatPpupOf(p)))
+    case other                                   => Left(other)
+
   private def flatAlonzoOf(
       f: AlonzoUtxoPredFailure[Babbage]
   ): Either[AlonzoUtxosPredFailure[Babbage], UtxoFailure] = f match
-    case AlonzoUtxoPredFailure.UtxosFailure(AlonzoUtxosPredFailure.UpdateFailure(p)) =>
-      Right(UtxoFailure.Update(flatPpupOf(p)))
-    case AlonzoUtxoPredFailure.UtxosFailure(u) => Left(u)
+    case AlonzoUtxoPredFailure.UtxosFailure(u) => flatUtxoOfUtxos(u)
     case other =>
       Right(other match
         case AlonzoUtxoPredFailure.BadInputsUTxO(ins) =>
@@ -1087,13 +1095,19 @@ class BabbageUtxoSuite extends FunSuite:
         refusals.find(_.judged.name.endsWith(s"/$name")).getOrElse(fail(s"no case $name")).judged
       ).toList
     // PPUP's failure, as UTXOS's `UpdateFailure` in UTXO's `UtxosFailure`
+    def utxosOf(f: AlonzoUtxoPredFailure[Babbage]): Option[AlonzoUtxosPredFailure[Babbage]] =
+      f match
+        case AlonzoUtxoPredFailure.UtxosFailure(u) => Some(u)
+        case _                                     => None
+    def ppupOf(u: AlonzoUtxosPredFailure[Babbage]): Option[ShelleyPpupPredFailure[Babbage]] =
+      u match
+        case AlonzoUtxosPredFailure.UpdateFailure(p) => Some(p)
+        case _                                       => None
     val (fromPpup, ppup) = recorded("ppup-non-genesis-proposer")
-      .collectFirst {
-        case f @ BabbageUtxoPredFailure.AlonzoInBabbageUtxoPredFailure(
-              AlonzoUtxoPredFailure.UtxosFailure(AlonzoUtxosPredFailure.UpdateFailure(p))
-            ) =>
-          (f, p)
+      .collectFirst { case f @ BabbageUtxoPredFailure.AlonzoInBabbageUtxoPredFailure(a) =>
+        utxosOf(a).flatMap(ppupOf).map((f, _))
       }
+      .flatten
       .getOrElse(fail("no failure of PPUP"))
     assertEquals(InjectUtxoFailure.babbagePpup.injectFailure(ppup), fromPpup)
     assertEquals(
