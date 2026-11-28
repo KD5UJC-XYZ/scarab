@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Where `scripts/sbtw` puts sbt's two sockets, the boot socket (`XDG_RUNTIME_DIR`) and the command server's
 (`SBT_GLOBAL_SERVER_DIR`): each container gets a directory of its own, outside the shared cache, and the commands of
-one container share theirs (#1094)."""
+one container share theirs (#1094). Also that the build JVM it starts takes the JIT workaround of #1521."""
 import hashlib
 import os
 from pathlib import Path
@@ -13,6 +13,7 @@ import unittest
 
 
 SBTW = Path(__file__).resolve().parents[1] / "sbtw"
+JIT_OPTIONS = ["-XX:+UnlockDiagnosticVMOptions", "-XX:-ReduceAllocationMerges"]
 
 
 class SbtwSocketTests(unittest.TestCase):
@@ -101,6 +102,18 @@ class SbtwSocketTests(unittest.TestCase):
         self.assertNotEqual(done.returncode, 0, "sbtw ran sbt with socket paths over the 107-byte limit")
         self.assertIn("too long", done.stderr)
         self.assertEqual(done.stdout, "", "sbt was started although the directory was refused")
+
+
+    def test_the_build_jvm_gets_the_jit_workaround(self):
+        # The in-process test groups and `tools/runMain` run Scarab's code in the build JVM (#1521).
+        (self.root / "bin" / "java").write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@"\n')
+        done = self.run_sbtw(self.temp("a"))
+        self.assertEqual(done.returncode, 0, done.stderr)
+        arguments = done.stdout.splitlines()
+        options = arguments[:arguments.index("-jar")]
+        start = options.index(JIT_OPTIONS[0]) if JIT_OPTIONS[0] in options else -1
+        self.assertEqual(options[start:start + len(JIT_OPTIONS)], JIT_OPTIONS,
+                         f"the build JVM was started without the JIT workaround: {options}")
 
 
 if __name__ == "__main__":

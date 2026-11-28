@@ -73,7 +73,15 @@ Global / concurrentRestrictions += Tags.limit(Tags.Test, 1)
 // later JDK from blocking the call the first time a test makes it. The build JVM gets the same two flags from
 // `scripts/sbtw`, because the default test group runs there; a forked group that sets its own
 // `runJVMOptions` replaces the options `Test / javaOptions` supplies, so it names them again.
-val jdk25Flags = Seq("--enable-native-access=ALL-UNNAMED", "--sun-misc-unsafe-memory-access=allow")
+// jitWorkaround (#1521): on JDK 25, C2 miscompiled code reached from `TxChecks.collateral` (a null `Collateral.fee`);
+// turning off its reduction of allocation merges stopped it. Every JVM that runs Scarab's code takes these, so they
+// ride on jdk25Flags to every forked JVM here, and `scripts/sbtw` gives them to the build JVM. The one list is
+// `scripts/jit_workaround.py`; `scripts/check_jit_workaround.py` holds this copy to it. jdk25FlagsJitDefaults is for
+// the miscompilation's own regression test alone, which must run on the JIT's defaults to test anything; the check
+// names the groups that may use it.
+val jitWorkaround = Seq("-XX:+UnlockDiagnosticVMOptions", "-XX:-ReduceAllocationMerges")
+val jdk25FlagsJitDefaults = Seq("--enable-native-access=ALL-UNNAMED", "--sun-misc-unsafe-memory-access=allow")
+val jdk25Flags = jdk25FlagsJitDefaults ++ jitWorkaround
 ThisBuild / Test / javaOptions ++= jdk25Flags
 
 // The tests of every module: munit, ScalaCheck, and the cats law and effect test kits.

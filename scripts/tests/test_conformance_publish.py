@@ -575,6 +575,8 @@ class BytecodeTest(unittest.TestCase):
             for source in (scripts / "conformance").iterdir():
                 if source.suffix in (".py", ".json"):
                     (copy / source.name).write_bytes(source.read_bytes())
+            # The scenarios' JVM options take the JIT workaround of #1521 from the one list beside the package.
+            (copy.parent / "jit_workaround.py").write_bytes((scripts / "jit_workaround.py").read_bytes())
             reports = Path(tmp, "out")
             reports.mkdir()
             write_report(reports)
