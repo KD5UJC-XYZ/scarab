@@ -176,7 +176,7 @@ The second turns off C2's reduction of allocation merges; it is a diagnostic opt
 comes before it. In the recorded reproduction (one thread applying the transactions of two captured mainnet blocks in
 a loop, eight JVMs for each setting), 2 runs of 8 failed with the JVM's defaults and none with this option; that is a
 measured mitigation of that reproduction, not a proof that no other code is affected. `-XX:-DoEscapeAnalysis` also
-gave none of 8, at a larger cost in speed.
+gave none of 8; it turns off more of C2's optimisation than the option chosen.
 
 | JVM | Where the options are set |
 |---|---|
@@ -185,13 +185,15 @@ gave none of 8, at a larger cost in speed.
 | sbt's own JVM: compilation, the in-process test groups, `runMain` | `scripts/sbtw` |
 | forked test JVMs and `node / run` | `build.sbt` (`jdk25Flags`) |
 | the conformance tools | `scripts/conformance/scenarios.py` (`JDK_FLAGS`) |
+| the release checks of the built JAR and image | `scripts/reproducible_build.py`, `scripts/build_release_candidate.py`, `scripts/verify_published_release.py` |
 | the Antithesis trial's node | `antithesis/pool/scarab/scarab-node.sh` |
 
 `scripts/jit_workaround.py` holds the list. The guard `scripts/check_jit_workaround.py`, which preflight and CI run,
 fails when one of these loses the options and when a new place in the repository starts a JVM without being
-classified; the few JVMs it leaves alone (one-shot checks of a built artifact, `java -version` probes, the
-secret-timing measurement's own JVM, and the miscompilation's own regression test, which must run on the JIT's
-defaults to test anything) are listed there with the reason.
+classified. It leaves alone, each with its reason: the `java -version` probes, which run no Scarab code; the
+secret-timing measurement ([secret-timing.md](secret-timing.md)), whose JVM (`-XX:+UseSerialGC -Xbatch`) is part of
+its recorded method; and the miscompilation's own regression test, which must run on the JIT's defaults to test
+anything.
 
 A JVM started any other way gets none of this: `java -cp ... xyz.kd5ujc.scarab.node.Main`, `java -jar` of the fat JAR
 (its manifest cannot carry JVM options), and `docker run --entrypoint java <image>`, which replaces the launcher. Put
@@ -213,8 +215,9 @@ run as the JVM's user from a JDK (in the devnet's containers, the JDK image's ow
 jcmd <pid> VM.flags -all | grep ReduceAllocationMerges
 ```
 
-which prints `bool ReduceAllocationMerges = false {C2 diagnostic} {command line}`; `= true` and `{default}` mean the
-JVM runs without the workaround.
+which prints `bool ReduceAllocationMerges` with `= false`, `{C2 diagnostic}` and `{command line}` (the columns
+padded). A JVM without the workaround prints `= true`, or nothing at all: without `-XX:+UnlockDiagnosticVMOptions`
+the JVM does not list its locked diagnostic options.
 
 The options go, everywhere at once, when a JDK without the fault is pinned and the source change of #1521 has landed.
 
