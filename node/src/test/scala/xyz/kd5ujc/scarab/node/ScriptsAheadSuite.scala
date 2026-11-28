@@ -393,6 +393,38 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     equivalent(fixture.txs, failing = _ => false, hits = 3)
   }
 
+  test(
+    "collections taken with no result kept: the scripts evaluated by the rules, counted handed"
+  ) {
+    val results = ScriptsAhead.Results.create(ScriptsAhead.Bounds)
+    val own = created(fixture.txs)
+    val collected = ScriptsAhead.flat[Babbage](
+      fixture.txs,
+      fixture.params,
+      slot => posixOf(slot),
+      in => own.get(in).orElse(tipOutputs(in))
+    )(using ShelleyBasedEra.SBabbage)
+    assertEquals(results.collected(block(1), collected.collections), 3)
+    val calls = new AtomicInteger()
+    val underlying = deterministic(_ => false)
+    val (outcome, observed) =
+      applied(
+        fixture.state,
+        fixture.txs,
+        results.evaluator(counting(underlying, calls)),
+        results.flat
+      )
+    val (base, baseObserved) = applied(fixture.state, fixture.txs, underlying)
+    assertEquals(outcome, base)
+    assertEquals(observed, baseObserved)
+    assertEquals(calls.get, 3)
+    assertEquals(results.collectionCounts, ScriptsAhead.Collections(3, 0, 3, 0))
+    // dropped with their block: no request handed any more
+    results.drop(block(1))
+    val _ = applied(fixture.state, fixture.txs, results.evaluator(underlying), results.flat)
+    assertEquals(results.collectionCounts, ScriptsAhead.Collections(3, 3, 3, 0))
+  }
+
   test("an input made by an earlier queued block: the second block's scripts found") {
     val a = Vector(fixture.dependent(0))
     val b = Vector(fixture.dependent(1), fixture.dependent(2))
@@ -424,7 +456,7 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     assertEquals(observedB, baseObservedB)
     assertEquals(calls.get, 0)
     assertEquals(results.counts.hit, 3L)
-    assertEquals(results.collectionCounts, ScriptsAhead.Collections(3, 0, 3))
+    assertEquals(results.collectionCounts, ScriptsAhead.Collections(3, 0, 3, 3))
   }
 
   test("an input that changed between the speculation and the application is not found") {
@@ -625,6 +657,7 @@ class ScriptsAheadSuite extends xyz.kd5ujc.scarab.network.FailsOnUncaught:
     // a collection kept for each transaction looked for; a taken one's script found by its request
     assertEquals(results.collectionCounts.offered, collected + collectedStale)
     assertEquals(results.collectionCounts.missed, 0L)
+    assertEquals(results.collectionCounts.handed, collected)
     assertEquals(results.collectionCounts.byRequest, collected)
     // prepared through the node's workers, the same again
     val prepared = ParallelPlutus

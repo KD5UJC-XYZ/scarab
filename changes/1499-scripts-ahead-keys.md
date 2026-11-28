@@ -9,6 +9,6 @@
   the request itself. Otherwise they collect as before. The speculator now reads and collects the next block while
   the scripts of the one before run, and evaluates two blocks' scripts at once, on the same threads.
   New counters: `scarab_plutus_ahead_collection_offered_total`, `scarab_plutus_ahead_collection_miss_total`,
-  `scarab_plutus_ahead_hit_by_request_total`, `scarab_plutus_ahead_collected_total`,
+  `scarab_plutus_ahead_collection_scripts_total`, `scarab_plutus_ahead_hit_by_request_total`, `scarab_plutus_ahead_collected_total`,
   `scarab_plutus_ahead_collections_full_total`, and `scarab_plutus_ahead_reached_total` by where the speculation of
   a block was when the worker reached it.

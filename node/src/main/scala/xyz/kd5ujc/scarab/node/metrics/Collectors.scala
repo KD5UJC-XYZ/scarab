@@ -153,6 +153,7 @@ object Collectors:
         metrics.advance(plutusAheadBlocks, AheadBlockLabel.Failed, t.failed.toDouble) *>
         metrics.advance(plutusAheadCollectionOffered, collections.offered.toDouble) *>
         metrics.advance(plutusAheadCollectionMiss, collections.missed.toDouble) *>
+        metrics.advance(plutusAheadCollectionScripts, collections.handed.toDouble) *>
         metrics.advance(plutusAheadHitByRequest, collections.byRequest.toDouble) *>
         metrics.advance(plutusAheadCollected, t.collected.toDouble) *>
         metrics.advance(plutusAheadCollectionsFull, t.collectedFull.toDouble) *>

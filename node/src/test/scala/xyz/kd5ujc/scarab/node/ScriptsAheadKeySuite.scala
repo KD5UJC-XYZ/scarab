@@ -210,7 +210,7 @@ class ScriptsAheadKeySuite extends ScalaCheckSuite:
     val base = scripted.program(underlying).serial
     assertEquals(ahead.toString, base.toString)
     assertEquals(calls.get, 0)
-    assertEquals(results.collectionCounts, ScriptsAhead.Collections(3, 0, 3))
+    assertEquals(results.collectionCounts, ScriptsAhead.Collections(3, 0, 3, 3))
     assertEquals(results.counts, ScriptsAhead.Counts(3, 0, 0))
   }
 

@@ -669,6 +669,10 @@ object Catalogue:
     MetricName("scarab_plutus_ahead_collection_miss_total"),
     "Lookups of the block rules for a transaction's script collection that found none made ahead of the selection worker."
   )
+  val plutusAheadCollectionScripts = CounterDef(
+    MetricName("scarab_plutus_ahead_collection_scripts_total"),
+    "Plutus scripts the block rules evaluated with the request a collection made ahead of the selection worker handed them, the collection being their own."
+  )
   val plutusAheadHitByRequest = CounterDef(
     MetricName("scarab_plutus_ahead_hit_by_request_total"),
     "Plutus scripts the block rules evaluated whose result they found by the request itself, which a collection made ahead of the selection worker handed them."
@@ -1419,6 +1423,7 @@ object Catalogue:
     plutusAheadBlocks,
     plutusAheadCollectionOffered,
     plutusAheadCollectionMiss,
+    plutusAheadCollectionScripts,
     plutusAheadHitByRequest,
     plutusAheadCollected,
     plutusAheadCollectionsFull,

@@ -596,14 +596,21 @@ object ScriptsAhead:
     val zero: Counts = Counts(0, 0, 0)
 
   /** How the rules looked for their transactions' collections: one kept for the transaction
-    * (`offered`, which they take where it is their own collection), none (`missed`); and the
-    * scripts whose result they found by the request itself (`byRequest`), which a collection they
-    * took handed them.
+    * (`offered`, which they take where it is their own collection), none (`missed`); the scripts
+    * they evaluated with a request a kept collection handed them (`handed`: its collection was
+    * taken); and of those, the scripts whose result they found by the request itself (`byRequest`).
     */
-  final case class Collections(offered: Long, missed: Long, byRequest: Long)
+  final case class Collections(offered: Long, missed: Long, handed: Long, byRequest: Long)
 
   object Collections:
-    val zero: Collections = Collections(0, 0, 0)
+    val zero: Collections = Collections(0, 0, 0, 0)
+
+  /** A kept collection's request, by identity. */
+  private[node] final class Handed(val request: EvalRequest):
+    override def equals(that: Any): Boolean = that match
+      case h: Handed => h.request eq request
+      case _         => false
+    override def hashCode(): Int = System.identityHashCode(request)
 
   /** Where a kept result is found: the script's language, protocol version, bytes and budget, the
     * fields whose hash is cheap (a script's hash is cached by its bytes); the request is then
@@ -646,7 +653,8 @@ object ScriptsAhead:
       collections: Map[Bytes, Vector[(Bytes, Collection)]],
       collectionsOf: Map[Bytes, Vector[Bytes]],
       collectionWeights: Map[Bytes, (Int, Long)],
-      collectionCounts: Collections
+      collectionCounts: Collections,
+      handed: Set[Handed]
   ):
     /** The entry kept for a request equal to `request` ([[Same.requests]]): the same request first,
       * which a collection kept ahead hands the rules; if any; whether any is kept for its locator
@@ -713,6 +721,7 @@ object ScriptsAhead:
               txId,
               room.collections.getOrElse(txId, Vector.empty) :+ (block -> collection)
             ),
+            handed = room.handed ++ collection.requests.map(Handed(_)),
             collectionsOf = room.collectionsOf.updated(
               block,
               room.collectionsOf.getOrElse(block, Vector.empty) :+ txId
@@ -754,10 +763,16 @@ object ScriptsAhead:
           case Some(Left(_))  => counts.copy(stale = counts.stale + 1)
           case Some(Right(_)) => counts.copy(hit = counts.hit + 1)
         ,
-        collectionCounts = found match
-          case Some(Right(e)) if e.request eq request =>
-            collectionCounts.copy(byRequest = collectionCounts.byRequest + 1)
-          case _ => collectionCounts
+        collectionCounts =
+          if !handed.contains(Handed(request)) then collectionCounts
+          else
+            found match
+              case Some(Right(e)) if e.request eq request =>
+                collectionCounts.copy(
+                  handed = collectionCounts.handed + 1,
+                  byRequest = collectionCounts.byRequest + 1
+                )
+              case _ => collectionCounts.copy(handed = collectionCounts.handed + 1)
       )
 
     /** `entry` kept within `limits`, a node it shares with an entry of its block kept before (a
@@ -821,7 +836,13 @@ object ScriptsAhead:
               case _                           => cs - txId
           ),
           collectionsOf = collectionsOf - block,
-          collectionWeights = collectionWeights - block
+          collectionWeights = collectionWeights - block,
+          handed = handed -- txIds.distinct.iterator
+            .flatMap(collections.get)
+            .flatten
+            .collect { case (b, c) if b == block => c }
+            .flatMap(_.requests)
+            .map(Handed(_))
         )
       }
 
@@ -841,7 +862,8 @@ object ScriptsAhead:
         Map.empty,
         Map.empty,
         Map.empty,
-        Collections.zero
+        Collections.zero,
+        Set.empty
       )
 
   /** The comparison of a request with a kept one, as `==` compares them, made fast for the rules'
