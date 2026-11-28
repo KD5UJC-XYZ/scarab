@@ -68,6 +68,8 @@ class DiscoveryTest(unittest.TestCase):
                            ("scripts/new_tool.py", 'subprocess.run([\n    "java",\n    "-jar",\n    jar,\n])\n'),
                            ("scripts/new_tool.py", 'run(["docker", "run", "--entrypoint", "java", image, "-cp", jar])\n'),
                            ("scripts/new_tool.py", 'run(["bash", "-c", "exec java -cp x Main"])\n'),
+                           ("scripts/new_tool.py", 'subprocess.run([f"{java_home}/bin/java", "-jar", jar])\n'),
+                           ("scripts/new_tool.py", 'subprocess.run(["java", main_class])\n'),
                            ("scripts/new_tool.sh", 'exec java -Xmx1g -cp "$cp" Main\n'),
                            ("scripts/new_tool.sh", 'exec java \\\n  -cp "$cp" Main\n'),
                            ("docker/new.Dockerfile", 'ENTRYPOINT ["/opt/java/openjdk/bin/java", "-jar", "x.jar"]\n'),
@@ -151,9 +153,10 @@ class DiscoveryTest(unittest.TestCase):
         self.assertIn("runs with the JIT workaround, so it tests nothing", found[0])
 
     def test_a_comment_naming_the_regression_suite_exempts_nothing(self):
-        found = self.group("OtherSuite", 'Vector("-Xmx1g") ++ jdk25FlagsJitDefaults',
-                           comment='like ".MainnetCollateralJitSuite"')
-        self.assertTrue(any("without jdk25Flags" in problem for problem in found), found)
+        for comment in ['like ".MainnetCollateralJitSuite"', '/* formerly ".MainnetCollateralJitSuite" */']:
+            with self.subTest(comment=comment):
+                found = self.group("OtherSuite", 'Vector("-Xmx1g") ++ jdk25FlagsJitDefaults', comment=comment)
+                self.assertTrue(any("without jdk25Flags" in problem for problem in found), found)
 
     def test_the_defaults_list_outside_a_grouping_fails(self):
         found = self.changed("build.sbt", "Compile / run / javaOptions ++= jdk25Flags",

@@ -9,7 +9,8 @@
    the statements that start a JVM, comments left out: in shell, Dockerfile, workflow and Nix files a command
    (continued lines joined) with a `java` followed by an option, an expansion or an argument file, a `bin/java`,
    `exec "$java"` or an exec-form `["java", ...]`; in Python, read as a syntax tree, a list or tuple in which `"java"`
-   (or a path ending in `/bin/java`) is followed by an option or an unpacked list, or follows `--entrypoint`, a string
+   (or a path ending in `/bin/java`, also an f-string) comes first, is followed by an option or an unpacked list, or
+   follows `--entrypoint`, a string
    that is itself a `java -...` command, and a string naming `javaOptions` or `withRunJVMOptions`; in Scala and sbt
    files a line with a `"java"` argument, `--entrypoint java`, a `bin/java` or `"bin", "java"` path, `javaOptions` or
    `withRunJVMOptions`. A file with such a statement must be in `LAUNCHERS`, with as many as it records, so a new
@@ -19,7 +20,8 @@
    launcher every launch but the recorded exempt ones names `*jit_workaround.OPTIONS` or a recorded list built from
    it; the release image, `candidate_oci` and the Nix apps start the node through `scripts/scarab-jvm`; no sbt
    setting replaces `javaOptions`, and every forked group's `runJVMOptions` include `jdk25Flags`, but for the
-   regression test of `JIT_DEFAULT_GROUPS`, whose `testGrouping` must fork it with `jdk25FlagsJitDefaults`. An exempt
+   regression test of `JIT_DEFAULT_GROUPS`, whose `testGrouping` must fork it with `jdk25FlagsJitDefaults` (comments
+   of either kind left out). An exempt
    launch records why it is left alone.
 3. **Every documented command that starts Scarab's code carries them**: in the documents of `DOCUMENTS`, a command of
    a fenced block (continued lines joined) that starts `java` on an `xyz.kd5ujc.scarab.` class or a `-jar` names the
@@ -94,8 +96,9 @@ GROUPING = re.compile(r"testGrouping\s*:=\s*\{")
 
 
 def without_line_comments(text: str) -> str:
-    """`text` with each `//` comment blanked, its length kept, so offsets still count lines."""
-    return re.sub(r"//[^\n]*", lambda match: " " * len(match.group(0)), text)
+    """`text` with each `//` and `/* */` comment blanked, its length and line breaks kept, so offsets still count
+    lines."""
+    return re.sub(r"//[^\n]*|/\*.*?\*/", lambda match: re.sub(r"[^\n]", " ", match.group(0)), text, flags=re.S)
 
 
 def blocks(text: str) -> list[tuple[int, int]]:
@@ -284,6 +287,9 @@ OPTION_SOURCES: dict[str, Callable[[str], list[str]]] = {"scripts/conformance/sc
 
 
 def is_java(node: ast.AST | None) -> bool:
+    """`"java"`, or a path to it, also an f-string such as `f"{home}/bin/java"`."""
+    if isinstance(node, ast.JoinedStr) and node.values:
+        node = node.values[-1]
     return (isinstance(node, ast.Constant) and isinstance(node.value, str)
             and (node.value == "java" or node.value.endswith("/bin/java")))
 
@@ -306,7 +312,8 @@ def python_sites(text: str) -> list[str]:
     for node in ast.walk(tree):
         if isinstance(node, (ast.List, ast.Tuple)):
             elements = node.elts
-            if any(is_java(element) and (is_option(elements[i + 1] if i + 1 < len(elements) else None)
+            if any(is_java(element) and ((i == 0 and len(elements) > 1)
+                                         or is_option(elements[i + 1] if i + 1 < len(elements) else None)
                                          or (i > 0 and isinstance(elements[i - 1], ast.Constant)
                                              and elements[i - 1].value == "--entrypoint"))
                    for i, element in enumerate(elements)):
