@@ -287,7 +287,24 @@ lazy val ledger = scarab("ledger")
       Libraries.monocleMacro,
       Libraries.kittens,
       Libraries.monocleLawTest
-    )
+    ),
+    Test / testGrouping := {
+      // MainnetCollateralJitSuite runs TxChecks.collateral under C2 in a JVM of its own (#1521):
+      // `-Xbatch` compiles each method before it runs again, and two processors give the profile
+      // under which C2 miscompiled it. The options name the JIT's defaults on purpose: this group
+      // checks the code on the JIT as it ships, so it takes no flag that turns an optimisation off.
+      // It reads the fixtures from the build's root, as the build JVM does.
+      val (jit, others) =
+        (Test / definedTests).value.partition(_.name.endsWith(".MainnetCollateralJitSuite"))
+      val options = Vector("-Xbatch", "-XX:ActiveProcessorCount=2") ++ jdk25Flags
+      val fork = (Test / forkOptions).value
+        .withRunJVMOptions(options)
+        .withWorkingDirectory((ThisBuild / baseDirectory).value)
+      Seq(
+        Tests.Group("ledger", others, Tests.InProcess),
+        Tests.Group("c2-collateral", jit, Tests.SubProcess(fork))
+      )
+    }
   )
 
 // Praos, TPraos and PBFT, chain selection, the hard-fork combinator, header rules, the chain state.
