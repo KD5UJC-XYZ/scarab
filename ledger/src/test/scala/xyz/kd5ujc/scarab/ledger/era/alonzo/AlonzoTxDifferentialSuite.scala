@@ -79,33 +79,7 @@ class AlonzoTxDifferentialSuite extends FunSuite:
       .filter(_.era == Era.Alonzo)
       .flatMap(_.transactions)
 
-  /** The transactions of the Preview ImmutableDB chunks, cut by the lengths `expected-blocks.tsv`
-    * lists, in order: each block a `[era tag, block]`, all of them Alonzo's.
-    */
-  private lazy val immutableTxs: Vector[Block.Transaction] =
-    val dir = "fixtures/haskell-immutable/preview"
-    val lengths = Files
-      .readAllLines(Path.of(s"$dir/expected-blocks.tsv"))
-      .asScala
-      .toVector
-      .filter(_.trim.nonEmpty)
-      .map(_.split("\t").last.toInt)
-    val chunks = Bytes.fromArray(
-      Vector("00000", "00001", "00002")
-        .flatMap(c => Files.readAllBytes(Path.of(s"$dir/immutable/$c.chunk")).toVector)
-        .toArray
-    )
-    val (blocks, rest) = lengths.foldLeft((Vector.empty[Bytes], chunks)) { case ((acc, r), n) =>
-      (acc :+ r.take(n), r.drop(n))
-    }
-    assertEquals(rest.size, 0)
-    blocks.flatMap { raw =>
-      Block.decodeShelley(raw) match
-        case Right(b: Block.Shelley) =>
-          assertEquals(b.era, Era.Alonzo)
-          b.transactions
-        case other => fail(s"not a Shelley-based block: $other")
-    }
+  private lazy val immutableTxs: Vector[Block.Transaction] = AlonzoTestKit.immutablePreviewTxs
 
   /** The Alonzo transactions of the v1-context corpus, their parts with their flags, at protocol
     * versions 5 and 6.
