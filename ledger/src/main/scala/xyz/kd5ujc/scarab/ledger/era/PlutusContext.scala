@@ -115,26 +115,23 @@ type PlutusTxInfo[L <: Language] = L match
   case Language.PlutusV4 => PV4.TxInfo
 
 /** An input of a language's context (`type family PlutusTxInInfo era l`, `Context.hs:282-289`,
-  * cardano-ledger 9df9f98c; `:250-257` at f649f975): Alonzo's own for Plutus V1, none for an input
-  * at a Byron address (`Maybe PV1.TxInInfo`, `:285`), and the language's of every other era.
+  * cardano-ledger 9df9f98c; `:250-257` at f649f975): by the language, Plutus V1's by the era
+  * ([[PlutusV1TxInInfo]]), so an input of Plutus V2 to V4 is the language's whatever the era, as
+  * the family's equations of those languages name no era.
   */
-type PlutusTxInInfo[E <: EraTag, L <: Language] = E match
-  case Alonzo => AlonzoTxInInfo[L]
-  case _      => LanguageTxInInfo[L]
-
-/** Alonzo's case of [[PlutusTxInInfo]]: Plutus V1's, the one language Alonzo has, optional. */
-type AlonzoTxInInfo[L <: Language] = L match
-  case Language.PlutusV1 => Option[PV1.TxInInfo]
-  case _                 => LanguageTxInInfo[L]
-
-/** The cases of [[PlutusTxInInfo]] by the language alone (`Context.hs:286-289`, cardano-ledger
-  * 9df9f98c).
-  */
-type LanguageTxInInfo[L <: Language] = L match
-  case Language.PlutusV1 => PV1.TxInInfo
+type PlutusTxInInfo[E <: EraTag, L <: Language] = L match
+  case Language.PlutusV1 => PlutusV1TxInInfo[E]
   case Language.PlutusV2 => PV2.TxInInfo
   case Language.PlutusV3 => PV3.TxInInfo
   case Language.PlutusV4 => PV4.TxInInfo
+
+/** The Plutus V1 cases of [[PlutusTxInInfo]] (`Context.hs:285-286`, cardano-ledger 9df9f98c):
+  * Alonzo's optional, none for an input at a Byron address (`Maybe PV1.TxInInfo`), and every other
+  * era's the input.
+  */
+type PlutusV1TxInInfo[E <: EraTag] = E match
+  case Alonzo => Option[PV1.TxInInfo]
+  case _      => PV1.TxInInfo
 
 /** The script context of a language (`type family PlutusScriptContext`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Language.hs:364-367`, cardano-ledger

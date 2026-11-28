@@ -38,6 +38,7 @@ import xyz.kd5ujc.scarab.ledger.state.{
   CompactCoin,
   Credential,
   Empty,
+  EraTag,
   PoolBlsKey,
   Sorted,
   StakePool,
@@ -648,6 +649,30 @@ class AlonzoPlutusContextSuite extends munit.FunSuite:
       scripts.exists(_.pwcScript.plutusRunnableBinary.binary == Bytes(Vector(1.toByte))),
       "the contexts carry the cached runnable"
     )
+  }
+
+  test(
+    "an input of Plutus V2 to V4 is the language's in any era, and Alonzo's of Plutus V1 optional"
+  ) {
+    // the family's equations of Plutus V2 to V4 name no era (`Context.hs:287-289`, cardano-ledger
+    // 9df9f98c), so they reduce for an era not known
+    def anyEra[E <: EraTag] = (
+      summon[PlutusTxInInfo[E, Language.PlutusV2] =:= PV2.TxInInfo],
+      summon[PlutusTxInInfo[E, Language.PlutusV3] =:= PV3.TxInInfo],
+      summon[PlutusTxInInfo[E, Language.PlutusV4] =:= PV4.TxInInfo]
+    )
+    assertEquals(anyEra[Alonzo].productArity, 3)
+    // and Plutus V1's by the era (`:285-286`)
+    summon[PlutusTxInInfo[Alonzo, Language.PlutusV1] =:= Option[PV1.TxInInfo]]
+    summon[
+      PlutusTxInInfo[xyz.kd5ujc.scarab.ledger.state.Babbage, Language.PlutusV1] =:= PV1.TxInInfo
+    ]
+    summon[
+      PlutusTxInInfo[xyz.kd5ujc.scarab.ledger.state.Conway, Language.PlutusV1] =:= PV1.TxInInfo
+    ]
+    summon[
+      PlutusTxInInfo[xyz.kd5ujc.scarab.ledger.state.Dijkstra, Language.PlutusV1] =:= PV1.TxInInfo
+    ]
   }
 
   test("Alonzo supports Plutus V1 alone, looked up as its translation gives it") {

@@ -1640,28 +1640,6 @@
     }
    ]
   },
-  "type ledger.era.AlonzoTxInInfo": {
-   "class": "Mirror",
-   "digest": "82a8076002a50027",
-   "evidence": [
-    "AlonzoPlutusContextSuite",
-    "AlonzoPlutusContextRefusalsSuite"
-   ],
-   "note": "the family's equation of Alonzo's Plutus V1, the other languages falling through to LanguageTxInInfo as the closed family's later equations do",
-   "structure": "differs",
-   "upstream": [
-    {
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
-     "lines": [
-      285,
-      285
-     ],
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "symbol": "PlutusTxInInfo AlonzoEra PlutusV1"
-    }
-   ]
-  },
   "type ledger.era.ContextError": {
    "class": "Mirror",
    "digest": "68b7b9d3d17236e4",
@@ -1672,7 +1650,7 @@
     "BabbagePlutusContextSuite",
     "EraPlutusContextSuite"
    ],
-   "note": "Alonzo's case, Babbage's, Conway's and Dijkstra's; Dijkstra's, `DijkstraContextError`, has no translation that gives it yet (#85's item on Dijkstra's script contexts)",
+   "note": "Alonzo's case, Babbage's, Conway's and Dijkstra's (`DijkstraContextError`, which Dijkstra's translations give)",
    "structure": "same",
    "upstream": [
     {
@@ -1724,30 +1702,6 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "ContextError AlonzoEra"
-    }
-   ]
-  },
-  "type ledger.era.LanguageTxInInfo": {
-   "class": "Mirror",
-   "digest": "f428c7b2e8de5ac3",
-   "evidence": [
-    "AlonzoPlutusContextSuite",
-    "AlonzoPlutusContextRefusalsSuite",
-    "EraPlutusContextSuite",
-    "ConwayPlutusContextRefusalsSuite"
-   ],
-   "note": "the family's equations by the language alone, of every era but Alonzo's Plutus V1",
-   "structure": "differs",
-   "upstream": [
-    {
-     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
-     "lines": [
-      286,
-      289
-     ],
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
-     "symbol": "PlutusTxInInfo"
     }
    ]
   },
@@ -1861,7 +1815,7 @@
   },
   "type ledger.era.PlutusTxInInfo": {
    "class": "Mirror",
-   "digest": "9a271d3badf7166f",
+   "digest": "195ec651db7ee728",
    "evidence": [
     "AlonzoPlutusContextRefusalsSuite",
     "AlonzoPlutusContextSuite",
@@ -1869,7 +1823,7 @@
     "EraPlutusContextSuite",
     "PlutusLedgerApiV4Suite"
    ],
-   "note": "every case: Alonzo's for Plutus V1 (`Maybe PV1.TxInInfo`) through AlonzoTxInInfo, the others by the language alone through LanguageTxInInfo, as the closed family's later equations are; the Plutus V4 case is V4's type, as at 9df9f98c and 29a7d656, where f649f975's is V3's",
+   "note": "by the language, as the family's equations of Plutus V2 to V4 name no era, so those reduce for any era; Plutus V1's by the era through PlutusV1TxInInfo (Alonzo's `Maybe PV1.TxInInfo`); the Plutus V4 case is V4's type, as at 9df9f98c and 29a7d656, where f649f975's is V3's",
    "structure": "differs",
    "upstream": [
     {
@@ -1927,6 +1881,30 @@
     }
    ]
   },
+  "type ledger.era.PlutusV1TxInInfo": {
+   "class": "Mirror",
+   "digest": "73c5da257248358b",
+   "evidence": [
+    "AlonzoPlutusContextRefusalsSuite",
+    "AlonzoPlutusContextSuite",
+    "ConwayPlutusContextRefusalsSuite",
+    "EraPlutusContextSuite"
+   ],
+   "note": "the family's Plutus V1 equations, Alonzo's and every other era's; the other languages' name no era and are PlutusTxInInfo's own cases",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/Context.hs",
+     "lines": [
+      285,
+      286
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "PlutusTxInInfo"
+    }
+   ]
+  },
   "type ledger.era.SupportedLanguage#L": {
    "class": "Mirror",
    "digest": "80d2442cf18e1964",
@@ -1960,7 +1938,7 @@
     "ConwayPlutusContextRefusalsSuite",
     "EraPlutusContextSuite"
    ],
-   "note": "Alonzo's case, Babbage's, Conway's and Dijkstra's; Dijkstra's has no translation that gives it yet (#85's item on Dijkstra's script contexts)",
+   "note": "Alonzo's case, Babbage's, Conway's and Dijkstra's (`DijkstraTxInfoResult`, of its four languages)",
    "structure": "same",
    "upstream": [
     {
