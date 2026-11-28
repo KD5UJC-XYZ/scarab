@@ -17,6 +17,28 @@
     }
    ]
   },
+  "class ledger.era.IsShelleyTxCert": {
+   "class": "Mirror",
+   "digest": "4e5eb43fb16ecb67",
+   "evidence": [
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
+   ],
+   "note": "the type equality TxCert era ~ ShelleyTxCert era, which DELPL asks for, as one-way evidence: a final class with a private constructor, made only from the compiler's proof of the equality (of), which only the era's certificate file can give, so no caller makes or implements one; not a function, so it converts nothing implicitly",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delpl.hs",
+     "lines": [
+      184,
+      184
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxCert era ~ ShelleyTxCert era"
+    }
+   ]
+  },
   "class ledger.era.MIRCert": {
    "class": "Mirror",
    "digest": "ca956d1e648a2f7a",
@@ -36,12 +58,34 @@
   },
   "def ledger.era.IsShelleyTxCert#shelleyTxCert": {
    "class": "Mirror",
-   "digest": "2a195274e3b43e32",
+   "digest": "c160cc1de9180946",
    "evidence": [
     "BabbageDelegsCorpusSuite",
     "BabbageDelegsSuite"
    ],
    "note": "the equality read one way",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delpl.hs",
+     "lines": [
+      184,
+      184
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxCert era ~ ShelleyTxCert era"
+    }
+   ]
+  },
+  "def ledger.era.IsShelleyTxCert.of": {
+   "class": "Mirror",
+   "digest": "1bee0238f0e56580",
+   "evidence": [
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
+   ],
+   "note": "the evidence of the compiler's proof that the era's certificate is the representation, which only the file of the era's opaque certificate can give",
    "structure": "differs",
    "upstream": [
     {
@@ -187,28 +231,6 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "type TxCert BabbageEra = ShelleyTxCert BabbageEra"
-    }
-   ]
-  },
-  "trait ledger.era.IsShelleyTxCert": {
-   "class": "Mirror",
-   "digest": "f71475eade7cc804",
-   "evidence": [
-    "BabbageDelegsCorpusSuite",
-    "BabbageDelegsSuite"
-   ],
-   "note": "the type equality TxCert era ~ ShelleyTxCert era, which DELPL asks for, as one-way evidence: a class of its own with one reader, not a function, so it converts nothing implicitly and makes no certificate",
-   "structure": "differs",
-   "upstream": [
-    {
-     "file": "eras/shelley/impl/src/Cardano/Ledger/Shelley/Rules/Delpl.hs",
-     "lines": [
-      184,
-      184
-     ],
-     "repository": "IntersectMBO/cardano-ledger",
-     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
-     "symbol": "TxCert era ~ ShelleyTxCert era"
     }
    ]
   }

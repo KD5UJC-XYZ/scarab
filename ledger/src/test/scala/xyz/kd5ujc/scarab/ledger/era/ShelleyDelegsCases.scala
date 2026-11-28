@@ -716,6 +716,92 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
 
 /** Shelley's certificate rules on Babbage's era types. */
 class BabbageDelegsSuite extends ShelleyDelegsCases[Babbage]("Babbage"):
+  test("the evidence that a Babbage certificate is Shelley's is made in its file alone") {
+    // no proof of the equality outside the file, and the class can be neither made nor implemented
+    val made = compileErrors("IsShelleyTxCert.of[xyz.kd5ujc.scarab.ledger.state.Babbage]")
+    assert(made.contains("Cannot prove"), made)
+    val constructed =
+      compileErrors("new IsShelleyTxCert[xyz.kd5ujc.scarab.ledger.state.Babbage](summon)")
+    assert(constructed.contains("private"), constructed)
+    val implemented = compileErrors(
+      "new IsShelleyTxCert[xyz.kd5ujc.scarab.ledger.state.Babbage] { override def shelleyTxCert(c: babbage.BabbageTxCert): ShelleyTxCertRep = ??? }"
+    )
+    assert(implemented.contains("final"), implemented)
+  }
+
+  test(
+    "Babbage's injections into DELEG, POOL, DELPL and DELEGS, each failure nested as the reference's"
+  ) {
+    import xyz.kd5ujc.scarab.ledger.era.rules.*
+    def ok[A](e: Either[?, A]): A = e.fold(x => fail(s"$x"), identity)
+    val cred = Credential.KeyHashObj[Staking](
+      ok(KeyHash.fromBytes[Staking](Bytes.fromArray(Array.fill(28)(1.toByte))))
+    )
+    val pool = ok(KeyHash.fromBytes[StakePool](Bytes.fromArray(Array.fill(28)(2.toByte))))
+    val deleg = ShelleyDelegPredFailure.StakeKeyNotRegisteredDELEG[Babbage](cred)
+    val poolFailure = ShelleyPoolPredFailure.StakePoolNotRegisteredOnKeyPOOL[Babbage](pool)
+    val inDelpl = ShelleyDelplPredFailure.DelegFailure[Babbage](deleg)
+    val poolInDelpl = ShelleyDelplPredFailure.PoolFailure[Babbage](poolFailure)
+    val delegs = ShelleyDelegsPredFailure.DelplFailure[Babbage](inDelpl)
+    val registered = PoolEvent.RegisterPool[Babbage](pool)
+    val newEpoch = ShelleyDelegEvent.DelegNewEpoch[Babbage](EpochNo.fromUnsigned(3L))
+    // DELEG and POOL: the identities, POOL's event too
+    assertEquals(
+      summon[InjectDelegFailure[ShelleyDelegPredFailure[Babbage], Babbage]].injectFailure(deleg),
+      deleg
+    )
+    assertEquals(summon[InjectPool[Babbage]].injectFailure(poolFailure), poolFailure)
+    assertEquals(summon[InjectPool[Babbage]].injectEvent(registered), registered)
+    // DELPL: its own, POOL's as `PoolFailure`, DELEG's as `DelegFailure`
+    assertEquals(
+      summon[InjectDelplFailure[ShelleyDelplPredFailure[Babbage], Babbage]].injectFailure(inDelpl),
+      inDelpl
+    )
+    assertEquals(
+      summon[InjectDelplFailure[ShelleyPoolPredFailure[Babbage], Babbage]]
+        .injectFailure(poolFailure),
+      poolInDelpl
+    )
+    assertEquals(
+      summon[InjectDelplFailure[ShelleyDelegPredFailure[Babbage], Babbage]].injectFailure(deleg),
+      inDelpl
+    )
+    // DELEGS: its own, and DELPL's and the rules' below it wrapped in `DelplFailure`
+    assertEquals(
+      summon[InjectDelegsFailure[ShelleyDelegsPredFailure[Babbage], Babbage]].injectFailure(delegs),
+      delegs
+    )
+    assertEquals(
+      summon[InjectDelegsFailure[ShelleyDelplPredFailure[Babbage], Babbage]].injectFailure(inDelpl),
+      delegs
+    )
+    assertEquals(
+      summon[InjectDelegsFailure[ShelleyDelegPredFailure[Babbage], Babbage]].injectFailure(deleg),
+      delegs
+    )
+    assertEquals(
+      summon[InjectDelegsFailure[ShelleyPoolPredFailure[Babbage], Babbage]]
+        .injectFailure(poolFailure),
+      ShelleyDelegsPredFailure.DelplFailure[Babbage](poolInDelpl)
+    )
+    // the embeddings the rules wrap their sub-rules' failures and events with
+    assertEquals(EmbedInDelpl.babbage.wrapDelegFailed(deleg), inDelpl)
+    assertEquals(EmbedInDelpl.babbage.wrapPoolFailed(poolFailure), poolInDelpl)
+    assertEquals(
+      EmbedInDelpl.babbage.wrapPoolEvent(registered),
+      ShelleyDelplEvent.PoolEvent[Babbage](registered)
+    )
+    assertEquals(
+      EmbedInDelpl.babbage.wrapDelegEvent(newEpoch),
+      ShelleyDelplEvent.DelegEvent[Babbage](newEpoch)
+    )
+    assertEquals(EmbedDelplInDelegs.babbage.wrapFailed(inDelpl), delegs)
+    assertEquals(
+      EmbedDelplInDelegs.babbage.wrapEvent(ShelleyDelplEvent.DelegEvent[Babbage](newEpoch)),
+      ShelleyDelegsEvent.DelplEvent[Babbage](ShelleyDelplEvent.DelegEvent[Babbage](newEpoch))
+    )
+  }
+
   test(
     "a Babbage certificate is not its representation outside its file, nor the representation one"
   ) {

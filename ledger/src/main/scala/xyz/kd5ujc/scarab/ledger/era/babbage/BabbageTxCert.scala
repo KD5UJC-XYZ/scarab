@@ -56,10 +56,10 @@ object BabbageTxCert:
     def rep: ShelleyTxCertRep = c
 
   /** `TxCert BabbageEra ~ ShelleyTxCert BabbageEra` (`Babbage/TxCert.hs:12`, cardano-ledger
-    * f649f975), which DELPL asks for (`Shelley/Rules/Delpl.hs:184`): the representation, read only.
+    * f649f975), which DELPL asks for (`Shelley/Rules/Delpl.hs:184`): the representation, read only,
+    * of the equality the compiler proves here alone, where the opaque type is its representation.
     */
-  val isShelleyTxCert: IsShelleyTxCert[Babbage] = new IsShelleyTxCert[Babbage]:
-    override def shelleyTxCert(cert: BabbageTxCert): ShelleyTxCertRep = cert
+  val isShelleyTxCert: IsShelleyTxCert[Babbage] = IsShelleyTxCert.of[Babbage]
 
   /** The Babbage certificate of a flat one that the flat certificate reader read at Babbage
     * (`DecCBOR (ShelleyTxCert era)`,

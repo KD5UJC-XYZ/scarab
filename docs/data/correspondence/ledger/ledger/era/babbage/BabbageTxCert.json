@@ -39,7 +39,7 @@
   },
   "val ledger.era.babbage.BabbageTxCert.isShelleyTxCert": {
    "class": "Mirror",
-   "digest": "91bb17bc0c61568b",
+   "digest": "a3bf5bb7ded4edf5",
    "evidence": [
     "BabbageDelegsCorpusSuite",
     "BabbageDelegsSuite"
