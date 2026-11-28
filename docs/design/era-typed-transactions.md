@@ -3753,9 +3753,13 @@ Conway's rules on the classes follow as the rest of stage 2.
     reaches the difference: Alonzo's contexts fail to build only for a spent input the UTxO set does not hold,
     which UTXO refuses (`BadInputsUTxO`), and for a time past the horizon, which the linearly extended epoch
     information of `mkStAnnTx` and `validateOutsideForecast` share (`Alonzo/Rules/Ledgers.hs:129`,
-    `Alonzo/Rules/Utxo.hs:377-385`); it shows only in a refusal's failures (#85). The filter takes every
-    translation failure, the node's own among them (a clock with no era history), so the run that switches to
-    these rules must give the clock the reference's rule has.
+    `Alonzo/Rules/Utxo.hs:377-385`); it shows only in a refusal's failures (#85). The filter drops only the
+    failures Alonzo's `ContextError` has at the pin (`Alonzo/Plutus/TxInfo.hs:213-216`: a missing input, a slot
+    past the horizon), classified by a total match (`TranslationOrigin`); a failure only the node gives, a clock
+    with no era history or no sample of the slot among them, is kept in `CollectErrors` as Babbage's rule keeps
+    it, so a missing clock refuses the transaction and never skips its scripts
+    ([#1534](https://github.com/KD5UJC-XYZ/scarab/issues/1534)). This differs from the reference's filter on the
+    constructor only on causes no input of the reference reaches.
   - Against the flat path and the reference (`AlonzoStateClassesSuite`, `AlonzoStakeSuite`, `AlonzoUtxosSuite`):
     - the state classes on `alonzo-3013`, the native V10 snapshots `alonzo-349`, `alonzo-539` and `preview-4320`
       and the era walk's 192 Alonzo states: the governance state read and written back identical, also over a
@@ -3783,8 +3787,9 @@ Conway's rules on the classes follow as the rest of stage 2.
       minor of 2^32 - 1), and for UTXOS: an update whose proposer is not a genesis key on a transaction whose
       script passes and on one whose script fails (both failures recorded), PPUP's event after the scripts', an
       update written wide, a translation failure not recorded (a spent input missing, no script evaluated, the
-      flat UTXOS recording it) beside a missing cost model recorded on both, a transaction flagged invalid (no
-      PPUP, its collateral's lovelace the fees), and a deregistration's refund.
+      flat UTXOS recording it) beside a missing cost model recorded on both, a missing clock recorded on both
+      with no script evaluated (#1534), a transaction flagged invalid (no PPUP, its collateral's lovelace the
+      fees), and a deregistration's refund.
 
     Every comparison agrees, but the translation failure the flat path records. Nothing in the node runs these
     rules yet.

@@ -5,11 +5,13 @@ import cats.{Applicative, Monad}
 import cats.data.{Chain, NonEmptyList}
 import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
-import xyz.kd5ujc.scarab.ledger.{LedgerDefect, TxEnv}
+import xyz.kd5ujc.scarab.ledger.{LedgerDefect, TranslationError, TxEnv}
 import xyz.kd5ujc.scarab.ledger.era.{
+  AlonzoContextError,
   AlonzoEraTx,
   AlonzoEraUTxO,
   CollectError,
+  ContextError,
   EraCertState,
   EraPParamsToBabbage,
   IsPhase2Valid,
@@ -217,6 +219,59 @@ object EmbedPpupInUtxos:
   */
 final case class UtxosEnv[E <: EraTag](slot: SlotNo, pp: PParams[E], certState: CertState[E])
 
+/** Where a failure to translate a transaction to an Alonzo script context comes from, for Alonzo's
+  * `scriptsTransition`, which does not record the reference's (#1534).
+  */
+enum TranslationOrigin:
+  /** A failure of Alonzo's `ContextError` at the pin (`data AlonzoContextError`,
+    * `Alonzo/Plutus/TxInfo.hs:213-216`, cardano-ledger f649f975): an input the UTxO set does not
+    * hold (`TranslationLogicMissingInput`), or a slot past the forecast horizon
+    * (`TimeTranslationPastHorizon`).
+    */
+  case Reference
+
+  /** A failure only the node gives: its clock with no era history or no sample of the slot, data it
+    * reads lazily, and the cases of other eras' and builds' errors, none of which Alonzo's error at
+    * the pin has.
+    */
+  case Node
+
+object TranslationOrigin:
+  /** Alonzo's context error by origin. An unsupported certificate or purpose is Alonzo's error at
+    * 9df9f98c only (Conway's own at f649f975), the impossible context 9df9f98c's, and an
+    * undecodable datum the node's.
+    */
+  def ofAlonzo[E <: EraTag](error: AlonzoContextError[E]): TranslationOrigin = error match
+    case AlonzoContextError.TranslationLogicMissingInput(_)   => Reference
+    case AlonzoContextError.TimeTranslationPastHorizon(cause) => ofTime(cause)
+    case AlonzoContextError.CertificateNotSupported(_) |
+        AlonzoContextError.PlutusPurposeNotSupported(_) | AlonzoContextError.Undecodable(_, _) |
+        AlonzoContextError.ImpossibleContextError(_) =>
+      Node
+
+  /** The cause of a time translation by origin: a slot past the horizon is the reference's
+    * (`epochInfoSlotToUTCTime`'s failure); every other case is the node's, each named so that a new
+    * one is classified.
+    */
+  def ofTime(cause: TranslationError): TranslationOrigin = cause match
+    case TranslationError.PastHorizon(_, _) => Reference
+    case TranslationError.NoEraHistory | TranslationError.NoClockSample(_) |
+        TranslationError.RedeemerPointerPointsToNothing(_, _) |
+        TranslationError.UnresolvedInput(_) | TranslationError.InlineDatumsNotSupported(_) |
+        TranslationError.ReferenceScriptsNotSupported(_) |
+        TranslationError.ReferenceInputsNotSupported(_) |
+        TranslationError.ReferenceInputsNotDisjointFromInputs(_) |
+        TranslationError.ByronTxOutInContext(_) | TranslationError.CertificateNotSupported(_) |
+        TranslationError.PlutusPurposeNotSupported(_) |
+        TranslationError.DelegationWithoutDelegatee |
+        TranslationError.VotingProceduresFieldNotSupported(_) |
+        TranslationError.ProposalProceduresFieldNotSupported(_) |
+        TranslationError.TreasuryDonationFieldNotSupported(_) |
+        TranslationError.CurrentTreasuryFieldNotSupported(_) | TranslationError.Undecodable(_) |
+        TranslationError.NoScriptBytes(_) | TranslationError.NativeScriptRedeemer |
+        TranslationError.LanguageWithoutContext(_) | TranslationError.CostModelParameterTooLarge =>
+      Node
+
 /** Alonzo's functions of UTXOS (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxos.hs`,
   * cardano-ledger f649f975).
   */
@@ -280,11 +335,19 @@ object AlonzoUtxos:
     )
 
   /** `isNotBadTranslation` (`Alonzo/Rules/Utxos.hs:185-187`, cardano-ledger f649f975): a failure of
-    * the collection that is not a translation's (`BadTranslation`), whatever the translation's
-    * failure is, the node's own among them.
+    * the collection that is not a translation's the reference can give (`BadTranslation` of
+    * Alonzo's `ContextError`, [[TranslationOrigin.Reference]]). A translation failure only the node
+    * gives ([[TranslationOrigin.Node]], a clock with no era history among them) is kept, as
+    * Babbage's rule keeps every one, so that a missing clock refuses the transaction and never
+    * skips its scripts (#1534). The two differ only on causes no input of the reference reaches.
     */
-  def isNotBadTranslation[E <: EraTag](error: CollectError[E]): Boolean = error match
-    case CollectError.BadTranslation(_) => false
+  def isNotBadTranslation[E <: EraTag](error: CollectError[E])(using
+      alonzoContext: ContextError[E] =:= AlonzoContextError[E]
+  ): Boolean = error match
+    case CollectError.BadTranslation(e) =>
+      TranslationOrigin.ofAlonzo[E](alonzoContext(e)) match
+        case TranslationOrigin.Reference => false
+        case TranslationOrigin.Node      => true
     case CollectError.NoRedeemer(_) | CollectError.NoWitness(_) | CollectError.NoCostModel(_) =>
       true
 
@@ -308,7 +371,8 @@ object AlonzoUtxos:
       judge: Judge[F, UtxosPredFailure[E]],
       evaluator: ScriptEvaluator[F],
       raise: Raise[F, ScriptVerdictUnavailable],
-      deferral: Phase2Deferral[F, E]
+      deferral: Phase2Deferral[F, E],
+      alonzoContext: ContextError[E] =:= AlonzoContextError[E]
   ): F[Unit] =
     // collected only for the predicate or the evaluation, neither run under `ValidateNone`
     lazy val scriptsWithContextEither =
@@ -361,7 +425,8 @@ object AlonzoUtxos:
       evaluator: ScriptEvaluator[F],
       raise: Raise[F, ScriptVerdictUnavailable],
       defect: Raise[F, LedgerDefect],
-      deferral: Phase2Deferral[F, E]
+      deferral: Phase2Deferral[F, E],
+      alonzoContext: ContextError[E] =:= AlonzoContextError[E]
   ): F[Unit] =
     t.isValid(t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)) match
       case IsPhase2Valid.Phase2Valid => alonzoEvalScriptsTxValid[F, E](env, stAnnTx, validation)
@@ -392,7 +457,8 @@ object AlonzoUtxos:
       evaluator: ScriptEvaluator[F],
       raise: Raise[F, ScriptVerdictUnavailable],
       defect: Raise[F, LedgerDefect],
-      deferral: Phase2Deferral[F, E]
+      deferral: Phase2Deferral[F, E],
+      alonzoContext: ContextError[E] =:= AlonzoContextError[E]
   ): F[Unit] =
     val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)
     scriptsTransition[F, E](stAnnTx, validation) {
@@ -426,7 +492,8 @@ object AlonzoUtxos:
       events: Tell[F, Chain[UtxosEvent[E]]],
       evaluator: ScriptEvaluator[F],
       raise: Raise[F, ScriptVerdictUnavailable],
-      deferral: Phase2Deferral[F, E]
+      deferral: Phase2Deferral[F, E],
+      alonzoContext: ContextError[E] =:= AlonzoContextError[E]
   ): F[Unit] =
     val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)
     scriptsTransition[F, E](stAnnTx, validation) {

@@ -49,6 +49,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
   ShelleyPpupEvent,
   ShelleyPpupPredFailure,
   TagMismatchDescription,
+  TranslationOrigin,
   UtxoStateDefect,
   UtxosEnv
 }
@@ -335,7 +336,8 @@ class AlonzoUtxosSuite extends FunSuite:
       state: UTxOState[Alonzo],
       globals: Globals,
       slot: BigInt,
-      posix: BigInt => BigInt
+      posix: BigInt => BigInt,
+      clocked: Boolean = true
   ):
     /** The flat rules' environment at `slot`, of the same geometry the era rules ask (`Globals`).
       */
@@ -348,7 +350,7 @@ class AlonzoUtxosSuite extends FunSuite:
         firstSlotNextEpoch = globals.firstSlot(epoch + 1),
         stabilityWindow = globals.stabilityWindow,
         updateQuorum = globals.quorum,
-        clock = Some(PosixClock.Total(posix))
+        clock = Option.when(clocked)(PosixClock.Total(posix))
       )
 
   /** What a judgment came to: its failures in order, or the state after with the scripts' counters.
@@ -391,7 +393,7 @@ class AlonzoUtxosSuite extends FunSuite:
       ShelleyGovStateRecord.fromStored[Alonzo](j.state.gov)
     )
     val stAnnTx = AlonzoStAnnTx.mkAlonzoStAnnTx[Alonzo](
-      slot => Right(j.posix(slot)),
+      slot => Either.cond(j.clocked, j.posix(slot), TranslationError.NoEraHistory),
       pp,
       utxo,
       Map.empty,
@@ -1332,6 +1334,53 @@ class AlonzoUtxosSuite extends FunSuite:
       same(noModel),
       Outcome.Refused(
         List(Seen.Collected(List(Collect.NoCostModel(xyz.kd5ujc.scarab.plutus.PlutusLanguage.V1))))
+      )
+    )
+  }
+
+  /** A translation failure only the node gives is recorded, as Babbage's rule records every one
+    * (#1534): a transaction whose validity interval its context must translate, with no clock to
+    * translate it, is refused with the clock's failure among the collection's and no script is
+    * evaluated, on the era rule as on the flat one.
+    */
+  test("UTXOS: a translation failure only the node gives, a missing clock, is recorded (#1534)") {
+    val c = caseNamed("alonzo-pv6-v1-plain")
+    val base = v1Judged(c)
+    val raw = c.tx.body.raw
+    val head = raw.value.head & 0xff
+    assert(head >= 0xa0 && head < 0xb7, s"${c.name}: a body of fewer than 23 keys")
+    // the time to live (key 3) at slot 1,000,000, the case's slot being 1000
+    val body = Bytes(((head + 1).toByte +: raw.value.tail) ++ hex("031a000f4240").value)
+    val witnesses = c.tx.witnesses.raw.getOrElse(fail(s"${c.name}: no witness bytes"))
+    val parts = Block.Transaction(body, witnesses, c.tx.auxiliary, c.tx.isValid)
+    val ttl = base.copy(
+      name = s"${c.name} with a time to live",
+      flat = right("flat")(FlatTx.fromBlock(parts, ProtocolEra.Alonzo)),
+      typed = right("typed")(AlonzoTx.decode(parts, StateLayout.Node11_1))
+    )
+    // with the clock, its script runs and passes
+    same(ttl) match
+      case Outcome.Accepted(_, (1, 0, 1)) => ()
+      case other                          => fail(s"not accepted with its script passed: $other")
+    // without it: the clock's failure recorded on both, and no script evaluated
+    val unclocked = ttl.copy(name = s"${ttl.name} and no clock", clocked = false)
+    val refused = Outcome.Refused(
+      List(Seen.Collected(List(Collect.BadTranslation(TranslationError.NoEraHistory))))
+    )
+    assertEquals(same(unclocked), refused)
+    val never: ScriptEvaluator[Id] = _ => fail("a script was evaluated")
+    assertEquals(typedOutcome(unclocked, TxEnv.Validation.All, never), refused)
+    // the classification: the reference's failures are dropped, the node's kept
+    assertEquals(
+      TranslationOrigin.ofAlonzo[Alonzo](
+        AlonzoContextError.TranslationLogicMissingInput(c.spent.keys.head)
+      ),
+      TranslationOrigin.Reference
+    )
+    Vector(TranslationError.NoEraHistory, TranslationError.NoClockSample(1000)).foreach(cause =>
+      assertEquals(
+        TranslationOrigin.ofAlonzo[Alonzo](AlonzoContextError.TimeTranslationPastHorizon(cause)),
+        TranslationOrigin.Node
       )
     )
   }

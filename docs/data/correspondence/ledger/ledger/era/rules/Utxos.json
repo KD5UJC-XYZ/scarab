@@ -23,7 +23,7 @@
   },
   "def ledger.era.rules.AlonzoUtxos.alonzoEvalScriptsTxInvalid": {
    "class": "Mirror",
-   "digest": "81537be0c1ad307c",
+   "digest": "8feffd7da354522e",
    "evidence": [
     "AlonzoUtxosSuite"
    ],
@@ -44,7 +44,7 @@
   },
   "def ledger.era.rules.AlonzoUtxos.alonzoEvalScriptsTxValid": {
    "class": "Mirror",
-   "digest": "877baaf253b8e535",
+   "digest": "305efc3771df9096",
    "evidence": [
     "AlonzoUtxosSuite"
    ],
@@ -65,11 +65,12 @@
   },
   "def ledger.era.rules.AlonzoUtxos.isNotBadTranslation": {
    "class": "Mirror",
-   "digest": "b78d029ca70fe87a",
+   "digest": "8c17e2c4d454257e",
    "evidence": [
     "AlonzoUtxosSuite"
    ],
-   "structure": "same",
+   "note": "drops a BadTranslation only of a cause the reference's Alonzo ContextError has (TranslationOrigin.Reference: a missing input, a slot past the horizon); a cause only the node gives (a clock with no era history or sample, among the rest) is kept, as Babbage's rule keeps every one, so a missing clock refuses and never skips the scripts (#1534); the two differ only on causes no reference input reaches",
+   "structure": "differs",
    "upstream": [
     {
      "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Rules/Utxos.hs",
@@ -85,7 +86,7 @@
   },
   "def ledger.era.rules.AlonzoUtxos.scriptsTransition": {
    "class": "Mirror",
-   "digest": "ece37b322a6fae32",
+   "digest": "cbb3aeeb4472c6ac",
    "evidence": [
     "AlonzoUtxosSuite"
    ],
@@ -106,7 +107,7 @@
   },
   "def ledger.era.rules.AlonzoUtxos.utxosTransition": {
    "class": "Mirror",
-   "digest": "c33005163bf8253c",
+   "digest": "8da2a8b64fbef52c",
    "evidence": [
     "AlonzoUtxosSuite"
    ],
@@ -411,6 +412,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "injectFailure"
+    }
+   ]
+  },
+  "def ledger.era.rules.TranslationOrigin.ofAlonzo": {
+   "class": "Mirror",
+   "digest": "dd2eff70e57f99fa",
+   "evidence": [
+    "AlonzoUtxosSuite"
+   ],
+   "note": "Alonzo's context error by origin, for isNotBadTranslation (#1534): its two cases at the pin are the reference's, a time failure by its cause (ofTime); the cases other builds' errors and the node add are the node's",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs",
+     "lines": [
+      213,
+      216
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoContextError"
     }
    ]
   },
@@ -965,6 +987,14 @@
     "object ledger.era.rules.EmbedPpupInUtxos"
    ],
    "reason": "the companion of Babbage's embedding of PPUP in UTXOS, which holds its instance, and the module of PPUP's functions on the era types (#85): Scala containers with no counterpart of their own"
+  },
+  {
+   "definitions": [
+    "def ledger.era.rules.TranslationOrigin.ofTime",
+    "enum ledger.era.rules.TranslationOrigin",
+    "object ledger.era.rules.TranslationOrigin"
+   ],
+   "reason": "the origin of a context translation failure, the reference's or the node's own (a clock with no era history or sample, data read lazily, other builds' cases), which Alonzo's isNotBadTranslation reads so that it drops only the reference's (#1534); a total match on TranslationError, so a new case is classified; the reference has one origin and no counterpart"
   },
   {
    "definitions": [
