@@ -149,11 +149,11 @@
   },
   "def ledger.era.alonzo.AlonzoTxOut.read": {
    "class": "Mirror",
-   "digest": "9f808aa8ca700677",
+   "digest": "03f15cacc904f809",
    "evidence": [
     "AlonzoTypesSuite"
    ],
-   "note": "a list of two or three, definite or indefinite, each field by the flat output reader's reader of it, held to the flat output. The two read alike on the 83 outputs of the recorded Alonzo transactions (blocks, refusal, v1-context, context-matrix and Plutus admission corpora), the 71 they spend or the refusal corpora's UTxO sets hold, the 78 output items of the reference's Alonzo decoder corpora and 5,730 byte mutants of the distinct outputs and two crafted ones with a datum hash; the reference's 19 Alonzo UTxO answers read and its 9 verdicts on an output's form are the era decoder's. A refusal is the flat decoder's diagnostic, not the reference's (wrong number of terms, expected list len)",
+   "note": "a list of two or three, definite or indefinite, each field by the flat output reader's reader of it, held to the flat output. The two read alike on the 83 outputs of the recorded Alonzo transactions (blocks, refusal, v1-context, context-matrix and Plutus admission corpora), the 71 they spend or the refusal corpora's UTxO sets hold, the 78 output items of the reference's Alonzo decoder corpora and 5,730 byte mutants of the distinct outputs and two crafted ones with a datum hash; the reference's 19 Alonzo UTxO answers read and its 9 verdicts on an output's form are the era decoder's. A refusal is the flat decoder's diagnostic, not the reference's (wrong number of terms, expected list len); the compact address its encoder writes is the address written again of an output of lovelace only (mkTxOutCompact, a bootstrap address as the reference encodes a Byron address), else the bytes read",
    "structure": "differs",
    "upstream": [
     {
@@ -165,16 +165,26 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "DecCBOR (AlonzoTxOut era)"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      471,
+      481
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkTxOutCompact"
     }
    ]
   },
   "def ledger.era.alonzo.AlonzoTxOut.translate": {
    "class": "Mirror",
-   "digest": "9cbeb6901f0a1cb0",
+   "digest": "73a5b8a3c56fbd53",
    "evidence": [
     "AlonzoTypesSuite"
    ],
-   "note": "upgradeTxOut: a Mary output's address, value and bytes, with no datum hash",
+   "note": "upgradeTxOut: a Mary output's address, value and bytes, with no datum hash, its compact address carried forward",
    "structure": "same",
    "upstream": [
     {
@@ -209,11 +219,11 @@
   },
   "given ledger.era.alonzo.AlonzoTxOut.encCBOR": {
    "class": "Mirror",
-   "digest": "0778017cfa7f9613",
+   "digest": "fbf5210bad0056bb",
    "evidence": [
     "AlonzoTypesSuite"
    ],
-   "note": "[address, value] or [address, value, datum hash], each written again, the address as its compact bytes (cropped and normalised as read); the 46 outputs of the reference's 19 Alonzo UTxO answers are written byte for byte, pointer, bootstrap, multi-asset, datum-hash and detached-value ones among them, and every recorded Alonzo output is written back to its bytes",
+   "note": "[address, value] or [address, value, datum hash], each written again, the address as the compact bytes the output holds (an ada-only output read from a body holds its address written again, a bootstrap one canonical); the 46 outputs of the reference's 19 Alonzo UTxO answers are written byte for byte, pointer, bootstrap, multi-asset, datum-hash and detached-value ones among them, every recorded Alonzo output is written back to its bytes, and a bootstrap address with a widened checksum is written in its 43-byte form",
    "structure": "same",
    "upstream": [
     {

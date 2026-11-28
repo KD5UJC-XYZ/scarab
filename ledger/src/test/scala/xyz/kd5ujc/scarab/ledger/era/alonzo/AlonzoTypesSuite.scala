@@ -548,6 +548,36 @@ class AlonzoTypesSuite extends FunSuite:
     assertEquals(EncCBOR[AlonzoTxOut].encCBOR(era).bytes, hex(s"82581d60${"11" * 28}1a000f4240"))
   }
 
+  test("a bootstrap address of an output of lovelace only is written as the reference writes it") {
+    // the reference's `alonzo-byron` output, its address's checksum widened from four bytes to
+    // eight (`1a9804d888` to `1b000000009804d888`, the address from 43 bytes to 47), which the
+    // reference reads; built again from the address read (`mkTxOutCompact`), the output holds the
+    // address written as the reference writes a Byron address
+    val payload = "82d818582183581c" + "77" * 28 + "a000"
+    val canonical = s"582b${payload}1a9804d888"
+    val widened = s"582f${payload}1b000000009804d888"
+    val coin = "1a0016e360"
+    val item = node(hex(s"82$widened$coin"))
+    val era = right("widened")(AlonzoTxOut.read(item, mode, values))
+    val flat =
+      right("flat")(FlatTxOut.decode(item, mode, forms, ScriptKind.newest(Era.Alonzo), values))
+    assertEquals(AlonzoTxOut.toStored(era), flat)
+    assertEquals(EncCBOR[AlonzoTxOut].encCBOR(era).bytes, hex(s"82$canonical$coin"))
+    // of a value with assets the output keeps the bytes read (`TxOutCompact'`)
+    val assets = s"821a0016e360a1581c${"01" * 28}a1410101"
+    val withAssets = node(hex(s"82$widened$assets"))
+    val multi = right("widened, assets")(AlonzoTxOut.read(withAssets, mode, values))
+    assertEquals(EncCBOR[AlonzoTxOut].encCBOR(multi).bytes, withAssets.original)
+    // a Mary output carried into Alonzo keeps its compact address (`upgradeTxOut`)
+    val mary = right("mary")(
+      MaryTxOut.fromStored(right("stored")(FlatTxOut.fromBytes(item.original)))
+    )
+    assertEquals(
+      EncCBOR[AlonzoTxOut].encCBOR(AlonzoTxOut.translate(mary)).bytes,
+      item.original
+    )
+  }
+
   test("Alonzo's versions are 5 to 6") {
     val era = summon[xyz.kd5ujc.scarab.ledger.era.Era[xyz.kd5ujc.scarab.ledger.state.Alonzo]]
     assertEquals((era.eraProtVerLow.value, era.eraProtVerHigh.value), (5, 6))

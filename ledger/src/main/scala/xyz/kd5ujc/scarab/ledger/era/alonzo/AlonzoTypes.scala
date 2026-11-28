@@ -210,7 +210,12 @@ opaque type AlonzoTxOut = AlonzoTxOutRep
 object AlonzoTxOut:
   /** A stored output read as an Alonzo output (`ejectHardForkTxOut` of the current era,
     * ouroboros-consensus 82ecba329 `Cardano/Ledger.hs:137-162`): refused if it holds an inline
-    * datum or a reference script, which Alonzo's output has not.
+    * datum or a reference script, which Alonzo's output has not. Its compact address is the
+    * address's bytes as stored. The reference's stored output holds the compact address its output
+    * held when made: written again for one read from an Alonzo body of lovelace only
+    * ([[compactAddress]]), carried for one translated from Mary. The store keeps neither which, so
+    * the two differ only for a bootstrap address not written as the reference writes one, of an
+    * output of lovelace only read from an Alonzo body (#85).
     */
   private[ledger] def fromStored(
       out: xyz.kd5ujc.scarab.ledger.TxOut
@@ -221,7 +226,14 @@ object AlonzoTxOut:
         case FlatDatum.Hash(h)   => Right(Some(h))
         case FlatDatum.Inline(_) => Left(EraTxError.NotInEra(EraField.Datum))
       _ <- Either.cond(out.scriptRef.isEmpty, (), EraTxError.NotInEra(EraField.ReferenceScript))
-    yield AlonzoTxOutRep(out.raw, out.address, MultiAssetValue.of(out.value), out.valueSize, hash)
+    yield AlonzoTxOutRep(
+      out.raw,
+      out.address,
+      MultiAssetValue.of(out.value),
+      out.valueSize,
+      hash,
+      out.address.raw
+    )
 
   /** The output in the form the store keeps, the inverse of [[fromStored]]: its bytes, fields and
     * the value's size as they arrived.
@@ -257,18 +269,39 @@ object AlonzoTxOut:
         yield (a, v, d))
           .leftMap(EraTxError.Decode(_))
           .flatMap { (a, v, d) =>
-            val out = AlonzoTxOutRep(n.original, a, MultiAssetValue.of(v), xs(1).original.size, d)
-            val flat = xyz.kd5ujc.scarab.ledger.TxOut(
-              n.original,
-              a,
-              v,
-              d.fold(FlatDatum.NoDatum)(FlatDatum.Hash(_)),
-              None,
-              xs(1).original.size
-            )
-            Either.cond(toStored(out) == flat, out, EraTxError.StoredOutputDiffers)
+            val value = MultiAssetValue.of(v)
+            compactAddress(a, value).flatMap { compact =>
+              val out = AlonzoTxOutRep(n.original, a, value, xs(1).original.size, d, compact)
+              val flat = xyz.kd5ujc.scarab.ledger.TxOut(
+                n.original,
+                a,
+                v,
+                d.fold(FlatDatum.NoDatum)(FlatDatum.Hash(_)),
+                None,
+                xs(1).original.size
+              )
+              Either.cond(toStored(out) == flat, out, EraTxError.StoredOutputDiffers)
+            }
           }
       case _ => Left(EraTxError.Decode(LedgerDecodeError.OutputForm(forms, n.value)))
+
+  /** The address as an output read from a body holds it (`mkTxOutCompact`,
+    * `Alonzo/TxOut.hs:471-481`, cardano-ledger f649f975): of a value of lovelace only, the output
+    * is built again from the address read (`AlonzoTxOut addr`, `:303-331`), which holds it as
+    * `compactAddr` of the address, its fields written again (`putAddr`,
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/Address.hs:277-279`): a bootstrap address encoded
+    * as the reference encodes a Byron address
+    * ([[xyz.kd5ujc.scarab.ledger.byron.ByronAddress.reencoded]]), a Shelley address as the bytes
+    * read, which the reader already cut and normalised as `putAddr` writes them
+    * ([[Address.decode]]). Of any other value, the bytes read (`fromCborBothAddr`).
+    */
+  private def compactAddress(a: Address, value: MultiAssetValue): Either[EraTxError, Bytes] =
+    if !value.assets.isEmpty then Right(a.raw)
+    else
+      a.kind match
+        case Address.Kind.Byron(_) =>
+          xyz.kd5ujc.scarab.ledger.byron.ByronAddress.reencoded(a.raw).leftMap(EraTxError.Decode(_))
+        case Address.Kind.Shelley(_, _, _, _) => Right(a.raw)
 
   /** A Mary output carried into Alonzo (`upgradeTxOut (Shelley.TxOutCompact addr value) =
     * TxOutCompact' addr value`, `Alonzo/TxOut.hs:340`, cardano-ledger f649f975): the same address,
@@ -276,15 +309,16 @@ object AlonzoTxOut:
     */
   def translate(out: MaryTxOut): AlonzoTxOut =
     val r = out.rep
-    AlonzoTxOutRep(r.raw, r.address, r.value, r.valueSize, None)
+    AlonzoTxOutRep(r.raw, r.address, r.value, r.valueSize, None, r.address.raw)
 
   /** `instance EncCBOR (AlonzoTxOut era)` (`Alonzo/TxOut.hs:374-386`, cardano-ledger f649f975):
     * `[address, value]`, or `[address, value, datum hash]`, each field written again, the address
-    * as its compact bytes ([[Address.raw]]) and the value as Mary's.
+    * as the compact bytes the output holds ([[AlonzoTxOutRep.compactAddress]]) and the value as
+    * Mary's.
     */
   given encCBOR: EncCBOR[AlonzoTxOut] = out =>
     import Encoding.*
-    val fields = encodeBytes(out.address.raw) |+| EncCBOR.multiAssetValue.encCBOR(out.value)
+    val fields = encodeBytes(out.compactAddress) |+| EncCBOR.multiAssetValue.encCBOR(out.value)
     out.dataHash.fold(encodeListLen(2) |+| fields)(dh =>
       encodeListLen(3) |+| fields |+| encodeBytes(dh)
     )
