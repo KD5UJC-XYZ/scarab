@@ -63,7 +63,7 @@
   },
   "type ledger.era.ScriptsNeeded": {
    "class": "Mirror",
-   "digest": "8c4e4a38922c00fd",
+   "digest": "6bc25fc1f5a1ed5b",
    "structure": "same",
    "upstream": [
     {
@@ -75,6 +75,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "ScriptsNeeded"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      113,
+      113
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "ScriptsNeeded AlonzoEra"
     },
     {
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/UTxO.hs",
@@ -110,11 +120,11 @@
   },
   "type ledger.era.StAnnTx": {
    "class": "Mirror",
-   "digest": "f251f75869a3c175",
+   "digest": "e0d7c3ae953f20e4",
    "evidence": [
     "EraPlutusContextSuite"
    ],
-   "note": "Babbage's and Conway's case `AlonzoStAnnTx` at the top level alone, as the reference's only constructor is of a top-level transaction; Dijkstra's `DijkstraStAnnTx` of both levels",
+   "note": "Alonzo's, Babbage's and Conway's case `AlonzoStAnnTx` at the top level alone, as the reference's only constructor is of a top-level transaction; Dijkstra's `DijkstraStAnnTx` of both levels",
    "structure": "same",
    "upstream": [
     {
@@ -126,6 +136,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "StAnnTx"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      222,
+      222
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "StAnnTx l AlonzoEra"
     },
     {
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Tx.hs",
@@ -151,7 +171,7 @@
   },
   "type ledger.era.StAnnTxCache": {
    "class": "Mirror",
-   "digest": "22cd8c47489d6e72",
+   "digest": "f1f7efe400347422",
    "evidence": [
     "EraPlutusContextSuite"
    ],
@@ -166,6 +186,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "StAnnTxCache"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Tx.hs",
+     "lines": [
+      224,
+      224
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "StAnnTxCache AlonzoEra"
     },
     {
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Tx.hs",

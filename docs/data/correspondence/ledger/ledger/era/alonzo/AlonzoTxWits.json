@@ -1,0 +1,92 @@
+{
+ "entries": {
+  "def ledger.era.alonzo.AlonzoTxWits.decode": {
+   "class": "Mirror",
+   "digest": "473cb9f8d982a72b",
+   "evidence": [
+    "AlonzoTxDifferentialSuite",
+    "AlonzoTxSuite"
+   ],
+   "note": "a witness set read in one pass at Alonzo's decoder version, 5, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 5; a list of PlutusV2 or PlutusV3 scripts refused at its first item, in the order the keys are written; held to the flat decoder's verdicts on every Alonzo transaction the repository holds (the era walk, the chain-dependent capture, the Preview Alonzo blocks and ImmutableDB chunks, the reference's refusal, v1-context, context-matrix and Plutus admission corpora) and on byte mutants of their distinct bodies, witness sets and transactions, and on 479 Alonzo rows of the reference's decoder corpora (three of them witness sets at protocol version 6, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (AlonzoTxDifferentialSuite), and to its written order on crafted cases (AlonzoTxSuite)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      603,
+      703
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoTxWitsRaw era))"
+    }
+   ]
+  },
+  "def ledger.era.alonzo.AlonzoTxWits.decodeAt": {
+   "class": "Mirror",
+   "digest": "068c170ff1ef8880",
+   "evidence": [
+    "AlonzoTxDifferentialSuite"
+   ],
+   "note": "the witness set's decoder at a version of Alonzo's, 5 or 6, as `decodeFull'` reads at any version: the reference's recordings at protocol version 6 are read at it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      603,
+      703
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoTxWitsRaw era))"
+    }
+   ]
+  },
+  "type ledger.era.alonzo.AlonzoTxWits": {
+   "class": "Mirror",
+   "digest": "ab7e2a4ab24ada53",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      467,
+      467
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoTxWits AlonzoEra"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxWits.instance": {
+   "class": "Mirror",
+   "digest": "4b78d293d116d8ec",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxWits.hs",
+     "lines": [
+      466,
+      490
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxWits AlonzoEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.alonzo.AlonzoTxWits.fromItem",
+    "given ledger.era.alonzo.AlonzoTxWits.given_CanEqual_AlonzoTxWits_AlonzoTxWits",
+    "object ledger.era.alonzo.AlonzoTxWits"
+   ],
+   "reason": "Alonzo's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Alonzo's (fromFlat), and the certificate's representation read only in Alonzo's files. Scala containers and helpers with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/alonzo/AlonzoTxWits.scala"
+}

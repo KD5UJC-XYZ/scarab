@@ -8,7 +8,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import cats.data.NonEmptyVector
 import xyz.kd5ujc.scarab.crypto.Blake2b
 import xyz.kd5ujc.scarab.ledger.{Metadatum, Unsigned}
-import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway, Dijkstra, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Babbage, Conway, Dijkstra, EraTag}
 import xyz.kd5ujc.scarab.plutus.{BackendFailure, PlutusLanguage, ScriptDecodeFailure, ScriptDecoder}
 
 /** The metadata every era's auxiliary data has, and its validation (`EraTxAuxData`, cardano-ledger
@@ -159,6 +159,9 @@ object EraTxAuxData:
     */
   def hashTxAuxData[E <: EraTag](aux: TxAuxData[E])(using a: EraTxAuxData[E]): Bytes =
     Blake2b.hash256.hash(a.originalBytes(aux))
+
+  given alonzo: AlonzoEraTxAuxData[Alonzo] =
+    xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoTxAuxData.instance
 
   given babbage: AlonzoEraTxAuxData[Babbage] =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxAuxData.instance

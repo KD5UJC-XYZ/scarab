@@ -1,0 +1,92 @@
+{
+ "entries": {
+  "def ledger.era.alonzo.AlonzoTxAuxData.decode": {
+   "class": "Mirror",
+   "digest": "5918f6fd07d13d50",
+   "evidence": [
+    "AlonzoTxDifferentialSuite",
+    "AlonzoTxSuite"
+   ],
+   "note": "auxiliary data in any of its three forms, the tagged map read in one pass at Alonzo's decoder version, 5, the keys as written, as the reference's `decodeSparse` reads them (a repeated key, then an unknown one, then the value; the required keys after the last), each value by the flat decoder's reader of its field at version 5; PlutusV2's and PlutusV3's keys refused before their values (`guardPlutus`), and PlutusV4's key 5 as the reference refuses it, where the flat reader refuses it as unknown; held to the flat decoder's verdicts on every Alonzo transaction the repository holds (the era walk, the chain-dependent capture, the Preview Alonzo blocks and ImmutableDB chunks, the reference's refusal, v1-context, context-matrix and Plutus admission corpora) and on byte mutants of their distinct bodies, witness sets and transactions, and on 479 Alonzo rows of the reference's decoder corpora (three of them witness sets at protocol version 6, read at it), an accepted one compared whole; to the reference's recorded refusals where they name a case (AlonzoTxDifferentialSuite), and to its written order on crafted cases (AlonzoTxSuite); and to the reference's 140 recorded verdicts on Alonzo auxiliary data, each read at its version (decodeAt)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "lines": [
+      210,
+      312
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoTxAuxDataRaw era))"
+    }
+   ]
+  },
+  "def ledger.era.alonzo.AlonzoTxAuxData.decodeAt": {
+   "class": "Mirror",
+   "digest": "63e77d1773c569c9",
+   "evidence": [
+    "AlonzoTxDifferentialSuite"
+   ],
+   "note": "the auxiliary data's decoder at a version of Alonzo's, 5 or 6, as `decodeFull'` reads at any version: the reference's verdicts at protocol version 6 are read at it",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "lines": [
+      210,
+      312
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (AlonzoTxAuxDataRaw era))"
+    }
+   ]
+  },
+  "type ledger.era.alonzo.AlonzoTxAuxData": {
+   "class": "Mirror",
+   "digest": "2ddd743a8f33e0c9",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "lines": [
+      348,
+      348
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoTxAuxData AlonzoEra"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxAuxData.instance": {
+   "class": "Mirror",
+   "digest": "d2df6b967fcbbaf6",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxAuxData.hs",
+     "lines": [
+      344,
+      392
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxAuxData AlonzoEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.alonzo.AlonzoTxAuxData.fromItem",
+    "given ledger.era.alonzo.AlonzoTxAuxData.given_CanEqual_AlonzoTxAuxData_AlonzoTxAuxData",
+    "object ledger.era.alonzo.AlonzoTxAuxData"
+   ],
+   "reason": "Alonzo's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Alonzo's (fromFlat), and the certificate's representation read only in Alonzo's files. Scala containers and helpers with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/alonzo/AlonzoTxAuxData.scala"
+}

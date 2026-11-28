@@ -275,6 +275,23 @@
     }
    ]
   },
+  "given ledger.era.EraTxCert.alonzo": {
+   "class": "Mirror",
+   "digest": "c6376b7ad04c4099",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxCert.hs",
+     "lines": [
+      11,
+      11
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxCert AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.EraTxCert.babbage": {
    "class": "Mirror",
    "digest": "5eec85e5f374e6c2",

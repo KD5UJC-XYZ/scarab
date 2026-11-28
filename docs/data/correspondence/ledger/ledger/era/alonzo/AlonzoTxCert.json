@@ -1,0 +1,59 @@
+{
+ "entries": {
+  "type ledger.era.alonzo.AlonzoTxCert": {
+   "class": "Mirror",
+   "digest": "a685380d0e31817c",
+   "note": "ShelleyTxCert AlonzoEra over the shared representation, made by Alonzo's body decoder and its classes' builders",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxCert.hs",
+     "lines": [
+      12,
+      12
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxCert AlonzoEra"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxCert.instance": {
+   "class": "Mirror",
+   "digest": "423bc4234c6a87e2",
+   "evidence": [
+    "AlonzoTxSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxCert.hs",
+     "lines": [
+      11,
+      65
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxCert AlonzoEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.alonzo.AlonzoTxCert.rep",
+    "given ledger.era.alonzo.AlonzoTxCert.given_CanEqual_AlonzoTxCert_AlonzoTxCert",
+    "object ledger.era.alonzo.AlonzoTxCert"
+   ],
+   "reason": "Alonzo's companions, their equality with the era itself only (design §3.1), the read-only view of the shared representation the next era's translation reads, and a Plutus script's language and bytes, which the reference reads through its Plutus type"
+  },
+  {
+   "definitions": [
+    "def ledger.era.alonzo.AlonzoTxCert.fromFlat"
+   ],
+   "reason": "Alonzo's transaction on the era types (#85): the companions holding its decoders, instances and CanEqual, Scala's equality, hash and rendering of each part, which the reference derives; the read of an item already parsed with no detached record (fromItem, which the mempool form's reading uses); the certificate the flat certificate reader read made Alonzo's (fromFlat), and the certificate's representation read only in Alonzo's files. Scala containers and helpers with no counterpart of their own"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/alonzo/AlonzoTxCert.scala"
+}
