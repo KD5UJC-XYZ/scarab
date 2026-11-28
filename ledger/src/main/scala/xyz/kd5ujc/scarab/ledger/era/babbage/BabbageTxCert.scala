@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraField,
   EraTxError,
   GenesisDelegCert,
+  IsShelleyTxCert,
   MIRCert,
   MIRPot,
   MIRTarget,
@@ -54,11 +55,11 @@ object BabbageTxCert:
     /** The shared representation, read only. */
     def rep: ShelleyTxCertRep = c
 
-  /** `TxCert BabbageEra ~ ShelleyTxCert BabbageEra`, which DELPL asks for
-    * (`Shelley/Rules/Delpl.hs:184`, cardano-ledger f649f975): one way only, so it reads a
-    * certificate's representation and makes no certificate of one.
+  /** `TxCert BabbageEra ~ ShelleyTxCert BabbageEra` (`Babbage/TxCert.hs:12`, cardano-ledger
+    * f649f975), which DELPL asks for (`Shelley/Rules/Delpl.hs:184`): the representation, read only.
     */
-  given shelleyTxCert: (BabbageTxCert <:< ShelleyTxCertRep) = <:<.refl
+  val isShelleyTxCert: IsShelleyTxCert[Babbage] = new IsShelleyTxCert[Babbage]:
+    override def shelleyTxCert(cert: BabbageTxCert): ShelleyTxCertRep = cert
 
   /** The Babbage certificate of a flat one that the flat certificate reader read at Babbage
     * (`DecCBOR (ShelleyTxCert era)`,

@@ -12,6 +12,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraCertState,
   EraPParams,
   GenesisDelegCert,
+  IsShelleyTxCert,
   MIRCert,
   MIRPot,
   MIRTarget,
@@ -106,7 +107,7 @@ object DELEGS:
       env: DelegsEnv[E],
       certificates: Vector[TxCert[E]]
   )(using
-      rep: TxCert[E] <:< ShelleyTxCertRep,
+      rep: IsShelleyTxCert[E],
       p: EraPParams[E],
       c: EraCertState[E],
       a: ShelleyEraAccounts[E],
@@ -146,9 +147,10 @@ object DELEGS:
     }
 
 /** DELPL (`Shelley/Rules/Delpl.hs`, cardano-ledger f649f975): one certificate, to the rule of its
-  * kind. The era's certificate is Shelley's (`TxCert era ~ ShelleyTxCert era`), which `rep` reads:
-  * the era's certificate file alone gives that evidence, and it goes one way, so no other code
-  * makes a certificate of the era from the representation.
+  * kind. The era's certificate is Shelley's (`TxCert era ~ ShelleyTxCert era`), which `rep` reads
+  * ([[xyz.kd5ujc.scarab.ledger.era.IsShelleyTxCert]]): the era's certificate file alone gives that
+  * evidence, and it goes one way, so no other code makes a certificate of the era from the
+  * representation.
   */
 object DELPL:
   /** `delplTransition` (`Shelley/Rules/Delpl.hs:174-203`, cardano-ledger f649f975): POOL on the
@@ -156,7 +158,7 @@ object DELPL:
     * the others, each a sub-rule whose failures and events DELPL's embed ([[EmbedInDelpl]]).
     */
   def delplTransition[E <: EraTag, F[_]: Monad](env: DelplEnv[E], c: TxCert[E])(using
-      rep: TxCert[E] <:< ShelleyTxCertRep,
+      rep: IsShelleyTxCert[E],
       p: EraPParams[E],
       cs: EraCertState[E],
       a: ShelleyEraAccounts[E],
@@ -187,7 +189,7 @@ object DELPL:
           told(events)(embed.wrapDelegEvent)
         )
       )
-    rep(c) match
+    rep.shelleyTxCert(c) match
       case ShelleyTxCertRep.ShelleyTxCertPool(poolCert) =>
         judge.nest(
           POOL.poolTransition[E, F](PoolEnv[E](env.epoch, env.pp), poolCert)(using

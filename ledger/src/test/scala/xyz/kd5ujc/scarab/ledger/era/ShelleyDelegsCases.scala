@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era
 import java.time.Instant
 import cats.syntax.all.*
 import munit.FunSuite
-import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
+import xyz.kd5ujc.scarab.codec.{Bytes, Cbor, Rational, Value as CborValue}
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.{
   DelegFailure,
@@ -96,20 +96,39 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
     right("delegate")(KeyHash.fromBytes[GenesisDelegate](bytes(28, i + 100)))
   private def vrf(i: Int): VRFVerKeyHash = right("vrf")(VRFVerKeyHash.fromBytes(bytes(32, i)))
 
-  private def params(i: Int, cost: BigInt = 340000000): StakePoolParams =
+  private def params(
+      i: Int,
+      cost: BigInt = 340000000,
+      network: Int = g.networkId.wire,
+      vrfOf: Int = -1,
+      metadataHash: Option[Int] = None
+  ): StakePoolParams =
     Build.stakePoolParams(
       node.PoolParams(
         poolId(i).bytes,
-        vrf(i + 50).bytes,
+        vrf(if vrfOf < 0 then i + 50 else vrfOf).bytes,
         BigInt(0),
         cost,
         Rational(1, 100),
-        node.RewardAccount(g.networkId.wire, node.Credential.Key(bytes(28, i + 60))),
+        node.RewardAccount(network, node.Credential.Key(bytes(28, i + 60))),
         Set.empty,
         Bytes.empty,
-        None
+        metadataHash.map(metadata)
       )
     )
+
+  // a pool's metadata, its URL and its hash of `size` bytes
+  private def metadata(size: Int): Bytes =
+    Cbor
+      .encode(
+        CborValue.Arr(
+          Vector(
+            xyz.kd5ujc.scarab.codec.Node(CborValue.Text("u"), Bytes.empty),
+            xyz.kd5ujc.scarab.codec.Node(CborValue.ByteString(bytes(size, 1)), Bytes.empty)
+          )
+        )
+      )
+      .fold(e => fail(e.toString), identity)
 
   private def reg(i: Int): TxCert[E] = t.mkRegTxCert(cred(i))
   private def unReg(i: Int): TxCert[E] = t.mkUnRegTxCert(cred(i))
@@ -254,6 +273,30 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
   }
 
   test(
+    s"$name: POOL's checks of the network, the metadata hash and, from version 11, the VRF key"
+  ) {
+    val other = if g.networkId.wire == 0 then 1 else 0
+    assertEquals(
+      refused(judged(empty, Vector(t.mkRegPoolTxCert(params(6, network = other))))),
+      List(
+        poolF(PoolFailure.WrongNetworkPool(FlatMismatch(other, g.networkId.wire), poolId(6).bytes))
+      )
+    )
+    assertEquals(
+      refused(judged(empty, Vector(t.mkRegPoolTxCert(params(6, metadataHash = Some(33)))))),
+      List(poolF(PoolFailure.PoolMedataHashTooBig(poolId(6).bytes, 33)))
+    )
+    accepted(judged(empty, Vector(t.mkRegPoolTxCert(params(6, metadataHash = Some(32))))))
+    // a VRF key a pool registered earlier in the transaction, checked from version 11 only
+    val twice = Vector(regPool(7), t.mkRegPoolTxCert(params(8, vrfOf = 57)))
+    accepted(judged(empty, twice))
+    assertEquals(
+      refused(judged(empty, twice, pp = pp8.copy(protocolMajor = 11))),
+      List(poolF(PoolFailure.VRFKeyHashAlreadyRegistered(poolId(8).bytes, vrf(57).bytes)))
+    )
+  }
+
+  test(
     s"$name: a failed registration still registers the account again, which a later certificate sees"
   ) {
     val withBalance = populated.copy(dState =
@@ -374,7 +417,7 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
       pp8,
       account,
       withGenesis,
-      Vector(BabbageTestKit.flatCertRep(d.rep(genDeleg(1, 20, 20)))),
+      Vector(BabbageTestKit.flatCertRep(d.rep.shelleyTxCert(genDeleg(1, 20, 20)))),
       RuleT.Policy.Accumulate
     ) match
       case Left(_) => ()
@@ -632,4 +675,19 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
     )
 
 /** Shelley's certificate rules on Babbage's era types. */
-class BabbageDelegsSuite extends ShelleyDelegsCases[Babbage]("Babbage")
+class BabbageDelegsSuite extends ShelleyDelegsCases[Babbage]("Babbage"):
+  test(
+    "a Babbage certificate is not its representation outside its file, nor the representation one"
+  ) {
+    val toRep = compileErrors("def f(c: babbage.BabbageTxCert): ShelleyTxCertRep = c")
+    assert(toRep.contains("Found:"), toRep)
+    val fromRep = compileErrors("def f(c: ShelleyTxCertRep): babbage.BabbageTxCert = c")
+    assert(fromRep.contains("Found:"), fromRep)
+    // the evidence reads it
+    assertEquals(
+      compileErrors(
+        "def f(c: babbage.BabbageTxCert): ShelleyTxCertRep = summon[IsShelleyTxCert[xyz.kd5ujc.scarab.ledger.state.Babbage]].shelleyTxCert(c)"
+      ),
+      ""
+    )
+  }

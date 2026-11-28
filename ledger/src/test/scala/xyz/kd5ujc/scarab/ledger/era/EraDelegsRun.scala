@@ -84,7 +84,7 @@ object EraDelegsRun:
       delegEvent: DelegEvent[E] =:= ShelleyDelegEvent[E],
       poolEvent: PoolRuleEvent[E] =:= PoolEvent[E]
   )(using
-      val rep: TxCert[E] <:< ShelleyTxCertRep,
+      val rep: IsShelleyTxCert[E],
       val p: EraPParams[E],
       val c: EraCertState[E],
       val a: ShelleyEraAccounts[E],
@@ -264,7 +264,7 @@ object EraDelegsRun:
       pp,
       account,
       state,
-      certificates.map(c => BabbageTestKit.flatCertRep(d.rep(c))),
+      certificates.map(c => BabbageTestKit.flatCertRep(d.rep.shelleyTxCert(c))),
       policy
     ) match
       case Left(defect)          => munit.Assertions.fail(s"flat defect $defect")
@@ -283,7 +283,7 @@ object EraDelegsRun:
   )(using d: DelegsEra[E]): Vector[Told] =
     certificates
       .foldLeft((pools, Vector.empty[Told])) { case ((known, told), c) =>
-        d.rep(c) match
+        d.rep.shelleyTxCert(c) match
           case ShelleyTxCertRep.ShelleyTxCertPool(PoolCert.RegPool(params)) =>
             val id = params.id.bytes
             if known.contains(id) then (known, told :+ Told.ReregisterPool(id))

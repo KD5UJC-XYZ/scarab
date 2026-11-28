@@ -5,10 +5,19 @@ import java.nio.file.{Files, Path}
 import munit.FunSuite
 import scala.jdk.CollectionConverters.*
 import xyz.kd5ujc.scarab.codec.Bytes
-import xyz.kd5ujc.scarab.ledger.{Block, LedgerFailure, Tx as FlatTx, Utxo}
+import xyz.kd5ujc.scarab.ledger.{
+  Block,
+  CertFailure,
+  CertsFailure,
+  DelegFailure,
+  LedgerFailure,
+  PredicateFailure,
+  Tx as FlatTx,
+  Utxo
+}
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.era.EraDelegsRun.{DelegsEra, Outcome}
-import xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTx
+import xyz.kd5ujc.scarab.ledger.era.babbage.{BabbageTestKit, BabbageTx}
 import xyz.kd5ujc.scarab.ledger.era.rules.DelegsEnv
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Globals, RuleT, Sts, Tick}
 import xyz.kd5ujc.scarab.ledger.state.{
@@ -64,7 +73,8 @@ abstract class ShelleyDelegsCorpus[E <: EraTag](
   /** The counts the corpora give, asserted so that a loader that loses a case fails. */
   protected val blocks: Map[String, (Int, Int)]
   protected val states: Map[String, Int]
-  protected val alone: Map[String, (Int, Int)]
+  protected val alone: Map[String, (Int, Int, Int)]
+  protected val reached: Set[Either[Int, Int]]
   protected val refusalCases: Int
   protected val refusedAlone: Int
 
@@ -223,19 +233,64 @@ abstract class ShelleyDelegsCorpus[E <: EraTag](
   test(
     s"$name: on every state of the captures, the certificates its state makes, together and each alone"
   ) {
+    val fresh = Credential.KeyHashObj[Staking](
+      right("key")(
+        xyz.kd5ujc.scarab.ledger.state.KeyHash
+          .fromBytes[Staking](Bytes.fromArray(Array.fill(28)(0xdd.toByte)))
+      )
+    )
     captures.toVector.sortBy(_._1).foreach { (dir, c) =>
       assertEquals(c.states.size, states(dir), dir)
-      val tallies = c.states.map { (slot, nes) =>
+      val judged = c.states.map { (slot, nes) =>
         val epoch = right("epoch")(EpochNo.fromBigInt(c.globals.epochOf(slot.toBigInt)))
         val certs = made(c.globals, nes, epoch)
         assert(certs.nonEmpty, s"$dir $slot")
-        judge(c.globals, nes, slot, certs)
-        certs.map(cert => judge(c.globals, nes, slot, Vector(cert)).isInstanceOf[Outcome.Accepted])
+        val whole = judge(c.globals, nes, slot, certs)
+        val each = certs.map(cert => cert -> judge(c.globals, nes, slot, Vector(cert)))
+        // the certificates accepted alone, together, with a fresh account registered and delegated
+        val pool = d.certState(nes.es.ls.cert).pState.stakePools.headOption.map(_._1)
+        val kept = each.collect { case (cert, Outcome.Accepted(_)) => cert }
+        val together =
+          kept ++ (t.mkRegTxCert(fresh) +: pool.map(t.mkDelegStakeTxCert(fresh, _)).toVector)
+        val joint = judge(c.globals, nes, slot, together)
+        joint match
+          case Outcome.Accepted(after) =>
+            assertEquals(
+              after.dState.accounts.states.get(fresh).map(_.ptr),
+              Some(node.Ptr.ofCertificate(slot.toBigInt, 0, kept.size)),
+              s"$dir $slot"
+            )
+            assertEquals(after.dState.accounts.states.get(fresh).flatMap(_.pool), pool)
+          case Outcome.Refused(_) => ()
+        (whole +: each.map(_._2), each.map(_._2), joint)
       }
-      val each = tallies.flatten
-      assertEquals((each.count(identity), each.count(!_)), alone(dir), dir)
+      val each = judged.flatMap(_._2)
+      assertEquals(
+        (
+          each.count(_.isInstanceOf[Outcome.Accepted]),
+          each.count(_.isInstanceOf[Outcome.Refused]),
+          judged.count(_._3.isInstanceOf[Outcome.Accepted])
+        ),
+        alone(dir),
+        dir
+      )
+      // the failures the states reach, by their constructor in the flat form
+      val kinds = judged
+        .flatMap(_._1)
+        .flatMap {
+          case Outcome.Refused(fs) => fs.map(kindOf)
+          case Outcome.Accepted(_) => Nil
+        }
+        .toSet
+      assertEquals(kinds, reached, dir)
     }
   }
+
+  /** A failure of DELEG or POOL by the ordinal of its flat constructor. */
+  private def kindOf(f: PredicateFailure): Either[Int, Int] = f match
+    case PredicateFailure.Certs(CertsFailure.Cert(CertFailure.Deleg(g))) => Left(g.ordinal)
+    case PredicateFailure.Certs(CertsFailure.Cert(CertFailure.Pool(p)))  => Right(p.ordinal)
+    case other => fail(s"not DELEG's or POOL's: $other")
 
   // ---- the refusal corpora
 
@@ -277,7 +332,12 @@ abstract class ShelleyDelegsCorpus[E <: EraTag](
           val slot = right("slot")(SlotNo.fromBigInt(rc.tipSlot + 1))
           val ticked = right(s"$what tick")(Sts(Tick.sts[E])(globals, (), funded, slot))
           val flat = right(s"$what flat")(FlatTx.fromEnvelope(bytes, protocolEra))
-          assertEquals(flat.body.certificates.size, certs.size, what)
+          // the flat rule judges the flat decoder's certificates, the era's read the same
+          assertEquals(
+            certs.map(c => BabbageTestKit.flatCertRep(d.rep.shelleyTxCert(c))),
+            flat.body.certificates,
+            what
+          )
           Recorded(what, rc.families, rc.reason, flat.body.id, globals, ticked, slot, certs)
         }
       }
@@ -355,7 +415,19 @@ class BabbageDelegsCorpusSuite
   protected val blocks: Map[String, (Int, Int)] =
     Map("fixtures/eras" -> (188, 2), "fixtures/chain-dep" -> (196, 2))
   protected val states: Map[String, Int] = Map("fixtures/eras" -> 188, "fixtures/chain-dep" -> 196)
-  protected val alone: Map[String, (Int, Int)] =
-    Map("fixtures/eras" -> (2557, 1767), "fixtures/chain-dep" -> (2645, 1863))
+  protected val alone: Map[String, (Int, Int, Int)] =
+    Map("fixtures/eras" -> (2557, 1767, 188), "fixtures/chain-dep" -> (2645, 1863, 196))
+  // a balance left, a registration again, an unknown account delegated, a genesis key's delegate
+  // and VRF key held by another, and MIR from the stability window before the next epoch
+  protected val reached: Set[Either[Int, Int]] =
+    val none = node.Credential.Key(Bytes.empty)
+    Set(
+      DelegFailure.StakeKeyHasNonZeroAccountBalance(0),
+      DelegFailure.StakeKeyAlreadyRegistered(none),
+      DelegFailure.StakeDelegationImpossible(none),
+      DelegFailure.DuplicateGenesisDelegate(Bytes.empty),
+      DelegFailure.DuplicateGenesisVRF(Bytes.empty),
+      DelegFailure.MIRCertificateTooLateinEpoch(node.Mismatch(0, 0))
+    ).map(f => Left(f.ordinal))
   protected val refusalCases: Int = 9
   protected val refusedAlone: Int = 7

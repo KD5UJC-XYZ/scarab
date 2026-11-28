@@ -3,9 +3,11 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.{
+  Babbage,
   Coin,
   Credential,
   DeltaCoin,
+  EraTag,
   Genesis,
   GenesisDelegate,
   KeyHash,
@@ -92,3 +94,17 @@ object ShelleyTxCertRep:
     case ShelleyTxCertDelegCert(ShelleyDelegCert.ShelleyUnRegCert(c))              => scriptHash(c)
     case ShelleyTxCertDelegCert(ShelleyDelegCert.ShelleyDelegCert(c, _))           => scriptHash(c)
     case ShelleyTxCertPool(_) | ShelleyTxCertGenesisDeleg(_) | ShelleyTxCertMir(_) => None
+
+/** The evidence that era `E` 's certificate is the representation Shelley to Babbage share (`TxCert
+  * era ~ ShelleyTxCert era`, which DELPL asks for, `Shelley/Rules/Delpl.hs:184`, cardano-ledger
+  * f649f975). It goes one way: it reads a certificate's representation and makes no certificate of
+  * one. Only the era's certificate file gives it, and it is a class of its own, not a function, so
+  * it converts nothing implicitly.
+  */
+trait IsShelleyTxCert[E <: EraTag]:
+  def shelleyTxCert(cert: TxCert[E]): ShelleyTxCertRep
+
+/** The instances of each era, the one place that lists the eras whose certificate is Shelley's. */
+object IsShelleyTxCert:
+  given babbage: IsShelleyTxCert[Babbage] =
+    xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxCert.isShelleyTxCert

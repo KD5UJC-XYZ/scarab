@@ -66,7 +66,7 @@
   },
   "def ledger.era.rules.DELEGS.delegsTransition": {
    "class": "Mirror",
-   "digest": "7b665299c0d3477c",
+   "digest": "7d5b90f06b180ecb",
    "evidence": [
     "BabbageDelegsSuite",
     "BabbageDelegsCorpusSuite"
@@ -88,12 +88,12 @@
   },
   "def ledger.era.rules.DELPL.delplTransition": {
    "class": "Mirror",
-   "digest": "b76f86700f1863c6",
+   "digest": "f3c5add7e1f48db8",
    "evidence": [
     "BabbageDelegsSuite",
     "BabbageDelegsCorpusSuite"
    ],
-   "note": "TxCert era ~ ShelleyTxCert era as one-way evidence (<:<) that only the era's certificate file gives; POOL on the pool state through certPStateL, DELEG on the certificate state, each a sub-rule whose failures and events DELPL's embed (EmbedInDelpl)",
+   "note": "TxCert era ~ ShelleyTxCert era as one-way evidence that only the era's certificate file gives (IsShelleyTxCert), a class of its own that converts nothing implicitly; POOL on the pool state through certPStateL, DELEG on the certificate state, each a sub-rule whose failures and events DELPL's embed (EmbedInDelpl)",
    "structure": "differs",
    "upstream": [
     {
