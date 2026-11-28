@@ -107,8 +107,27 @@ object ConstantDecoder:
     case Read(plan: Plan, at: Long)
     case Give(constant: Constant, at: Long)
 
-  /** The value of type `uni` at `at`. */
+  /** The value of type `uni` at `at`. A type that is not a list, an array or a pair is read by its
+    * own decoder at once ([[leaf]]): its plan would be that decoder ([[Plan.Leaf]]), or for `unit`
+    * the one value of no bits ([[Plan.Shared]]), which [[leaf]] gives too, so the value and the
+    * position after it are the plan's. Most constants of a script are of such a type, and compiling
+    * a plan for each took about half of the decoding of the scripts that mainnet's blocks of epoch
+    * 493 evaluate (#1529). The reference compiles every type (`Universe.hs:166-186`, plutus
+    * 1.70.0.0); only the time differs, never a value or a refusal: an Optimisation (REF-6),
+    * approved for #1499 item 4.
+    */
   def value(input: Input, at: Long, uni: DefaultUni): Either[FlatError, Got[Constant]] =
+    uni match
+      case DefaultUni.List(_) | DefaultUni.Array(_) | DefaultUni.Pair(_, _) =>
+        planned(input, at, uni)
+      case _ => leaf(input, at, uni)
+
+  /** The value of type `uni` at `at`, read by the plan of its type. */
+  private[flat] def planned(
+      input: Input,
+      at: Long,
+      uni: DefaultUni
+  ): Either[FlatError, Got[Constant]] =
     @tailrec def go(step: Step, open: List[Open]): Either[FlatError, Got[Constant]] = step match
       case Step.Read(Plan.Shared(c), from) => go(Step.Give(c, from), open)
       case Step.Read(Plan.Leaf(leafType), from) =>

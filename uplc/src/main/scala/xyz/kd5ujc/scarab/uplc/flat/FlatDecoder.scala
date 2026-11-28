@@ -39,11 +39,14 @@ object Checks:
     */
   def ledger(language: PlutusLanguage, protocol: ProtocolMajor): Checks =
     val available = Availability.builtins(language, protocol)
+    // the set by ordinal, so that the check of each builtin read is an index and not a lookup in
+    // the set, which was about a sixth of the decoding of mainnet's scripts of epoch 493 (#1529)
+    val byOrdinal = IArray.from(DefaultFun.values.iterator.map(available.contains))
     Checks(
       uni => Availability.checkConstantType(protocol, uni),
       fun =>
         Either.cond(
-          available.contains(fun),
+          byOrdinal(fun.ordinal),
           (),
           Availability.Refusal.BuiltinNotAvailable(fun, language, protocol)
         ),
