@@ -90,7 +90,7 @@
    "evidence": [
     "AlonzoUtxosSuite"
    ],
-   "note": "the collection, its failures but a translation's recorded, and the evaluation, which a run may defer (Phase2Deferral), as in Babbage's functions; a transaction whose collection's failures are recorded is told to the run (Phase2Deferral.uncollected); the evaluation, the labelled when2Phase clause, skipped under the judgment's ValidateNone as the reference's Label is (Extended.hs:709-712, 727-730), as well as under the transaction policy NonStatic",
+   "note": "the collection, its failures but a translation's the reference can give recorded (a node-only one, such as a missing clock, recorded: TranslationOrigin, #1534), and the evaluation, which a run may defer (Phase2Deferral), as in Babbage's functions; a transaction whose collection's failures are recorded is told to the run (Phase2Deferral.uncollected); the evaluation, the labelled when2Phase clause, skipped under the judgment's ValidateNone as the reference's Label is (Extended.hs:709-712, 727-730), as well as under the transaction policy NonStatic",
    "structure": "differs",
    "upstream": [
     {

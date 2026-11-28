@@ -364,14 +364,16 @@ object AlonzoUtxos:
 
   /** `scriptsTransition` (`Alonzo/Rules/Utxos.hs:168-187`, cardano-ledger f649f975): the failures
     * of the collection of the transaction's scripts with their contexts recorded (`failOnNonEmpty`,
-    * `CollectErrors`) but a translation's, which Alonzo does not record ("BadTranslation was
-    * introduced in Babbage"), and `action` on the scripts' evaluation only under the policy that
-    * validates every check (`when2Phase`, skipped too by a judgment of `ValidateNone`, which runs
-    * no labelled clause) and only if nothing failed so far in the judgment (`whenFailureFree`). A
-    * collection whose failures are all a translation's records nothing and evaluates nothing. Where
-    * the scripts are evaluated is the run's ([[Phase2Deferral]]), as in Babbage's functions; a
-    * transaction whose collection's failures are recorded is told to the run with them before they
-    * are recorded ([[Phase2Deferral.uncollected]]), which the reference has no counterpart for.
+    * `CollectErrors`) but a translation's the reference can give, which Alonzo does not record
+    * ("BadTranslation was introduced in Babbage"; a failure only the node gives, such as a missing
+    * clock, is recorded, [[TranslationOrigin]], #1534), and `action` on the scripts' evaluation
+    * only under the policy that validates every check (`when2Phase`, skipped too by a judgment of
+    * `ValidateNone`, which runs no labelled clause) and only if nothing failed so far in the
+    * judgment (`whenFailureFree`). A collection whose failures are all a translation's the
+    * reference can give records nothing and evaluates nothing. Where the scripts are evaluated is
+    * the run's ([[Phase2Deferral]]), as in Babbage's functions; a transaction whose collection's
+    * failures are recorded is told to the run with them before they are recorded
+    * ([[Phase2Deferral.uncollected]]), which the reference has no counterpart for.
     */
   def scriptsTransition[F[_]: Monad, E <: EraTag](
       stAnnTx: StAnnTx[TxLevel.Top, E],
