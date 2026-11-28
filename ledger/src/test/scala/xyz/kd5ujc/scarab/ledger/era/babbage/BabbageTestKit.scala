@@ -239,7 +239,10 @@ object BabbageTestKit extends munit.Assertions:
     case BabbageContextError.ReferenceInputsNotSupported(ins) =>
       TranslationError.ReferenceInputsNotSupported(ins)
 
-  def flatCert(c: BabbageTxCert): Certificate = c.rep match
+  def flatCert(c: BabbageTxCert): Certificate = flatCertRep(c.rep)
+
+  /** The flat certificate of the representation the eras from Shelley to Babbage share. */
+  def flatCertRep(c: ShelleyTxCertRep): Certificate = c match
     case ShelleyTxCertRep.ShelleyTxCertDelegCert(ShelleyDelegCert.ShelleyRegCert(cred)) =>
       Certificate.Register(Convert.back(cred), None)
     case ShelleyTxCertRep.ShelleyTxCertDelegCert(ShelleyDelegCert.ShelleyUnRegCert(cred)) =>
@@ -415,15 +418,16 @@ object BabbageTestKit extends munit.Assertions:
       era.plutusArrival
     )
 
-  /** The auxiliary data's fields as the flat readers read them from its bytes at `version`,
-    * independently of Babbage's decoder: the metadata by label (a label written twice its last
+  /** The auxiliary data's fields as the flat readers read them from its bytes at `version` of `era`
+    * 's, independently of the era's decoder: the metadata by label (a label written twice its last
     * metadatum, below version 9), each by the flat metadatum reader; the native scripts by the flat
     * native-script reader; and the Plutus scripts with their languages in the order they arrived
     * ([[AuxiliaryScripts.read]]), each language's in its order.
     */
   def flatAuxView(
       raw: Bytes,
-      version: DecoderVersion = DecoderVersion.of(Era.Babbage)
+      version: DecoderVersion = DecoderVersion.of(Era.Babbage),
+      era: Era = Era.Babbage
   ): Either[LedgerDecodeError, AuxView] =
     given ByteStrings = ByteStrings.of(version)
     def metadata(n: Node) =
@@ -444,11 +448,11 @@ object BabbageTestKit extends munit.Assertions:
           )
         )
     for
-      plutus <- AuxiliaryScripts.read(raw, Era.Babbage, version.value)
+      plutus <- AuxiliaryScripts.read(raw, era, version.value)
       parts <- DetachedRecords.read(
         raw,
         Cbor.Limits.Unbounded,
-        DetachedRecords.Shapes.auxiliaryDataAt(Era.Babbage, version.value)
+        DetachedRecords.Shapes.auxiliaryDataAt(era, version.value)
       )(LedgerDecodeError.Syntax(_)) { root =>
         root.value match
           case Value.Map(_)  => metadata(root).map((_, Vector.empty[(Bytes, NativeScript)]))
