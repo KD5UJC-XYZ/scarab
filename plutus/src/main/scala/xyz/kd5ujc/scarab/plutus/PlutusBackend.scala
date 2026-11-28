@@ -18,10 +18,21 @@ final case class PlutusBackend(
 )
 
 object PlutusBackend:
-  /** The node's backend: the shared interpreter of Scarab's own evaluator ([[ScarabEvaluator]]). */
-  val default: PlutusBackend =
+  /** The shared interpreter of Scarab's own evaluator ([[ScarabEvaluator]]), its program cache not
+    * sized for a heap: the tools' and the suites' backend. Lazy, so that a node, which builds its
+    * own ([[forHeap]]), never makes it.
+    */
+  lazy val default: PlutusBackend =
     PlutusBackend(
       ScarabEvaluator.default,
       ScarabEvaluator.defaultDecoder,
       ScarabEvaluator.interruptible
     )
+
+  /** The node's backend for a maximum heap of `maxHeap` bytes: an interpreter of Scarab's own
+    * evaluator of its own, whose program cache is bounded by the heap
+    * ([[ScarabEvaluator.programs]]), as evaluator, decoder and interruptible evaluator.
+    */
+  def forHeap(maxHeap: Long): PlutusBackend =
+    val interpreter = ScarabEvaluator.Interpreter(ScarabEvaluator.programs(maxHeap))
+    PlutusBackend(interpreter, interpreter, ScarabEvaluator.interruptible(interpreter))

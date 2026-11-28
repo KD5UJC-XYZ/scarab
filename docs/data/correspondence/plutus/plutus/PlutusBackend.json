@@ -6,6 +6,7 @@
  "glue": [
   {
    "definitions": [
+    "def plutus.PlutusBackend.forHeap",
     "val plutus.PlutusBackend.default"
    ],
    "reason": "Scarab's wiring of its one Plutus backend, the evaluator and the script decoder that the rules, the mempool and the forger each take; plutus has no counterpart"

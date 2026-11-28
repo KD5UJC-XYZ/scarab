@@ -53,12 +53,25 @@ object ScarabEvaluator:
     */
   private val Contexts = 16
 
-  /** Programs kept: at most 512, and at most 64 MiB of them by [[ProgramWeight]]. A script's
-    * decoded program can hold hundreds of times its bytes (a list of pairs of empty lists holds
-    * about 580 bytes of heap for each byte of its script), so a bound on the number of entries
-    * alone is no bound on the heap.
+  /** Programs kept by an interpreter not sized for a heap ([[programs]]): at most 4,096, and at
+    * most 64 MiB of them by [[ProgramWeight]]. A script's decoded program can hold hundreds of
+    * times its bytes (a list of pairs of empty lists holds about 580 bytes of heap for each byte of
+    * its script), so a bound on the number of entries alone is no bound on the heap; the number of
+    * entries is bounded so that the weight is the bound that holds, every entry weighing at least
+    * its script and its place in the map.
     */
-  private[plutus] val Programs = Limits(entries = 512, weight = Weight.mebibytes(64))
+  private[plutus] val Programs = Limits(entries = 4096, weight = Weight.mebibytes(64))
+
+  /** Programs kept by the node's interpreter, for a maximum heap of `maxHeap` bytes: a sixteenth of
+    * it by [[ProgramWeight]], as the warm tier of the UTxO set is given (`WarmUtxoStore.Budget`),
+    * and never less than [[Programs]]. The working set of the scripts a range of blocks evaluates
+    * can exceed 64 MiB many times: from mainnet block 10,490,500 a block's transactions cycle
+    * through 586 distinct scripts of about 15.5 KiB, each weighing about 1 MiB, and a cache that
+    * keeps fewer than about 200 of them, its least recently used evicted first, finds none of them
+    * when it is asked again (#1529, `docs/performance/rewards-and-evaluation.md` section 71).
+    */
+  private[plutus] def programs(maxHeap: Long): Limits =
+    Limits(Programs.entries, Weight.bytes(math.max(Programs.weight.toLong, maxHeap / 16)))
 
   /** A fresh interpreter with its own caches. */
   def pure: ScriptEvaluator[Id] = Interpreter()
@@ -82,7 +95,11 @@ object ScarabEvaluator:
     * `Sync.interruptible`, whose cancellation by the hard time limit interrupts the thread. Until
     * then its every step, charge and verdict are [[default]]'s.
     */
-  lazy val interruptible: ScriptEvaluator[Id] = shared.evaluate(_, UntilInterrupted)
+  lazy val interruptible: ScriptEvaluator[Id] = interruptible(shared)
+
+  /** `interpreter`, its machine stopping as [[interruptible]]'s does. */
+  private[plutus] def interruptible(interpreter: Interpreter): ScriptEvaluator[Id] =
+    interpreter.evaluate(_, UntilInterrupted)
 
   /** A stop once the thread is interrupted: the interrupt status is the interface through which
     * `Sync.interruptible` cancels (FUN-2 (b)), read and left as it is.
@@ -103,22 +120,28 @@ object ScarabEvaluator:
 
   private type Admitted = Either[LedgerEval.NotAdmitted, Program]
 
-  private[plutus] final class Interpreter extends ScriptEvaluator[Id] with ScriptDecoder[Id]:
+  private[plutus] final class Interpreter(limits: Limits = Programs)
+      extends ScriptEvaluator[Id]
+      with ScriptDecoder[Id]:
     // Instance-scoped caches: `evaluate` is a pure function of its request; a BoundedCache is safe
     // to share between threads, and an attempt with no verdict is never retained.
     private val contexts =
       BoundedCache.counted[ContextKey, Either[Unavailability, LedgerContext]](Contexts)
     private val programs =
       BoundedCache[ProgramKey, Admitted](
-        Programs,
+        limits,
         (key, admitted) =>
-          admitted.fold(_ => Weight.unbounded, ProgramWeight.entry(key.script, _, Programs.weight))
+          admitted.fold(_ => Weight.unbounded, ProgramWeight.entry(key.script, _, limits.weight))
       )
 
     /** The number of programs kept, and their weight. */
     private[plutus] def held: (Int, Weight) =
       val now = programs.snapshot
       (now.size, now.weight)
+
+    /** Whether the program of `script` is kept, the order of use left as it is. */
+    private[plutus] def holds(language: PlutusLanguage, protocol: Int, script: Bytes): Boolean =
+      programs.snapshot.peek(ProgramKey(language, protocol, script)).isDefined
 
     /** The scripts of the programs kept, the least recently used first. */
     private[plutus] def scripts: Vector[Bytes] = programs.snapshot.keys.map(_.script)

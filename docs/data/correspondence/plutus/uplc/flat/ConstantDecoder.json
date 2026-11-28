@@ -6,5 +6,13 @@
   "enum uplc.flat.ConstantDecoder.Plan": null,
   "object uplc.flat.ConstantDecoder": null
  },
+ "glue": [
+  {
+   "definitions": [
+    "def uplc.flat.ConstantDecoder.planned"
+   ],
+   "reason": "the Optimisation of #1499 item 4 (approved 2026-11-27, #1529): the general path a shortcut stands beside, kept for the types the shortcut does not read; the reference compiles every constant's type (`decodeDefaultUniValue`, `PlutusCore/Default/Universe.hs` 166-186 at plutus 1.70.0.0) and reads every type's tags as a list (`PlutusCore/FlatInstances.hs` 118-135), and the shortcut gives the same value, position and refusal; equivalence suite FlatShortcutsSuite"
+  }
+ ],
  "source": "uplc/src/main/scala/xyz/kd5ujc/scarab/uplc/flat/ConstantDecoder.scala"
 }

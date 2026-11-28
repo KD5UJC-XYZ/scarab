@@ -38,9 +38,10 @@ private[plutus] object Weight:
   * version; and every integer, byte string and string at the size of its representation. A node the
   * decoder shares (`()`, a constant of units and pairs repeated in a list) is counted at each place
   * it occurs, so the estimate only errs upwards. The sizes assume what the JVM uses below a 32 GiB
-  * heap: 12-byte object headers and 4-byte references. `ProgramCacheHeapMain` (module `tools`)
-  * measures the heap of the shapes `AmplifyingScripts` (tests) makes and of recorded scripts
-  * against their weight (`docs/performance.md` section 59).
+  * heap: 12-byte object headers, 4-byte references and objects aligned to 8 bytes (the default of
+  * `ObjectAlignmentInBytes`; a larger alignment makes a term hold more than its weight).
+  * `ProgramCacheHeapMain` (module `tools`) measures the heap of the shapes `AmplifyingScripts`
+  * (tests) makes and of recorded scripts against their weight (`docs/performance.md` section 59).
   *
   * Terms, constants and `data` nest as deep as their script makes them, so each is walked with its
   * pending nodes on a list on the heap. The walk of the terms is written out, not `Schemes.cata`:
@@ -53,8 +54,20 @@ private[plutus] object Weight:
   * script's bytes bound.
   */
 private[plutus] object ProgramWeight:
-  /** A term: the `Fix` node and its layer. */
-  private val TermNode = Weight.bytes(64)
+  /** A term's `Fix` node: its header, its layer and its functor, 24 bytes. A term is that node and
+    * its layer, whose size follows its kind: [[Single]], [[Double]], [[Leaf]].
+    */
+  private val Leaf = Weight.bytes(24)
+
+  /** A term whose layer holds one reference (`lam`, `force`, `delay`, `builtin`, a constant): its
+    * node and a 16-byte layer.
+    */
+  private val Single = Weight.bytes(40)
+
+  /** A term whose layer holds two references or a 64-bit field (an application, a variable,
+    * `constr`, `case`): its node and a 24-byte layer.
+    */
+  private val Double = Weight.bytes(48)
 
   /** A constant: the object, the type a list, array or pair constant makes for itself, its slot. */
   private val Node = Weight.bytes(64)
@@ -111,20 +124,20 @@ private[plutus] object ProgramWeight:
         case Nil => total
         case term :: rest =>
           term.unfix match
-            case TermF.Var(_)       => terms(rest, total + TermNode, limit)
-            case TermF.Builtin(_)   => terms(rest, total + TermNode, limit)
-            case TermF.Error        => terms(rest, total + TermNode, limit)
-            case TermF.LamAbs(body) => terms(body :: rest, total + TermNode, limit)
+            case TermF.Var(_)       => terms(rest, total + Double, limit)
+            case TermF.Builtin(_)   => terms(rest, total + Single, limit)
+            case TermF.Error        => terms(rest, total + Leaf, limit)
+            case TermF.LamAbs(body) => terms(body :: rest, total + Single, limit)
             case TermF.Apply(function, arg) =>
-              terms(function :: arg :: rest, total + TermNode, limit)
-            case TermF.Force(body) => terms(body :: rest, total + TermNode, limit)
-            case TermF.Delay(body) => terms(body :: rest, total + TermNode, limit)
+              terms(function :: arg :: rest, total + Double, limit)
+            case TermF.Force(body) => terms(body :: rest, total + Single, limit)
+            case TermF.Delay(body) => terms(body :: rest, total + Single, limit)
             case TermF.Constant(value) =>
-              terms(rest, total + TermNode + constant(value, limit - total), limit)
+              terms(rest, total + Single + constant(value, limit - total), limit)
             case TermF.Constr(_, fields) =>
-              terms(pushed(fields, rest), total + TermNode + slots(fields.size), limit)
+              terms(pushed(fields, rest), total + Double + slots(fields.size), limit)
             case TermF.Case(scrutinee, cases) =>
-              terms(scrutinee :: pushed(cases, rest), total + TermNode + slots(cases.size), limit)
+              terms(scrutinee :: pushed(cases, rest), total + Double + slots(cases.size), limit)
 
   /** `items` in front of `rest`, in some order. */
   private def pushed[A](items: Vector[A], rest: List[A]): List[A] =

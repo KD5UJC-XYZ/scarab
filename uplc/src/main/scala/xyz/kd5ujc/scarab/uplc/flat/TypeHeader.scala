@@ -124,9 +124,36 @@ object TypeHeader:
     go(at, Vector.empty)
 
   /** The type at `at` and the position after it: its tags, parsed, of kind `*` (`Flat.hs:148-153`,
-    * plutus 1.70.0.0).
+    * plutus 1.70.0.0). A type of one tag that is a type of kind `*` on its own is read without the
+    * list of its tags and their parse ([[single]]), which give that type at the same position;
+    * every other type, refusals included, is read by them ([[parsed]]).
     */
   def read(input: Input, at: Long): Either[FlatError, Got[DefaultUni]] =
+    single(input, at).fold(parsed(input, at))(Right(_))
+
+  /** The type at `at` when it is one tag that is a type of kind `*` on its own: a set continuation
+    * bit, the tag, a clear continuation bit. Most constants of a script are of such a type, and
+    * reading their tags as a list and parsing it was about a tenth of the decoding of the scripts
+    * mainnet's blocks of epoch 493 evaluate (#1529). The reference reads every type's tags as a
+    * list (`FlatInstances.hs:118-135`, plutus 1.70.0.0); only the time differs: an Optimisation
+    * (REF-6), approved for #1499 item 4.
+    */
+  private[flat] def single(input: Input, at: Long): Option[Got[DefaultUni]] =
+    input.bit(at) match
+      case Right(Got(true, tagged)) =>
+        input.bits(tagged, 4) match
+          case Right(Got(tag, next)) =>
+            input.bit(next) match
+              case Right(Got(false, after)) =>
+                leaf(tag) match
+                  case Some(Kinded.Star(uni)) => Some(Got(uni, after))
+                  case _                      => None
+              case _ => None
+          case Left(_) => None
+      case _ => None
+
+  /** The type at `at`, its tags read as a list and parsed. */
+  private[flat] def parsed(input: Input, at: Long): Either[FlatError, Got[DefaultUni]] =
     tags(input, at).flatMap { case Got(tags, after) =>
       parse(tags) match
         case Left(reason)            => Left(FlatError.UndecodableType(tags, reason))
