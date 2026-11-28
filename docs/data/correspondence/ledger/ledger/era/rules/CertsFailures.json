@@ -902,7 +902,8 @@
    "class": "Mirror",
    "digest": "de8d9a245e02cfc3",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "Shelley's failure, the identity; 9df9f98c's injection of AccountAlreadyRegistered (Babbage/Rules/Deleg.hs:16-17) is not the 11.1 build's",
    "structure": "same",
@@ -984,7 +985,8 @@
    "class": "Mirror",
    "digest": "8918018c3918aab5",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -1465,7 +1467,8 @@
    "evidence": [
     "BabbageDelegsSuite",
     "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite"
+    "DijkstraCertsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "Event (EraRule \"DELEG\" era) as a match type: Babbage's ShelleyDelegEvent, Nothing at Conway for the reference's VoidEraRule, with Dijkstra's case",
    "structure": "differs",
@@ -1518,7 +1521,8 @@
    "evidence": [
     "BabbageDelegsSuite",
     "ConwayCertsChecksSuite",
-    "DijkstraRulesOracleSuite"
+    "DijkstraRulesOracleSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the type family EraRuleFailure at the rule DELEG as a match type with the eras whose DELEG is typed: Babbage's Shelley's, Conway's its own, with Dijkstra's case",
    "structure": "differs",
@@ -1655,7 +1659,8 @@
    "evidence": [
     "BabbageDelegsSuite",
     "ConwayCertsChecksSuite",
-    "DijkstraRulesOracleSuite"
+    "DijkstraRulesOracleSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the type family EraRuleFailure at the rule POOL as a match type: Babbage's and Conway's Shelley's POOL, with Dijkstra's case",
    "structure": "differs",
@@ -1708,7 +1713,8 @@
    "evidence": [
     "BabbageDelegsSuite",
     "ConwayCertsChecksSuite",
-    "DijkstraCertsSuite"
+    "DijkstraCertsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the type family EraRuleEvent at the rule POOL as a match type, named apart from the data type PoolEvent it reduces to, with Dijkstra's case",
    "structure": "differs",

@@ -4,7 +4,8 @@
    "class": "Mirror",
    "digest": "02dc195f8c64cf9b",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -24,7 +25,8 @@
    "class": "Mirror",
    "digest": "fe2aa16221b30645",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the slot a SlotNo, as the reference's is",
    "structure": "same",
@@ -45,7 +47,8 @@
    "class": "Mirror",
    "digest": "06fd7a1278a30adf",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -65,7 +68,8 @@
    "class": "Mirror",
    "digest": "7b665299c0d3477c",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the recursion on the prefix as a fold, each step a sub-rule over the previous, which the interpreter runs in constant stack, as CERTS is; the pointer by Ptr.ofCertificate, the slot cut to its low 32 bits and the index to its low 16 (fromIntegral to Word32 and Word16), the flat DELEGS's; DELPL's failures and events embedded (EmbedDelplInDelegs)",
    "structure": "differs",
@@ -86,7 +90,8 @@
    "class": "Mirror",
    "digest": "b76f86700f1863c6",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "TxCert era ~ ShelleyTxCert era as one-way evidence (<:<) that only the era's certificate file gives; POOL on the pool state through certPStateL, DELEG on the certificate state, each a sub-rule whose failures and events DELPL's embed (EmbedInDelpl)",
    "structure": "differs",
@@ -107,7 +112,8 @@
    "class": "Mirror",
    "digest": "f7e89a6b8844fd2f",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -127,7 +133,8 @@
    "class": "Mirror",
    "digest": "e98ec28243fec8bd",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the next epoch a Word64 sum that wraps (addEpochInterval); its first slot from Globals less the window by monus; a first slot outside SlotNo raised (LedgerFailure.Vocab), which no chain reaches",
    "structure": "differs",
@@ -148,7 +155,8 @@
    "class": "Mirror",
    "digest": "94fea6ee65fde615",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the certificate read through ShelleyEraTxCertToBabbage's readers in the reference's order (its pattern synonyms); the key deposit the parameters' compact one (compactCoinOrError of the lens over it); the genesis delegation's slot slot +* Duration sp a Word64 sum that wraps, as the reference's does, where the flat rule refuses a slot past 2^64 - 1; the stability window from Globals; no quorum, which is UTXOW's",
    "structure": "differs",
@@ -169,7 +177,8 @@
    "class": "Mirror",
    "digest": "a01c3435faad1b80",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [

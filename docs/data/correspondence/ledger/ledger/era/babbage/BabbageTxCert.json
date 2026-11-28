@@ -4,7 +4,8 @@
    "class": "Mirror",
    "digest": "c849bee75d59346c",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "TxCert BabbageEra ~ ShelleyTxCert BabbageEra, which DELPL asks for, as one-way evidence that reads a certificate's representation and makes no certificate",
    "structure": "differs",

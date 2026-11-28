@@ -59,9 +59,9 @@ import xyz.kd5ujc.scarab.ledger.state.{
 
 /** Shelley's DELEGS, DELPL, DELEG and POOL on the era types of `E` (cardano-ledger f649f975
   * `Shelley/Rules/{Delegs,Delpl,Deleg,Pool}.hs`) against the flat `ShelleyDelegs`, on crafted
-  * certificates and states, for what the recorded corpora do not reach (`ShelleyDelegsCorpusSuite`
-  * in the node has those): each failure of DELEG and POOL, the state each certificate leaves for
-  * the next whatever was recorded, MIR from both pots (transfers, insufficient funds, the slot too
+  * certificates and states, for what the recorded corpora do not reach (`ShelleyDelegsCorpus` in
+  * the node has those): each failure of DELEG and POOL, the state each certificate leaves for the
+  * next whatever was recorded, MIR from both pots (transfers, insufficient funds, the slot too
   * late), genesis delegations (duplicates current and future, the slot window), the pointer's
   * narrowing at its boundaries and a long list of certificates on a small stack. Every judgment is
   * run both ways and compared whole: the failures in order, in the node's flat form, or the

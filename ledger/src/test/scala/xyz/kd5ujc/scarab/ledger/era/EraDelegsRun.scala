@@ -46,6 +46,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   Convert,
   DelegsEnv as FlatDelegsEnv,
   Globals,
+  Judge,
   Judgment,
   RuleT,
   ShelleyDelegs as FlatDelegs,
@@ -64,9 +65,8 @@ import xyz.kd5ujc.scarab.ledger.state.{
 
 /** Shelley's DELEGS on the era types (`DELEGS.delegsTransition`, cardano-ledger f649f975
   * `Shelley/Rules/Delegs.hs`) and the flat `ShelleyDelegs` on the same certificates and state, for
-  * the suites that compare them (`ShelleyDelegsSuite` and `ShelleyDelegsCorpusSuite` in the node),
-  * each era's instances and the evidence that its families are Shelley's in one value
-  * ([[DelegsEra]]).
+  * the suites that compare them (`ShelleyDelegsCases`, and `ShelleyDelegsCorpus` in the node), each
+  * era's instances and the evidence that its families are Shelley's in one value ([[DelegsEra]]).
   */
 object EraDelegsRun:
   /** An era whose certificate rules are Shelley's: its instances, the evidence that its families
@@ -127,10 +127,13 @@ object EraDelegsRun:
       def tell(events: Chain[Ev]): F[Unit] =
         summon[Stateful[F, S]].modify((s, e) => (s, e ++ events))
 
-    def run(globals: Globals, state: CertState[E], policy: RuleT.Policy)(
+    /** `program` from `state`, `depth` levels below the root (LEDGER runs DELEGS one level down).
+      */
+    def run(globals: Globals, state: CertState[E], policy: RuleT.Policy, depth: Int = 0)(
         program: F[Unit]
     ): Either[LedgerDefect, Either[NonEmptyChain[R], (CertState[E], Chain[Ev])]] =
-      Judgment.judge(program, policy)(globals, (state, Chain.empty)).map(_.map(_._1))
+      val nested = (0 until depth).foldLeft(program)((fa, _) => summon[Judge[F, R]].nest(fa))
+      Judgment.judge(nested, policy)(globals, (state, Chain.empty)).map(_.map(_._1))
 
   /** The era DELEGS on `certificates` from `state`: a defect, its failures in the reference's
     * order, or the state after with its events.
@@ -140,14 +143,15 @@ object EraDelegsRun:
       env: DelegsEnv[E],
       state: CertState[E],
       certificates: Vector[TxCert[E]],
-      policy: RuleT.Policy
+      policy: RuleT.Policy,
+      depth: Int = 0
   )(using
       d: DelegsEra[E]
   ): Either[LedgerDefect, Either[NonEmptyChain[Rec[E]], (CertState[E], Events[E])]] =
     val r = Run[E, Rec[E], ShelleyDelegsEvent[E]]
     import RuleT.given
     import r.given
-    r.run(globals, state, policy)(
+    r.run(globals, state, policy, depth)(
       DELEGS.delegsTransition[E, r.F](env, certificates)(using
         summon[Monad[r.F]],
         d.rep,

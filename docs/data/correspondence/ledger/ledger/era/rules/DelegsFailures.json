@@ -4,7 +4,8 @@
    "class": "Mirror",
    "digest": "9b4f0e36e9568826",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -24,7 +25,8 @@
    "class": "Mirror",
    "digest": "c7e82e813390789a",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -44,7 +46,8 @@
    "class": "Mirror",
    "digest": "326dee1a34fedbfa",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -64,7 +67,8 @@
    "class": "Mirror",
    "digest": "2441b2590d48218c",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -84,7 +88,8 @@
    "class": "Mirror",
    "digest": "3c048485c7e46fb6",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -104,7 +109,8 @@
    "class": "Mirror",
    "digest": "38bf84310781b541",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -124,7 +130,8 @@
    "class": "Mirror",
    "digest": "20d1fbb7aa1e3d3f",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -144,7 +151,8 @@
    "class": "Mirror",
    "digest": "aa98161b4d9f0cfd",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -164,7 +172,8 @@
    "class": "Mirror",
    "digest": "f3255938d7a322e0",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -184,7 +193,8 @@
    "class": "Mirror",
    "digest": "029a74aa49e69fc0",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "StakeKeyAlreadyRegisteredDELEG is DelegAccountAlreadyRegistered at 9df9f98c, over AccountAlreadyRegistered, with the same tag and bytes",
    "structure": "same",
@@ -205,7 +215,8 @@
    "class": "Mirror",
    "digest": "de5dcdd21439ac30",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -225,7 +236,8 @@
    "class": "Mirror",
    "digest": "da2fa73e8c6a9d45",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -245,7 +257,8 @@
    "class": "Mirror",
    "digest": "93aa3a50da032b3d",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -265,7 +278,8 @@
    "class": "Mirror",
    "digest": "18ded35c54ac8b91",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -285,7 +299,8 @@
    "class": "Mirror",
    "digest": "7c008f9a3f4b021f",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -305,7 +320,8 @@
    "class": "Mirror",
    "digest": "1fa8650d69e2f696",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -325,7 +341,8 @@
    "class": "Mirror",
    "digest": "b80dadfc5b9f8f0a",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -345,7 +362,8 @@
    "class": "Mirror",
    "digest": "dcd8392683320fad",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the three instances of DELPL's failure and of the rules below it as one, DelplFailure of DELPL's injection",
    "structure": "differs",
@@ -366,7 +384,8 @@
    "class": "Mirror",
    "digest": "f0f26812d676dc24",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -386,7 +405,8 @@
    "class": "Mirror",
    "digest": "eefa56ff91ae0a60",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -406,7 +426,8 @@
    "class": "Mirror",
    "digest": "85ffd46694408767",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -426,7 +447,8 @@
    "class": "Mirror",
    "digest": "e0c103d130b76cd0",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the Embed instance into DELEGS as a class of the era",
    "structure": "differs",
@@ -447,7 +469,8 @@
    "class": "Mirror",
    "digest": "871cde27763d934f",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the two Embed instances into DELPL as one class of the era, their wrapFailed and wrapEvent as members",
    "structure": "differs",
@@ -478,7 +501,8 @@
    "class": "Mirror",
    "digest": "55b175d6c11665ab",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the class InjectRuleFailure at the rule DELEGS, one instance per era and failure type",
    "structure": "differs",
@@ -499,7 +523,8 @@
    "class": "Mirror",
    "digest": "4058b0a2d4a90f56",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the class InjectRuleFailure at the rule DELPL, one instance per era and failure type",
    "structure": "differs",
@@ -520,7 +545,8 @@
    "class": "Mirror",
    "digest": "68d96330fead9d6a",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "Event (EraRule \"DELEGS\" era) as a match type with the eras whose DELEGS is typed",
    "structure": "differs",
@@ -551,7 +577,8 @@
    "class": "Mirror",
    "digest": "d068caf3eec7fe9a",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "Event (EraRule \"DELPL\" era) as a match type with the eras whose DELPL is typed",
    "structure": "differs",
@@ -582,7 +609,8 @@
    "class": "Mirror",
    "digest": "e437efe486def8df",
    "evidence": [
-    "BabbageDelegsSuite"
+    "BabbageDelegsSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the type family EraRuleFailure at the rule DELPL as a match type with the eras whose DELPL is typed",
    "structure": "differs",

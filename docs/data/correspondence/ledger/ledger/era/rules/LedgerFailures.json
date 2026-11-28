@@ -1420,7 +1420,8 @@
    "evidence": [
     "BabbageDelegsSuite",
     "ConwayLedgerChecksSuite",
-    "DijkstraLedgerSuite"
+    "DijkstraLedgerSuite",
+    "BabbageDelegsCorpusSuite"
    ],
    "note": "the failure of DELEGS by era: Babbage's Shelley's; Nothing at Conway and at Dijkstra, where the reference's injections call it impossible (error)",
    "structure": "differs",
