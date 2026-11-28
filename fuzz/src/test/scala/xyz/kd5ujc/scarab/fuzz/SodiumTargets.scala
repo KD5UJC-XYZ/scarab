@@ -667,9 +667,8 @@ object SodiumTargets:
     * reaches it: both verify alphas the node builds itself, 32 bytes each
     * (`PraosVrfCertificate.alpha`, `TPraos.seed`), as the reference's `mkInputVRF` and `mkSeed` are
     * 32-byte Blake2b-256 hashes. At the limit both verify the proof to the same output; one byte
-    * over it, the oracle verifies it and Scarab refuses exactly so. The bound
-    * is written out ([[RecordedAlphaBound]]), not read from `StrictDraft03`, so that moving it
-    * fails this case.
+    * over it, the oracle verifies it and Scarab refuses exactly so. The bound is written out
+    * ([[RecordedAlphaBound]]), not read from `StrictDraft03`, so that moving it fails this case.
     */
   private def alphaBound(): Unit =
     val name = "sodium-vrf-verify alpha bound"
