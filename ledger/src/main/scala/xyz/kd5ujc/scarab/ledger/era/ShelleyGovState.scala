@@ -13,8 +13,10 @@ import xyz.kd5ujc.scarab.ledger.{
   ParamUpdate,
   ProtocolParams
 }
+import xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoPParams
 import xyz.kd5ujc.scarab.ledger.era.babbage.BabbagePParams
 import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
   Babbage,
   EraTag,
   FuturePParams as StoredFuturePParams,
@@ -206,6 +208,18 @@ sealed trait ShelleyGovStateRecord[E <: EraTag]:
   def eraOf: Era[E]
 
 object ShelleyGovStateRecord:
+  given alonzo: ShelleyGovStateRecord[Alonzo] with
+    def pparams(
+        p: ProtocolParams
+    ): Either[PParamsError, PParams[Alonzo]] =
+      AlonzoPParams.fromStored(p).map(PParams[Alonzo](_))
+    def storedPParams(
+        pp: PParams[Alonzo],
+        base: ProtocolParams
+    ): ProtocolParams = AlonzoPParams.toStored(pp.hkd, base)
+    def pparamsOf: EraPParamsToBabbage[Alonzo] = EraPParamsToBabbage.alonzo
+    def eraOf: Era[Alonzo] = Era.alonzo
+
   given babbage: ShelleyGovStateRecord[Babbage] with
     def pparams(
         p: ProtocolParams

@@ -7,6 +7,7 @@ import scala.collection.immutable.SortedMap
 import xyz.kd5ujc.scarab.ledger.{Address, Ptr}
 import xyz.kd5ujc.scarab.ledger.rules.Convert
 import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
   Babbage,
   CompactCoin,
   Conway,
@@ -43,6 +44,24 @@ trait EraStake[E <: EraTag]:
 
 /** The instances of each era and the functions of each era's `State/Stake.hs` over the class. */
 object EraStake:
+  /** Alonzo's (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/State/Stake.hs:18-23`, cardano-ledger
+    * f649f975): Shelley's instant stake and functions, the pointer stake among them.
+    */
+  given alonzo: EraStake[Alonzo] with
+    val instantStakeCredentialsL
+        : Lens[InstantStake[Alonzo], SortedMap[Credential[Staking], CompactCoin]] =
+      shelleyInstantStakeCredentialsL
+    def addInstantStake(
+        utxo: UTxO[Alonzo],
+        stake: InstantStake[Alonzo]
+    ): Either[VocabError, InstantStake[Alonzo]] =
+      addShelleyInstantStake[Alonzo](utxo, stake)
+    def deleteInstantStake(
+        utxo: UTxO[Alonzo],
+        stake: InstantStake[Alonzo]
+    ): Either[VocabError, InstantStake[Alonzo]] =
+      deleteShelleyInstantStake[Alonzo](utxo, stake)
+
   /** Babbage's (`eras/babbage/impl/src/Cardano/Ledger/Babbage/State/Stake.hs:18-23`, cardano-ledger
     * f649f975): Shelley's instant stake and functions, the pointer stake among them.
     */

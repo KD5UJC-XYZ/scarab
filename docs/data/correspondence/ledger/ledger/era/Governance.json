@@ -702,6 +702,27 @@
     }
    ]
   },
+  "given ledger.era.EraGov.alonzo": {
+   "class": "Mirror",
+   "digest": "b342ee98f0bf3952",
+   "evidence": [
+    "AlonzoStateClassesSuite"
+   ],
+   "note": "over Alonzo's ShelleyGovState, no deposits",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      389,
+      399
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraGov AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.EraGov.babbage": {
    "class": "Mirror",
    "digest": "244a5f2a3dd6afc0",

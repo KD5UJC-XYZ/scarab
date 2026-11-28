@@ -209,6 +209,7 @@
    "definitions": [
     "def ledger.era.StoredTxOut#storedValue",
     "def ledger.era.StoredTxOut#toStored",
+    "given ledger.era.StoredTxOut.alonzo",
     "given ledger.era.StoredTxOut.babbage",
     "given ledger.era.StoredTxOut.conway",
     "given ledger.era.StoredTxOut.dijkstra",

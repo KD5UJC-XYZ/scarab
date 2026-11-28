@@ -7,6 +7,7 @@ import xyz.kd5ujc.scarab.ledger.Ptr
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
   Accounts,
+  Alonzo,
   Babbage,
   Coin,
   CompactCoin,
@@ -27,10 +28,12 @@ import xyz.kd5ujc.scarab.ledger.era.Relation.*
 /** The state of one stake account in era `E` (`type AccountState era`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/State/Account.hs:89`): one case per era that has
   * its instance of [[EraAccounts]]. The accounts themselves are the state's family
-  * ([[xyz.kd5ujc.scarab.ledger.state.Accounts]], `Account.hs:90`). Babbage's is Shelley's
-  * (`eras/babbage/impl/src/Cardano/Ledger/Babbage/State/Account.hs:12`, cardano-ledger f649f975).
+  * ([[xyz.kd5ujc.scarab.ledger.state.Accounts]], `Account.hs:90`). Alonzo's and Babbage's are
+  * Shelley's (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/State/Account.hs:12`,
+  * `eras/babbage/impl/src/Cardano/Ledger/Babbage/State/Account.hs:12`, cardano-ledger f649f975).
   */
 type AccountState[E <: EraTag] = E match
+  case Alonzo   => ShelleyAccountState
   case Babbage  => ShelleyAccountState
   case Conway   => ConwayAccountState
   case Dijkstra => ConwayAccountState
@@ -63,6 +66,8 @@ trait EraAccounts[E <: EraTag]:
   * functions of `State/Account.hs` (cardano-ledger f649f975) over the class.
   */
 object EraAccounts:
+  given alonzo: ShelleyEraAccounts[Alonzo] =
+    xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoState.accounts
   given babbage: ShelleyEraAccounts[Babbage] =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageState.accounts
   given conway: ConwayEraAccounts[Conway] =

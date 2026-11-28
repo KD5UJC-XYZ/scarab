@@ -651,8 +651,8 @@
   },
   "type ledger.era.AccountState": {
    "class": "Mirror",
-   "digest": "8d0623d9e161ae39",
-   "note": "Babbage's case `ShelleyAccountState`, Conway's and Dijkstra's `ConwayAccountState`",
+   "digest": "cef66f93c00baeb6",
+   "note": "Alonzo's and Babbage's case `ShelleyAccountState`, Conway's and Dijkstra's `ConwayAccountState`",
    "structure": "same",
    "upstream": [
     {
@@ -664,6 +664,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "AccountState"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/State/Account.hs",
+     "lines": [
+      12,
+      12
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AccountState AlonzoEra"
     },
     {
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/State/Account.hs",
@@ -712,6 +722,7 @@
  "glue": [
   {
    "definitions": [
+    "given ledger.era.EraAccounts.alonzo",
     "given ledger.era.EraAccounts.babbage",
     "given ledger.era.EraAccounts.dijkstra"
    ],

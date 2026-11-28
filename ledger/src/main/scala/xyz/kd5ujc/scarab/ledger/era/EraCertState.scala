@@ -5,6 +5,7 @@ import cats.Monoid
 import monocle.Lens
 import xyz.kd5ujc.scarab.ledger.state.{
   Accounts,
+  Alonzo,
   Babbage,
   CertState,
   Coin,
@@ -95,6 +96,8 @@ trait ConwayEraCertState[E <: EraTag] extends EraCertState[E]:
   * class.
   */
 object EraCertState:
+  given alonzo: EraCertState[Alonzo] =
+    xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoState.certState
   given babbage: EraCertState[Babbage] =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageState.certState
   given conway: ConwayEraCertState[Conway] =

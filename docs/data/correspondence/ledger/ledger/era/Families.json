@@ -15,8 +15,8 @@
  "entries": {
   "type ledger.era.GovState": {
    "class": "Mirror",
-   "digest": "8a36d3695210e1e6",
-   "note": "the family, ShelleyGovState in Babbage, ConwayGovState from Conway",
+   "digest": "e0d552414167ccf7",
+   "note": "the family, ShelleyGovState in Alonzo and Babbage, ConwayGovState from Conway",
    "structure": "same",
    "upstream": [
     {
@@ -28,6 +28,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "GovState"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      390,
+      390
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "GovState AlonzoEra"
     },
     {
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",

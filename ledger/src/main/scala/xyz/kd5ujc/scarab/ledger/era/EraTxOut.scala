@@ -88,6 +88,15 @@ trait StoredTxOut[E <: EraTag]:
   private[ledger] def fromStored(out: xyz.kd5ujc.scarab.ledger.TxOut): Either[EraTxError, TxOut[E]]
 
 object StoredTxOut:
+  given alonzo: StoredTxOut[Alonzo] with
+    def toStored(out: TxOut[Alonzo]): xyz.kd5ujc.scarab.ledger.TxOut =
+      xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoTxOut.toStored(out)
+    private[ledger] def fromStored(
+        out: xyz.kd5ujc.scarab.ledger.TxOut
+    ): Either[EraTxError, TxOut[Alonzo]] =
+      xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoTxOut.fromStored(out)
+    def storedValue(value: Value[Alonzo]): xyz.kd5ujc.scarab.ledger.Value = value.stored
+
   given babbage: StoredTxOut[Babbage] with
     def toStored(out: TxOut[Babbage]): xyz.kd5ujc.scarab.ledger.TxOut =
       xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxOut.toStored(out)
