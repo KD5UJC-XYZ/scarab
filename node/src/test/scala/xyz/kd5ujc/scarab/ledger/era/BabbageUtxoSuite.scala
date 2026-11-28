@@ -148,8 +148,27 @@ class BabbageUtxoSuite extends FunSuite:
     def run(
         j: Judged,
         context: UtxoContext[Babbage],
+        evaluator: ScriptEvaluator[Id],
+        policy: RuleT.Policy = RuleT.Policy.Accumulate
+    ): Either[Defect, Either[NonEmptyChain[Rec], S]] =
+      judged(j, context, evaluator, policy)
+
+    /** UTXO judged with `ValidateNone` (`Judge.validateNone`): no predicate checked and no labelled
+      * clause run.
+      */
+    def runUnchecked(
+        j: Judged,
+        context: UtxoContext[Babbage],
         evaluator: ScriptEvaluator[Id]
     ): Either[Defect, Either[NonEmptyChain[Rec], S]] =
+      judged(j, context, evaluator, RuleT.Policy.Accumulate)(using Judge.validateNone[F, Rec])
+
+    private def judged(
+        j: Judged,
+        context: UtxoContext[Babbage],
+        evaluator: ScriptEvaluator[Id],
+        policy: RuleT.Policy
+    )(using Judge[F, Rec]): Either[Defect, Either[NonEmptyChain[Rec], S]] =
       given ScriptEvaluator[F] = request => Monad[F].unit.map(_ => evaluator.evaluate(request))
       given Phase2Deferral[F, Babbage] = Phase2Deferral.now
       val pp = paramsOf(j)
@@ -163,7 +182,7 @@ class BabbageUtxoSuite extends FunSuite:
           underLedger[F, Rec](
             BabbageUtxo.utxoTransition[F, Babbage](UtxoEnv(j.slot, pp, j.cert), stAnnTx, context)
           ),
-          RuleT.Policy.Accumulate
+          policy
         )(j.globals, (j.state, gov, Chain.empty))
         .map(_.map(_._1))
 
@@ -975,4 +994,56 @@ class BabbageUtxoSuite extends FunSuite:
       ).isRight,
       true
     )
+  }
+
+  /** UTXOS's environment holds the slot as a `SlotNo` (`Alonzo/Rules/Utxos.hs:118-122`,
+    * cardano-ledger f649f975); a slot outside one is the state's defect, raised before any
+    * predicate, so under either way of recording failures, and not a refusal.
+    */
+  test("a slot outside a SlotNo is raised before any predicate, under each policy of failures") {
+    val beyond = BigInt(1) << 64
+    val j = withBody(plain)(put(3, uint(100))).copy(slot = beyond)
+    Vector(RuleT.Policy.Accumulate, RuleT.Policy.FirstFailure).foreach { policy =>
+      EraRun.run(
+        j,
+        contextOf(j, TxEnv.Validation.All, ReferenceBuild.Release11_1),
+        j.ctx.evaluator,
+        policy
+      ) match
+        case Left(Left(Right(UtxoStateDefect.Vocab(_)))) => ()
+        case other => fail(s"$policy: not the slot's defect: $other")
+    }
+  }
+
+  /** Under `ValidateNone` the outputs of the body's inputs are read only for the predicates, which
+    * do not run (Dijkstra's UTXO reads its as well): a reference input's stored output the era
+    * cannot read is not reached, and the transaction's outputs are spent and created; with its
+    * predicates checked, the same output is the state's defect.
+    */
+  test(
+    "ValidateNone reads no output for the predicates: an unreadable reference input is not reached"
+  ) {
+    val base = v1Judged(caseNamed("babbage-pv8-v1-refinput-plain"))
+    val ref = base.flat.body.referenceInputs.headOption.getOrElse(fail("no reference input"))
+    assert(!base.flat.body.inputs.contains(ref) && !base.flat.body.collateral.contains(ref))
+    // the stored form with a reference script its bytes do not hold, which the era reads from them
+    val script = v1.iterator
+      .flatMap((c, _) => (c.spent ++ c.references ++ c.collateral).valuesIterator)
+      .flatMap(_.scriptRef)
+      .nextOption()
+      .getOrElse(fail("no recorded output with a reference script"))
+    val bad = base.known(ref).copy(scriptRef = Some(script))
+    assert(StoredTxOut.babbage.fromStored(bad).isLeft)
+    val j = base.copy(state =
+      base.state.copy[Babbage](utxo = UtxoTables(Utxo.fromMap(base.known.updated(ref, bad))))
+    )
+    val context = contextOf(j, TxEnv.Validation.All, ReferenceBuild.Release11_1)
+    EraRun.runUnchecked(j, context, _ => throw new Asked) match
+      case Right(Right((after, _, _))) =>
+        assert(after.utxo.utxo.get(ref).contains(bad), "the reference input is left as it was")
+        assert(base.flat.body.inputs.forall(in => after.utxo.utxo.get(in).isEmpty))
+      case other => fail(s"not applied: $other")
+    EraRun.run(j, context, j.ctx.evaluator) match
+      case Left(Left(Right(UtxoStateDefect.StoredOutput(in, _)))) => assertEquals(in, ref)
+      case other => fail(s"not the stored output's defect: $other")
   }

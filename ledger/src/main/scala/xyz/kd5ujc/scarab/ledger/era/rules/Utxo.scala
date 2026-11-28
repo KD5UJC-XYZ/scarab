@@ -1139,10 +1139,11 @@ object BabbageUtxo:
     * it back over the stored one (`ShelleyGovStateRecord.toStored`), so the transition leaves the
     * stored form in `state` as it was (the reference's `utxosGovStateL .~`). As in Conway's UTXO,
     * only the outputs of the body's inputs, collateral inputs and reference inputs are read from
-    * the store into the era, and a stored output the era does not read, a change of the instant
-    * stake outside the state's vocabulary and a slot outside a `SlotNo` are raised
-    * ([[UtxoStateDefect]]), as is a script the evaluator gives no verdict for
-    * ([[ScriptVerdictUnavailable]]): none is a verdict of the rules.
+    * the store into the era, and only for the predicates, as Dijkstra's UTXO reads its, so a
+    * judgment of `ValidateNone` reads none of them. A stored output the era does not read, a change
+    * of the instant stake outside the state's vocabulary and a slot outside a `SlotNo`, converted
+    * before any predicate, are raised ([[UtxoStateDefect]]), as is a script the evaluator gives no
+    * verdict for ([[ScriptVerdictUnavailable]]): none is a verdict of the rules.
     */
   def utxoTransition[F[_]: Monad, E <: EraTag](
       env: UtxoEnv[E],
@@ -1187,10 +1188,19 @@ object BabbageUtxo:
       val functor: cats.Functor[F] = events.functor
       def tell(l: Chain[UtxosEvent[E]]): F[Unit] = events.tell(l.map(embed.wrapEvent))
     for
-      utxoState <- state.get
-      utxo <- stored.readAt(utxoState.utxo.utxo, b.allInputs(txBody))
-      _ <- Sts.runTest[F, UtxoPredFailure[E]](babbageUtxoValidation[E](env, utxo, tx, context))
+      // the slot UTXOS's environment holds, before any predicate, so that a slot outside a `SlotNo`
+      // is raised whatever the judgment records first
       slot <- ShelleyUtxo.vocab[F, SlotNo](SlotNo.fromBigInt(env.slot))
+      utxoState <- state.get
+      // the outputs of every input are read only for the predicates (`ValidateNone`); the change of
+      // the state reads those it spends itself
+      _ <- Sts.validating[F, UtxoPredFailure[E]](
+        stored
+          .readAt(utxoState.utxo.utxo, b.allInputs(txBody))
+          .flatMap(utxo =>
+            Sts.runTest[F, UtxoPredFailure[E]](babbageUtxoValidation[E](env, utxo, tx, context))
+          )
+      )
       _ <- judge.nest(
         BabbageUtxos.utxosTransition[F, E](
           UtxosEnv[E](slot, env.pp, env.certState),

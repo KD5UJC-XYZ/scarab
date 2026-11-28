@@ -512,11 +512,11 @@
   },
   "def ledger.era.rules.BabbageUtxo.utxoTransition": {
    "class": "Mirror",
-   "digest": "ae865c7897006bf2",
+   "digest": "b4707564b192a338",
    "evidence": [
     "BabbageUtxoSuite"
    ],
-   "note": "the environment, the annotated transaction and UtxoContext are arguments; the UTxO state, the era's governance state UTXOS runs on (held by the caller beside the stored form, which UTXO leaves as it was), the judgment, the events, the evaluator, where the scripts are evaluated (Phase2Deferral) and the defects are capabilities; UTXOS runs as a sub-rule (Judge.nest), its failures and events embedded by EmbedUtxosInUtxo; the predicates read the outputs of the body's inputs, collateral inputs and reference inputs, read from the store into the era (design §3.6); a script with no verdict, a damaged store, an output outside the state's vocabulary and a slot outside a SlotNo (UtxosEnv's) are raised; not run by the node yet",
+   "note": "the environment, the annotated transaction and UtxoContext are arguments; the UTxO state, the era's governance state UTXOS runs on (held by the caller beside the stored form, which UTXO leaves as it was), the judgment, the events, the evaluator, where the scripts are evaluated (Phase2Deferral) and the defects are capabilities; UTXOS runs as a sub-rule (Judge.nest), its failures and events embedded by EmbedUtxosInUtxo; the predicates read the outputs of the body's inputs, collateral inputs and reference inputs, read from the store into the era (design §3.6) only when predicates are checked (Sts.validating, as Dijkstra's UTXO), so ValidateNone reads none; the slot is converted to UtxosEnv's SlotNo before any predicate; a script with no verdict, a damaged store, an output outside the state's vocabulary and a slot outside a SlotNo are raised; not run by the node yet",
    "structure": "differs",
    "upstream": [
     {
