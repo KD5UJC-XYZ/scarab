@@ -8,7 +8,15 @@ import xyz.kd5ujc.scarab.ledger.{Address, TxIn, Unsigned}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W16
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
-import xyz.kd5ujc.scarab.ledger.state.{AccountAddress, Coin, Conway, DeltaCoin, Dijkstra, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{
+  AccountAddress,
+  Babbage,
+  Coin,
+  Conway,
+  DeltaCoin,
+  Dijkstra,
+  EraTag
+}
 import xyz.kd5ujc.scarab.plutus.ExUnits
 
 // The failures of UTXO as the reference declares them (cardano-ledger f649f975, the `Rules/Utxo.hs`
@@ -144,11 +152,12 @@ object ConwayUtxoPredFailure:
   given [E <: EraTag]: CanEqual[ConwayUtxoPredFailure[E], ConwayUtxoPredFailure[E]] =
     CanEqual.derived
 
-/** `EraRuleFailure "UTXO" era`: Conway's is its own (`Conway/Rules/Utxo.hs:146`, cardano-ledger
-  * f649f975), and so is Dijkstra's (`Dijkstra/Rules/Utxo.hs:172`, cardano-ledger 9df9f98c). Each
-  * era adds its case with its rule.
+/** `EraRuleFailure "UTXO" era`: Babbage's is its own (`Babbage/Rules/Utxo.hs:100`, cardano-ledger
+  * f649f975), as are Conway's (`Conway/Rules/Utxo.hs:146`, cardano-ledger f649f975) and Dijkstra's
+  * (`Dijkstra/Rules/Utxo.hs:172`, cardano-ledger 9df9f98c). Each era adds its case with its rule.
   */
 type UtxoPredFailure[E <: EraTag] = E match
+  case Babbage  => BabbageUtxoPredFailure[Babbage]
   case Conway   => ConwayUtxoPredFailure[Conway]
   case Dijkstra => DijkstraUtxoPredFailure[Dijkstra]
 
@@ -166,6 +175,45 @@ trait InjectUtxoFailure[-F, E <: EraTag]:
   def injectFailure(failure: F): UtxoPredFailure[E]
 
 object InjectUtxoFailure:
+  /** `instance InjectRuleFailure "UTXO" BabbageUtxoPredFailure BabbageEra`
+    * (`Babbage/Rules/Utxo.hs:102`, cardano-ledger f649f975): the identity.
+    */
+  given babbage: InjectUtxoFailure[BabbageUtxoPredFailure[Babbage], Babbage] with
+    def injectFailure(failure: BabbageUtxoPredFailure[Babbage]): UtxoPredFailure[Babbage] =
+      failure
+
+  /** `Babbage/Rules/Utxo.hs:104-105`, cardano-ledger f649f975: `AlonzoInBabbageUtxoPredFailure`. */
+  given babbageAlonzo: InjectUtxoFailure[AlonzoUtxoPredFailure[Babbage], Babbage] with
+    def injectFailure(failure: AlonzoUtxoPredFailure[Babbage]): UtxoPredFailure[Babbage] =
+      BabbageUtxoPredFailure.AlonzoInBabbageUtxoPredFailure(failure)
+
+  /** `Babbage/Rules/Utxo.hs:107-108`, cardano-ledger f649f975: `AlonzoInBabbageUtxoPredFailure .
+    * Alonzo.UtxosFailure . injectFailure`, PPUP's failure made UTXOS's ([[InjectUtxosFailure]]).
+    */
+  given babbagePpup: InjectUtxoFailure[ShelleyPpupPredFailure[Babbage], Babbage] with
+    def injectFailure(failure: ShelleyPpupPredFailure[Babbage]): UtxoPredFailure[Babbage] =
+      BabbageUtxoPredFailure.AlonzoInBabbageUtxoPredFailure(
+        AlonzoUtxoPredFailure.UtxosFailure(InjectUtxosFailure.babbagePpup.injectFailure(failure))
+      )
+
+  /** `Babbage/Rules/Utxo.hs:116-117`, cardano-ledger f649f975: `AlonzoInBabbageUtxoPredFailure .
+    * Alonzo.allegraToAlonzoUtxoPredFailure`.
+    */
+  given babbageAllegra: InjectUtxoFailure[AllegraUtxoPredFailure[Babbage], Babbage] with
+    def injectFailure(failure: AllegraUtxoPredFailure[Babbage]): UtxoPredFailure[Babbage] =
+      BabbageUtxoPredFailure.AlonzoInBabbageUtxoPredFailure(
+        AlonzoUtxo.allegraToAlonzoUtxoPredFailure[Babbage](failure)
+      )
+
+  /** `Babbage/Rules/Utxo.hs:119-120`, cardano-ledger f649f975: `AlonzoInBabbageUtxoPredFailure .
+    * Alonzo.UtxosFailure`, Babbage's UTXOS failure being Alonzo's.
+    */
+  given babbageAlonzoUtxos: InjectUtxoFailure[AlonzoUtxosPredFailure[Babbage], Babbage] with
+    def injectFailure(failure: AlonzoUtxosPredFailure[Babbage]): UtxoPredFailure[Babbage] =
+      BabbageUtxoPredFailure.AlonzoInBabbageUtxoPredFailure(
+        AlonzoUtxoPredFailure.UtxosFailure(failure)
+      )
+
   /** `instance InjectRuleFailure "UTXO" ConwayUtxoPredFailure ConwayEra` (`Conway/Rules/Utxo.hs:
     * 150`, cardano-ledger f649f975): the identity.
     */
@@ -265,6 +313,17 @@ trait EmbedUtxosInUtxo[E <: EraTag]:
   def wrapEvent(event: UtxosEvent[E]): AlonzoUtxoEvent[E]
 
 object EmbedUtxosInUtxo:
+  /** Babbage's (`Babbage/Rules/Utxo.hs:528-537`, cardano-ledger f649f975):
+    * `AlonzoInBabbageUtxoPredFailure . Alonzo.UtxosFailure` and Alonzo's `UtxosEvent`.
+    */
+  given babbage: EmbedUtxosInUtxo[Babbage] with
+    def wrapFailed(failure: UtxosPredFailure[Babbage]): UtxoPredFailure[Babbage] =
+      BabbageUtxoPredFailure.AlonzoInBabbageUtxoPredFailure(
+        AlonzoUtxoPredFailure.UtxosFailure(failure)
+      )
+    def wrapEvent(event: UtxosEvent[Babbage]): AlonzoUtxoEvent[Babbage] =
+      AlonzoUtxoEvent.UtxosEvent(event)
+
   /** Conway's: `UtxosFailure` and Alonzo's `UtxosEvent`. */
   given conway: EmbedUtxosInUtxo[Conway] with
     def wrapFailed(failure: UtxosPredFailure[Conway]): UtxoPredFailure[Conway] =

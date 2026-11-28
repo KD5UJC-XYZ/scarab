@@ -911,7 +911,7 @@
     {
       "module": "ledger",
       "path": "ledger/era/rules",
-      "responsibility": "The reference's rule predicates on the era types, each generic in its era over the reference's classes, in objects named after the reference's Rules modules (among them RATIFY, ENACT and Dijkstra's TICK, NEWEPOCH and EPOCH, which the node's tick of a Dijkstra state runs); their verdicts were compared with the flat rules' (#85, stage 2), and are held to the flat rules' recorded judgments where those were deleted (stage 3), and Alonzo's and Babbage's UTXOS with their PPUP step, compared with the flat rules while they run; Dijkstra's BBODY and closure application, run by the node on a block",
+      "responsibility": "The reference's rule predicates on the era types, each generic in its era over the reference's classes, in objects named after the reference's Rules modules (among them RATIFY, ENACT and Dijkstra's TICK, NEWEPOCH and EPOCH, which the node's tick of a Dijkstra state runs); their verdicts were compared with the flat rules' (#85, stage 2), and are held to the flat rules' recorded judgments where those were deleted (stage 3), and Alonzo's and Babbage's UTXOS with their PPUP step and Babbage's UTXO over it, compared with the flat rules while they run; Dijkstra's BBODY and closure application, run by the node on a block",
       "entryPoints": [
         "ShelleyUtxo",
         "AllegraUtxo",
@@ -955,7 +955,8 @@
         "BabbageUtxosSuite",
         "AlonzoUtxosSuite",
         "BabbageDelegsSuite",
-        "BabbageDelegsCorpusSuite"
+        "BabbageDelegsCorpusSuite",
+        "BabbageUtxoSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"

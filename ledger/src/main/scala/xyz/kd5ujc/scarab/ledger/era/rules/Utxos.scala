@@ -186,6 +186,23 @@ object InjectAlonzoUtxos:
     def injectEvent(event: AlonzoUtxosEvent[Dijkstra]): UtxosEvent[Dijkstra] =
       ConwayUtxos.alonzoToConwayUtxosEvent[Dijkstra](event)
 
+/** `InjectRuleFailure "UTXOS" t era` (`Core/Era.hs:120-126`, cardano-ledger f649f975) for the
+  * failure `t` of the rule UTXOS runs, PPUP's: how era `E` reports it as its UTXOS failure, which
+  * the injection of Allegra's UTXO failures into Alonzo's takes
+  * ([[AlonzoUtxo.allegraToAlonzoUtxoPredFailure]]). It is contravariant in `F`, as
+  * [[InjectUtxoFailure]] is. One instance per era, in the companion.
+  */
+trait InjectUtxosFailure[-F, E <: EraTag]:
+  def injectFailure(failure: F): UtxosPredFailure[E]
+
+object InjectUtxosFailure:
+  /** `instance InjectRuleFailure "UTXOS" Shelley.ShelleyPpupPredFailure BabbageEra`
+    * (`Babbage/Rules/Utxos.hs:54-55`, cardano-ledger f649f975): `Alonzo.UpdateFailure`.
+    */
+  given babbagePpup: InjectUtxosFailure[ShelleyPpupPredFailure[Babbage], Babbage] with
+    def injectFailure(failure: ShelleyPpupPredFailure[Babbage]): UtxosPredFailure[Babbage] =
+      AlonzoUtxosPredFailure.UpdateFailure(failure)
+
 /** `Embed (EraRule "PPUP" era) (UTXOS era)` (`Alonzo/Rules/Utxos.hs:135-145`,
   * `Babbage/Rules/Utxos.hs:93-102`, cardano-ledger f649f975): how era `E` 's UTXOS reports PPUP's
   * failures and events, the eras whose UTXOS runs Shelley's PPUP. One instance per era, in the

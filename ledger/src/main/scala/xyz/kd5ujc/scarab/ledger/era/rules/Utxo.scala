@@ -3,7 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era.rules
 
 import cats.Monad
 import cats.data.{Chain, NonEmptyList, NonEmptyMap, NonEmptySet}
-import cats.mtl.{Raise, Stateful, Tell}
+import cats.mtl.{Ask, Raise, Stateful, Tell}
 import cats.syntax.all.*
 import scala.collection.immutable.{SortedMap, SortedSet}
 import xyz.kd5ujc.scarab.codec.{Bytes, Rational}
@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Address,
   Credential,
   Horizon,
+  LedgerDefect,
   PosixClock,
   SystemStart,
   TxEnv,
@@ -19,14 +20,16 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W16
 import xyz.kd5ujc.scarab.ledger.era.*
-import xyz.kd5ujc.scarab.ledger.rules.{Judge, Sts, Test}
+import xyz.kd5ujc.scarab.ledger.rules.{Globals, Judge, Sts, Test}
 import xyz.kd5ujc.scarab.plutus.ScriptEvaluator
 import xyz.kd5ujc.scarab.ledger.state.{
+  Babbage,
   CertState,
   Coin,
   Conway,
   DeltaCoin,
   EraTag,
+  SlotNo,
   UTxOState,
   UtxoTables,
   VocabError
@@ -123,7 +126,9 @@ enum UtxoStateDefect:
   /** A stored output the era does not read (design §3.6). */
   case StoredOutput(input: TxIn, error: EraTxError)
 
-  /** An output's stake credential or lovelace outside the state's vocabulary ([[EraStake]]). */
+  /** An output's stake credential or lovelace outside the state's vocabulary ([[EraStake]]), or a
+    * slot outside a `SlotNo` ([[BabbageUtxo.utxoTransition]]).
+    */
   case Vocab(error: VocabError)
 
 /** How the rules read stored outputs into era `E` ([[ShelleyUtxo.readStored]]): the first, in input
@@ -510,6 +515,34 @@ object AllegraUtxo:
   * cardano-ledger f649f975).
   */
 object AlonzoUtxo:
+  /** `allegraToAlonzoUtxoPredFailure` (`Alonzo/Rules/Utxo.hs:730-750`, cardano-ledger f649f975):
+    * each failure as Alonzo's own; PPUP's made UTXOS's by the era's injection (`injectFailure
+    * @"UTXOS"`,
+    *   [[InjectUtxosFailure]]) and wrapped as `UtxosFailure`; Allegra's outputs too big given the
+    *   sizes 0 and 0.
+    */
+  def allegraToAlonzoUtxoPredFailure[E <: EraTag](failure: AllegraUtxoPredFailure[E])(using
+      inject: InjectUtxosFailure[PpupPredFailure[E], E]
+  ): AlonzoUtxoPredFailure[E] = failure match
+    case AllegraUtxoPredFailure.BadInputsUTxO(x) => AlonzoUtxoPredFailure.BadInputsUTxO(x)
+    case AllegraUtxoPredFailure.OutsideValidityIntervalUTxO(vi, slotNo) =>
+      AlonzoUtxoPredFailure.OutsideValidityIntervalUTxO(vi, slotNo)
+    case AllegraUtxoPredFailure.MaxTxSizeUTxO(m)    => AlonzoUtxoPredFailure.MaxTxSizeUTxO(m)
+    case AllegraUtxoPredFailure.InputSetEmptyUTxO() => AlonzoUtxoPredFailure.InputSetEmptyUTxO()
+    case AllegraUtxoPredFailure.FeeTooSmallUTxO(m)  => AlonzoUtxoPredFailure.FeeTooSmallUTxO(m)
+    case AllegraUtxoPredFailure.ValueNotConservedUTxO(m) =>
+      AlonzoUtxoPredFailure.ValueNotConservedUTxO(m)
+    case AllegraUtxoPredFailure.WrongNetwork(x, y) => AlonzoUtxoPredFailure.WrongNetwork(x, y)
+    case AllegraUtxoPredFailure.WrongNetworkWithdrawal(x, y) =>
+      AlonzoUtxoPredFailure.WrongNetworkWithdrawal(x, y)
+    case AllegraUtxoPredFailure.OutputTooSmallUTxO(x) => AlonzoUtxoPredFailure.OutputTooSmallUTxO(x)
+    case AllegraUtxoPredFailure.UpdateFailure(x) =>
+      AlonzoUtxoPredFailure.UtxosFailure(inject.injectFailure(x))
+    case AllegraUtxoPredFailure.OutputBootAddrAttrsTooBig(xs) =>
+      AlonzoUtxoPredFailure.OutputBootAddrAttrsTooBig(xs)
+    case AllegraUtxoPredFailure.OutputTooBigUTxO(xs) =>
+      AlonzoUtxoPredFailure.OutputTooBigUTxO(xs.map((0, 0, _)))
+
   /** `validateWrongNetworkInTxBody` (`Alonzo/Rules/Utxo.hs:436-446`, cardano-ledger f649f975). */
   def validateWrongNetworkInTxBody[E <: EraTag, L <: TxLevel](netId: Network, body: TxBody[L, E])(
       using
@@ -1057,6 +1090,117 @@ object BabbageUtxo:
           fees = Coin(utxoState.fees.value + collateralFees),
           instantStake = instantStake
         )
+
+  /** `injectFailure` of `InjectRuleFailure "UTXO" ShelleyUtxoPredFailure BabbageEra`
+    * (`Babbage/Rules/Utxo.hs:110-114`, cardano-ledger f649f975): `AlonzoInBabbageUtxoPredFailure .
+    * allegraToAlonzoUtxoPredFailure . shelleyToAllegraUtxoPredFailure`, with Allegra's injection of
+    * 11.1 ([[AllegraUtxo.shelleyToAllegraUtxoPredFailure11_1]]).
+    */
+  val injectShelleyFailure11_1: InjectShelleyUtxoFailure[Babbage] =
+    InjectShelleyUtxoFailure[Babbage](f =>
+      BabbageUtxoPredFailure.AlonzoInBabbageUtxoPredFailure(
+        AlonzoUtxo.allegraToAlonzoUtxoPredFailure[Babbage](
+          AllegraUtxo.shelleyToAllegraUtxoPredFailure11_1(f)
+        )
+      )
+    )
+
+  /** The same injection at cardano-ledger 29a7d656 (the 11.2 build) and 9df9f98c (the Leios build)
+    * (`Babbage/Rules/Utxo.hs:115-119` at 9df9f98c), with Allegra's injection of those builds
+    * ([[AllegraUtxo.shelleyToAllegraUtxoPredFailure11_2]]).
+    */
+  val injectShelleyFailure11_2: InjectShelleyUtxoFailure[Babbage] =
+    InjectShelleyUtxoFailure[Babbage](f =>
+      BabbageUtxoPredFailure.AlonzoInBabbageUtxoPredFailure(
+        AlonzoUtxo.allegraToAlonzoUtxoPredFailure[Babbage](
+          AllegraUtxo.shelleyToAllegraUtxoPredFailure11_2(f)
+        )
+      )
+    )
+
+  /** The injection of the build `build`, until the builds are types (`BuildRules`,
+    * docs/design/reference-builds-as-types.md, #1063).
+    */
+  def injectShelleyFailure(build: ReferenceBuild): InjectShelleyUtxoFailure[Babbage] =
+    build match
+      case ReferenceBuild.Release11_1                        => injectShelleyFailure11_1
+      case ReferenceBuild.Release11_2 | ReferenceBuild.Leios => injectShelleyFailure11_2
+
+  /** `utxoTransition` (`Babbage/Rules/Utxo.hs:415-447`, cardano-ledger f649f975; the same at
+    * 9df9f98c, `:430-462`): UTXO's predicates (`babbageUtxoValidation`), every failure recorded;
+    * then UTXOS as a sub-rule (`trans`) with the slot, the parameters and the certificate state, on
+    * the governance state, its failures and events embedded in UTXO's ([[EmbedUtxosInUtxo]]); then
+    * the change of the state (`updateUTxOState`) from the state the transition was given. The state
+    * changes whatever was recorded, as the reference's does: a refused transaction's state is the
+    * caller's to drop.
+    *
+    * The governance state UTXOS changes is the era's record ([[ShelleyGovState]]), where the node's
+    * UTxO state keeps it in its stored form: the caller holds the era's record (`gov`) and writes
+    * it back over the stored one (`ShelleyGovStateRecord.toStored`), so the transition leaves the
+    * stored form in `state` as it was (the reference's `utxosGovStateL .~`). As in Conway's UTXO,
+    * only the outputs of the body's inputs, collateral inputs and reference inputs are read from
+    * the store into the era, and a stored output the era does not read, a change of the instant
+    * stake outside the state's vocabulary and a slot outside a `SlotNo` are raised
+    * ([[UtxoStateDefect]]), as is a script the evaluator gives no verdict for
+    * ([[ScriptVerdictUnavailable]]): none is a verdict of the rules.
+    */
+  def utxoTransition[F[_]: Monad, E <: EraTag](
+      env: UtxoEnv[E],
+      stAnnTx: StAnnTx[TxLevel.Top, E],
+      context: UtxoContext[E]
+  )(using
+      e: EraUTxO[E],
+      t: AlonzoEraTx[E],
+      b: BabbageEraTxBody[E],
+      sb: ShelleyEraTxBody[E],
+      c: EraCertState[E],
+      w: AlonzoEraTxWits[E],
+      pa: AlonzoEraPParams[E],
+      pb: BabbageEraPParams[E],
+      p: EraPParamsToBabbage[E],
+      k: EraStake[E],
+      s: StoredTxOut[E],
+      v: Value[E] =:= MultiAssetValue,
+      u: AlonzoEraUTxO[E],
+      allegra: InjectUtxoFailure[AllegraUtxoPredFailure[E], E],
+      alonzo: InjectUtxoFailure[AlonzoUtxoPredFailure[E], E],
+      babbage: InjectUtxoFailure[BabbageUtxoPredFailure[E], E],
+      utxos: InjectAlonzoUtxos[E],
+      ppup: EmbedPpupInUtxos[E],
+      embed: EmbedUtxosInUtxo[E],
+      ask: Ask[F, Globals],
+      state: Stateful[F, UTxOState[E]],
+      gov: Stateful[F, ShelleyGovState[E]],
+      judge: Judge[F, UtxoPredFailure[E]],
+      events: Tell[F, Chain[AlonzoUtxoEvent[E]]],
+      evaluator: ScriptEvaluator[F],
+      unavailable: Raise[F, ScriptVerdictUnavailable],
+      ledgerDefect: Raise[F, LedgerDefect],
+      deferral: Phase2Deferral[F, E],
+      defect: Raise[F, UtxoStateDefect],
+      stored: StoredOutputs[F, E]
+  ): F[Unit] =
+    val tx = t.txStAnnTx[TxLevel.Top](stAnnTx)(using t.bodyOf.top)
+    val txBody = t.body[TxLevel.Top](tx)(using t.bodyOf.top)
+    given Judge[F, UtxosPredFailure[E]] = judge.contramap(embed.wrapFailed)
+    given Tell[F, Chain[UtxosEvent[E]]] = new Tell[F, Chain[UtxosEvent[E]]]:
+      val functor: cats.Functor[F] = events.functor
+      def tell(l: Chain[UtxosEvent[E]]): F[Unit] = events.tell(l.map(embed.wrapEvent))
+    for
+      utxoState <- state.get
+      utxo <- stored.readAt(utxoState.utxo.utxo, b.allInputs(txBody))
+      _ <- Sts.runTest[F, UtxoPredFailure[E]](babbageUtxoValidation[E](env, utxo, tx, context))
+      slot <- ShelleyUtxo.vocab[F, SlotNo](SlotNo.fromBigInt(env.slot))
+      _ <- judge.nest(
+        BabbageUtxos.utxosTransition[F, E](
+          UtxosEnv[E](slot, env.pp, env.certState),
+          stAnnTx,
+          context.validation
+        )
+      )
+      next <- updateUTxOState[F, E](env.pp, env.certState, tx, utxoState)
+      _ <- state.set(next)
+    yield ()
 
 /** Conway's functions of UTXO (`eras/conway/impl/src/Cardano/Ledger/Conway/Rules/Utxo.hs`). */
 object ConwayUtxo:

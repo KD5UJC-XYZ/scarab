@@ -565,11 +565,12 @@
   },
   "type ledger.era.rules.UtxoEvent": {
    "class": "Mirror",
-   "digest": "5bc3ad86d7f4343e",
+   "digest": "f870659ae0dbd513",
    "evidence": [
-    "EraUtxoSuite"
+    "EraUtxoSuite",
+    "BabbageUtxoSuite"
    ],
-   "note": "the type family EraRuleEvent at the rule UTXO as a match type",
+   "note": "the type family EraRuleEvent at the rule UTXO as a match type; Babbage's, which has no EraRuleEvent instance at the pin, the Event of its UTXO",
    "structure": "differs",
    "upstream": [
     {
@@ -591,6 +592,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "EraRuleEvent \"UTXO\" DijkstraEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "lines": [
+      522,
+      522
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Event (UTXO era)"
     }
    ]
   },

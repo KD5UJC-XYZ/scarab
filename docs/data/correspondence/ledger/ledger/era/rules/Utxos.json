@@ -416,6 +416,26 @@
     }
    ]
   },
+  "def ledger.era.rules.InjectUtxosFailure#injectFailure": {
+   "class": "Mirror",
+   "digest": "f15c34874c858471",
+   "evidence": [
+    "BabbageUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      124,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "injectFailure"
+    }
+   ]
+  },
   "def ledger.era.rules.TranslationOrigin.ofAlonzo": {
    "class": "Mirror",
    "digest": "dd2eff70e57f99fa",
@@ -677,6 +697,26 @@
     }
    ]
   },
+  "given ledger.era.rules.InjectUtxosFailure.babbagePpup": {
+   "class": "Mirror",
+   "digest": "2a559ac92769ca03",
+   "evidence": [
+    "BabbageUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs",
+     "lines": [
+      54,
+      55
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXOS\" Shelley.ShelleyPpupPredFailure BabbageEra"
+    }
+   ]
+  },
   "trait ledger.era.rules.EmbedPpupInUtxos": {
    "class": "Mirror",
    "digest": "3cc2542926cbb913",
@@ -726,6 +766,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "InjectRuleEvent"
+    }
+   ]
+  },
+  "trait ledger.era.rules.InjectUtxosFailure": {
+   "class": "Mirror",
+   "digest": "93bccccb956dfb7a",
+   "evidence": [
+    "BabbageUtxoSuite"
+   ],
+   "note": "the class InjectRuleFailure at the rule UTXOS for the failure of the rule it runs (PPUP's), one instance per era and failure type, contravariant in the failure type as InjectUtxoFailure is; Alonzo's own UTXOS failure is InjectAlonzoUtxos's",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      122,
+      125
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure"
     }
    ]
   },
@@ -1003,7 +1064,8 @@
     "object ledger.era.rules.BabbageUtxos",
     "object ledger.era.rules.ConwayUtxos",
     "object ledger.era.rules.FailureDescription",
-    "object ledger.era.rules.InjectAlonzoUtxos"
+    "object ledger.era.rules.InjectAlonzoUtxos",
+    "object ledger.era.rules.InjectUtxosFailure"
    ],
    "reason": "the reading and writing of the node's stored UTxO set by the era-typed state change: a stored output read into the era (design §3.6 of docs/design/era-typed-transactions.md), extractKeys, restrictKeys and the left-biased union of Data.Map over the stored set, how the rules read stored outputs (StoredOutputs, whose default reads each where asked and whose instance in Conway's block run keeps what the run read, #85), and the defects the reference has no counterpart for (a script the evaluator gives no verdict for, a damaged store, an output outside the state's vocabulary), raised as no verdict; and the companions and module objects of UTXOS, Scala containers with no counterpart (#85); and the companions of UTXO's failure, its injection and its embedding of UTXOS, with the failure's equality with itself only; and the companions of UTXOW's failure, its injection and its embedding of UTXO, with the failure's equality with itself only, and the module objects of Allegra's native-script evaluation (Allegra/Scripts.hs, Allegra/Tx.hs); and the companions of SUBUTXO's and SUBUTXOW's failures and events, their injections and the embedding of SUBUTXO, with each type's equality with itself only"
   }
