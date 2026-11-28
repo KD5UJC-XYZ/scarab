@@ -932,7 +932,10 @@
         "ConwayBlockRun",
         "ShelleyPpup",
         "BabbageUtxos",
-        "AlonzoUtxos"
+        "AlonzoUtxos",
+        "DELEGS",
+        "DELPL",
+        "ShelleyDELEG"
       ],
       "suites": [
         "ConwayUtxoChecksSuite",
@@ -950,7 +953,9 @@
         "ConwayBlockRunSuite",
         "DijkstraBbodyImpSuite",
         "BabbageUtxosSuite",
-        "AlonzoUtxosSuite"
+        "AlonzoUtxosSuite",
+        "BabbageDelegsSuite",
+        "BabbageDelegsCorpusSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"

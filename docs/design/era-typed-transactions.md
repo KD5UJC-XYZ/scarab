@@ -3799,6 +3799,49 @@ Conway's rules on the classes follow as the rest of stage 2.
     in `TxUTxODiff` after the store's round trip are the stored form's, the known difference of
     [#85](https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7232186984). Nothing in the node runs these
     rules yet.
+- **Shelley's certificate rules for Babbage** (stage 4, plan slice 4; `era/rules/Delegs.scala`,
+  `era/rules/DelegsFailures.scala`; cardano-ledger f649f975 `Shelley/Rules/Delegs.hs:66-208`,
+  `Shelley/Rules/Delpl.hs:52-228`, `Shelley/Rules/Deleg.hs:73-426`, `Babbage/Rules/{Delegs,Delpl,Deleg,Pool}.hs`):
+  - DELEGS, DELPL and DELEG, each generic in its era over `EraCertState`, `ShelleyEraAccounts` and
+    `ShelleyEraTxCertToBabbage`. DELEGS is a fold over the certificates, as CERTS is, each step a sub-rule over the
+    previous, so the first certificate is the deepest and the failures come in the reference's order. Its pointer is
+    `Ptr.ofCertificate`'s, the flat rule's: the slot cut to its low 32 bits and the position to its low 16
+    (`Delegs.hs:193-195`). DELPL reads the certificate's representation through evidence only the era's certificate
+    file gives (`TxCert era ~ ShelleyTxCert era`, one way, so no certificate is made from it) and runs POOL on the
+    pool state. DELEG reads the certificate through the class's readers in the reference's order, MIR and genesis
+    delegation among them, the stability window and the next epoch's first slot from `Globals`; it reads no quorum,
+    which is UTXOW's (`validateMIRInsufficientGenesisSigs`).
+  - The failure and event types of the three rules, their families (`DelplPredFailure`, `DelplEvent`,
+    `DelegsEvent`, and Babbage's cases of `DelegsPredFailure`, `DelegPredFailure`, `DelegEvent`, `PoolPredFailure`
+    and `PoolRuleEvent`), Babbage's injections and the embeddings of POOL and DELEG in DELPL and of DELPL in DELEGS.
+    At 9df9f98c `StakeKeyAlreadyRegisteredDELEG` is `DelegAccountAlreadyRegistered`, the same tag and bytes; the era
+    types follow the 11.1 build's ledger. No ranged class is new.
+  - Two boundaries the flat rule handles otherwise, neither reachable: a genesis delegation's due slot is the
+    reference's `Word64` sum, which wraps past 2^64 - 1 where the flat rule refuses the slot; and below protocol
+    version 5 a pot pays from itself alone (`Deleg.hs:358-360`), where the flat rule adds the epoch's delta, which no
+    chain has below version 5, where no transfer is allowed.
+  - Against the flat `ShelleyDelegs` (`BabbageDelegsSuite`, `BabbageDelegsCorpusSuite`), every judgment compared
+    whole (the failures in order, or the certificate state) and what the era rules tell checked against the
+    certificates:
+    - the Babbage blocks of the era-walking captures hold no certificate (188 of `fixtures/eras` and 196 of
+      `fixtures/chain-dep`, two transactions each). On each of their 384 Babbage states, the certificates the state
+      makes: each account delegated again, registered again and unregistered, an unknown account delegated, each
+      pool registered again and retired, a genesis key delegated to its own pair and to another key's, MIR from
+      each pot and a transfer. They are judged as one transaction and each alone; of the 8,832 single
+      certificates, 5,202 are accepted and 3,630 refused;
+    - the refusal corpora's 9 Babbage cases with certificates, each on the reference's state ticked to its slot: the
+      same judgment both ways, refused exactly where the reference refused DELEG or POOL; the 7 refused by them
+      alone encode, one level below LEDGER, to the reference's refusal bytes;
+    - crafted cases: each failure of DELEG and POOL, in order and under the first-failure policy; a registration that
+      fails and still makes a fresh account, which a later certificate sees; genesis delegations (an unknown key,
+      duplicates current and future, a key's own pairs, the last slot); MIR to accounts from either pot, transfers,
+      insufficient funds, negative entries kept for the next certificate, the rules below version 5, the slot too
+      late and a window longer than the epoch; DELEG alone on a pool's certificate; the pointer at the slots
+      2^32 - 1, 2^32, 2^32 + 7 and 2^64 - 1 and the last transaction index; 65,538 certificates on a 256 KiB stack,
+      the 65,537th's index wrapping to the first's pointer, and 30,000 failing ones.
+
+    Every comparison agrees. Not yet: Alonzo's instances, with Alonzo's state classes. Nothing in the node runs
+    these rules; the flat path stays.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis
