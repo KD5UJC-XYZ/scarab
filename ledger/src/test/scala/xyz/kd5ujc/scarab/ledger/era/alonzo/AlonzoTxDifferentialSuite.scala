@@ -190,7 +190,7 @@ class AlonzoTxDifferentialSuite extends FunSuite:
     val flat = FlatTx.fromBlock(t, Era.Alonzo).fold(e => fail(s"$what: flat $e"), identity)
     layouts.foreach { l =>
       val era = AlonzoTx.decode(t, l).fold(e => fail(s"$what at $l: $e"), identity)
-      sameTx(era, flat, s"$what at $l")
+      sameTx(era, flat, s"$what at $l", l)
       val whole = FlatTx.envelope(t)
       assert(FlatTx.fromEnvelope(whole, Era.Alonzo).isRight, what)
       assertEquals(AlonzoTx.fromEnvelope(whole, l), Right(era), what)
@@ -201,7 +201,7 @@ class AlonzoTxDifferentialSuite extends FunSuite:
     val flat = FlatTx.fromEnvelope(raw, Era.Alonzo).fold(e => fail(s"$what: $e"), identity)
     layouts.foreach { l =>
       val era = AlonzoTx.fromEnvelope(raw, l).fold(e => fail(s"$what at $l: $e"), identity)
-      sameTx(era, flat, s"$what at $l")
+      sameTx(era, flat, s"$what at $l", l)
       // its parts, read alone as a block's are
       val xs = items(raw)
       assertEquals(AlonzoTxBody.decode(xs(0).original, l), Right(era.body), what)
@@ -264,9 +264,9 @@ class AlonzoTxDifferentialSuite extends FunSuite:
       layouts.map { l =>
         val era = AlonzoTx.fromEnvelope(faulty, l).fold(e => fail(e.toString), identity)
         (
-          AlonzoTestKit.bodyDifferences(era.body, flat.body) ++
+          AlonzoTestKit.bodyDifferences(era.body, flat.body, l) ++
             AlonzoTestKit.witsDifferences(era.wits, flat.witnesses),
-          txDifferences(era, flat)
+          txDifferences(era, flat, l)
         )
       }
     def seen(recorded: Bytes, faulty: Bytes, field: String): Unit =
@@ -318,11 +318,14 @@ class AlonzoTxDifferentialSuite extends FunSuite:
     seen(withMetadata, arr((parts.init.map(_.original) :+ lost)*), "auxiliary data metadata")
   }
 
-  /** Three faults of a reading that the comparison by bytes, by hash and by set alone passes, each
+  /** Four faults of a reading that the comparison by bytes, by hash and by set alone passes, each
     * put into the era's values of a recorded transaction: the comparison of the values
-    * (`BabbageTestKit.witsViewDifferences`, `BabbageTestKit.auxViewDifferences`) names each.
+    * (`BabbageTestKit.witsViewDifferences`, `BabbageTestKit.auxViewDifferences`,
+    * [[AlonzoTestKit.redeemerDataDifferences]]) names each.
     */
-  test("the comparison sees a wrong script tree, a wrong datum and a lost repeated Plutus script") {
+  test(
+    "the comparison sees a wrong script tree, a wrong datum or redeemer data and a lost Plutus script"
+  ) {
     import AlonzoTestKit.{auxView, flatAuxView, witsView}
     import xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTestKit.{auxViewDifferences, flatWitsView}
     import xyz.kd5ujc.scarab.ledger.NativeScript
@@ -383,6 +386,19 @@ class AlonzoTxDifferentialSuite extends FunSuite:
       ),
       "datums"
     )
+    // a redeemer whose data is not its bytes' data, its bytes and units the same
+    val (redeemed, redeemedFlat) = read
+      .find((era, _) => era.wits.redeemers.entries.nonEmpty)
+      .getOrElse(fail("no recorded redeemer"))
+    val data = AlonzoTestKit.redeemerData(redeemed.wits)
+    assertEquals(AlonzoTestKit.redeemerDataDifferences(data, redeemedFlat.witnesses), Vector.empty)
+    named(
+      AlonzoTestKit.redeemerDataDifferences(
+        data.map((k, _) => k -> PlutusData.I(BigInt(-1))),
+        redeemedFlat.witnesses
+      ),
+      "redeemer data"
+    )
     // a repeated Plutus script of auxiliary data kept once, its arrival as read
     import xyz.kd5ujc.scarab.ledger.era.conway.ConwayTestKit.Cb.*
     val repeated = tag(259, map(uint(2) -> arr(bytes(hash(1)), bytes(hash(1)))))
@@ -427,14 +443,14 @@ class AlonzoTxDifferentialSuite extends FunSuite:
   private def alike[F, A](raw: Bytes)(
       flat: Bytes => Either[LedgerDecodeError, F],
       era: (Bytes, StateLayout) => Either[EraTxError, A]
-  )(same: (A, F, String) => Unit): Boolean =
+  )(same: (A, F, String, StateLayout) => Unit): Boolean =
     val f = flat(raw)
     val e = layouts.map(era(raw, _))
     val what = raw.hex
     assert(e.forall(_.isRight == e.head.isRight), what)
     assertEquals(e.head.isRight, f.isRight, s"$what: flat $f, era ${e.head}")
     e.head.left.foreach(x => assert(cause(x).isDefined, s"$what: $x"))
-    f.foreach(fv => e.foreach(_.foreach(same(_, fv, what))))
+    f.foreach(fv => layouts.zip(e).foreach((l, x) => x.foreach(same(_, fv, what, l))))
     f.isRight
 
   test("mutants of every distinct Alonzo body, witness set and transaction are judged alike") {
@@ -449,7 +465,7 @@ class AlonzoTxDifferentialSuite extends FunSuite:
       .flatMap(mutants)
       .map(
         alike(_)(FlatWitnesses.decode(_, Era.Alonzo), (raw, _) => AlonzoTxWits.decode(raw))(
-          sameWits
+          (w, f, what, _) => sameWits(w, f, what)
         )
       )
     val txOutcomes = txs
@@ -615,7 +631,9 @@ class AlonzoTxDifferentialSuite extends FunSuite:
       case Part.Body =>
         val flat = FlatTxBody.decode(row.raw, Era.Alonzo, row.version)
         val era = layouts.map(AlonzoTxBody.decode(row.raw, _))
-        flat.foreach(f => era.foreach(_.foreach(sameBody(_, f, row.name))))
+        flat.foreach(f =>
+          layouts.zip(era).foreach((l, x) => x.foreach(sameBody(_, f, row.name, l)))
+        )
         (flat.left.toOption, era.map(_.left.toOption))
       case Part.Witnesses =>
         val flat = FlatWitnesses.decode(row.raw, Era.Alonzo, row.version)
@@ -625,7 +643,7 @@ class AlonzoTxDifferentialSuite extends FunSuite:
       case Part.Transaction =>
         val flat = FlatTx.fromEnvelope(row.raw, Era.Alonzo)
         val era = layouts.map(AlonzoTx.fromEnvelope(row.raw, _))
-        flat.foreach(f => era.foreach(_.foreach(sameTx(_, f, row.name))))
+        flat.foreach(f => layouts.zip(era).foreach((l, x) => x.foreach(sameTx(_, f, row.name, l))))
         (flat.left.toOption, era.map(_.left.toOption))
       case Part.Auxiliary =>
         val flat = AuxiliaryScripts.read(row.raw, Era.Alonzo, row.version.value)

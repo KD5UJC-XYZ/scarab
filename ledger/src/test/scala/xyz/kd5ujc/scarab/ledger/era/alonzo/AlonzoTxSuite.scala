@@ -414,3 +414,26 @@ class AlonzoTxSuite extends FunSuite:
     )
     assertEquals(era, flat.map(EraTxError.Decode(_)))
   }
+
+  test("a pool registration's voting key is compared at each layout, a wrong one named") {
+    // the field the flat certificate has no place for: the 11.1 build's parameters have none, the
+    // Leios build's none read below protocol version 12
+    val built = encode(everyField.copy(update = None))
+    StateLayout.values.foreach { l =>
+      val body = built.alonzo(l).body
+      val keys = poolKeys(body)
+      assertEquals(keys.size, 1)
+      assertEquals(poolKeyDifferences(keys, built.flat.body, l), Vector.empty)
+    }
+    // the 11.1 build's key read at the Leios layout, and the Leios build's at the 11.1 layout
+    assertEquals(
+      StateLayout.values.toVector.map(l =>
+        poolKeyDifferences(
+          poolKeys(built.alonzo(l).body),
+          built.flat.body,
+          StateLayout.values.find(_ != l).get
+        ).map(_.takeWhile(_ != ':'))
+      ),
+      Vector.fill(2)(Vector("pool registrations' voting keys"))
+    )
+  }

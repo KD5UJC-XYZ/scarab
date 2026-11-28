@@ -12,11 +12,12 @@ import xyz.kd5ujc.scarab.ledger.{
   TxBody as FlatTxBody,
   Witnesses as FlatWitnesses
 }
-import xyz.kd5ujc.scarab.ledger.era.{IsPhase2Valid, KeptUpdate, Network, ValidityInterval}
+import xyz.kd5ujc.scarab.ledger.era.{Data, IsPhase2Valid, KeptUpdate, Network, ValidityInterval}
 import xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTestKit
 import xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTestKit.{AuxView, WitsView}
 import xyz.kd5ujc.scarab.ledger.rules.Convert
-import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Coin}
+import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Coin, PoolParamsBlsKey}
+import xyz.kd5ujc.scarab.plutus.PlutusData
 import xyz.kd5ujc.scarab.protocol.{Era, StateLayout}
 
 /** Builders and comparisons for Alonzo transactions whose bytes are true: a body and its witnesses
@@ -41,7 +42,7 @@ object AlonzoTestKit extends munit.Assertions:
     val flat = Tx.fromBlock(parts, Era.Alonzo).fold(e => fail(s"flat decoder: $e"), identity)
     val alonzo = layouts.map { l =>
       val tx = AlonzoTx.decode(parts, l).fold(e => fail(s"Alonzo's decoder at $l: $e"), identity)
-      sameTx(tx, flat, l.toString)
+      sameTx(tx, flat, l.toString, l)
       l -> tx
     }.toMap
     Built(parts, flat, alonzo)
@@ -64,13 +65,40 @@ object AlonzoTestKit extends munit.Assertions:
   private def check[A](field: String, era: A, flat: A): Vector[String] =
     if era == flat then Vector.empty else Vector(s"$field: era $era, flat $flat")
 
+  /** The voting key each pool registration's parameters hold at `layout`, written out here rather
+    * than taken from the code under test: none of the 11.1 build's place, and no key in the Leios
+    * build's, whose parameters read one from protocol version 12 only (`decodeStakePoolParamsFlat`,
+    * cardano-ledger 9df9f98c
+    * `libs/cardano-ledger-core/src/Cardano/Ledger/State/StakePool.hs:746-762`).
+    */
+  def expectedPoolKeys(flat: FlatTxBody, layout: StateLayout): Vector[PoolParamsBlsKey] =
+    val key = layout match
+      case StateLayout.Node11_1 => PoolParamsBlsKey.Node11_1
+      case StateLayout.Leios    => PoolParamsBlsKey.Leios(None)
+    flat.certificates.collect { case Certificate.RegisterPool(_) => key }
+
+  /** The voting key of each pool registration of the body, in order. */
+  def poolKeys(era: AlonzoTxBody): Vector[PoolParamsBlsKey] =
+    era.certs.flatMap(AlonzoTxCert.instance.getRegPoolTxCert).map(_.blsKey)
+
+  /** Where the pool registrations' voting keys differ from those `layout` gives: the field the flat
+    * certificate has no place for, so its projection ([[flatCert]]) does not see it.
+    */
+  def poolKeyDifferences(
+      era: Vector[PoolParamsBlsKey],
+      flat: FlatTxBody,
+      layout: StateLayout
+  ): Vector[String] =
+    check("pool registrations' voting keys", era, expectedPoolKeys(flat, layout))
+
   /** Where the body projected onto the flat body's fields differs from it, the update proposal both
     * as the bytes the node stores and as its values read from them by the typed update's stored
-    * reader ([[KeptUpdate.fromStored]]), and the fields of later eras, which the flat body leaves
-    * empty, compared as empty.
+    * reader ([[KeptUpdate.fromStored]]), a pool registration's parameters whole, its voting key at
+    * `layout` among them ([[poolKeyDifferences]]), and the fields of later eras, which the flat
+    * body leaves empty, compared as empty.
     */
-  def bodyDifferences(era: AlonzoTxBody, flat: FlatTxBody): Vector[String] =
-    Vector(
+  def bodyDifferences(era: AlonzoTxBody, flat: FlatTxBody, layout: StateLayout): Vector[String] =
+    poolKeyDifferences(poolKeys(era), flat, layout) ++ Vector(
       check("raw", era.raw, flat.raw),
       check("id", era.id, flat.id),
       check("inputs", era.spendInputs, SortedSet.from(flat.inputs)),
@@ -119,9 +147,31 @@ object AlonzoTestKit extends munit.Assertions:
       era.redeemers.entries.toVector.map((p, v) => (p.tag, p.ix.value, v._1.originalBytes, v._2))
     )
 
+  /** Each redeemer's decoded data by its purpose's tag and index, in the purposes' order. */
+  def redeemerData(era: AlonzoTxWits): Vector[((Int, BigInt), PlutusData)] =
+    era.redeemers.entries.toVector.map((p, v) => (p.tag, p.ix.value) -> v._1.getPlutusData)
+
+  /** The flat redeemers' data decoded from their bytes, in the same order. */
+  def flatRedeemerData(flat: FlatWitnesses): Vector[((Int, BigInt), PlutusData)] =
+    flat.redeemers
+      .map(r =>
+        (r.tag, r.index) -> Data.decode(r.data).fold(e => fail(e.toString), _.getPlutusData)
+      )
+      .sortBy(_._1)
+
+  /** Where the redeemers' decoded data differ: what the comparison of their bytes and units alone
+    * ([[BabbageTestKit.witsViewDifferences]]) does not see.
+    */
+  def redeemerDataDifferences(
+      era: Vector[((Int, BigInt), PlutusData)],
+      flat: FlatWitnesses
+  ): Vector[String] =
+    check("redeemer data", era, flatRedeemerData(flat))
+
   /** Where the witness set projected onto the flat witnesses differs from them. */
   def witsDifferences(era: AlonzoTxWits, flat: FlatWitnesses): Vector[String] =
-    BabbageTestKit.witsViewDifferences(witsView(era), BabbageTestKit.flatWitsView(flat))
+    BabbageTestKit.witsViewDifferences(witsView(era), BabbageTestKit.flatWitsView(flat)) ++
+      redeemerDataDifferences(redeemerData(era), flat)
 
   def auxView(era: AlonzoTxAuxData): AuxView =
     AuxView(
@@ -150,8 +200,8 @@ object AlonzoTestKit extends munit.Assertions:
   /** Where the whole transaction differs from the flat one: its body, witness set, phase-two flag,
     * fee size and auxiliary data.
     */
-  def txDifferences(era: AlonzoTx, flat: Tx): Vector[String] =
-    bodyDifferences(era.body, flat.body).map("body " + _) ++
+  def txDifferences(era: AlonzoTx, flat: Tx, layout: StateLayout): Vector[String] =
+    bodyDifferences(era.body, flat.body, layout).map("body " + _) ++
       witsDifferences(era.wits, flat.witnesses).map("witnesses " + _) ++
       check("phase-two flag", era.isValid, IsPhase2Valid.of(flat.isValid)) ++
       check("fee size", era.sizeTxForFeeCalculation, flat.size) ++
@@ -161,8 +211,8 @@ object AlonzoTestKit extends munit.Assertions:
         .toVector
         .flatMap((a, raw) => auxDifferences(a, raw).map("auxiliary data " + _))
 
-  def sameBody(era: AlonzoTxBody, flat: FlatTxBody, what: String): Unit =
-    assertEquals(bodyDifferences(era, flat), Vector.empty, what)
+  def sameBody(era: AlonzoTxBody, flat: FlatTxBody, what: String, layout: StateLayout): Unit =
+    assertEquals(bodyDifferences(era, flat, layout), Vector.empty, what)
 
   def sameWits(era: AlonzoTxWits, flat: FlatWitnesses, what: String): Unit =
     assertEquals(witsDifferences(era, flat), Vector.empty, what)
@@ -170,5 +220,5 @@ object AlonzoTestKit extends munit.Assertions:
   def sameAux(era: AlonzoTxAuxData, raw: Bytes, what: String): Unit =
     assertEquals(auxDifferences(era, raw), Vector.empty, what)
 
-  def sameTx(era: AlonzoTx, flat: Tx, what: String): Unit =
-    assertEquals(txDifferences(era, flat), Vector.empty, what)
+  def sameTx(era: AlonzoTx, flat: Tx, what: String, layout: StateLayout): Unit =
+    assertEquals(txDifferences(era, flat, layout), Vector.empty, what)
