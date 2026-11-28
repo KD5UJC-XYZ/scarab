@@ -186,6 +186,23 @@ object InjectAlonzoUtxos:
     def injectEvent(event: AlonzoUtxosEvent[Dijkstra]): UtxosEvent[Dijkstra] =
       ConwayUtxos.alonzoToConwayUtxosEvent[Dijkstra](event)
 
+/** `InjectRuleFailure "UTXOS" t era` (`Core/Era.hs:120-126`, cardano-ledger f649f975) for the
+  * failure `t` of the rule UTXOS runs, PPUP's: how era `E` reports it as its UTXOS failure, which
+  * the injection of Allegra's UTXO failures into Alonzo's takes
+  * ([[AlonzoUtxo.allegraToAlonzoUtxoPredFailure]]). It is contravariant in `F`, as
+  * [[InjectUtxoFailure]] is. One instance per era, in the companion.
+  */
+trait InjectUtxosFailure[-F, E <: EraTag]:
+  def injectFailure(failure: F): UtxosPredFailure[E]
+
+object InjectUtxosFailure:
+  /** `instance InjectRuleFailure "UTXOS" Shelley.ShelleyPpupPredFailure BabbageEra`
+    * (`Babbage/Rules/Utxos.hs:54-55`, cardano-ledger f649f975): `Alonzo.UpdateFailure`.
+    */
+  given babbagePpup: InjectUtxosFailure[ShelleyPpupPredFailure[Babbage], Babbage] with
+    def injectFailure(failure: ShelleyPpupPredFailure[Babbage]): UtxosPredFailure[Babbage] =
+      AlonzoUtxosPredFailure.UpdateFailure(failure)
+
 /** `Embed (EraRule "PPUP" era) (UTXOS era)` (`Alonzo/Rules/Utxos.hs:135-145`,
   * `Babbage/Rules/Utxos.hs:93-102`, cardano-ledger f649f975): how era `E` 's UTXOS reports PPUP's
   * failures and events, the eras whose UTXOS runs Shelley's PPUP. One instance per era, in the
@@ -289,10 +306,13 @@ object AlonzoUtxos:
   /** `when2Phase` as the judgment interprets a labelled clause (`runClause (Label ...)`,
     * `libs/small-steps/src/Control/State/Transition/Extended.hs:709-712, 727-730`, cardano-ledger
     * f649f975): under `ValidateNone` no label is run, so `fa` is skipped whatever `validation`
-    * says; under `ValidateAll` it is [[when2Phase]].
+    * says; under `ValidateAll` it is [[when2Phase]]. Babbage's UTXOS runs it too, as it runs
+    * `Alonzo.when2Phase` (`Babbage/Rules/Utxos.hs:145, 208`, cardano-ledger f649f975).
     */
-  private def judged2Phase[F[_]: Applicative, Rec](validation: TxEnv.Validation)(fa: => F[Unit])(
-      using judge: Judge[F, Rec]
+  private[rules] def judged2Phase[F[_]: Applicative, Rec](
+      validation: TxEnv.Validation
+  )(fa: => F[Unit])(using
+      judge: Judge[F, Rec]
   ): F[Unit] = judge.policy match
     case ValidationPolicy.ValidateAll  => when2Phase[F](validation)(fa)
     case ValidationPolicy.ValidateNone => Applicative[F].unit
@@ -537,7 +557,8 @@ object AlonzoUtxos:
 object BabbageUtxos:
   /** The scripts of the annotated transaction with their contexts, their collection's failures
     * recorded (`?!:`, `CollectErrors`), and the scripts evaluated with `run` only under the policy
-    * that validates every check (`when2Phase`) and only if nothing failed so far in the judgment
+    * that validates every check (`when2Phase`, skipped too by a judgment of `ValidateNone`, which
+    * runs no labelled clause) and only if nothing failed so far in the judgment
     * (`whenFailureFree`): the steps `expectScriptsToPass` and `babbageEvalScriptsTxInvalid` share.
     * Where they are evaluated is the run's ([[Phase2Deferral]]): a block the node prepares defers
     * them, so that neither their verdict nor `run` is reached before its plan checks them. A
@@ -566,7 +587,7 @@ object BabbageUtxos:
             judge.fail(inject.injectFailure(AlonzoUtxosPredFailure.CollectErrors(errors)))
         )
       )
-      _ <- AlonzoUtxos.when2Phase[F](validation)(
+      _ <- AlonzoUtxos.judged2Phase[F, UtxosPredFailure[E]](validation)(
         Sts.whenFailureFree[F, UtxosPredFailure[E]](
           scriptsWithContextEither.toOption.traverse_ { scriptsWithContext =>
             val now = PlutusEvaluation.evalPlutusScripts[F](scriptsWithContext).flatMap(run)

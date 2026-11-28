@@ -166,6 +166,26 @@
     }
    ]
   },
+  "given ledger.era.rules.EmbedUtxosInUtxo.babbage": {
+   "class": "Mirror",
+   "digest": "719c54cdb4d9364a",
+   "evidence": [
+    "BabbageUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "lines": [
+      528,
+      537
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Embed (UTXOS era) (UTXO era)"
+    }
+   ]
+  },
   "given ledger.era.rules.EmbedUtxosInUtxo.conway": {
    "class": "Mirror",
    "digest": "fcdb36f557a9000f",
@@ -200,6 +220,106 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "Embed (Conway.UTXOS era) (UTXO era)"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxoFailure.babbage": {
+   "class": "Mirror",
+   "digest": "4564d20baa669b39",
+   "evidence": [
+    "BabbageUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "lines": [
+      102,
+      102
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXO\" BabbageUtxoPredFailure BabbageEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxoFailure.babbageAllegra": {
+   "class": "Mirror",
+   "digest": "0bcfc4544fd6c2de",
+   "evidence": [
+    "BabbageUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "lines": [
+      116,
+      117
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXO\" Allegra.AllegraUtxoPredFailure BabbageEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxoFailure.babbageAlonzo": {
+   "class": "Mirror",
+   "digest": "3e2c6ff4d0d09274",
+   "evidence": [
+    "BabbageUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "lines": [
+      104,
+      105
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXO\" Alonzo.AlonzoUtxoPredFailure BabbageEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxoFailure.babbageAlonzoUtxos": {
+   "class": "Mirror",
+   "digest": "0bac8934b14393f2",
+   "evidence": [
+    "BabbageUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "lines": [
+      119,
+      120
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXO\" Alonzo.AlonzoUtxosPredFailure BabbageEra"
+    }
+   ]
+  },
+  "given ledger.era.rules.InjectUtxoFailure.babbagePpup": {
+   "class": "Mirror",
+   "digest": "b68d0c2eea6f0a9c",
+   "evidence": [
+    "BabbageUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "lines": [
+      107,
+      108
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXO\" Shelley.ShelleyPpupPredFailure BabbageEra"
     }
    ]
   },
@@ -525,9 +645,10 @@
   },
   "type ledger.era.rules.UtxoPredFailure": {
    "class": "Mirror",
-   "digest": "f990979b688e1d19",
+   "digest": "14bc0094338798f8",
    "evidence": [
-    "EraUtxoSuite"
+    "EraUtxoSuite",
+    "BabbageUtxoSuite"
    ],
    "note": "the type family EraRuleFailure at the rule UTXO as a match type with the eras whose UTXO is typed",
    "structure": "differs",
@@ -561,6 +682,16 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "EraRuleFailure \"UTXO\" DijkstraEra"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxo.hs",
+     "lines": [
+      100,
+      100
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraRuleFailure \"UTXO\" BabbageEra"
     }
    ]
   }

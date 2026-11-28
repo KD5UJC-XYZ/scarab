@@ -84,6 +84,39 @@
     }
    ]
   },
+  "def ledger.era.rules.AlonzoUtxos.judged2Phase": {
+   "class": "Mirror",
+   "digest": "842a2a48b2dd4f79",
+   "evidence": [
+    "EraUtxosSuite",
+    "BabbageUtxosSuite",
+    "AlonzoUtxosSuite"
+   ],
+   "note": "when2Phase as the judgment's interpreter runs a labelled clause: under ValidateNone validateIf is False and the clause is skipped whatever the flag, under ValidateAll it is when2Phase; the policy is the judgment's (Judge.policy), read where the reference's interpreter reads vp; Alonzo's and Babbage's UTXOS share it, as Babbage's calls Alonzo.when2Phase",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
+     "lines": [
+      709,
+      712
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "runClause"
+    },
+    {
+     "file": "libs/small-steps/src/Control/State/Transition/Extended.hs",
+     "lines": [
+      727,
+      730
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "validateIf"
+    }
+   ]
+  },
   "def ledger.era.rules.AlonzoUtxos.scriptsTransition": {
    "class": "Mirror",
    "digest": "1579b83e1cfa8805",
@@ -192,9 +225,10 @@
    "class": "Mirror",
    "digest": "80c53e34c15053a8",
    "evidence": [
+    "BabbageUtxosSuite",
     "EraUtxosSuite"
    ],
-   "note": "the judgment, the events and the evaluator are capabilities (Judge, Tell, ScriptEvaluator), and where the collected scripts are evaluated is the run's (Phase2Deferral: there, or deferred into a prepared block's plan, ADR 0018); the validation policy is an argument (when2Phase); no Debug.traceEvent markers",
+   "note": "the judgment, the events and the evaluator are capabilities (Judge, Tell, ScriptEvaluator), and where the collected scripts are evaluated is the run's (Phase2Deferral: there, or deferred into a prepared block's plan, ADR 0018); the validation policy is an argument (when2Phase), and the evaluation, the labelled when2Phase clause, is skipped too under the judgment's ValidateNone as the reference's Label is (Extended.hs:709-712, 727-730); no Debug.traceEvent markers",
    "structure": "differs",
    "upstream": [
     {
@@ -400,6 +434,26 @@
    "digest": "a2a04a28e7c4fcd6",
    "evidence": [
     "EraUtxosSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      124,
+      124
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "injectFailure"
+    }
+   ]
+  },
+  "def ledger.era.rules.InjectUtxosFailure#injectFailure": {
+   "class": "Mirror",
+   "digest": "f15c34874c858471",
+   "evidence": [
+    "BabbageUtxoSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -676,6 +730,26 @@
     }
    ]
   },
+  "given ledger.era.rules.InjectUtxosFailure.babbagePpup": {
+   "class": "Mirror",
+   "digest": "2a559ac92769ca03",
+   "evidence": [
+    "BabbageUtxoSuite"
+   ],
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/Rules/Utxos.hs",
+     "lines": [
+      54,
+      55
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure \"UTXOS\" Shelley.ShelleyPpupPredFailure BabbageEra"
+    }
+   ]
+  },
   "trait ledger.era.rules.EmbedPpupInUtxos": {
    "class": "Mirror",
    "digest": "3cc2542926cbb913",
@@ -725,6 +799,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "InjectRuleEvent"
+    }
+   ]
+  },
+  "trait ledger.era.rules.InjectUtxosFailure": {
+   "class": "Mirror",
+   "digest": "93bccccb956dfb7a",
+   "evidence": [
+    "BabbageUtxoSuite"
+   ],
+   "note": "the class InjectRuleFailure at the rule UTXOS for the failure of the rule it runs (PPUP's), one instance per era and failure type, contravariant in the failure type as InjectUtxoFailure is; Alonzo's own UTXOS failure is InjectAlonzoUtxos's",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Core/Era.hs",
+     "lines": [
+      122,
+      125
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "InjectRuleFailure"
     }
    ]
   },
@@ -1002,7 +1097,8 @@
     "object ledger.era.rules.BabbageUtxos",
     "object ledger.era.rules.ConwayUtxos",
     "object ledger.era.rules.FailureDescription",
-    "object ledger.era.rules.InjectAlonzoUtxos"
+    "object ledger.era.rules.InjectAlonzoUtxos",
+    "object ledger.era.rules.InjectUtxosFailure"
    ],
    "reason": "the reading and writing of the node's stored UTxO set by the era-typed state change: a stored output read into the era (design §3.6 of docs/design/era-typed-transactions.md), extractKeys, restrictKeys and the left-biased union of Data.Map over the stored set, how the rules read stored outputs (StoredOutputs, whose default reads each where asked and whose instance in Conway's block run keeps what the run read, #85), and the defects the reference has no counterpart for (a script the evaluator gives no verdict for, a damaged store, an output outside the state's vocabulary), raised as no verdict; and the companions and module objects of UTXOS, Scala containers with no counterpart (#85); and the companions of UTXO's failure, its injection and its embedding of UTXOS, with the failure's equality with itself only; and the companions of UTXOW's failure, its injection and its embedding of UTXO, with the failure's equality with itself only, and the module objects of Allegra's native-script evaluation (Allegra/Scripts.hs, Allegra/Tx.hs); and the companions of SUBUTXO's and SUBUTXOW's failures and events, their injections and the embedding of SUBUTXO, with each type's equality with itself only"
   }

@@ -7,7 +7,7 @@ import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.TxIn
 import xyz.kd5ujc.scarab.ledger.era.*
 import xyz.kd5ujc.scarab.ledger.era.Relation.*
-import xyz.kd5ujc.scarab.ledger.state.{Conway, Dijkstra, EraTag}
+import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway, Dijkstra, EraTag}
 
 // The failures and events of UTXOW as the reference declares them (cardano-ledger f649f975, the
 // `Rules/Utxow.hs` of Shelley, Alonzo, Babbage and Conway), each era's own type with the injections
@@ -126,8 +126,12 @@ type UtxowPredFailure[E <: EraTag] = E match
 
 /** `EraRuleEvent "UTXO" era`: Conway's is Alonzo's (`Conway/Rules/Utxo.hs:148`, cardano-ledger
   * f649f975), and so is Dijkstra's (`Dijkstra/Rules/Utxo.hs:175`, cardano-ledger 9df9f98c).
+  * Babbage's UTXO has no such instance at f649f975; its event is Alonzo's all the same, the `Event`
+  * of its rule (`type Event (UTXO era) = Alonzo.AlonzoUtxoEvent era`, `Babbage/Rules/Utxo.hs:522`,
+  * cardano-ledger f649f975).
   */
 type UtxoEvent[E <: EraTag] = E match
+  case Babbage  => AlonzoUtxoEvent[Babbage]
   case Conway   => AlonzoUtxoEvent[Conway]
   case Dijkstra => AlonzoUtxoEvent[Dijkstra]
 
