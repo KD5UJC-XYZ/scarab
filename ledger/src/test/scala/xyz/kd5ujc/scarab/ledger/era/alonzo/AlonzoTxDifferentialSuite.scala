@@ -11,6 +11,7 @@ import xyz.kd5ujc.scarab.ledger.{
   Block,
   ByteStrings,
   DecodeField,
+  DecodeSite,
   DecoderVersion,
   LedgerDecodeError,
   ReferenceCorpus,
@@ -704,6 +705,16 @@ class AlonzoTxDifferentialSuite extends FunSuite:
     assertEquals(sites.size, 54)
     // the refusals that differ from the flat decoder's, whole
     assertEquals(differ.size, 64)
+    // each by its row, the flat decoder's refusal by its site and case
+    assertEquals(
+      differ.map((name, d) => name -> (siteOf(d._1), Refusal.of(d._1))),
+      flatDiffer.map((name, d) => name -> (Some(d._1), Some(d._2)))
+    )
+    // the seven envelopes that differ, by name
+    assertEquals(
+      envelopeDiffer,
+      flatDiffer.keySet.filter(_.startsWith("alonzo transaction "))
+    )
     val differCause = differ.map((name, d) => name -> d._2)
     // the update's own decoder refuses a parameter written twice with the reference's key
     // ("Duplicate key: 0 while decoding type PParamsUpdate AlonzoEra", 16 for the wide one), where
@@ -753,6 +764,267 @@ class AlonzoTxDifferentialSuite extends FunSuite:
       )
     )
   }
+
+  /** Every refusal of the Alonzo rows that differs from the flat decoder's, compared whole, by its
+    * row's name, with the site and case of the flat decoder's refusal: the era's is pinned against
+    * it by its kind (the update's site, [[atUpdate]]; the reference's envelope, [[envelopes]]; the
+    * two repeated keys and the counted units, each whole).
+    */
+  private val flatDiffer: Map[String, (DecodeSite, Refusal)] = Map(
+    "alonzo transaction a flag and no auxiliary data" -> (
+      DecodeField.Transaction,
+      Refusal.ArrayLength
+    ),
+    "alonzo transaction empty" -> (DecodeField.Transaction, Refusal.ArrayLength),
+    "alonzo transaction four items with auxiliary data third" -> (
+      DecodeField.IsValid,
+      Refusal.Expected
+    ),
+    "alonzo transaction four items with null third" -> (DecodeField.IsValid, Refusal.Expected),
+    "alonzo transaction indefinite four items with null third" -> (
+      DecodeField.IsValid,
+      Refusal.Expected
+    ),
+    "alonzo transaction indefinite with a flag and no auxiliary data" -> (
+      DecodeField.Transaction,
+      Refusal.ArrayLength
+    ),
+    "alonzo transaction two items" -> (DecodeField.Transaction, Refusal.ArrayLength),
+    "alonzo update value: a good value, then a bad one" -> (
+      DecodeField.MaxBlockHeaderSize,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 0, Word64 as text" -> (DecodeField.MinFeeA, Refusal.Expected),
+    "alonzo update value: key 0, Word64 negative" -> (DecodeField.MinFeeA, Refusal.Expected),
+    "alonzo update value: key 0, Word64 one over its bound" -> (
+      DecodeField.MinFeeA,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 1, Word64 one over its bound" -> (
+      DecodeField.MinFeeB,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 10, unit interval as an integer" -> (
+      DecodeField.Rho,
+      Refusal.ExpectedTag
+    ),
+    "alonzo update value: key 10, unit interval minus one half" -> (
+      DecodeField.Rho,
+      Refusal.RationalOutOfBounds
+    ),
+    "alonzo update value: key 10, unit interval of three integers" -> (
+      DecodeField.Rho,
+      Refusal.ArrayLength
+    ),
+    "alonzo update value: key 10, unit interval three halves" -> (
+      DecodeField.Rho,
+      Refusal.RationalOutOfBounds
+    ),
+    "alonzo update value: key 10, unit interval with a numerator over Word64" -> (
+      DecodeField.Rho,
+      Refusal.RationalOutOfBounds
+    ),
+    "alonzo update value: key 10, unit interval with a zero denominator" -> (
+      DecodeField.Rho,
+      Refusal.ZeroDenominator
+    ),
+    "alonzo update value: key 10, unit interval without tag 30" -> (
+      DecodeField.Rho,
+      Refusal.ExpectedTag
+    ),
+    "alonzo update value: key 11, unit interval three halves" -> (
+      DecodeField.Tau,
+      Refusal.RationalOutOfBounds
+    ),
+    "alonzo update value: key 11, unit interval with a numerator over Word64" -> (
+      DecodeField.Tau,
+      Refusal.RationalOutOfBounds
+    ),
+    "alonzo update value: key 11, unit interval without tag 30" -> (
+      DecodeField.Tau,
+      Refusal.ExpectedTag
+    ),
+    "alonzo update value: key 12, unit interval three halves" -> (
+      DecodeField.D,
+      Refusal.RationalOutOfBounds
+    ),
+    "alonzo update value: key 12, unit interval with a numerator over Word64" -> (
+      DecodeField.D,
+      Refusal.RationalOutOfBounds
+    ),
+    "alonzo update value: key 12, unit interval without tag 30" -> (
+      DecodeField.D,
+      Refusal.ExpectedTag
+    ),
+    "alonzo update value: key 16, Word64 one over its bound" -> (
+      DecodeField.MinPoolCost,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 17, Word64 one over its bound" -> (
+      DecodeField.CoinsPerUTxO,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 2, Word32 as text" -> (
+      DecodeField.MaxBlockBodySize,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 2, Word32 negative" -> (
+      DecodeField.MaxBlockBodySize,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 2, Word32 one over its bound" -> (
+      DecodeField.MaxBlockBodySize,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 20, execution units as an integer" -> (
+      DecodeField.MaxTxExUnits,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 20, execution units of one item" -> (
+      DecodeField.MaxTxExUnits,
+      Refusal.ArrayLength
+    ),
+    "alonzo update value: key 20, execution units of three items" -> (
+      DecodeField.MaxTxExUnits,
+      Refusal.ArrayLength
+    ),
+    "alonzo update value: key 20, execution units with memory over the Int64 bound" -> (
+      DecodeField.MaxTxExUnits,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 20, execution units with steps over Word64" -> (
+      DecodeField.MaxTxExUnits,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 20, execution units with steps over the Int64 bound" -> (
+      DecodeField.MaxTxExUnits,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 20, execution units written indefinite" -> (
+      DecodeField.MaxTxExUnits,
+      Refusal.IndefiniteLength
+    ),
+    "alonzo update value: key 21, execution units as an integer" -> (
+      DecodeField.MaxBlockExUnits,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 21, execution units of one item" -> (
+      DecodeField.MaxBlockExUnits,
+      Refusal.ArrayLength
+    ),
+    "alonzo update value: key 21, execution units of three items" -> (
+      DecodeField.MaxBlockExUnits,
+      Refusal.ArrayLength
+    ),
+    "alonzo update value: key 21, execution units with memory over the Int64 bound" -> (
+      DecodeField.MaxBlockExUnits,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 21, execution units with steps over Word64" -> (
+      DecodeField.MaxBlockExUnits,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 21, execution units with steps over the Int64 bound" -> (
+      DecodeField.MaxBlockExUnits,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 21, execution units written indefinite" -> (
+      DecodeField.MaxBlockExUnits,
+      Refusal.IndefiniteLength
+    ),
+    "alonzo update value: key 22, Word32 one over its bound" -> (
+      DecodeField.MaxValueSize,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 23, Word16 one over its bound" -> (
+      DecodeField.CollateralPercentage,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 24, Word16 one over its bound" -> (
+      DecodeField.MaxCollateralInputs,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 3, Word32 one over its bound" -> (
+      DecodeField.MaxTxSize,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 4, Word16 as text" -> (
+      DecodeField.MaxBlockHeaderSize,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 4, Word16 negative" -> (
+      DecodeField.MaxBlockHeaderSize,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 4, Word16 one over its bound" -> (
+      DecodeField.MaxBlockHeaderSize,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 5, Word64 one over its bound" -> (
+      DecodeField.KeyDeposit,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 6, Word64 one over its bound" -> (
+      DecodeField.PoolDeposit,
+      Refusal.Expected
+    ),
+    "alonzo update value: key 7, Word32 one over its bound" -> (
+      DecodeField.EMax,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 8, Word16 one over its bound" -> (
+      DecodeField.NOpt,
+      Refusal.NumberOutOfRange
+    ),
+    "alonzo update value: key 9, non-negative interval as an integer" -> (
+      DecodeField.A0,
+      Refusal.ExpectedTag
+    ),
+    "alonzo update value: key 9, non-negative interval minus one half" -> (
+      DecodeField.A0,
+      Refusal.RationalOutOfBounds
+    ),
+    "alonzo update value: key 9, non-negative interval of three integers" -> (
+      DecodeField.A0,
+      Refusal.ArrayLength
+    ),
+    "alonzo update value: key 9, non-negative interval with a numerator over Word64" -> (
+      DecodeField.A0,
+      Refusal.RationalOutOfBounds
+    ),
+    "alonzo update value: key 9, non-negative interval with a zero denominator" -> (
+      DecodeField.A0,
+      Refusal.ZeroDenominator
+    ),
+    "alonzo update value: key 9, non-negative interval without tag 30" -> (
+      DecodeField.A0,
+      Refusal.ExpectedTag
+    ),
+    "alonzo update: repeated key, other value, written wide" -> (
+      DecodeField.ParameterUpdate,
+      Refusal.DuplicateKey
+    ),
+    "alonzo update: repeated key, same value" -> (
+      DecodeField.ParameterUpdate,
+      Refusal.DuplicateKey
+    ),
+    "alonzo witnesses redeemer units in a witness set that counts their fields" -> (
+      DecodeField.NativeScripts,
+      Refusal.Expected
+    )
+  )
+
+  /** The site a refusal names first. */
+  private def siteOf(e: LedgerDecodeError): Option[DecodeSite] = e match
+    case LedgerDecodeError.Expected(site, _, _)            => Some(site)
+    case LedgerDecodeError.NumberOutOfRange(site, _, _, _) => Some(site)
+    case LedgerDecodeError.RationalOutOfBounds(site, _)    => Some(site)
+    case LedgerDecodeError.ExpectedTag(site, _, _)         => Some(site)
+    case LedgerDecodeError.ZeroDenominator(site)           => Some(site)
+    case LedgerDecodeError.ArrayLength(site, _, _)         => Some(site)
+    case LedgerDecodeError.IndefiniteLength(site)          => Some(site)
+    case LedgerDecodeError.DuplicateKey(site)              => Some(site)
+    case _                                                 => None
 
   /** A refusal of an update proposal's value with its site the typed update decoder's: the update
     * (`parameter update`), or the units (`ex units`) of an execution-units value.
