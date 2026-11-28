@@ -662,6 +662,43 @@ class EraUtxosSuite extends munit.FunSuite:
     assert(verdicts.exists { case Verdict.FailedUnexpectedly(_) => true; case _ => false })
   }
 
+  /** What an evaluator that must not be asked raises when it is. */
+  private final class Asked extends RuntimeException("a script was evaluated")
+
+  /** `ValidateNone` runs no labelled clause (`Extended.hs:709-712, 727-730`, cardano-ledger
+    * f649f975): under a judgment of it Conway's UTXOS evaluates no script whatever its flag and
+    * even under the policy that validates every check (`BabbageUtxos.evalScripts`, which Dijkstra's
+    * UTXOS runs too), and records nothing. The same evaluator under `ValidateAll` is asked where a
+    * script is collected, so the cases reach it.
+    */
+  test(
+    "a judgment of ValidateNone evaluates no script, whatever the flag (each case, both flags)"
+  ) {
+    val never: ScriptEvaluator[Id] = _ => throw new Asked
+    val asked = everyCase.map { c =>
+      given ScriptEvaluator[F] = lifted[F](never)
+      given Phase2Deferral[F, Conway] = Phase2Deferral.now
+      def judged(using Judge[F, Rec]) = Judgment
+        .judge(
+          ConwayUtxos.utxosTransition[F, Conway](stAnnTx(c), TxEnv.Validation.All),
+          RuleT.Policy.Accumulate
+        )(TestLedger.globals, Chain.empty)
+        .map(_.map(_._1))
+      assertEquals(judged(using Judge.validateNone[F, Rec]), Right(Right(Chain.empty)), c.name)
+      // the control: the default judgment asks the evaluator wherever a script is collected
+      scala.util.Try(judged).failed.toOption.exists {
+        case _: Asked => true
+        case _        => false
+      }
+    }
+    assert(asked.count(identity) > 0)
+    assertEquals(
+      everyCase.zip(asked).filter(_._2).map(c => t.isValid(c._1.typed)).distinct.size,
+      2,
+      "both flags reach the evaluator under ValidateAll"
+    )
+  }
+
   test("a transaction applied again (NonStatic) collects its scripts and evaluates none") {
     verdicts.foreach { (c, vs) =>
       vs.nonStatic match

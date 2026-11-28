@@ -289,9 +289,10 @@ object AlonzoUtxos:
   /** `when2Phase` as the judgment interprets a labelled clause (`runClause (Label ...)`,
     * `libs/small-steps/src/Control/State/Transition/Extended.hs:709-712, 727-730`, cardano-ledger
     * f649f975): under `ValidateNone` no label is run, so `fa` is skipped whatever `validation`
-    * says; under `ValidateAll` it is [[when2Phase]].
+    * says; under `ValidateAll` it is [[when2Phase]]. Babbage's UTXOS runs it too, as it runs
+    * `Alonzo.when2Phase` (`Babbage/Rules/Utxos.hs:145, 208`, cardano-ledger f649f975).
     */
-  private def judged2Phase[F[_]: Applicative, Rec](validation: TxEnv.Validation)(fa: => F[Unit])(
+  private[rules] def judged2Phase[F[_]: Applicative, Rec](validation: TxEnv.Validation)(fa: => F[Unit])(
       using judge: Judge[F, Rec]
   ): F[Unit] = judge.policy match
     case ValidationPolicy.ValidateAll  => when2Phase[F](validation)(fa)
@@ -537,7 +538,8 @@ object AlonzoUtxos:
 object BabbageUtxos:
   /** The scripts of the annotated transaction with their contexts, their collection's failures
     * recorded (`?!:`, `CollectErrors`), and the scripts evaluated with `run` only under the policy
-    * that validates every check (`when2Phase`) and only if nothing failed so far in the judgment
+    * that validates every check (`when2Phase`, skipped too by a judgment of `ValidateNone`, which
+    * runs no labelled clause) and only if nothing failed so far in the judgment
     * (`whenFailureFree`): the steps `expectScriptsToPass` and `babbageEvalScriptsTxInvalid` share.
     * Where they are evaluated is the run's ([[Phase2Deferral]]): a block the node prepares defers
     * them, so that neither their verdict nor `run` is reached before its plan checks them. A
@@ -566,7 +568,7 @@ object BabbageUtxos:
             judge.fail(inject.injectFailure(AlonzoUtxosPredFailure.CollectErrors(errors)))
         )
       )
-      _ <- AlonzoUtxos.when2Phase[F](validation)(
+      _ <- AlonzoUtxos.judged2Phase[F, UtxosPredFailure[E]](validation)(
         Sts.whenFailureFree[F, UtxosPredFailure[E]](
           scriptsWithContextEither.toOption.traverse_ { scriptsWithContext =>
             val now = PlutusEvaluation.evalPlutusScripts[F](scriptsWithContext).flatMap(run)

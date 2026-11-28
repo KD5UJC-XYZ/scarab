@@ -50,6 +50,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
 import xyz.kd5ujc.scarab.ledger.rules.{
   Counted,
   Globals,
+  Judge,
   Judgment,
   PpupEnv as FlatPpupEnv,
   RuleT,
@@ -171,6 +172,29 @@ class BabbageUtxosSuite extends FunSuite:
         evaluator: ScriptEvaluator[Id],
         validation: TxEnv.Validation
     ): Either[UDefect, Either[NonEmptyChain[URec], US]] =
+      judged(globals, env, stAnnTx, gov, evaluator, validation)
+
+    /** UTXOS judged with `ValidateNone` (`Judge.validateNone`): no predicate checked and no
+      * labelled clause run, whatever `validation` says.
+      */
+    def runUnchecked(
+        globals: Globals,
+        env: UtxosEnv[Babbage],
+        stAnnTx: AlonzoStAnnTx[Babbage],
+        gov: ShelleyGovState[Babbage],
+        evaluator: ScriptEvaluator[Id],
+        validation: TxEnv.Validation
+    ): Either[UDefect, Either[NonEmptyChain[URec], US]] =
+      judged(globals, env, stAnnTx, gov, evaluator, validation)(using Judge.validateNone[U, URec])
+
+    private def judged(
+        globals: Globals,
+        env: UtxosEnv[Babbage],
+        stAnnTx: AlonzoStAnnTx[Babbage],
+        gov: ShelleyGovState[Babbage],
+        evaluator: ScriptEvaluator[Id],
+        validation: TxEnv.Validation
+    )(using Judge[U, URec]): Either[UDefect, Either[NonEmptyChain[URec], US]] =
       given ScriptEvaluator[U] = request => Monad[U].unit.map(_ => evaluator.evaluate(request))
       given Phase2Deferral[U, Babbage] = Phase2Deferral.now
       Judgment
@@ -1247,4 +1271,35 @@ class BabbageUtxosSuite extends FunSuite:
       case Outcome.Accepted(after, _) =>
         assertEquals(after.deposited.value, r.judged.state.deposited.value - deposit)
       case other => fail(s"not accepted: $other")
+  }
+
+  /** What an evaluator that must not be asked raises when it is. */
+  private final class Asked extends RuntimeException("a script was evaluated")
+
+  /** `ValidateNone` runs no labelled clause (`Extended.hs:709-712, 727-730`, cardano-ledger
+    * f649f975), so the scripts are not evaluated even under the policy that validates every check,
+    * whatever the transaction's flag: Babbage's evaluation (`BabbageUtxos.evalScripts`), which
+    * Conway's and Dijkstra's UTXOS share, is guarded by the judgment's policy as well as by
+    * `when2Phase`. The same evaluator under `ValidateAll` is asked, so the case reaches it.
+    */
+  test("UTXOS: a judgment of ValidateNone evaluates no script under either flag") {
+    val never: ScriptEvaluator[Id] = _ => throw new Asked
+    val flags = Vector("babbage-pv8-v1-plain", "babbage-pv8-v1-plain-invalid-tag").map { name =>
+      val j = v1Judged(caseNamed(name))
+      val pp = PParams[Babbage](right("pp")(BabbagePParams.fromStored(j.pp)))
+      val utxo = right("utxo")(BabbageEraUTxO.fromStored(j.known))
+      val stAnnTx =
+        AlonzoStAnnTx.mkAlonzoStAnnTx[Babbage](j.clock.posix, pp, utxo, Map.empty, j.typed)
+      val gov = right("gov")(ShelleyGovStateRecord.fromStored[Babbage](j.state.gov))
+      val env = UtxosEnv(slotNo(j.slot), pp, j.cert)
+      assertEquals(
+        UtxosRun.runUnchecked(j.globals, env, stAnnTx, gov, never, TxEnv.Validation.All),
+        Right(Right((gov, Chain.empty))),
+        name
+      )
+      // the control: under ValidateAll the same evaluator is asked for the case's script
+      intercept[Asked](UtxosRun.run(j.globals, env, stAnnTx, gov, never, TxEnv.Validation.All))
+      t.isValid(j.typed)
+    }
+    assertEquals(flags, Vector(IsPhase2Valid.Phase2Valid, IsPhase2Valid.Phase2Invalid))
   }

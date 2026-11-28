@@ -192,9 +192,10 @@
    "class": "Mirror",
    "digest": "80c53e34c15053a8",
    "evidence": [
+    "BabbageUtxosSuite",
     "EraUtxosSuite"
    ],
-   "note": "the judgment, the events and the evaluator are capabilities (Judge, Tell, ScriptEvaluator), and where the collected scripts are evaluated is the run's (Phase2Deferral: there, or deferred into a prepared block's plan, ADR 0018); the validation policy is an argument (when2Phase); no Debug.traceEvent markers",
+   "note": "the judgment, the events and the evaluator are capabilities (Judge, Tell, ScriptEvaluator), and where the collected scripts are evaluated is the run's (Phase2Deferral: there, or deferred into a prepared block's plan, ADR 0018); the validation policy is an argument (when2Phase), and the evaluation, the labelled when2Phase clause, is skipped too under the judgment's ValidateNone as the reference's Label is (Extended.hs:709-712, 727-730); no Debug.traceEvent markers",
    "structure": "differs",
    "upstream": [
     {
