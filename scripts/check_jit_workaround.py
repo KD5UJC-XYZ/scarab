@@ -247,7 +247,7 @@ class Launcher:
 
 OWN = ("*jit_workaround.OPTIONS",)
 LAUNCHERS: dict[str, Launcher] = {
-    "build.sbt": Launcher(5, check_build_sbt,
+    "build.sbt": Launcher(6, check_build_sbt,
                           "the forked test JVMs (`ThisBuild / Test / javaOptions`, the heap-bound groups' "
                           "`runJVMOptions`, fuzz's appended options) and `node / run`, all through jdk25Flags; only the "
                           "groups of JIT_DEFAULT_GROUPS run on the JIT's defaults"),

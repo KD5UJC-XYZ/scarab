@@ -304,7 +304,7 @@ lazy val ledger = scarab("ledger")
       // It reads the fixtures from the build's root, as the build JVM does.
       val (jit, others) =
         (Test / definedTests).value.partition(_.name.endsWith(".MainnetCollateralJitSuite"))
-      val options = Vector("-Xbatch", "-XX:ActiveProcessorCount=2") ++ jdk25Flags
+      val options = Vector("-Xbatch", "-XX:ActiveProcessorCount=2") ++ jdk25FlagsJitDefaults
       val fork = (Test / forkOptions).value
         .withRunJVMOptions(options)
         .withWorkingDirectory((ThisBuild / baseDirectory).value)
