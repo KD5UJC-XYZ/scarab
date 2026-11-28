@@ -4,8 +4,10 @@
    "class": "Mirror",
    "digest": "02dc195f8c64cf9b",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -25,8 +27,10 @@
    "class": "Mirror",
    "digest": "fe2aa16221b30645",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "note": "the slot a SlotNo, as the reference's is",
    "structure": "same",
@@ -47,8 +51,10 @@
    "class": "Mirror",
    "digest": "06fd7a1278a30adf",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -68,8 +74,10 @@
    "class": "Mirror",
    "digest": "7d5b90f06b180ecb",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "note": "the recursion on the prefix as a fold, each step a sub-rule over the previous, which the interpreter runs in constant stack, as CERTS is; the pointer by Ptr.ofCertificate, the slot cut to its low 32 bits and the index to its low 16 (fromIntegral to Word32 and Word16), the flat DELEGS's; DELPL's failures and events embedded (EmbedDelplInDelegs)",
    "structure": "differs",
@@ -90,8 +98,10 @@
    "class": "Mirror",
    "digest": "26314ea1cbb881f2",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "note": "TxCert era ~ ShelleyTxCert era as one-way evidence that only the era's certificate file gives (IsShelleyTxCert), a class of its own that converts nothing implicitly; POOL on the pool state through certPStateL, DELEG on the certificate state, each a sub-rule whose failures and events DELPL's embed (EmbedInDelpl)",
    "structure": "differs",
@@ -112,8 +122,10 @@
    "class": "Mirror",
    "digest": "f7e89a6b8844fd2f",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "structure": "same",
    "upstream": [
@@ -133,8 +145,10 @@
    "class": "Mirror",
    "digest": "951aca905abc2b5c",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "note": "the next epoch a Word64 sum that wraps (addEpochInterval); its first slot from Globals cut to 64 bits as epochInfoFirst's Word64 arithmetic wraps (fixedEpochInfoFirst, cardano-slotting/src/Cardano/Slotting/EpochInfo/Impl.hs:37-39, cardano-base c1e1ed8d), then less the window by monus (*-, Slot.hs:63-64)",
    "structure": "differs",
@@ -155,8 +169,10 @@
    "class": "Mirror",
    "digest": "09436ca8a032b703",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "note": "the certificate read through ShelleyEraTxCertToBabbage's readers in the reference's order (its pattern synonyms); the key deposit the parameters' compact one (compactCoinOrError of the lens over it); the genesis delegation's slot slot +* Duration sp a Word64 sum that wraps, as the reference's does, where the flat rule refuses a slot past 2^64 - 1; the stability window from Globals; no quorum, which is UTXOW's",
    "structure": "differs",
@@ -177,8 +193,10 @@
    "class": "Mirror",
    "digest": "a01c3435faad1b80",
    "evidence": [
-    "BabbageDelegsSuite",
-    "BabbageDelegsCorpusSuite"
+    "AlonzoDelegsCorpusSuite",
+    "AlonzoDelegsSuite",
+    "BabbageDelegsCorpusSuite",
+    "BabbageDelegsSuite"
    ],
    "structure": "same",
    "upstream": [

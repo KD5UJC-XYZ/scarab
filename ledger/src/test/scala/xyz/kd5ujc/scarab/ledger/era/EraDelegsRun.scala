@@ -18,6 +18,7 @@ import xyz.kd5ujc.scarab.ledger.{
   TestLedger,
   TxEnv
 }
+import xyz.kd5ujc.scarab.ledger.era.alonzo.{AlonzoPParams, AlonzoTestKit}
 import xyz.kd5ujc.scarab.ledger.era.babbage.{BabbagePParams, BabbageTestKit}
 import xyz.kd5ujc.scarab.ledger.era.rules.{
   DELEGS,
@@ -53,6 +54,7 @@ import xyz.kd5ujc.scarab.ledger.rules.{
   focus
 }
 import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
   Babbage,
   CertState,
   ChainAccountState,
@@ -95,6 +97,22 @@ object EraDelegsRun:
   )
 
   object DelegsEra:
+    given alonzo: DelegsEra[Alonzo] =
+      DelegsEra[Alonzo](
+        pp => PParams[Alonzo](AlonzoPParams.fromStored(pp).fold(e => sys.error(s"$e"), identity)),
+        () =>
+          AlonzoTestKit
+            .encode(BabbageTestKit.flatBody(Vector(TestLedger.txIn(1)), Vector.empty, 0))
+            .tx,
+        summon,
+        summon,
+        summon,
+        summon,
+        summon,
+        summon,
+        summon
+      )
+
     given babbage: DelegsEra[Babbage] =
       DelegsEra[Babbage](
         pp => PParams[Babbage](BabbagePParams.fromStored(pp).fold(e => sys.error(s"$e"), identity)),

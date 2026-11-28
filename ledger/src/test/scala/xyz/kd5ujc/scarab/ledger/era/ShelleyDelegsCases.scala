@@ -30,6 +30,7 @@ import xyz.kd5ujc.scarab.ledger.era.rules.{
 }
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Globals, RuleT}
 import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
   Babbage,
   Build,
   ChainAccountState,
@@ -67,14 +68,15 @@ import xyz.kd5ujc.scarab.ledger.state.{
   * run both ways and compared whole: the failures in order, in the node's flat form, or the
   * certificate state after; what the era rules tell is checked against the certificates.
   */
-abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[E])
+abstract class ShelleyDelegsCases[E <: EraTag](name: String, major: Int)(using d: DelegsEra[E])
     extends FunSuite:
   private val t = d.t
 
   private def right[A](what: String)(e: Either[?, A]): A = e.fold(x => fail(s"$what: $x"), identity)
 
   private val g: Globals = TestLedger.globals
-  private val pp8: ProtocolParams = TestLedger.params(8)
+  // the parameters of a version of the era
+  private val ppE: ProtocolParams = TestLedger.params(major)
   private val slot: SlotNo = SlotNo.fromUnsigned(1000L)
   private val epoch: EpochNo = right("epoch")(EpochNo.fromBigInt(g.epochOf(1000)))
   private val tooLate: BigInt = g.firstSlot(epoch.toBigInt + 1) - g.stabilityWindow
@@ -154,7 +156,7 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
       certs: Vector[TxCert[E]],
       at: SlotNo = slot,
       txIx: TxIx = TxIx.minBound,
-      pp: ProtocolParams = pp8,
+      pp: ProtocolParams = ppE,
       chain: ChainAccountState = account,
       globals: Globals = g,
       policy: RuleT.Policy = RuleT.Policy.Accumulate
@@ -207,7 +209,7 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
       Vector(2, 3, 4).map(i => Ptr(1000, 0, i) -> cred(i - 1))
     )
     assertEquals(s.dState.accounts.states(cred(1)).pool, Some(poolId(1)))
-    assertEquals(s.dState.accounts.states(cred(2)).deposit.toBigInt, pp8.keyDeposit)
+    assertEquals(s.dState.accounts.states(cred(2)).deposit.toBigInt, ppE.keyDeposit)
     assertEquals(s.pState.stakePools(poolId(1)).delegators.toVector, Vector(cred(1), cred(2)))
     assertEquals(s.pState.stakePools(poolId(2)).delegators.toVector, Vector(cred(3)))
     // a delegation moves the account from its pool's delegators to the new pool's
@@ -239,7 +241,7 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
           retire(2, epoch.toBigInt + 19),
           regPool(5)
         ),
-        pp = pp8.copy(minPoolCost = 340000001)
+        pp = ppE.copy(minPoolCost = 340000001)
       )
     )
     // the zigzag of DELEGS's recursion on its prefix: the last certificate's block first
@@ -291,7 +293,7 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
     val twice = Vector(regPool(7), t.mkRegPoolTxCert(params(8, vrfOf = 57)))
     accepted(judged(empty, twice))
     assertEquals(
-      refused(judged(empty, twice, pp = pp8.copy(protocolMajor = 11))),
+      refused(judged(empty, twice, pp = ppE.copy(protocolMajor = 11))),
       List(poolF(PoolFailure.VRFKeyHashAlreadyRegistered(poolId(8).bytes, vrf(57).bytes)))
     )
   }
@@ -395,7 +397,7 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
     // chain reaches the slot.
     val last = SlotNo.fromUnsigned(-1L)
     val e = right("epoch")(EpochNo.fromBigInt(g.epochOf(last.toBigInt)))
-    val env = DelegsEnv[E](last, e, TxIx.minBound, d.pparams(pp8), d.tx(), account)
+    val env = DelegsEnv[E](last, e, TxIx.minBound, d.pparams(ppE), d.tx(), account)
     val era = EraDelegsRun.era[E](
       g,
       env,
@@ -414,7 +416,7 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
     EraDelegsRun.flat(
       g,
       EraDelegsRun.ctx(g, last, e, TxIx.minBound),
-      pp8,
+      ppE,
       account,
       withGenesis,
       Vector(BabbageTestKit.flatCertRep(d.rep.shelleyTxCert(genDeleg(1, 20, 20)))),
@@ -512,7 +514,7 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
   }
 
   test(s"$name: MIR below version 5: no transfer, no negative entry, a later entry replacing one") {
-    val pp4 = pp8.copy(protocolMajor = 4)
+    val pp4 = ppE.copy(protocolMajor = 4)
     val s = withRewards(noRewards.copy(reserves = Sorted.map(Vector(cred(1) -> Coin(100)))))
     assertEquals(
       refused(judged(s, Vector(transfer(MIRPot.ReservesMIR, 1)), pp = pp4)),
@@ -538,7 +540,7 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
     // `(Map.union credCoinMap' instantaneousRewards, potAmount)` (`Shelley/Rules/Deleg.hs:358-360`,
     // cardano-ledger f649f975): the delta is not counted. The flat rule counts it; no chain has a
     // delta below version 5, where no transfer is allowed and the deltas start each epoch at zero.
-    val pp4 = pp8.copy(protocolMajor = 4)
+    val pp4 = ppE.copy(protocolMajor = 4)
     val s = withRewards(noRewards.copy(deltaReserves = DeltaCoin(100)))
     val env = DelegsEnv[E](slot, epoch, TxIx.minBound, d.pparams(pp4), d.tx(), account)
     EraDelegsRun.era[E](
@@ -610,7 +612,7 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
     val at = right("slot")(SlotNo.fromBigInt((BigInt(1) << 64) - 16))
     val e = right("epoch")(EpochNo.fromBigInt(wrapping.epochOf(at.toBigInt)))
     assertEquals(e.toBigInt, (BigInt(1) << 60) - 1)
-    val env = DelegsEnv[E](at, e, TxIx.minBound, d.pparams(pp8), d.tx(), account)
+    val env = DelegsEnv[E](at, e, TxIx.minBound, d.pparams(ppE), d.tx(), account)
     EraDelegsRun.era[E](
       wrapping,
       env,
@@ -637,7 +639,7 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
   }
 
   test(s"$name: DELEG alone refuses a pool's certificate, which DELPL never gives it") {
-    val env = DelegEnv[E](slot, epoch, Ptr(1000, 0, 0), account, d.pparams(pp8))
+    val env = DelegEnv[E](slot, epoch, Ptr(1000, 0, 0), account, d.pparams(ppE))
     Vector(regPool(1), retire(1, epoch.toBigInt + 1)).foreach { c =>
       assertEquals(
         EraDelegsRun.deleg[E](g, env, d.certState.flip(populated), c).map(_.left.map(_.toList)),
@@ -715,7 +717,7 @@ abstract class ShelleyDelegsCases[E <: EraTag](name: String)(using d: DelegsEra[
     )
 
 /** Shelley's certificate rules on Babbage's era types. */
-class BabbageDelegsSuite extends ShelleyDelegsCases[Babbage]("Babbage"):
+class BabbageDelegsSuite extends ShelleyDelegsCases[Babbage]("Babbage", 8):
   test("the evidence that a Babbage certificate is Shelley's is made in its file alone") {
     // no proof of the equality outside the file, and the class can be neither made nor implemented
     val made = compileErrors("IsShelleyTxCert.of[xyz.kd5ujc.scarab.ledger.state.Babbage]")
@@ -734,6 +736,18 @@ class BabbageDelegsSuite extends ShelleyDelegsCases[Babbage]("Babbage"):
   ) {
     import xyz.kd5ujc.scarab.ledger.era.rules.*
     def ok[A](e: Either[?, A]): A = e.fold(x => fail(s"$x"), identity)
+    // each family reduces at the era to Shelley's type, as the era's rules are Shelley's
+    val families: List[? =:= ?] = List(
+      summon[DelegPredFailure[Babbage] =:= ShelleyDelegPredFailure[Babbage]],
+      summon[DelegEvent[Babbage] =:= ShelleyDelegEvent[Babbage]],
+      summon[PoolPredFailure[Babbage] =:= ShelleyPoolPredFailure[Babbage]],
+      summon[PoolRuleEvent[Babbage] =:= PoolEvent[Babbage]],
+      summon[DelplPredFailure[Babbage] =:= ShelleyDelplPredFailure[Babbage]],
+      summon[DelplEvent[Babbage] =:= ShelleyDelplEvent[Babbage]],
+      summon[DelegsPredFailure[Babbage] =:= ShelleyDelegsPredFailure[Babbage]],
+      summon[DelegsEvent[Babbage] =:= ShelleyDelegsEvent[Babbage]]
+    )
+    assertEquals(families.size, 8)
     val cred = Credential.KeyHashObj[Staking](
       ok(KeyHash.fromBytes[Staking](Bytes.fromArray(Array.fill(28)(1.toByte))))
     )
@@ -813,6 +827,122 @@ class BabbageDelegsSuite extends ShelleyDelegsCases[Babbage]("Babbage"):
     assertEquals(
       compileErrors(
         "def f(c: babbage.BabbageTxCert): ShelleyTxCertRep = summon[IsShelleyTxCert[xyz.kd5ujc.scarab.ledger.state.Babbage]].shelleyTxCert(c)"
+      ),
+      ""
+    )
+  }
+
+/** Shelley's certificate rules on Alonzo's era types. */
+class AlonzoDelegsSuite extends ShelleyDelegsCases[Alonzo]("Alonzo", 6):
+  test("the evidence that an Alonzo certificate is Shelley's is made in its file alone") {
+    // no proof of the equality outside the file, and the class can be neither made nor implemented
+    val made = compileErrors("IsShelleyTxCert.of[xyz.kd5ujc.scarab.ledger.state.Alonzo]")
+    assert(made.contains("Cannot prove"), made)
+    val constructed =
+      compileErrors("new IsShelleyTxCert[xyz.kd5ujc.scarab.ledger.state.Alonzo](summon)")
+    assert(constructed.contains("private"), constructed)
+    val implemented = compileErrors(
+      "new IsShelleyTxCert[xyz.kd5ujc.scarab.ledger.state.Alonzo] { override def shelleyTxCert(c: alonzo.AlonzoTxCert): ShelleyTxCertRep = ??? }"
+    )
+    assert(implemented.contains("final"), implemented)
+  }
+
+  test(
+    "Alonzo's injections into DELEG, POOL, DELPL and DELEGS, each failure nested as the reference's"
+  ) {
+    import xyz.kd5ujc.scarab.ledger.era.rules.*
+    def ok[A](e: Either[?, A]): A = e.fold(x => fail(s"$x"), identity)
+    // each family reduces at the era to Shelley's type, as the era's rules are Shelley's
+    val families: List[? =:= ?] = List(
+      summon[DelegPredFailure[Alonzo] =:= ShelleyDelegPredFailure[Alonzo]],
+      summon[DelegEvent[Alonzo] =:= ShelleyDelegEvent[Alonzo]],
+      summon[PoolPredFailure[Alonzo] =:= ShelleyPoolPredFailure[Alonzo]],
+      summon[PoolRuleEvent[Alonzo] =:= PoolEvent[Alonzo]],
+      summon[DelplPredFailure[Alonzo] =:= ShelleyDelplPredFailure[Alonzo]],
+      summon[DelplEvent[Alonzo] =:= ShelleyDelplEvent[Alonzo]],
+      summon[DelegsPredFailure[Alonzo] =:= ShelleyDelegsPredFailure[Alonzo]],
+      summon[DelegsEvent[Alonzo] =:= ShelleyDelegsEvent[Alonzo]]
+    )
+    assertEquals(families.size, 8)
+    val cred = Credential.KeyHashObj[Staking](
+      ok(KeyHash.fromBytes[Staking](Bytes.fromArray(Array.fill(28)(1.toByte))))
+    )
+    val pool = ok(KeyHash.fromBytes[StakePool](Bytes.fromArray(Array.fill(28)(2.toByte))))
+    val deleg = ShelleyDelegPredFailure.StakeKeyNotRegisteredDELEG[Alonzo](cred)
+    val poolFailure = ShelleyPoolPredFailure.StakePoolNotRegisteredOnKeyPOOL[Alonzo](pool)
+    val inDelpl = ShelleyDelplPredFailure.DelegFailure[Alonzo](deleg)
+    val poolInDelpl = ShelleyDelplPredFailure.PoolFailure[Alonzo](poolFailure)
+    val delegs = ShelleyDelegsPredFailure.DelplFailure[Alonzo](inDelpl)
+    val registered = PoolEvent.RegisterPool[Alonzo](pool)
+    val newEpoch = ShelleyDelegEvent.DelegNewEpoch[Alonzo](EpochNo.fromUnsigned(3L))
+    // DELEG and POOL: the identities, POOL's event too
+    assertEquals(
+      summon[InjectDelegFailure[ShelleyDelegPredFailure[Alonzo], Alonzo]].injectFailure(deleg),
+      deleg
+    )
+    assertEquals(summon[InjectPool[Alonzo]].injectFailure(poolFailure), poolFailure)
+    assertEquals(summon[InjectPool[Alonzo]].injectEvent(registered), registered)
+    // DELPL: its own, POOL's as `PoolFailure`, DELEG's as `DelegFailure`
+    assertEquals(
+      summon[InjectDelplFailure[ShelleyDelplPredFailure[Alonzo], Alonzo]].injectFailure(inDelpl),
+      inDelpl
+    )
+    assertEquals(
+      summon[InjectDelplFailure[ShelleyPoolPredFailure[Alonzo], Alonzo]]
+        .injectFailure(poolFailure),
+      poolInDelpl
+    )
+    assertEquals(
+      summon[InjectDelplFailure[ShelleyDelegPredFailure[Alonzo], Alonzo]].injectFailure(deleg),
+      inDelpl
+    )
+    // DELEGS: its own, and DELPL's and the rules' below it wrapped in `DelplFailure`
+    assertEquals(
+      summon[InjectDelegsFailure[ShelleyDelegsPredFailure[Alonzo], Alonzo]].injectFailure(delegs),
+      delegs
+    )
+    assertEquals(
+      summon[InjectDelegsFailure[ShelleyDelplPredFailure[Alonzo], Alonzo]].injectFailure(inDelpl),
+      delegs
+    )
+    assertEquals(
+      summon[InjectDelegsFailure[ShelleyDelegPredFailure[Alonzo], Alonzo]].injectFailure(deleg),
+      delegs
+    )
+    assertEquals(
+      summon[InjectDelegsFailure[ShelleyPoolPredFailure[Alonzo], Alonzo]]
+        .injectFailure(poolFailure),
+      ShelleyDelegsPredFailure.DelplFailure[Alonzo](poolInDelpl)
+    )
+    // the embeddings the rules wrap their sub-rules' failures and events with
+    assertEquals(EmbedInDelpl.alonzo.wrapDelegFailed(deleg), inDelpl)
+    assertEquals(EmbedInDelpl.alonzo.wrapPoolFailed(poolFailure), poolInDelpl)
+    assertEquals(
+      EmbedInDelpl.alonzo.wrapPoolEvent(registered),
+      ShelleyDelplEvent.PoolEvent[Alonzo](registered)
+    )
+    assertEquals(
+      EmbedInDelpl.alonzo.wrapDelegEvent(newEpoch),
+      ShelleyDelplEvent.DelegEvent[Alonzo](newEpoch)
+    )
+    assertEquals(EmbedDelplInDelegs.alonzo.wrapFailed(inDelpl), delegs)
+    assertEquals(
+      EmbedDelplInDelegs.alonzo.wrapEvent(ShelleyDelplEvent.DelegEvent[Alonzo](newEpoch)),
+      ShelleyDelegsEvent.DelplEvent[Alonzo](ShelleyDelplEvent.DelegEvent[Alonzo](newEpoch))
+    )
+  }
+
+  test(
+    "an Alonzo certificate is not its representation outside its file, nor the representation one"
+  ) {
+    val toRep = compileErrors("def f(c: alonzo.AlonzoTxCert): ShelleyTxCertRep = c")
+    assert(toRep.contains("Found:"), toRep)
+    val fromRep = compileErrors("def f(c: ShelleyTxCertRep): alonzo.AlonzoTxCert = c")
+    assert(fromRep.contains("Found:"), fromRep)
+    // the evidence reads it
+    assertEquals(
+      compileErrors(
+        "def f(c: alonzo.AlonzoTxCert): ShelleyTxCertRep = summon[IsShelleyTxCert[xyz.kd5ujc.scarab.ledger.state.Alonzo]].shelleyTxCert(c)"
       ),
       ""
     )

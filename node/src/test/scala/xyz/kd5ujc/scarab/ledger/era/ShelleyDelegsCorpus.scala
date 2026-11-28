@@ -17,10 +17,12 @@ import xyz.kd5ujc.scarab.ledger.{
 }
 import xyz.kd5ujc.scarab.ledger as node
 import xyz.kd5ujc.scarab.ledger.era.EraDelegsRun.{DelegsEra, Outcome}
+import xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoTx
 import xyz.kd5ujc.scarab.ledger.era.babbage.{BabbageTestKit, BabbageTx}
 import xyz.kd5ujc.scarab.ledger.era.rules.DelegsEnv
 import xyz.kd5ujc.scarab.ledger.rules.{Convert, Globals, RuleT, Sts, Tick}
 import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
   Babbage,
   Build,
   Coin,
@@ -431,3 +433,40 @@ class BabbageDelegsCorpusSuite
     ).map(f => Left(f.ordinal))
   protected val refusalCases: Int = 9
   protected val refusedAlone: Int = 7
+
+/** Shelley's DELEGS on Alonzo's era types against the flat rule and the reference's verdicts. */
+class AlonzoDelegsCorpusSuite
+    extends ShelleyDelegsCorpus[Alonzo]("Alonzo", ProtocolEra.Alonzo, RefusalEra.Alonzo)(using
+      DelegsEra.alonzo,
+      ShelleyBasedEra.SAlonzo
+    ):
+  private val t = EraTx.alonzo
+
+  protected def certificatesOf(envelope: Bytes): Vector[TxCert[Alonzo]] =
+    val tx = AlonzoTx
+      .fromEnvelope(envelope, StateLayout.Node11_1)
+      .fold(e => fail(s"Alonzo's decoder: $e"), identity)
+    t.bodyOf.certs[TxLevel.Top](t.body[TxLevel.Top](tx)(using t.bodyOf.top))(using t.bodyOf.top)
+
+  protected def pparamsOf(nes: NewEpochState[Alonzo]): node.ProtocolParams =
+    nes.es.ls.utxo.gov.curPParams
+
+  protected val blocks: Map[String, (Int, Int)] =
+    Map("fixtures/eras" -> (192, 2), "fixtures/chain-dep" -> (198, 2))
+  protected val states: Map[String, Int] = Map("fixtures/eras" -> 192, "fixtures/chain-dep" -> 198)
+  protected val alone: Map[String, (Int, Int, Int)] =
+    Map("fixtures/eras" -> (2892, 1524, 192), "fixtures/chain-dep" -> (2991, 1563, 198))
+  // a balance left, a registration again, an unknown account delegated, a genesis key's delegate
+  // and VRF key held by another, and MIR from the stability window before the next epoch
+  protected val reached: Set[Either[Int, Int]] =
+    val none = node.Credential.Key(Bytes.empty)
+    Set(
+      DelegFailure.StakeKeyHasNonZeroAccountBalance(0),
+      DelegFailure.StakeKeyAlreadyRegistered(none),
+      DelegFailure.StakeDelegationImpossible(none),
+      DelegFailure.DuplicateGenesisDelegate(Bytes.empty),
+      DelegFailure.DuplicateGenesisVRF(Bytes.empty),
+      DelegFailure.MIRCertificateTooLateinEpoch(node.Mismatch(0, 0))
+    ).map(f => Left(f.ordinal))
+  protected val refusalCases: Int = 3
+  protected val refusedAlone: Int = 2

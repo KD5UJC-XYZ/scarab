@@ -3,6 +3,7 @@ package xyz.kd5ujc.scarab.ledger.era
 
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.state.{
+  Alonzo,
   Babbage,
   Coin,
   Credential,
@@ -112,5 +113,7 @@ object IsShelleyTxCert:
   def of[E <: EraTag](using proof: TxCert[E] =:= ShelleyTxCertRep): IsShelleyTxCert[E] =
     new IsShelleyTxCert[E](proof)
 
+  given alonzo: IsShelleyTxCert[Alonzo] =
+    xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoTxCert.isShelleyTxCert
   given babbage: IsShelleyTxCert[Babbage] =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxCert.isShelleyTxCert

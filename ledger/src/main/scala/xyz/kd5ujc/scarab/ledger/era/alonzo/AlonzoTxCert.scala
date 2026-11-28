@@ -9,6 +9,7 @@ import xyz.kd5ujc.scarab.ledger.era.{
   EraField,
   EraTxError,
   GenesisDelegCert,
+  IsShelleyTxCert,
   MIRCert,
   MIRPot,
   MIRTarget,
@@ -53,6 +54,12 @@ object AlonzoTxCert:
   extension (c: AlonzoTxCert)
     /** The shared representation, read only. */
     def rep: ShelleyTxCertRep = c
+
+  /** `TxCert AlonzoEra ~ ShelleyTxCert AlonzoEra` (`Alonzo/TxCert.hs:12`, cardano-ledger f649f975),
+    * which DELPL asks for (`Shelley/Rules/Delpl.hs:184`): the representation, read only, of the
+    * equality the compiler proves here alone, where the opaque type is its representation.
+    */
+  val isShelleyTxCert: IsShelleyTxCert[Alonzo] = IsShelleyTxCert.of[Alonzo]
 
   /** The Alonzo certificate of a flat one that the flat certificate reader read at Alonzo (`DecCBOR
     * (ShelleyTxCert era)`, `eras/shelley/impl/src/Cardano/Ledger/Shelley/TxCert.hs:469-488`,
