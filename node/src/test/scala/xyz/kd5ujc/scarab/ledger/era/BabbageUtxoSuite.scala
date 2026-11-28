@@ -484,11 +484,11 @@ class BabbageUtxoSuite extends FunSuite:
     era
 
   /** [[same]] under every build and both policies; the outcome under 11.1 and `All`. */
-  private def everyWay(j: Judged): Outcome =
+  private def everyWay(j: Judged, evaluator: Option[ScriptEvaluator[Id]] = None): Outcome =
     val all = for
       build <- builds
       validation <- Vector(TxEnv.Validation.All, TxEnv.Validation.NonStatic)
-    yield same(j, validation, build)
+    yield same(j, validation, build, evaluator)
     all.head
 
   /** The era rule's failures on `j`, refused under 11.1 and `All`, as it records them. */
@@ -727,9 +727,13 @@ class BabbageUtxoSuite extends FunSuite:
     "the pre-Conway UTXO corpus's Babbage bodies: the flat UTXO's failures, and the reference's verdicts"
   ) {
     assertEquals(measured.size, MeasuredCases)
-    val refused = for m <- measured; build <- builds yield
+    val refused = for
+      m <- measured
+      build <- builds
+      validation <- Vector(TxEnv.Validation.All, TxEnv.Validation.NonStatic)
+    yield
       val j = measuredJudged(m)
-      val failures = same(j, TxEnv.Validation.All, build) match
+      val failures = same(j, validation, build) match
         case Outcome.Refused(fs)    => fs.collect { case Seen.Utxo(f) => f }
         case Outcome.Accepted(_, _) => Nil
       // each predicate the reference measured, as the era's UTXO reports it under the build
@@ -745,14 +749,28 @@ class BabbageUtxoSuite extends FunSuite:
       val collateral = failures.exists {
         case UtxoFailure.TooManyCollateralInputs(_) => true; case _ => false
       }
+      // the bootstrap attributes and the networks are checked on the signal alone
+      // (`runTestOnSignal`, `Babbage/Rules/Utxo.hs:392, 397`, cardano-ledger f649f975), the number of
+      // collateral inputs always (`runTest`, `:412`)
+      val static = validation == TxEnv.Validation.All
       assertEquals(
         (attributes, addresses, collateral),
-        (!m.attributes, !m.addresses, !m.collateral),
-        s"${m.name} $build"
+        (static && !m.attributes, static && !m.addresses, !m.collateral),
+        s"${m.name} $build $validation"
       )
-      (attributes, addresses, collateral)
-    // the corpus refuses each predicate at least once
-    assert(refused.exists(_._1) && refused.exists(_._2) && refused.exists(_._3))
+      (validation, (attributes, addresses, collateral))
+    // the corpus refuses each predicate at least once, and the collateral count applied again
+    val all = refused.collect { case (TxEnv.Validation.All, r) => r }
+    assert(all.exists(_._1) && all.exists(_._2) && all.exists(_._3))
+    assert(refused.exists { case (TxEnv.Validation.NonStatic, (_, _, c)) => c; case _ => false })
+    // `7-attributes-before-networks-before-collateral` refuses all three, and applied again only the
+    // collateral count
+    val every = measured.indexWhere(_.name == "7-attributes-before-networks-before-collateral")
+    assert(every >= 0)
+    assertEquals(
+      refused.slice(every * builds.size * 2, every * builds.size * 2 + 2).map(_._2),
+      Vector((true, true, true), (false, false, true))
+    )
   }
 
   // ---- crafted cases
@@ -874,14 +892,17 @@ class BabbageUtxoSuite extends FunSuite:
     val never: ScriptEvaluator[Id] = _ => throw new Asked
     Vector("babbage-pv8-v1-plain-fail-valid-tag", "babbage-pv8-v1-plain-pass-invalid-tag").foreach {
       name =>
+        // under every build and both policies: the fee's failure alone, no script asked for
         val j = withParams(v1Judged(caseNamed(name)))(_.copy(minFeeA = BigInt(10).pow(9)))
-        assertEquals(names(same(j, evaluator = Some(never))), List("FeeTooSmall"), name)
-        // without it, UTXOS's tag mismatch alone
-        assertEquals(
-          names(same(v1Judged(caseNamed(name)))).map(n => n.endsWith("Unexpectedly")),
-          List(true),
-          name
-        )
+        assertEquals(names(everyWay(j, Some(never))), List("FeeTooSmall"), name)
+        // without it, UTXOS's tag mismatch alone, as the flag says the scripts went: flagged valid,
+        // they failed; flagged invalid, they passed
+        val c = caseNamed(name)
+        same(v1Judged(c)) match
+          case Outcome.Refused(List(Seen.FailedUnexpectedly(true, failures))) if c.tx.isValid =>
+            assert(failures.nonEmpty, name)
+          case Outcome.Refused(List(Seen.PassedUnexpectedly(false))) if !c.tx.isValid => ()
+          case other => fail(s"$name: not the tag mismatch its flag gives: $other")
     }
   }
 
