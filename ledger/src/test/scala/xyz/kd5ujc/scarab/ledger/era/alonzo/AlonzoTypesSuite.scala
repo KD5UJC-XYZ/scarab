@@ -26,9 +26,11 @@ import xyz.kd5ujc.scarab.ledger.era.{
   Datum,
   EncCBOR,
   EraCorpus,
+  EraField,
   EraScript,
   EraTxError,
   EraTxOut,
+  KeptUpdate,
   MultiAssetValue
 }
 import xyz.kd5ujc.scarab.ledger.era.mary.{MaryTimelock, MaryTxOut}
@@ -283,7 +285,8 @@ class AlonzoTypesSuite extends FunSuite:
 
   test("every recorded Alonzo output reads as the flat decoder reads it, and writes back") {
     val written = outputs.map((what, n, f) => compare(n, f, what))
-    // every Alonzo transaction the repository holds, by source
+    // the Alonzo transactions of these sources, by source (`fixtures/preprod` and `fixtures/mainnet` hold
+    // no Alonzo block)
     assertEquals(
       recorded.groupMapReduce(_.source)(_ => 1)(_ + _),
       Map(
@@ -391,7 +394,22 @@ class AlonzoTypesSuite extends FunSuite:
       .filter(_.hcursor.downField("refused").succeeded)
       .flatMap(j =>
         entries(j).map { (_, o) =>
-          assert(AlonzoTxOut.read(node(o), mode, values).isLeft, str(j, "name"))
+          val what = str(j, "name")
+          val n = node(o)
+          // the keyed form is not one of Alonzo's, refused as the flat decoder refuses it
+          assertEquals(
+            AlonzoTxOut.read(n, mode, values),
+            Left(EraTxError.Decode(LedgerDecodeError.OutputForm(forms, n.value))),
+            what
+          )
+          // and the same output stored is refused by the part Alonzo's output has not
+          val part =
+            if what.contains("inline") then EraField.Datum else EraField.ReferenceScript
+          assertEquals(
+            AlonzoTxOut.fromStored(right(what)(FlatTxOut.fromBytes(o))),
+            Left(EraTxError.NotInEra(part)),
+            what
+          )
           o
         }
       )
@@ -571,6 +589,58 @@ class AlonzoTypesSuite extends FunSuite:
     assertEquals(AlonzoScript.decode(v2), Left(EraTxError.Decode(refusal)))
     assertEquals(FlatScript.decode(v2, ScriptKind.PlutusV1).left.toOption, Some(refusal))
     assertEquals(EraScript.alonzo.eraMaxLanguage, xyz.kd5ujc.scarab.plutus.PlutusLanguage.V1)
+    // a native script, `[0, all of a key and a start]`, which no recorded witness set holds
+    val native = node(hex(s"8200820182${"8200581c" + "55" * 28}8204190400"))
+    val script = right("native")(AlonzoScript.decode(native))
+    val flatNative = right("flat native")(FlatScript.decode(native, ScriptKind.PlutusV1))
+    assertEquals(EraScript.alonzo.hashScript(script), flatNative.hash)
+    val timelock = EraScript.alonzo.getNativeScript(script).getOrElse(fail("not native"))
+    assertEquals(
+      EraScript.alonzo.originalBytes(script),
+      items(native)(1).original
+    )
+    assertEquals(
+      EraScript.alonzo
+        .getRequireAllOf(timelock)
+        .map(
+          _.map(t => (EraScript.alonzo.getRequireSignature(t), EraScript.alonzo.getTimeStart(t)))
+        ),
+      Some(Vector((Some(hex("55" * 28)), None), (None, Some(BigInt(1024)))))
+    )
+    assertEquals(
+      right("native alone")(AlonzoTimelock.decode(items(native)(1))),
+      timelock
+    )
+  }
+
+  test(
+    "every recorded Alonzo body's update proposal reads the typed way as the flat decoder stores it"
+  ) {
+    val proposals = recorded.zipWithIndex.flatMap { (r, i) =>
+      val what = s"${r.source} #$i"
+      field(node(r.body), 6).map { n =>
+        val kept =
+          right(s"$what typed")(KeptUpdate.decode[xyz.kd5ujc.scarab.ledger.state.Alonzo](n))
+        val flat = right(s"$what flat")(FlatTxBody.decode(r.body, Era.Alonzo))
+        assertEquals(Some(kept.stored), flat.update, what)
+        assertEquals(
+          KeptUpdate.fromStored[xyz.kd5ujc.scarab.ledger.state.Alonzo](kept.stored).map(_.update),
+          Right(kept.update),
+          what
+        )
+        r.source
+      }
+    }
+    // the recorded blocks' six and the refusal corpus's one
+    assertEquals(
+      proposals.groupMapReduce(identity)(_ => 1)(_ + _),
+      Map(
+        "fixtures/eras/blocks.hex" -> 2,
+        "fixtures/chain-dep/blocks.hex" -> 2,
+        "fixtures/preview/alonzo-txs.hex" -> 2,
+        "alonzo-families" -> 1
+      )
+    )
   }
 
   test("every recorded Alonzo witness script hashes as the flat decoder's") {

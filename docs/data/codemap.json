@@ -790,7 +790,8 @@
       "suites": [
         "AlonzoTypesSuite",
         "AlonzoPParamsSuite",
-        "EraPParamsStoredSuite"
+        "EraPParamsStoredSuite",
+        "AlonzoStateStoredSuite"
       ],
       "docs": [
         "docs/design/era-typed-transactions.md"

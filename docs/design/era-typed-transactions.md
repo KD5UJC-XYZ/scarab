@@ -3606,21 +3606,32 @@ Conway's rules on the classes follow as the rest of stage 2.
       ones with a datum hash are accepted and refused alike. Every recorded output is written back to its bytes,
       the 46 outputs of the reference's 15 Alonzo UTxO answers are written byte for byte (pointer, bootstrap,
       multi-asset, datum-hash and detached-value ones among them) and its 4 outputs of a later era's form are
-      refused, and its 9 verdicts on an output's form are the era decoder's. The 41 recorded witness scripts
-      hash as the flat ones.
-    - The least coin of those 226 outputs and crafted ones is the flat path's, at the entry sizes the reference
-      computes by hand (29 words ada-only, 39 with a datum hash or one asset, 58 with two policies and a datum
-      hash); a zero quantity and an empty policy are pruned below version 9, so the value is ada-only.
+      refused, and its 9 verdicts on an output's form are the era decoder's. The era walk's 192 Alonzo states
+      hold 5 distinct outputs, read from the store and written back to their bytes; the Alonzo snapshots
+      below keep their UTxO sets in their tables, which are not read. `fixtures/preprod` and
+      `fixtures/mainnet` hold no Alonzo block. The 41 recorded witness scripts
+      (all Plutus V1) hash as the flat ones, and a crafted native script's hash and tree are the flat
+      reader's.
+    - The least coin of those 226 outputs and crafted ones is the flat path's, at entry sizes computed by hand
+      from the reference's `utxoEntrySize` and `size` (29 words ada-only, 39 with a datum hash or one asset, 58
+      with two policies and a datum hash). A zero quantity and an empty policy are pruned by the value reader
+      both decoders share below version 9 (`Value.Decoding.Pruning`), so the value is ada-only; no recording
+      of the reference holds such an Alonzo output.
       `fixtures/reference/pre-conway-utxo`'s protocol-5 rows are collateral and attribute verdicts, not the
       least coin, and are not this evidence.
     - The three parameter records of `alonzo-3013` read positionally and write back byte for byte, also over a
       base differing in every Alonzo field; the 571 records of the era walk's 192 Alonzo states (versions 4 to 7)
-      read into the era and are written by its encoder as the state's codec writes them. Generated Alonzo
+      read into the era and are written by its encoder as the state's codec writes them, and so are the
+      records of `alonzo-3013` and of the native V10 snapshots `alonzo-349`, `alonzo-539` and `preview-4320`
+      (`AlonzoStateStoredSuite`), whose stored proposals (three delegates' in two of them) read into the era
+      with their bytes kept and whose states are written back whole. Generated Alonzo
       updates, in shortest and wide forms, apply as the flat rule applies them but for the cost models
       ([#1495](https://github.com/KD5UJC-XYZ/scarab/issues/1495)), and a body's proposal is stored byte for byte
-      as the flat decoder stores it; so are the six recorded Alonzo proposals (the era walk's and the
-      chain-dependent capture's by three delegates, Preview's by seven), each with a mutant of a value read
-      alike and as another proposal. A value written in a non-canonical form (a wide word, `2/4`, an indefinite
+      as the flat decoder stores it; so are the seven recorded Alonzo proposals (the era walk's and the
+      chain-dependent capture's by three delegates, Preview's by seven, and one of the refusal corpus), and
+      a mutant of a value of each block's proposal is read alike, five as another proposal and one refused by
+      both. The 187 proposal maps of the era walk's Alonzo states (561 delegates' updates) read from their
+      stored form into the era, the stored form kept. A value written in a non-canonical form (a wide word, `2/4`, an indefinite
       nonce) is kept as written and is the canonical value's typed. Two refusals name the update where the flat
       decoder names the parameter (a ratio out of its interval, a cost per word not a `Word64`), the known
       diagnostic gap B1 recorded.

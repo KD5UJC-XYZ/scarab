@@ -338,6 +338,36 @@ class EraPParamsStoredSuite extends FunSuite:
       (states.size, records.size, versions.distinct.sorted),
       (192, 571, Vector[(BigInt, BigInt)]((4, 0), (5, 0), (6, 0), (7, 0)))
     )
+    // the proposals each state holds, as the node stores them, read into the era with their
+    // bytes kept
+    val proposals = states.flatMap { nes =>
+      val gov = nes.es.ls.utxo.gov
+      Vector(gov.curProposals, gov.futureProposals).filter(_.nonEmpty).map { ps =>
+        val stored =
+          xyz.kd5ujc.scarab.ledger.Update(ps.map((k, u) => k.bytes -> u).toMap, BigInt(0))
+        val kept = right("stored proposals")(KeptUpdate.fromStored[Alonzo](stored))
+        assertEquals(kept.stored, stored)
+        given DecodeAt = DecodeAt(version(5), DecodeField.ParameterUpdate)
+        kept.update.proposals.updates.values.foreach(u =>
+          assertEquals(
+            PParamsUpdate.decodePParamsUpdate[Alonzo](
+              right("cbor")(Cbor.decode(PParamsUpdate.encodePParamsUpdate(u).bytes))
+            ),
+            Right(u)
+          )
+        )
+        kept.update.proposals.updates.size
+      }
+    }
+    // and the outputs of their UTxO sets, read as Alonzo's and written back
+    val outputs = states.flatMap(_.es.ls.utxo.utxo.utxo.valuesIterator).distinct
+    val written = outputs.count { out =>
+      val era = right("output")(alonzo.AlonzoTxOut.fromStored(out))
+      assertEquals(alonzo.AlonzoTxOut.toStored(era), out)
+      EncCBOR[alonzo.AlonzoTxOut].encCBOR(era).bytes == out.raw
+    }
+    // 187 proposal maps, of 561 delegates' updates; the 5 distinct outputs the walk's UTxO sets hold
+    assertEquals((proposals.size, proposals.sum, outputs.size, written), (187, 561, 5, 5))
 
   private def dijkstraParams(p: ProtocolParams): PParams[Dijkstra] =
     PParams[Dijkstra](right("Dijkstra's parameters")(DijkstraPParams.fromStored(p)))

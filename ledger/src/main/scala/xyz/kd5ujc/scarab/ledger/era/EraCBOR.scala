@@ -384,12 +384,14 @@ object DecCBOR:
     def decCBOR(n: Node)(using at: DecodeAt): Result[CoinPerWord] =
       coin.decCBOR(n).map(CoinPerWord(_))
 
-  /** `instance DecCBOR Nonce` (`BaseTypes.hs:579-595`, cardano-ledger f649f975): below version 12
-    * the `Summands` of `[0]` and `[1, hash]`, each tag's length checked, as the node's decoder of a
-    * pre-Conway update's extra entropy reads it ([[xyz.kd5ujc.scarab.ledger.Nonce.decode]]), the
-    * hash's byte string in the form the version's `ByteStrings` takes. The extra entropy is a field
-    * of the eras up to Alonzo only ([[EraPParamsToAlonzo]]), whose decoder versions are below 12,
-    * so the `decodeRecordSum` of 12 is not reached.
+  /** `instance DecCBOR Nonce` (`BaseTypes.hs:579-595`, cardano-ledger f649f975): `[0]` or `[1,
+    * hash]`, a definite or an indefinite list, each tag's length checked, as the node's decoder of
+    * a pre-Conway update's extra entropy reads it ([[xyz.kd5ujc.scarab.ledger.Nonce.decode]]), the
+    * hash's byte string in the form the version's `ByteStrings` takes. Below version 12 that is the
+    * reference's `Summands`, from it `decodeRecordSum` (`Decoding/Decoder.hs:670-675`), which reads
+    * the tag and its fields before the list's length and so names another refusal, not another
+    * verdict. The extra entropy is a field of the eras up to Alonzo only ([[EraPParamsToAlonzo]]),
+    * whose decoder versions are below 12.
     */
   given nonce: DecCBOR[xyz.kd5ujc.scarab.ledger.Nonce] with
     def decCBOR(n: Node)(using at: DecodeAt): Result[xyz.kd5ujc.scarab.ledger.Nonce] =

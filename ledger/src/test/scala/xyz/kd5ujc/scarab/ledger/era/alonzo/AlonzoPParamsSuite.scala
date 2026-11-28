@@ -226,6 +226,27 @@ class AlonzoPParamsSuite extends ScalaCheckSuite:
     assert(compileErrors("summon[ToPlutusData[PParamsUpdate[Alonzo]]]").nonEmpty)
     assert(compileErrors("summon[ConwayEraPParams[Alonzo]]").nonEmpty)
 
+  test("a nonce is read alike at every decoder version, as Summands and decodeRecordSum read it"):
+    val forms = Vector(
+      "8100" -> true,
+      "9f00ff" -> true,
+      "82015820" + "ab" * 32 -> true,
+      "9f015820" + "ab" * 32 + "ff" -> true,
+      "820000" -> false,
+      "8101" -> false,
+      "8102" -> false,
+      "8201581f" + "ab" * 31 -> false,
+      "80" -> false
+    )
+    Vector(5, 9, 12).foreach { major =>
+      val version = DecoderVersion.ofMajor(BigInt(major)).getOrElse(fail(s"no version $major"))
+      val at = DecodeAt(version, DecodeField.Nonce)
+      forms.foreach { (h, accepted) =>
+        val n = right("cbor")(CborRead.decode(hex(h)))
+        assertEquals(DecCBOR.nonce.decCBOR(n)(using at).isRight, accepted, s"$h at $major")
+      }
+    }
+
   // ---- the update proposal of an Alonzo body
 
   /** An Alonzo body with no input, no output, no fee and the update `update`. */
@@ -360,19 +381,23 @@ class AlonzoPParamsSuite extends ScalaCheckSuite:
             hex(t.body.hex.replace(n.original.hex, mutant.hex)),
             ProtocolEra.Alonzo
           )
-          (KeptUpdate.decode[Alonzo](m), mutantBody) match
+          val read = (KeptUpdate.decode[Alonzo](m), mutantBody) match
             case (Right(k), Right(b)) =>
               assertEquals(b.update, Some(k.stored), t.id.hex)
               assertNotEquals(k.stored, kept.stored, t.id.hex)
               assertNotEquals(k.update, kept.update, t.id.hex)
-            case (Left(_), Left(_)) => ()
+              true
+            case (Left(_), Left(_)) => false
             case other              => fail(s"${t.id.hex} mutant of ${raw.hex}/$key: $other")
-          (t.id.hex, kept.update.proposals.updates.size)
+          (kept.update.proposals.updates.size, read)
         }
       }
     // the era walk's and the chain-dependent capture's proposals by their three delegates, and
     // Preview's by its seven
-    assertEquals(compared.map(_._2), Vector(3, 3, 3, 3, 7, 7))
+    assertEquals(compared.map(_._1), Vector(3, 3, 3, 3, 7, 7))
+    // of the mutants, one bit of a value's last byte, five are read by both as another proposal
+    // and one is refused by both
+    assertEquals(compared.count(_._2), 5)
 
   // ---- Babbage's upgrade from Alonzo and downgrade to it
 
