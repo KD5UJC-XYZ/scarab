@@ -117,11 +117,28 @@ object Encoding:
 trait EncCBOR[A]:
   def encCBOR(a: A): Encoding
 
-/** What a decoder reads at: the decoder version, which the reference's `Decoder s` carries, and the
-  * site a refusal names.
+/** What a decoder reads at: the decoder version, which the reference's `Decoder s` carries, the
+  * site a refusal names, and whether it reads bytes received or bytes the node stored
+  * ([[DecodeAt.Reading]]).
   */
-final case class DecodeAt(version: DecoderVersion, site: DecodeSite):
+final case class DecodeAt(
+    version: DecoderVersion,
+    site: DecodeSite,
+    reading: DecodeAt.Reading = DecodeAt.Reading.Received
+):
   def at(other: DecodeSite): DecodeAt = copy(site = other)
+
+object DecodeAt:
+  /** What a decoder reads. The reference keeps a value, not the bytes it came as; the node keeps a
+    * pre-Conway proposal by its bytes (ADR 0006), and reads them back in any form an earlier read
+    * took, as the flat rule applies them ([[xyz.kd5ujc.scarab.ledger.ProtocolParams.update]]).
+    */
+  enum Reading derives CanEqual:
+    /** Bytes received, held to the rules of the version. */
+    case Received
+
+    /** Bytes the node stored, read in any form an earlier build read and stored. */
+    case Stored
 
 /** `class DecCBOR a` (`Decoding/DecCBOR.hs`, cardano-ledger 9df9f98c): how a value is read from an
   * item, at the version and site of [[DecodeAt]].
@@ -388,16 +405,26 @@ object DecCBOR:
     * hash]`, a definite or an indefinite list, each tag's length checked, as the node's decoder of
     * a pre-Conway update's extra entropy reads it ([[xyz.kd5ujc.scarab.ledger.Nonce.decode]]), the
     * hash's byte string in the form the version's `ByteStrings` takes. Below version 12 that is the
-    * reference's `Summands`, from it `decodeRecordSum` (`Decoding/Decoder.hs:670-675`), which reads
-    * the tag and its fields before the list's length and so names another refusal, not another
-    * verdict. The extra entropy is a field of the eras up to Alonzo only ([[EraPParamsToAlonzo]]),
-    * whose decoder versions are below 12.
+    * reference's `Summands` (`Decoding/Coders.hs:479, 514`), from it `decodeRecordSum`
+    * (`Decoding/Decoder.hs:670-675`), on which `Summands` is built too: both read the tag and its
+    * fields before the list's length. The extra entropy is a field of the eras up to Alonzo only
+    * ([[EraPParamsToAlonzo]]), whose decoder versions are below 12. A nonce the node stored
+    * ([[DecodeAt.Reading.Stored]]) is read as the flat rule applies it: a byte string of any form,
+    * and a neutral nonce of any number of fields, which an earlier build read as neutral and
+    * stored.
     */
   given nonce: DecCBOR[xyz.kd5ujc.scarab.ledger.Nonce] with
     def decCBOR(n: Node)(using at: DecodeAt): Result[xyz.kd5ujc.scarab.ledger.Nonce] =
-      given xyz.kd5ujc.scarab.ledger.ByteStrings =
-        xyz.kd5ujc.scarab.ledger.ByteStrings.of(at.version)
-      xyz.kd5ujc.scarab.ledger.Nonce.decode(n, xyz.kd5ujc.scarab.ledger.Nonce.NeutralFields.Exact)
+      at.reading match
+        case DecodeAt.Reading.Received =>
+          given xyz.kd5ujc.scarab.ledger.ByteStrings =
+            xyz.kd5ujc.scarab.ledger.ByteStrings.of(at.version)
+          xyz.kd5ujc.scarab.ledger.Nonce
+            .decode(n, xyz.kd5ujc.scarab.ledger.Nonce.NeutralFields.Exact)
+        case DecodeAt.Reading.Stored =>
+          given xyz.kd5ujc.scarab.ledger.ByteStrings = xyz.kd5ujc.scarab.ledger.ByteStrings.Chunked
+          xyz.kd5ujc.scarab.ledger.Nonce
+            .decode(n, xyz.kd5ujc.scarab.ledger.Nonce.NeutralFields.Stored)
 
   given epochInterval: DecCBOR[EpochInterval] with
     def decCBOR(n: Node)(using at: DecodeAt): Result[EpochInterval] =

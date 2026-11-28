@@ -104,8 +104,8 @@ class AlonzoPParamsSuite extends ScalaCheckSuite:
     assertEquals(AlonzoPParams.toStored(alonzo(p), p), p)
     assertEquals(era.ppDG.get(PParams[Alonzo](alonzo(p))).rational, p.d)
 
-  property("an update applied is the flat rule's, but for the cost models"):
-    forAll(genAlonzoFields(alonzoKeys.filterNot(_ == 18))) { fields =>
+  property("an update applied is the flat rule's, the cost models replaced whole as both now do"):
+    forAll(genAlonzoFields(alonzoKeys)) { fields =>
       val p = TestLedger.params(6)
       val applied = era.applyPPUpdates(PParams[Alonzo](alonzo(p)), updateOf(fields))
       val flat = ParamUpdate(fields.map((k, v) => k -> hex(v)).toMap)
@@ -238,13 +238,55 @@ class AlonzoPParamsSuite extends ScalaCheckSuite:
       "8201581f" + "ab" * 31 -> false,
       "80" -> false
     )
-    Vector(5, 9, 12).foreach { major =>
+    // a hash written in chunks is read from version 12 on, where a byte string may be
+    val chunked = "82015f5820" + "ab" * 32 + "ff"
+    Vector(5, 9, 11, 12).foreach { major =>
+      val version = DecoderVersion.ofMajor(BigInt(major)).getOrElse(fail(s"no version $major"))
+      val n = right("cbor")(CborRead.decode(hex(chunked)))
+      assertEquals(
+        DecCBOR.nonce.decCBOR(n)(using DecodeAt(version, DecodeField.Nonce)).isRight,
+        major >= 12,
+        s"chunked at $major"
+      )
+    }
+    Vector(5, 9, 11, 12).foreach { major =>
       val version = DecoderVersion.ofMajor(BigInt(major)).getOrElse(fail(s"no version $major"))
       val at = DecodeAt(version, DecodeField.Nonce)
       forms.foreach { (h, accepted) =>
         val n = right("cbor")(CborRead.decode(hex(h)))
         assertEquals(DecCBOR.nonce.decCBOR(n)(using at).isRight, accepted, s"$h at $major")
       }
+    }
+
+  test(
+    "a stored proposal's extra entropy an earlier build kept is read as the flat rule applies it"
+  ):
+    // the flat suite's cases (`DefiniteBytesReferenceSuite`): a neutral nonce of two fields and a
+    // hash in chunks, which a body refuses and a stored update applies
+    val hash = hex("5b" * 32)
+    Vector(
+      "820000" -> Nonce.Neutral,
+      "9f0000ff" -> Nonce.Neutral,
+      ("8201" + "5f5820" + "5b" * 32 + "ff") -> Nonce.Hash(hash)
+    ).foreach { (h, expected) =>
+      val fields = ParamUpdate(Map(13 -> hex(h)))
+      val stored = StoredUpdate(Map(hex(genesisKey(1).drop(4)) -> fields), BigInt(3))
+      val kept = right(h)(KeptUpdate.fromStored[Alonzo](stored))
+      assertEquals(kept.stored, stored, h)
+      val ppu = kept.update.proposals.updates.values.headOption.getOrElse(fail("no update"))
+      assertEquals(ppu.hkd.extraEntropy, Some(expected), h)
+      // applied as the flat rule applies the stored bytes
+      val p = TestLedger.params(6)
+      assertEquals(
+        Right(AlonzoPParams.toStored(era.applyPPUpdates(PParams[Alonzo](alonzo(p)), ppu).hkd, p)),
+        ProtocolParams.update(p, fields)(using ShelleyBasedEra.SAlonzo),
+        h
+      )
+      // a body proposing it is refused
+      assert(
+        typed(array(Seq(map(Seq(genesisKey(1) -> map(Seq(uint(13) -> h)))), uint(3)))).isLeft,
+        h
+      )
     }
 
   // ---- the update proposal of an Alonzo body

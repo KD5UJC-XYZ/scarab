@@ -60,17 +60,22 @@ object KeptPParamsUpdate:
 
   /** The update the node keeps, read into the era at its decoder version: each stored field's bytes
     * read by its field, as [[KeptUpdate.fromStored]] reads them, and only at an era whose updates a
-    * genesis delegate proposes ([[EraPParamsToBabbage]]). A stored form no decoder of the era gave
-    * is refused: a key that is not one of the era's, or a value its field does not read, which a
-    * legacy field an earlier build kept unread is (key 17 of a record stored before the Babbage
-    * translation, #85, https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7222565136).
+    * genesis delegate proposes ([[EraPParamsToBabbage]]), each as the node stored it
+    * ([[DecodeAt.Reading.Stored]]): an extra entropy in any form an earlier build read and stored,
+    * as the flat rule applies it. A stored form no decoder of the era gave is otherwise refused: a
+    * key that is not one of the era's, or a value its field does not read, which a legacy field an
+    * earlier build kept unread is (key 17 of a record stored before the Babbage translation, #85,
+    * https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-7222565136).
     */
   def fromStored[E <: EraTag](stored: ParamUpdate)(using
       p: EraPParamsToBabbage[E],
       era: Era[E]
   ): Either[LedgerDecodeError, KeptPParamsUpdate[E]] =
-    given DecodeAt =
-      DecodeAt(DecoderVersion.ofVersion(era.eraProtVerLow), DecodeField.ParameterUpdate)
+    given DecodeAt = DecodeAt(
+      DecoderVersion.ofVersion(era.eraProtVerLow),
+      DecodeField.ParameterUpdate,
+      DecodeAt.Reading.Stored
+    )
     PParamsUpdate
       .readFields[E, (Int, Bytes), Unit](stored.fields.toVector.sortBy(_._1), ())(
         (k, bytes) => CborRead.decode(bytes).map(BigInt(k) -> _),
