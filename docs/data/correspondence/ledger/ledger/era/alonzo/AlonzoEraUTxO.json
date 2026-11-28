@@ -1,0 +1,68 @@
+{
+ "entries": {
+  "def ledger.era.alonzo.AlonzoEraUTxO.mkStAnnTx": {
+   "class": "Mirror",
+   "digest": "5ff31cbed86a8972",
+   "evidence": [
+    "AlonzoPlutusContextSuite",
+    "AlonzoPlutusContextRefusalsSuite"
+   ],
+   "note": "mkAlonzoStAnnTx at Alonzo, a function as Babbage's and Conway's are until the mempool",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo.hs",
+     "lines": [
+      82,
+      82
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkStAnnTx"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoEraUTxO.instance": {
+   "class": "Mirror",
+   "digest": "b58e317341038ae5",
+   "evidence": [
+    "AlonzoPlutusContextSuite",
+    "AlonzoPlutusContextRefusalsSuite"
+   ],
+   "note": "every member of the reference's EraUTxO and AlonzoEraUTxO instances; getWitsVKeyNeeded reads the genesis delegations from the certificate state's delegation state, as Alonzo has no certificate-state class among the era types yet (#85)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      112,
+      127
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraUTxO AlonzoEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/UTxO.hs",
+     "lines": [
+      164,
+      175
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraUTxO AlonzoEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.alonzo.AlonzoEraUTxO.fromStored",
+    "object ledger.era.alonzo.AlonzoEraUTxO"
+   ],
+   "reason": "the reading of the outputs the node keeps as an era's UTxO, refused only for an output a damaged store holds; the reference keeps the UTxO at its era's type and has no counterpart (#85)"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/alonzo/AlonzoEraUTxO.scala"
+}

@@ -4,7 +4,7 @@ package xyz.kd5ujc.scarab.ledger.era
 import scala.annotation.unused
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.{TranslationError, TxIn, Unsigned}
-import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway, Dijkstra, EraTag, TxIx}
+import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Babbage, Conway, Dijkstra, EraTag, TxIx}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
 // The translation of a transaction to the script context of a Plutus language
@@ -74,12 +74,15 @@ object Inject:
     )
 
 /** The context error of era `E` (`type ContextError era`, `Context.hs:198`, cardano-ledger
-  * f649f975): Babbage's is `BabbageContextError BabbageEra` (`Babbage/TxInfo.hs:229`,
-  * cardano-ledger f649f975; `:232` at 9df9f98c), Conway's is `ConwayContextError ConwayEra`
-  * (`Conway/TxInfo.hs:150`), Dijkstra's `DijkstraContextError DijkstraEra`
+  * f649f975): Alonzo's is `AlonzoContextError AlonzoEra` (`Alonzo/Plutus/TxInfo.hs:197`,
+  * cardano-ledger f649f975; `:206` at 9df9f98c), Babbage's is `BabbageContextError BabbageEra`
+  * (`Babbage/TxInfo.hs:229`, cardano-ledger f649f975; `:232` at 9df9f98c), Conway's is
+  * `ConwayContextError ConwayEra` (`Conway/TxInfo.hs:150`), Dijkstra's
+  * `DijkstraContextError DijkstraEra`
   * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:300`, cardano-ledger 9df9f98c).
   */
 type ContextError[E <: EraTag] = E match
+  case Alonzo   => AlonzoContextError[Alonzo]
   case Babbage  => BabbageContextError[Babbage]
   case Conway   => conway.ConwayContextError[Conway]
   case Dijkstra => dijkstra.DijkstraContextError[Dijkstra]
@@ -112,10 +115,22 @@ type PlutusTxInfo[L <: Language] = L match
   case Language.PlutusV4 => PV4.TxInfo
 
 /** An input of a language's context (`type family PlutusTxInInfo era l`, `Context.hs:282-289`,
-  * cardano-ledger 9df9f98c), without Alonzo's own case for Plutus V1 (`Maybe PV1.TxInInfo`): Alonzo
-  * is not among the era types yet, and no later era has the case.
+  * cardano-ledger 9df9f98c; `:250-257` at f649f975): Alonzo's own for Plutus V1, none for an input
+  * at a Byron address (`Maybe PV1.TxInInfo`, `:285`), and the language's of every other era.
   */
-type PlutusTxInInfo[E <: EraTag, L <: Language] = L match
+type PlutusTxInInfo[E <: EraTag, L <: Language] = E match
+  case Alonzo => AlonzoTxInInfo[L]
+  case _      => LanguageTxInInfo[L]
+
+/** Alonzo's case of [[PlutusTxInInfo]]: Plutus V1's, the one language Alonzo has, optional. */
+type AlonzoTxInInfo[L <: Language] = L match
+  case Language.PlutusV1 => Option[PV1.TxInInfo]
+  case _                 => LanguageTxInInfo[L]
+
+/** The cases of [[PlutusTxInInfo]] by the language alone (`Context.hs:286-289`, cardano-ledger
+  * 9df9f98c).
+  */
+type LanguageTxInInfo[L <: Language] = L match
   case Language.PlutusV1 => PV1.TxInInfo
   case Language.PlutusV2 => PV2.TxInInfo
   case Language.PlutusV3 => PV3.TxInInfo
@@ -316,13 +331,16 @@ trait EraPlutusTxInfo[L <: Language, E <: EraTag]:
     */
   def lookupTxInfoResult(result: TxInfoResult[E]): PlutusTxInfoResult[L, E]
 
-/** The instances of each era and language, the one place that lists them: Babbage's for Plutus V1
-  * and V2 (`Babbage/TxInfo.hs:319-401`, cardano-ledger f649f975; `:359-435` at 9df9f98c), Conway's
-  * for Plutus V1 to V3 (`Conway/TxInfo.hs:420-547`, cardano-ledger 9df9f98c) and Dijkstra's for
-  * Plutus V1 to V4 (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:333-484, 568-629`,
-  * cardano-ledger 9df9f98c).
+/** The instances of each era and language, the one place that lists them: Alonzo's for Plutus V1
+  * (`Alonzo/Plutus/TxInfo.hs:130-165`, cardano-ledger f649f975; `:132-164` at 9df9f98c), Babbage's
+  * for Plutus V1 and V2 (`Babbage/TxInfo.hs:319-401`, cardano-ledger f649f975; `:359-435` at
+  * 9df9f98c), Conway's for Plutus V1 to V3 (`Conway/TxInfo.hs:420-547`, cardano-ledger 9df9f98c)
+  * and Dijkstra's for Plutus V1 to V4
+  * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:333-484, 568-629`, cardano-ledger
+  * 9df9f98c).
   */
 object EraPlutusTxInfo:
+  given alonzoPlutusV1: EraPlutusTxInfo[Language.PlutusV1, Alonzo] = AlonzoTxInfo.plutusV1
   given babbagePlutusV1: EraPlutusTxInfo[Language.PlutusV1, Babbage] = BabbageTxInfo.plutusV1
   given babbagePlutusV2: EraPlutusTxInfo[Language.PlutusV2, Babbage] = BabbageTxInfo.plutusV2
   given conwayPlutusV1: EraPlutusTxInfo[Language.PlutusV1, Conway] =
@@ -341,12 +359,14 @@ object EraPlutusTxInfo:
     dijkstra.DijkstraTxInfo.plutusV4
 
 /** The memoised transaction information of every language era `E` supports (`data TxInfoResult
-  * era`, `Context.hs:234`, cardano-ledger 9df9f98c): Babbage's of Plutus V1 and V2
-  * (`Babbage/TxInfo.hs:233-236`; `:230-233` at f649f975), Conway's of Plutus V1 to V3
-  * (`Conway/TxInfo.hs:160-164`), Dijkstra's of V1 to V4
+  * era`, `Context.hs:234`, cardano-ledger 9df9f98c): Alonzo's of Plutus V1
+  * (`Alonzo/Plutus/TxInfo.hs:198-199`, cardano-ledger f649f975; `:207-208` at 9df9f98c), Babbage's
+  * of Plutus V1 and V2 (`Babbage/TxInfo.hs:233-236`; `:230-233` at f649f975), Conway's of Plutus V1
+  * to V3 (`Conway/TxInfo.hs:160-164`), Dijkstra's of V1 to V4
   * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:302-307`).
   */
 type TxInfoResult[E <: EraTag] = E match
+  case Alonzo   => AlonzoTxInfoResult
   case Babbage  => BabbageTxInfoResult
   case Conway   => conway.ConwayTxInfoResult
   case Dijkstra => dijkstra.DijkstraTxInfoResult
@@ -410,12 +430,14 @@ trait EraPlutusContext[E <: EraTag]:
       t: EraPlutusTxInfo[L, E]
   ): PlutusTxInfoResult[L, E] = t.lookupTxInfoResult(result)
 
-/** The instances of each era, the one place that lists them: Babbage's
+/** The instances of each era, the one place that lists them: Alonzo's
+  * (`Alonzo/Plutus/TxInfo.hs:196-211`, cardano-ledger f649f975; `:205-220` at 9df9f98c), Babbage's
   * (`Babbage/TxInfo.hs:228-251`, cardano-ledger f649f975; `:231-254` at 9df9f98c), Conway's
   * (`Conway/TxInfo.hs:157-187`, cardano-ledger 9df9f98c) and Dijkstra's
   * (`eras/dijkstra/impl/src/Cardano/Ledger/Dijkstra/TxInfo.hs:299-331`, cardano-ledger 9df9f98c).
   */
 object EraPlutusContext:
+  given alonzo: EraPlutusContext[Alonzo] = AlonzoTxInfo.context
   given babbage: EraPlutusContext[Babbage] = BabbageTxInfo.context
   given conway: EraPlutusContext[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxInfo.context
   given dijkstra: EraPlutusContext[Dijkstra] =

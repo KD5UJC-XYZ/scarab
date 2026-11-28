@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import xyz.kd5ujc.scarab.codec.Bytes
 import scala.collection.immutable.{SortedMap, TreeMap}
 import xyz.kd5ujc.scarab.ledger.{Address, DataSite, TranslationError, TxIn}
-import xyz.kd5ujc.scarab.ledger.state.{Coin, EraTag, Withdrawals}
+import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Coin, EraTag, Withdrawals}
 import xyz.kd5ujc.scarab.plutus.PlutusData
 
 /** Why Alonzo's translation of a transaction to a script context fails (`data AlonzoContextError
@@ -47,8 +47,8 @@ enum ImpossibleContext:
   case MissingTxInfoResult(txId: Bytes)
 
 /** Alonzo's translations (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Plutus/TxInfo.hs`,
-  * cardano-ledger f649f975; those that take the transaction's information at 9df9f98c) that the
-  * later eras' contexts use.
+  * cardano-ledger f649f975; those that take the transaction's information at 9df9f98c), which the
+  * later eras' contexts use, and Alonzo's instances for Plutus V1.
   */
 object AlonzoTxInfo:
   import PlutusTxInfos.*
@@ -356,3 +356,121 @@ object AlonzoTxInfo:
         redeemerData
       )
     yield PlutusV1Args(args)
+
+  /** `instance EraPlutusTxInfo 'PlutusV1 AlonzoEra` (`Alonzo/Plutus/TxInfo.hs:130-165`,
+    * cardano-ledger f649f975, Alonzo's behaviour; the shape of 9df9f98c, `:132-164`, whose
+    * translations take the transaction's information): the validity interval, the inputs and the
+    * certificates in that order, the first to fail refusing the information. An input the UTxO set
+    * does not hold is refused; one at a Byron address, and an output at one, are left out, not
+    * refused (`catMaybes`, `mapMaybe transTxOut`, `:145-149`), so no output is read by its index.
+    */
+  val plutusV1: EraPlutusTxInfo[Language.PlutusV1, Alonzo] =
+    new EraPlutusTxInfo[Language.PlutusV1, Alonzo]:
+      private given EraPlutusTxInfo[Language.PlutusV1, Alonzo] = this
+      private val t = EraTx.alonzo
+      private val b = t.bodyOf
+      private given b.Level[TxLevel.Top] = b.top
+      private given AlonzoEraTxOut[Alonzo] = b.outputsOf
+
+      override def plutusLanguage: PlutusLanguage[Language.PlutusV1] = PlutusLanguage.v1
+
+      // `toPlutusTxCert _ _ = pure . transTxCert`, `:131`, cardano-ledger f649f975
+      override def toPlutusTxCert(
+          pv: ProtVer,
+          txCert: TxCert[Alonzo]
+      ): Either[ContextError[Alonzo], PV1.DCert] = transTxCert[Alonzo](txCert)
+
+      // `toPlutusScriptPurpose = transPlutusPurpose`, `:133`, cardano-ledger f649f975
+      override def toPlutusScriptPurpose[T <: TxLevel](
+          lti: LedgerTxInfo[T, Alonzo],
+          purpose: PlutusPurpose[AsIxItem, Alonzo]
+      ): Either[ContextError[Alonzo], PV1.ScriptPurpose] =
+        transPlutusPurpose[Language.PlutusV1, Alonzo](lti.ltiProtVer, purpose)
+
+      override def toPlutusTxInfo[T <: TxLevel](
+          lti0: LedgerTxInfo[T, Alonzo]
+      ): PlutusTxInfoResult[Language.PlutusV1, Alonzo] =
+        LedgerTxInfo.withTopTxLevelOnly(lti0) { lti =>
+          val tx = lti.ltiTx
+          val txBody = t.body[TxLevel.Top](tx)
+          PlutusTxInfoResult(
+            for
+              timeRange <- transValidityInterval[Alonzo](
+                lti.ltiSlotToPOSIXTime,
+                b.vldt[TxLevel.Top](txBody)
+              )
+              txInsMaybes <- b
+                .inputs[TxLevel.Top](txBody)
+                .toVector
+                .traverse(toPlutusTxInInfo(lti.ltiUTxO, _))
+              txCerts <- transTxBodyCerts[Language.PlutusV1, Alonzo, TxLevel.Top](
+                lti.ltiProtVer,
+                txBody
+              )
+            yield PV1.TxInfo(
+              txInfoInputs = txInsMaybes.flatten,
+              txInfoOutputs = b.outputs[TxLevel.Top](txBody).flatMap(transTxOut[Alonzo]),
+              txInfoFee = transCoinToValue(b.fee(txBody)),
+              txInfoMint = transMintValue(b.mint[TxLevel.Top](txBody)),
+              txInfoDCert = txCerts,
+              txInfoWdrl = transTxBodyWithdrawals[Alonzo, TxLevel.Top](txBody),
+              txInfoValidRange = timeRange,
+              txInfoSignatories = transTxBodyReqSignerHashes[Alonzo, TxLevel.Top](txBody),
+              txInfoData = transTxWitsDatums(t.wits[TxLevel.Top](tx))(using t.witsOf),
+              txInfoId = transTxBodyId[Alonzo, TxLevel.Top](txBody)
+            )
+          )
+        }
+
+      // `toPlutusArgs = toPlutusV1Args`, `:161`, cardano-ledger f649f975
+      override def toPlutusArgs[T <: TxLevel](
+          lti: LedgerTxInfo[T, Alonzo],
+          txInfo: PV1.TxInfo,
+          purpose: PlutusPurpose[AsIxItem, Alonzo],
+          redeemerData: Data
+      ): Either[ContextError[Alonzo], PlutusV1Args] =
+        toPlutusV1Args[Alonzo, T](lti, txInfo, purpose, redeemerData)
+
+      // `toPlutusTxInInfo`, `:163-165`, cardano-ledger f649f975: the output the UTxO set holds,
+      // none at a Byron address
+      override def toPlutusTxInInfo(
+          utxo: UTxO[Alonzo],
+          txIn: TxIn
+      ): Either[ContextError[Alonzo], Option[PV1.TxInInfo]] =
+        transLookupTxOut[Alonzo, ContextError[Alonzo]](utxo, txIn)
+          .map(txOut => transTxOut[Alonzo](txOut).map(PV1.TxInInfo(transTxIn(txIn), _)))
+
+      override def lookupTxInfoResult(
+          result: AlonzoTxInfoResult
+      ): PlutusTxInfoResult[Language.PlutusV1, Alonzo] = result.tirPlutusV1
+
+  /** `instance EraPlutusContext AlonzoEra` (`Alonzo/Plutus/TxInfo.hs:196-211`, cardano-ledger
+    * f649f975; `:205-220` at 9df9f98c): Plutus V1 alone, its information computed when first looked
+    * up.
+    */
+  val context: EraPlutusContext[Alonzo] = new EraPlutusContext[Alonzo]:
+    override def mkSupportedLanguage(
+        lang: xyz.kd5ujc.scarab.plutus.PlutusLanguage
+    ): Option[SupportedLanguage[Alonzo]] = lang match
+      case xyz.kd5ujc.scarab.plutus.PlutusLanguage.V1 => Some(SupportedLanguage(plutusV1))
+      case xyz.kd5ujc.scarab.plutus.PlutusLanguage.V2 | xyz.kd5ujc.scarab.plutus.PlutusLanguage.V3 |
+          xyz.kd5ujc.scarab.plutus.PlutusLanguage.V4 =>
+        None
+
+    override def mkSupportedPlutusRunnable(
+        v: Version,
+        plutusScript: alonzo.AlonzoPlutusScript
+    ): SupportedPlutusRunnable[Alonzo] = plutusScript match
+      case alonzo.AlonzoPlutusScript.AlonzoPlutusV1(p) =>
+        SupportedPlutusRunnable(plutusV1, PlutusRunnable.decodePlutusRunnable(v, p))
+
+    override def mkTxInfoResult[T <: TxLevel](lti: LedgerTxInfo[T, Alonzo]): AlonzoTxInfoResult =
+      AlonzoTxInfoResult(plutusV1.toPlutusTxInfo(lti))
+
+/** Alonzo's memoised transaction information (`newtype TxInfoResult AlonzoEra =
+  * AlonzoTxInfoResult`, `Alonzo/Plutus/TxInfo.hs:198-199`, cardano-ledger f649f975; `:207-208` at
+  * 9df9f98c): Plutus V1's, computed when first looked up, as the reference's newtype over a lazy
+  * value is.
+  */
+final class AlonzoTxInfoResult(plutusV1: => PlutusTxInfoResult[Language.PlutusV1, Alonzo]):
+  lazy val tirPlutusV1: PlutusTxInfoResult[Language.PlutusV1, Alonzo] = plutusV1
