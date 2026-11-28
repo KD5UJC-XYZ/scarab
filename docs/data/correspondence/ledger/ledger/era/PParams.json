@@ -391,10 +391,20 @@
   },
   "type ledger.era.PParamsHKD": {
    "class": "Mirror",
-   "digest": "55f30dad81268a3a",
-   "note": "one case per era: Babbage's and Conway's at f649f975, Dijkstra's at 9df9f98c",
+   "digest": "250ea9b86141355d",
+   "note": "one case per era: Alonzo's, Babbage's and Conway's at f649f975, Dijkstra's at 9df9f98c",
    "structure": "same",
    "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      315,
+      315
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "PParamsHKD"
+    },
     {
      "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
      "lines": [

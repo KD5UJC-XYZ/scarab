@@ -65,6 +65,9 @@ object Encoding:
     else if -n <= Word64Limit then head(1, -1 - n)
     else bignum(3, -1 - n)
 
+  /** `encodeBytes`: a definite byte string. */
+  def encodeBytes(b: Bytes): Encoding = head(2, b.size) ++ Chain.fromSeq(b.toArray.toIndexedSeq)
+
   /** `encodeListLen`: the head of a definite list of `size` items. */
   def encodeListLen(size: Int): Encoding = head(4, size)
 
@@ -114,11 +117,28 @@ object Encoding:
 trait EncCBOR[A]:
   def encCBOR(a: A): Encoding
 
-/** What a decoder reads at: the decoder version, which the reference's `Decoder s` carries, and the
-  * site a refusal names.
+/** What a decoder reads at: the decoder version, which the reference's `Decoder s` carries, the
+  * site a refusal names, and whether it reads bytes received or bytes the node stored
+  * ([[DecodeAt.Reading]]).
   */
-final case class DecodeAt(version: DecoderVersion, site: DecodeSite):
+final case class DecodeAt(
+    version: DecoderVersion,
+    site: DecodeSite,
+    reading: DecodeAt.Reading = DecodeAt.Reading.Received
+):
   def at(other: DecodeSite): DecodeAt = copy(site = other)
+
+object DecodeAt:
+  /** What a decoder reads. The reference keeps a value, not the bytes it came as; the node keeps a
+    * pre-Conway proposal by its bytes (ADR 0006), and reads them back in any form an earlier read
+    * took, as the flat rule applies them ([[xyz.kd5ujc.scarab.ledger.ProtocolParams.update]]).
+    */
+  enum Reading derives CanEqual:
+    /** Bytes received, held to the rules of the version. */
+    case Received
+
+    /** Bytes the node stored, read in any form an earlier build read and stored. */
+    case Stored
 
 /** `class DecCBOR a` (`Decoding/DecCBOR.hs`, cardano-ledger 9df9f98c): how a value is read from an
   * item, at the version and site of [[DecodeAt]].
@@ -139,6 +159,25 @@ object EncCBOR:
 
   given unsigned[W <: Unsigned.Width]: EncCBOR[Unsigned[W]] = encodeWord(_)
 
+  /** `instance EncCBOR MaryValue` (`eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs:342-350`,
+    * cardano-ledger f649f975): the coin alone when the value holds no asset, else `[coin, assets]`,
+    * the assets `MultiAsset` 's derived `EncCBOR` (`:154-155`), the `Map PolicyID (Map AssetName
+    * Integer)` 's: each map of variable length (`encodeMap`) with its keys ascending, as `Data.Map`
+    * holds them (a policy id and an asset name compared bytewise, `Ord` of a hash and of a
+    * `ShortByteString`), each key its bytes and each quantity `encodeInteger` of it.
+    */
+  given multiAssetValue: EncCBOR[MultiAssetValue] = v =>
+    def sortedMap[V](m: Map[Bytes, V])(value: V => Encoding): Encoding =
+      val entries = m.toVector.sortBy(_._1)
+      variableMapLenEncoding(
+        entries.size,
+        entries.foldMap((k, x) => encodeBytes(k) |+| value(x))
+      )
+    if v.assets.isEmpty then encodeInteger(v.lovelace)
+    else
+      encodeListLen(2) |+| encodeInteger(v.lovelace) |+|
+        sortedMap(v.assets)(names => sortedMap(names)(encodeInteger))
+
   given compactCoin: EncCBOR[CompactCoin] = c => encodeWord64(c.word)
 
   /** `CoinPerByte`'s, its compact coin's (`Coin.hs:220-222`, cardano-ledger 9df9f98c). */
@@ -146,6 +185,19 @@ object EncCBOR:
 
   /** `Coin`'s, `encodeInteger` of its integer (`Coin.hs:106-112`, cardano-ledger 9df9f98c). */
   given coin: EncCBOR[Coin] = c => encodeInteger(c.value)
+
+  /** `CoinPerWord` 's, its coin's (`deriving newtype EncCBOR`, `Alonzo/PParams.hs:401-403`,
+    * cardano-ledger f649f975).
+    */
+  given coinPerWord: EncCBOR[CoinPerWord] = c => coin.encCBOR(c.unCoinPerWord)
+
+  /** `instance EncCBOR Nonce` (`BaseTypes.hs:574-577`, cardano-ledger f649f975): `[0]` for the
+    * neutral nonce, `[1, hash]` for a hash.
+    */
+  given nonce: EncCBOR[xyz.kd5ujc.scarab.ledger.Nonce] =
+    case xyz.kd5ujc.scarab.ledger.Nonce.Neutral => encodeListLen(1) |+| encodeInteger(BigInt(0))
+    case xyz.kd5ujc.scarab.ledger.Nonce.Hash(h) =>
+      encodeListLen(2) |+| encodeInteger(BigInt(1)) |+| encodeBytes(h)
 
   /** `EpochInterval`'s, its `Word32` (cardano-slotting). */
   given epochInterval: EncCBOR[EpochInterval] = e => encodeInteger(BigInt(e.toLong))
@@ -341,6 +393,38 @@ object DecCBOR:
   given coin: DecCBOR[Coin] with
     def decCBOR(n: Node)(using at: DecodeAt): Result[Coin] =
       unsigned[W64].decCBOR(n).map(u => Coin(u.value))
+
+  /** `CoinPerWord` 's, its coin's, a `Word64` (`deriving newtype DecCBOR`,
+    * `Alonzo/PParams.hs:401-403`, cardano-ledger f649f975).
+    */
+  given coinPerWord: DecCBOR[CoinPerWord] with
+    def decCBOR(n: Node)(using at: DecodeAt): Result[CoinPerWord] =
+      coin.decCBOR(n).map(CoinPerWord(_))
+
+  /** `instance DecCBOR Nonce` (`BaseTypes.hs:579-595`, cardano-ledger f649f975): `[0]` or `[1,
+    * hash]`, a definite or an indefinite list, each tag's length checked, as the node's decoder of
+    * a pre-Conway update's extra entropy reads it ([[xyz.kd5ujc.scarab.ledger.Nonce.decode]]), the
+    * hash's byte string in the form the version's `ByteStrings` takes. Below version 12 that is the
+    * reference's `Summands` (`Decoding/Coders.hs:479, 514`), from it `decodeRecordSum`
+    * (`Decoding/Decoder.hs:670-675`), on which `Summands` is built too: both read the tag and its
+    * fields before the list's length. The extra entropy is a field of the eras up to Alonzo only
+    * ([[EraPParamsToAlonzo]]), whose decoder versions are below 12. A nonce the node stored
+    * ([[DecodeAt.Reading.Stored]]) is read as the flat rule applies it: a byte string of any form,
+    * and a neutral nonce of any number of fields, which an earlier build read as neutral and
+    * stored.
+    */
+  given nonce: DecCBOR[xyz.kd5ujc.scarab.ledger.Nonce] with
+    def decCBOR(n: Node)(using at: DecodeAt): Result[xyz.kd5ujc.scarab.ledger.Nonce] =
+      at.reading match
+        case DecodeAt.Reading.Received =>
+          given xyz.kd5ujc.scarab.ledger.ByteStrings =
+            xyz.kd5ujc.scarab.ledger.ByteStrings.of(at.version)
+          xyz.kd5ujc.scarab.ledger.Nonce
+            .decode(n, xyz.kd5ujc.scarab.ledger.Nonce.NeutralFields.Exact)
+        case DecodeAt.Reading.Stored =>
+          given xyz.kd5ujc.scarab.ledger.ByteStrings = xyz.kd5ujc.scarab.ledger.ByteStrings.Chunked
+          xyz.kd5ujc.scarab.ledger.Nonce
+            .decode(n, xyz.kd5ujc.scarab.ledger.Nonce.NeutralFields.Stored)
 
   given epochInterval: DecCBOR[EpochInterval] with
     def decCBOR(n: Node)(using at: DecodeAt): Result[EpochInterval] =

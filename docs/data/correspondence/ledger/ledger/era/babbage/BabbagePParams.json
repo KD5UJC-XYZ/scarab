@@ -17,6 +17,24 @@
     }
    ]
   },
+  "class ledger.era.babbage.DowngradeBabbagePParams": {
+   "class": "Mirror",
+   "digest": "55eb43b301633c3e",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      167,
+      170
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DowngradeBabbagePParams"
+    }
+   ]
+  },
   "def ledger.era.babbage.BabbageEraPParamsInstance.applyPPUpdates": {
    "class": "Mirror",
    "digest": "3aa79274b7cd983a",
@@ -464,6 +482,121 @@
     }
    ]
   },
+  "def ledger.era.babbage.BabbagePParams.coinsPerUTxOByteToCoinsPerUTxOWord": {
+   "class": "Mirror",
+   "digest": "329b32b7795d0ddf",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      393,
+      395
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "coinsPerUTxOByteToCoinsPerUTxOWord"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbagePParams.coinsPerUTxOWordToCoinsPerUTxOByte": {
+   "class": "Mirror",
+   "digest": "38ff5d62901730c5",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "div 8 and fromIntegral's low 64 bits, mirrored",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      389,
+      391
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "coinsPerUTxOWordToCoinsPerUTxOByte"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbagePParams.downgrade": {
+   "class": "Mirror",
+   "digest": "707eb9416549ea76",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      355,
+      387
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "downgradeBabbagePParams"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbagePParams.upgrade": {
+   "class": "Mirror",
+   "digest": "14dca8c83b67bb4a",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "upgradeBabbagePParams True as a function of Babbage's, not the class member, which waits for Mary's record (#85); the flag is the choice of the function",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      316,
+      353
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "upgradeBabbagePParams"
+    }
+   ]
+  },
+  "def ledger.era.babbage.BabbagePParams.upgradeInTx": {
+   "class": "Mirror",
+   "digest": "9f23b1f62c404379",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "upgradeBabbagePParams False; toCompactPartial's throw on a coin outside Word64 is the refusal",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      316,
+      353
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "upgradeBabbagePParams"
+    },
+    {
+     "file": "eras/babbage/impl/src/Cardano/Ledger/Babbage/PParams.hs",
+     "lines": [
+      397,
+      403
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "coinsPerUTxOWordToCoinsPerUTxOByteInTx"
+    }
+   ]
+  },
   "object ledger.era.babbage.BabbageEraPParamsInstance": {
    "class": "Gap",
    "digest": "3a3c95bc7954a8c0",
@@ -471,7 +604,7 @@
     "BabbagePParamsSuite",
     "EraPParamsStoredSuite"
    ],
-   "note": "Babbage's three instances and the protocol version's ranged class in one object, given in each class's companion; the instance's upgradePParamsHKD and downgradePParamsHKD (from and to Alonzo) need Alonzo's record and are not here yet (#85)",
+   "note": "Babbage's three instances and the protocol version's ranged class in one object, given in each class's companion; the instance's upgradePParamsHKD and downgradePParamsHKD (from and to Alonzo) are Babbage's functions (BabbagePParams.upgrade, downgrade), not class members, which wait for Mary's record (#85)",
    "record": "https://github.com/KD5UJC-XYZ/scarab/issues/85#issuecomment-6896116597",
    "structure": "differs",
    "upstream": [

@@ -5,7 +5,7 @@ import xyz.kd5ujc.scarab.codec.Rational
 import xyz.kd5ujc.scarab.ledger.{DecodeField, Unsigned}
 import xyz.kd5ujc.scarab.ledger.Unsigned.Width.W32
 import xyz.kd5ujc.scarab.ledger.json.BoundedRatio
-import xyz.kd5ujc.scarab.ledger.state.CompactCoin
+import xyz.kd5ujc.scarab.ledger.state.{Coin, CompactCoin}
 
 // The types of the protocol parameters' fields that the tree had only as `BigInt` or `Rational`
 // (cardano-ledger f649f975). Each is built only through a constructor that checks its bounds.
@@ -87,6 +87,17 @@ object CoinPerByte:
   def apply(c: CompactCoin): CoinPerByte = c
 
   extension (c: CoinPerByte) def unCoinPerByte: CompactCoin = c
+
+/** `CoinPerWord` (`newtype CoinPerWord = CoinPerWord {unCoinPerWord :: Coin}`, cardano-ledger
+  * f649f975 `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs:401-403`): Alonzo's cost of a
+  * word (8 bytes) of an output, a `Coin` of either sign, as the reference's type holds it.
+  */
+opaque type CoinPerWord = Coin
+
+object CoinPerWord:
+  def apply(c: Coin): CoinPerWord = c
+
+  extension (c: CoinPerWord) def unCoinPerWord: Coin = c
 
 /** `Version` (`newtype Version = Version Word32`,
   * `libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Version.hs:55-63`, cardano-ledger

@@ -15,10 +15,11 @@ import xyz.kd5ujc.scarab.ledger.{
   ProtocolParams,
   Tx as FlatTx
 }
+import xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoPParams
 import xyz.kd5ujc.scarab.ledger.era.babbage.BabbagePParams
 import xyz.kd5ujc.scarab.ledger.era.conway.ConwayPParams
 import xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraPParams
-import xyz.kd5ujc.scarab.ledger.state.{Babbage, Conway, Dijkstra, ShelleyBasedEra}
+import xyz.kd5ujc.scarab.ledger.state.{Alonzo, Babbage, Conway, Dijkstra, ShelleyBasedEra}
 import xyz.kd5ujc.scarab.node.mempool.LocalSubmission
 import xyz.kd5ujc.scarab.plutus.ExUnits
 import xyz.kd5ujc.scarab.node.ntc.ReferenceRefusalSuite.*
@@ -187,9 +188,9 @@ class EraPParamsStoredSuite extends FunSuite:
     * `eras/shelley/impl/src/Cardano/Ledger/Shelley/Governance.hs:63-71`), the current and previous
     * parameters and those the future parameters predict, if any.
     */
-  private def shelleyGovernance(nes: Node): Vector[Node] =
+  private def shelleyGovernance(size: Int)(nes: Node): Vector[Node] =
     val gov = Vector(3, 1, 1, 3).foldLeft(nes)((n, i) => items(n)(i))
-    Vector(items(gov)(2), items(gov)(3)) ++ lists(items(gov)(4), 22)
+    Vector(items(gov)(2), items(gov)(3)) ++ lists(items(gov)(4), size)
 
   /** Parameters whose every Babbage field is a value no recorded record holds, each within its
     * field's type.
@@ -232,7 +233,7 @@ class EraPParamsStoredSuite extends FunSuite:
       ShelleyBasedEra.SBabbage,
       22,
       version(8),
-      shelleyGovernance,
+      shelleyGovernance(22),
       Some(pp => {
         // the base differs from the record in every field `toStored` sets, so a field it
         // dropped keeps the base's value and the bytes differ
@@ -271,6 +272,129 @@ class EraPParamsStoredSuite extends FunSuite:
       }
     }
     assertEquals(compared.size, 1, compared)
+
+  /** Parameters whose every Alonzo field is a value no recorded record holds, each within its
+    * field's type.
+    */
+  private val alonzoSentinel: ProtocolParams = babbageSentinel.copy(
+    protocolMajor = 7,
+    d = Rational(1, 7),
+    extraEntropy = xyz.kd5ujc.scarab.ledger.Nonce.Hash(Bytes.fromArray(Array.fill(32)(7.toByte))),
+    coinsPerUTxOWord = 9949
+  )
+
+  private def alonzoParams(p: ProtocolParams): PParams[Alonzo] =
+    PParams[Alonzo](right("Alonzo's parameters")(AlonzoPParams.fromStored(p)))
+
+  test("the recorded Alonzo state's parameter records are the era's, positionally"):
+    val count = records(
+      "fixtures/haskell-state/alonzo-3013/state",
+      4,
+      StateLayout.Node11_1,
+      ShelleyBasedEra.SAlonzo,
+      24,
+      version(6),
+      shelleyGovernance(24),
+      Some(pp => {
+        // the base differs from the record in every field `toStored` sets
+        val base = right("sentinel")(AlonzoPParams.fromStored(alonzoSentinel))
+        pp.hkd.productIterator
+          .zip(base.productIterator)
+          .zipWithIndex
+          .foreach { case ((field, sentinel), i) => assertNotEquals(field, sentinel, s"field $i") }
+        AlonzoPParams.toStored(pp.hkd, alonzoSentinel)
+      })
+    )(alonzoParams)
+    // the current, the previous and the future parameters
+    assertEquals(count, 3)
+
+  test(
+    "every Alonzo state of the era walk holds parameters the era reads, and writes as the state's codec"
+  ):
+    val codec = Params.codecIn(StateLayout.Node11_1, ShelleyBasedEra.SAlonzo)
+    val states = xyz.kd5ujc.scarab.node.read.ErasStates.samples
+      .filter(_.era == Era.Alonzo)
+      .flatMap(s => xyz.kd5ujc.scarab.consensus.state.MirrorStep.nesOf(s.mirror))
+      .map { case i: xyz.kd5ujc.scarab.ledger.rules.EraNes.InEra[e] =>
+        xyz.kd5ujc.scarab.ledger.state.NewEpochState
+          .retype(i.era, ShelleyBasedEra.SAlonzo)(i.nes)
+          .getOrElse(fail("not Alonzo"))
+      }
+    val records = states.flatMap { nes =>
+      val gov = nes.es.ls.utxo.gov
+      Vector(gov.curPParams, gov.prevPParams) ++ gov.futurePParams.nextParams.toVector
+    }
+    val versions = records.map { p =>
+      val pp = alonzoParams(p)
+      assertEquals(AlonzoPParams.toStored(pp.hkd, p), p)
+      // written over parameters that hold none of it, and read back
+      assertEquals(alonzoParams(AlonzoPParams.toStored(pp.hkd, alonzoSentinel)), pp)
+      assertEquals(Right(PParams.encodePParams(pp).bytes), codec.write(p))
+      (p.protocolMajor, p.protocolMinor)
+    }
+    // the current, previous and future parameters of 192 states, at the versions of the walk from Mary's
+    // last to the one Alonzo's last epoch voted for
+    assertEquals(
+      (states.size, records.size, versions.distinct.sorted),
+      (192, 571, Vector[(BigInt, BigInt)]((4, 0), (5, 0), (6, 0), (7, 0)))
+    )
+    // the proposals each state holds, as the node stores them, read into the era with their
+    // bytes kept
+    val proposals = states.flatMap { nes =>
+      val gov = nes.es.ls.utxo.gov
+      Vector(gov.curProposals, gov.futureProposals).filter(_.nonEmpty).map { ps =>
+        val stored =
+          xyz.kd5ujc.scarab.ledger.Update(ps.map((k, u) => k.bytes -> u).toMap, BigInt(0))
+        val kept = right("stored proposals")(KeptUpdate.fromStored[Alonzo](stored))
+        assertEquals(kept.stored, stored)
+        appliedAlike("era walk", gov.curPParams, ps, kept)
+        given DecodeAt = DecodeAt(version(5), DecodeField.ParameterUpdate)
+        kept.update.proposals.updates.values.foreach(u =>
+          assertEquals(
+            PParamsUpdate.decodePParamsUpdate[Alonzo](
+              right("cbor")(Cbor.decode(PParamsUpdate.encodePParamsUpdate(u).bytes))
+            ),
+            Right(u)
+          )
+        )
+        kept.update.proposals.updates.size
+      }
+    }
+    // and the outputs of their UTxO sets, read as Alonzo's and written back
+    val outputs = states.flatMap(_.es.ls.utxo.utxo.utxo.valuesIterator).distinct
+    val written = outputs.count { out =>
+      val era = right("output")(alonzo.AlonzoTxOut.fromStored(out))
+      assertEquals(alonzo.AlonzoTxOut.toStored(era), out)
+      EncCBOR[alonzo.AlonzoTxOut].encCBOR(era).bytes == out.raw
+    }
+    // 187 proposal maps, of 561 delegates' updates; the 5 distinct outputs the walk's UTxO sets hold
+    assertEquals((proposals.size, proposals.sum, outputs.size, written), (187, 561, 5, 5))
+
+  /** Each delegate's typed update applied to `base` as Alonzo applies it, against the flat rule's
+    * application of the bytes the node stores it by: an update the stored form read wrongly, or
+    * read as empty, gives another record unless each field it loses already held its value.
+    */
+  private def appliedAlike(
+      what: String,
+      base: xyz.kd5ujc.scarab.ledger.ProtocolParams,
+      ps: scala.collection.immutable.SortedMap[
+        xyz.kd5ujc.scarab.ledger.state.KeyHash[xyz.kd5ujc.scarab.ledger.state.Genesis],
+        xyz.kd5ujc.scarab.ledger.ParamUpdate
+      ],
+      kept: KeptUpdate[Alonzo]
+  ): Unit =
+    val pp = PParams[Alonzo](right(s"$what base")(AlonzoPParams.fromStored(base)))
+    assertEquals(kept.update.proposals.updates.keySet, ps.keySet, what)
+    ps.foreach { (k, stored) =>
+      val typed = kept.update.proposals.updates.getOrElse(k, fail(s"$what: no update of $k"))
+      assertEquals(
+        Right(
+          AlonzoPParams.toStored(EraPParams.alonzo.applyPPUpdates(pp, typed).hkd, base)
+        ),
+        xyz.kd5ujc.scarab.ledger.ProtocolParams.update(base, stored)(using ShelleyBasedEra.SAlonzo),
+        what
+      )
+    }
 
   private def dijkstraParams(p: ProtocolParams): PParams[Dijkstra] =
     PParams[Dijkstra](right("Dijkstra's parameters")(DijkstraPParams.fromStored(p)))

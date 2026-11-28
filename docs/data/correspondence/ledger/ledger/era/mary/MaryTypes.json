@@ -13,5 +13,14 @@
   "val ledger.era.mary.MaryTimelock.instance": null,
   "val ledger.era.mary.MaryTxOut.instance": null
  },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.mary.MaryTimelock.rep",
+    "def ledger.era.mary.MaryTxOut.rep"
+   ],
+   "reason": "the read-only view of Mary's shared representations, which Alonzo's translation reads"
+  }
+ ],
  "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/mary/MaryTypes.scala"
 }

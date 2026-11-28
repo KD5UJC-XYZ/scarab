@@ -13,6 +13,7 @@ import xyz.kd5ujc.scarab.ledger.{
 import xyz.kd5ujc.scarab.ledger.state.{
   AccountAddress,
   Allegra,
+  Alonzo,
   Babbage,
   Conway,
   Dijkstra,
@@ -263,6 +264,8 @@ object EraScript:
   given allegra: AllegraEraScript[Allegra] =
     xyz.kd5ujc.scarab.ledger.era.allegra.AllegraTimelock.instance
   given mary: AllegraEraScript[Mary] = xyz.kd5ujc.scarab.ledger.era.mary.MaryTimelock.instance
+  given alonzo: AlonzoEraScript[Alonzo] =
+    xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoScript.instance
   given babbage: AlonzoEraScript[Babbage] =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageScript.instance
   given conway: ConwayEraScript[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayScript.instance

@@ -1,0 +1,410 @@
+{
+ "entries": {
+  "def ledger.era.alonzo.AlonzoPlutusScript.of": {
+   "class": "Mirror",
+   "digest": "b80324d375363d08",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "the Alonzo script of a language Alonzo has, none for another",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      573,
+      576
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkPlutusScript"
+    }
+   ]
+  },
+  "def ledger.era.alonzo.AlonzoScript.decode": {
+   "class": "Mirror",
+   "digest": "1b9172bbad231093",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "decodeAlonzoScript at eraMaxLanguage PlutusV1, as the flat decoder reads it (AlonzoScriptRep.decode): the verdicts the reference's, two refusals reported as the flat decoder reports them (#796); every recorded Alonzo witness script hashes as the flat one",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      691,
+      721
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "decodeAlonzoScript"
+    }
+   ]
+  },
+  "def ledger.era.alonzo.AlonzoScript.read": {
+   "class": "Mirror",
+   "digest": "173a412d8ad4d3a5",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "decodeAlonzoScript at eraMaxLanguage PlutusV1 with the decoder's own refusal, as the flat decoder reads it (#796)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      691,
+      721
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "decodeAlonzoScript"
+    }
+   ]
+  },
+  "def ledger.era.alonzo.AlonzoScript.translate": {
+   "class": "Mirror",
+   "digest": "cd13f7fc5ebc824a",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "upgradeScript: a Mary native script as Alonzo's native script",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      527,
+      527
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "upgradeScript"
+    }
+   ]
+  },
+  "def ledger.era.alonzo.AlonzoTimelock.decode": {
+   "class": "Mirror",
+   "digest": "d0a139b9cc7f5611",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "the time-lock decoder, the shared representation's, its refusal an era error",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs",
+     "lines": [
+      266,
+      267
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (Annotator (Timelock era))"
+    }
+   ]
+  },
+  "def ledger.era.alonzo.AlonzoTimelock.read": {
+   "class": "Mirror",
+   "digest": "38a25a906ba65c04",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "the time-lock decoder, the shared representation's, with the decoder's own refusal",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs",
+     "lines": [
+      235,
+      245
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TimelockRaw"
+    }
+   ]
+  },
+  "def ledger.era.alonzo.AlonzoTimelock.translate": {
+   "class": "Mirror",
+   "digest": "aa6b65d748c0fe29",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "a Mary native script carried into Alonzo with its bytes",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs",
+     "lines": [
+      203,
+      217
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "translateTimelock"
+    }
+   ]
+  },
+  "def ledger.era.alonzo.AlonzoTxOut.read": {
+   "class": "Mirror",
+   "digest": "03f15cacc904f809",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "a list of two or three, definite or indefinite, each field by the flat output reader's reader of it, held to the flat output. The two read alike on the 83 outputs of the recorded Alonzo transactions (blocks, refusal, v1-context, context-matrix and Plutus admission corpora), the 71 they spend or the refusal corpora's UTxO sets hold, the 78 output items of the reference's Alonzo decoder corpora and 5,730 byte mutants of the distinct outputs and two crafted ones with a datum hash; the 15 answers of the reference's 19 Alonzo UTxO cases read, its 4 refusals refused, and its 9 verdicts on an output's form are the era decoder's. A refusal is the flat decoder's diagnostic, not the reference's (wrong number of terms, expected list len); the compact address its encoder writes is the address written again of an output of lovelace only (mkTxOutCompact, a bootstrap address as the reference encodes a Byron address), else the bytes read",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      388,
+      411
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR (AlonzoTxOut era)"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      471,
+      481
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "mkTxOutCompact"
+    }
+   ]
+  },
+  "def ledger.era.alonzo.AlonzoTxOut.translate": {
+   "class": "Mirror",
+   "digest": "73a5b8a3c56fbd53",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "upgradeTxOut: a Mary output's address, value and bytes, with no datum hash, its compact address carried forward",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      340,
+      340
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "upgradeTxOut"
+    }
+   ]
+  },
+  "enum ledger.era.alonzo.AlonzoPlutusScript": {
+   "class": "Mirror",
+   "digest": "0021738713ae6274",
+   "note": "PlutusScript AlonzoEra, its one language V1",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      566,
+      567
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoPlutusV1"
+    }
+   ]
+  },
+  "given ledger.era.alonzo.AlonzoTxOut.encCBOR": {
+   "class": "Mirror",
+   "digest": "fbf5210bad0056bb",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "[address, value] or [address, value, datum hash], each written again, the address as the compact bytes the output holds (an ada-only output read from a body holds its address written again, a bootstrap one canonical); the 46 outputs of the reference's 15 Alonzo UTxO answers are written byte for byte, pointer, bootstrap, multi-asset, datum-hash and detached-value ones among them, every recorded Alonzo output is written back to its bytes, and a bootstrap address with a widened checksum is written in its 43-byte form",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      374,
+      386
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EncCBOR (AlonzoTxOut era)"
+    }
+   ]
+  },
+  "type ledger.era.alonzo.AlonzoScript": {
+   "class": "Mirror",
+   "digest": "926eeef757af7b0a",
+   "note": "AlonzoScript AlonzoEra, an opaque type over the shared representation of Alonzo's native and Plutus scripts",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      524,
+      524
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "Script AlonzoEra"
+    }
+   ]
+  },
+  "type ledger.era.alonzo.AlonzoTimelock": {
+   "class": "Mirror",
+   "digest": "e12cf369e25b59b6",
+   "note": "Timelock AlonzoEra, an opaque type over the shared time-lock representation",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      525,
+      525
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "NativeScript AlonzoEra"
+    }
+   ]
+  },
+  "type ledger.era.alonzo.AlonzoTxCert": {
+   "class": "Mirror",
+   "digest": "a685380d0e31817c",
+   "note": "ShelleyTxCert AlonzoEra over the shared representation; here because Alonzo's certifying purpose names it, its reader and classes to come with Alonzo's body (#85)",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxCert.hs",
+     "lines": [
+      12,
+      12
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "TxCert AlonzoEra"
+    }
+   ]
+  },
+  "type ledger.era.alonzo.AlonzoTxOut": {
+   "class": "Mirror",
+   "digest": "c8a8e7c4b862258f",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "an address, a Mary value and an optional datum hash over AlonzoTxOutRep, with the bytes it arrived as; the reference's four compact constructors, how it holds an output in memory, are not here, their fields being these",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      144,
+      160
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoTxOut"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      303,
+      333
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "pattern AlonzoTxOut"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoScript.instance": {
+   "class": "Mirror",
+   "digest": "425f1b3bc6440497",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "Alonzo's EraScript to AlonzoEraScript instance: the prefix tag, the native and Plutus scripts, V1 as the newest language, and Alonzo's purpose's builders and readers; upgradePlutusPurposeAsIx, which nothing reads, is not here",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      523,
+      604
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraScript AlonzoEra"
+    }
+   ]
+  },
+  "val ledger.era.alonzo.AlonzoTxOut.instance": {
+   "class": "Mirror",
+   "digest": "e2b90c36904284a5",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "Alonzo's EraTxOut and AlonzoEraTxOut: the address, value, datum hash and datum; the reference's builders, compact lenses and least coin are not members here",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      335,
+      372
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxOut AlonzoEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      519,
+      528
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraTxOut AlonzoEra"
+    }
+   ]
+  }
+ },
+ "glue": [
+  {
+   "definitions": [
+    "def ledger.era.alonzo.AlonzoPlutusScript#binary",
+    "def ledger.era.alonzo.AlonzoPlutusScript#kind",
+    "def ledger.era.alonzo.AlonzoScript.rep",
+    "def ledger.era.alonzo.AlonzoTimelock.rep",
+    "def ledger.era.alonzo.AlonzoTxCert.rep",
+    "def ledger.era.alonzo.AlonzoTxOut.rep",
+    "given ledger.era.alonzo.AlonzoPlutusScript.given_CanEqual_AlonzoPlutusScript_AlonzoPlutusScript",
+    "given ledger.era.alonzo.AlonzoScript.given_CanEqual_AlonzoScript_AlonzoScript",
+    "given ledger.era.alonzo.AlonzoTimelock.given_CanEqual_AlonzoTimelock_AlonzoTimelock",
+    "given ledger.era.alonzo.AlonzoTxCert.given_CanEqual_AlonzoTxCert_AlonzoTxCert",
+    "given ledger.era.alonzo.AlonzoTxOut.given_CanEqual_AlonzoTxOut_AlonzoTxOut",
+    "object ledger.era.alonzo.AlonzoPlutusScript",
+    "object ledger.era.alonzo.AlonzoScript",
+    "object ledger.era.alonzo.AlonzoTimelock",
+    "object ledger.era.alonzo.AlonzoTxCert",
+    "object ledger.era.alonzo.AlonzoTxOut"
+   ],
+   "reason": "Alonzo's companions, their equality with the era itself only (design §3.1), the read-only view of the shared representation the next era's translation reads, and a Plutus script's language and bytes, which the reference reads through its Plutus type"
+  },
+  {
+   "definitions": [
+    "def ledger.era.alonzo.AlonzoTxOut.fromStored",
+    "def ledger.era.alonzo.AlonzoTxOut.toStored"
+   ],
+   "reason": "the glue to the form the node stores an output in (design §3.6): a stored output read as Alonzo's, refused if it holds an inline datum or a reference script, and written back to the same stored form"
+  }
+ ],
+ "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/alonzo/AlonzoTypes.scala"
+}

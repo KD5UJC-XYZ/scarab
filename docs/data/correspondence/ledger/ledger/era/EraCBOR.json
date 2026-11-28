@@ -157,6 +157,27 @@
     }
    ]
   },
+  "def ledger.era.Encoding.encodeBytes": {
+   "class": "Mirror",
+   "digest": "4cb9afbd46498f66",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "a definite byte string, its head the shortest",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Encoding/Encoder.hs",
+     "lines": [
+      214,
+      215
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
+     "symbol": "encodeBytes"
+    }
+   ]
+  },
   "def ledger.era.Encoding.encodeInteger": {
    "class": "Mirror",
    "digest": "0357a4a936cdaf46",
@@ -410,6 +431,27 @@
     }
    ]
   },
+  "given ledger.era.DecCBOR.coinPerWord": {
+   "class": "Mirror",
+   "digest": "4025b4baf52549c0",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "its coin's, a Word64, derived",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      403,
+      403
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR"
+    }
+   ]
+  },
   "given ledger.era.DecCBOR.compactCoin": {
    "class": "Mirror",
    "digest": "d8fe9d5c595b643e",
@@ -608,6 +650,37 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "DecCBOR (NonZero a)"
+    }
+   ]
+  },
+  "given ledger.era.DecCBOR.nonce": {
+   "class": "Mirror",
+   "digest": "5ec0e6da6edf0cd7",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "[0] or [1, hash], each tag's length checked, as the node's decoder of a pre-Conway update reads the extra entropy: below 12 the reference's Summands, from 12 decodeRecordSum, on which Summands is built, both reading the fields before the length, where this checks the length first and so names another refusal ([1, h'', 0]: TaggedArity here, the hash there); a hash in chunks refused below 12 and read from it (AlonzoPParamsSuite at 5, 9, 11 and 12); a stored nonce (DecodeAt.Reading.Stored) read as the flat rule applies it, any byte string form and a neutral nonce of any number of fields (glue, ADR 0006)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      579,
+      595
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "DecCBOR Nonce"
+    },
+    {
+     "file": "libs/cardano-ledger-binary/src/Cardano/Ledger/Binary/Decoding/Decoder.hs",
+     "lines": [
+      670,
+      675
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "decodeRecordSum"
     }
    ]
   },
@@ -883,6 +956,27 @@
     }
    ]
   },
+  "given ledger.era.EncCBOR.coinPerWord": {
+   "class": "Mirror",
+   "digest": "f2a2defaf190d699",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "its coin's, derived",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/PParams.hs",
+     "lines": [
+      403,
+      403
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EncCBOR"
+    }
+   ]
+  },
   "given ledger.era.EncCBOR.compactCoin": {
    "class": "Mirror",
    "digest": "dbf5983ac82066b2",
@@ -1030,6 +1124,37 @@
     }
    ]
   },
+  "given ledger.era.EncCBOR.multiAssetValue": {
+   "class": "Mirror",
+   "digest": "33e2cd5e10f4be09",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "the coin alone without assets, else [coin, assets], each map of variable length with its keys ascending bytewise as Data.Map holds them; written back to the bytes of every recorded Alonzo output and of the reference's own UTxO answers, and a crafted out-of-order value written in order",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      342,
+      350
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EncCBOR MaryValue"
+    },
+    {
+     "file": "eras/mary/impl/src/Cardano/Ledger/Mary/Value.hs",
+     "lines": [
+      154,
+      155
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "MultiAsset"
+    }
+   ]
+  },
   "given ledger.era.EncCBOR.nonNegativeInterval": {
    "class": "Mirror",
    "digest": "0f1906752daf7a4d",
@@ -1069,6 +1194,27 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "9df9f98cce86c5f2195142b2c02dd9b39dd9dc7c",
      "symbol": "NonZero"
+    }
+   ]
+  },
+  "given ledger.era.EncCBOR.nonce": {
+   "class": "Mirror",
+   "digest": "75991063a1453014",
+   "evidence": [
+    "AlonzoPParamsSuite"
+   ],
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/BaseTypes.hs",
+     "lines": [
+      574,
+      577
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EncCBOR Nonce"
     }
    ]
   },
@@ -1392,6 +1538,13 @@
     "type ledger.era.DecCBOR.RecordRead"
    ],
    "reason": "the reader of a record's fields over the items of a decoded list, what it keeps between them and what follows the list's last item: the reference's decodeRecordNamed reads its fields from the token stream and has no such state"
+  },
+  {
+   "definitions": [
+    "enum ledger.era.DecodeAt.Reading",
+    "object ledger.era.DecodeAt"
+   ],
+   "reason": "whether a decoder reads bytes received, held to the version's rules, or bytes the node stored, read in any form an earlier read took (ADR 0006); the reference keeps values, not the bytes a proposal came as"
   }
  ],
  "source": "ledger/src/main/scala/xyz/kd5ujc/scarab/ledger/era/EraCBOR.scala"

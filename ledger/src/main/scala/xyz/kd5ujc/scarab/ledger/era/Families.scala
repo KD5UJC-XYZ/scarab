@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, Dijkstra, EraTag, Mary}
+import xyz.kd5ujc.scarab.ledger.state.{Allegra, Alonzo, Babbage, Conway, Dijkstra, EraTag, Mary}
 
 // The reference's type families, one match type each with one case per era (cardano-ledger
 // f649f975 `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs`). Each era's cases come with that
@@ -14,6 +14,7 @@ import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, Dijkstra, EraTa
 type Value[E <: EraTag] = E match
   case Allegra  => AdaValue
   case Mary     => MultiAssetValue
+  case Alonzo   => MultiAssetValue
   case Babbage  => MultiAssetValue
   case Conway   => MultiAssetValue
   case Dijkstra => MultiAssetValue
@@ -25,6 +26,7 @@ type Value[E <: EraTag] = E match
 type TxOut[E <: EraTag] = E match
   case Allegra  => allegra.AllegraTxOut
   case Mary     => mary.MaryTxOut
+  case Alonzo   => alonzo.AlonzoTxOut
   case Babbage  => babbage.BabbageTxOut
   case Conway   => conway.ConwayTxOut
   case Dijkstra => dijkstra.DijkstraTxOut
@@ -39,19 +41,24 @@ type TxBody[L <: TxLevel, E <: EraTag] = E match
 
 /** The certificate of era `E` (`type TxCert era`,
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core/TxCert.hs:58`, cardano-ledger f649f975).
+  * Alonzo's case is there because Alonzo's purpose names it (`AlonzoCertifying`); its decoder and
+  * classes come with Alonzo's transaction.
   */
 type TxCert[E <: EraTag] = E match
+  case Alonzo   => alonzo.AlonzoTxCert
   case Babbage  => babbage.BabbageTxCert
   case Conway   => conway.ConwayTxCert
   case Dijkstra => dijkstra.DijkstraTxCert
 
 /** The native script of era `E` (`type NativeScript era`, `Core.hs:585`, cardano-ledger f649f975):
   * `Timelock era` from Allegra (`eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:332`,
+  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:525`,
   * `eras/conway/impl/src/Cardano/Ledger/Conway/Scripts.hs:74`).
   */
 type NativeScript[E <: EraTag] = E match
   case Allegra  => allegra.AllegraTimelock
   case Mary     => mary.MaryTimelock
+  case Alonzo   => alonzo.AlonzoTimelock
   case Babbage  => babbage.BabbageTimelock
   case Conway   => conway.ConwayTimelock
   case Dijkstra => dijkstra.DijkstraNativeScript
@@ -59,21 +66,24 @@ type NativeScript[E <: EraTag] = E match
 /** The script of era `E` (`type Script era`, `Core.hs:583`, cardano-ledger f649f975): the native
   * script up to Mary (`Allegra/Scripts.hs:331`,
   * `eras/mary/impl/src/Cardano/Ledger/Mary/Scripts.hs:21`), a native or a Plutus script from Alonzo
-  * (`AlonzoScript era`, `eras/babbage/impl/src/Cardano/Ledger/Babbage/Scripts.hs:41`,
-  * `Conway/Scripts.hs:73`).
+  * (`AlonzoScript era`, `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:524`,
+  * `eras/babbage/impl/src/Cardano/Ledger/Babbage/Scripts.hs:41`, `Conway/Scripts.hs:73`).
   */
 type Script[E <: EraTag] = E match
   case Allegra  => allegra.AllegraTimelock
   case Mary     => mary.MaryTimelock
+  case Alonzo   => alonzo.AlonzoScript
   case Babbage  => babbage.BabbageScript
   case Conway   => conway.ConwayScript
   case Dijkstra => dijkstra.DijkstraScript
 
 /** The Plutus script of era `E` (`data PlutusScript era`,
   * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:170`, cardano-ledger f649f975): the
-  * languages the era has, and no other (`Babbage/Scripts.hs:57-59`, `Conway/Scripts.hs:90-93`).
+  * languages the era has, and no other (`Alonzo/Scripts.hs:566`, `Babbage/Scripts.hs:57-59`,
+  * `Conway/Scripts.hs:90-93`).
   */
 type PlutusScript[E <: EraTag] = E match
+  case Alonzo   => alonzo.AlonzoPlutusScript
   case Babbage  => babbage.BabbagePlutusScript
   case Conway   => conway.ConwayPlutusScript
   case Dijkstra => dijkstra.DijkstraPlutusScript
@@ -87,9 +97,11 @@ type TxWits[E <: EraTag] = E match
   case Dijkstra => dijkstra.DijkstraTxWits
 
 /** The Plutus purpose of era `E` in the form `F` (`type PlutusPurpose f era`,
-  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:172`, cardano-ledger f649f975).
+  * `eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs:172`, cardano-ledger f649f975): Alonzo's
+  * purpose in Alonzo and Babbage (`:569`, `Babbage/Scripts.hs:61`).
   */
 type PlutusPurpose[F[_, _], E <: EraTag] = E match
+  case Alonzo   => AlonzoPlutusPurpose[F, Alonzo]
   case Babbage  => AlonzoPlutusPurpose[F, Babbage]
   case Conway   => conway.ConwayPlutusPurpose[F]
   case Dijkstra => dijkstra.DijkstraPlutusPurpose[F]

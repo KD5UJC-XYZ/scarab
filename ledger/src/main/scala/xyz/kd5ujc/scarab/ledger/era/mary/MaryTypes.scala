@@ -45,6 +45,10 @@ object MaryTxOut:
     val r = out.rep
     ShelleyTxOutRep(r.raw, r.address, r.value.toMultiAsset, r.valueSize)
 
+  extension (out: MaryTxOut)
+    /** The shared representation, read only: the translation into Alonzo reads it. */
+    def rep: ShelleyTxOutRep[MultiAssetValue] = out
+
   given CanEqual[MaryTxOut, MaryTxOut] = CanEqual.derived
 
   val instance: EraTxOut[Mary] = new EraTxOut[Mary]:
@@ -69,6 +73,10 @@ object MaryTimelock:
     * `eras/allegra/impl/src/Cardano/Ledger/Allegra/Scripts.hs:202-217`, cardano-ledger f649f975).
     */
   def translate(t: AllegraTimelock): MaryTimelock = t.rep
+
+  extension (t: MaryTimelock)
+    /** The shared representation, read only: the translation into Alonzo reads it. */
+    def rep: Timelock = t
 
   given CanEqual[MaryTimelock, MaryTimelock] = CanEqual.derived
 

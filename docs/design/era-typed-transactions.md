@@ -462,8 +462,9 @@ Conway's rules on the classes follow as the rest of stage 2.
   - A member the reference confines to a range of eras (`AtMostEra`, `ExactEra`) is a class of its own per
     range, with instances at exactly those eras (decided 2026-11-15, #85). `EraPParams` lands without its
     five ranged members, and `AlonzoEraPParams` without `hkdCoinsPerUTxOWordL`; the protocol version of the
-    eras up to Babbage came with Babbage's record in stage 4 (`EraPParamsToBabbage`, below), and the others
-    come with the records of their eras. Of the bodies' ranged members, the required signers' field
+    eras up to Babbage came with Babbage's record in stage 4 (`EraPParamsToBabbage`, below), the
+    decentralisation, the extra entropy and `hkdCoinsPerUTxOWordL` with Alonzo's (`EraPParamsToAlonzo`,
+    `AlonzoEraPParamsExactAlonzo`, below), and the minimum UTxO value comes with Mary's. Of the bodies' ranged members, the required signers' field
     (`reqSignerHashesTxBodyL`, of the eras Alonzo to Conway) is `AlonzoEraTxBodyToConway`. Its
     instances are Babbage's and Conway's, the eras with a typed body; Alonzo's comes with its body. Dijkstra's body, whose field the reference fills with `notSupportedInThisEraL`,
     will have none. The getter of every era (`reqSignerHashesTxBodyG`) stays on `AlonzoEraTxBody`: the
@@ -479,8 +480,8 @@ Conway's rules on the classes follow as the rest of stage 2.
     reference's recorded contexts carry it: the PlutusV3 contexts of the two recorded Preview transactions
     that propose a parameter change, and the PlutusV4 contexts of the Leios build's governance case.
   - Not yet: the upgrade and downgrade of the parameters as members of `EraPParams` (`UpgradePParams`,
-    `upgradePParamsHKD`, `downgradePParamsHKD`, `emptyUpgradePParamsUpdate`), which Babbage's instance can give
-    only with Alonzo's record; Conway's are its functions for now (stage 4, below). Also not yet: the
+    `upgradePParamsHKD`, `downgradePParamsHKD`, `emptyUpgradePParamsUpdate`), which Alonzo's instance can give
+    only with Mary's record; Babbage's and Conway's are their functions for now (stage 4, below). Also not yet: the
     reference's comparison of parameter records and updates (`Ord (PParamsHKD …)`, not the descriptions' order
     above), each on #85's checklist; `fromPlutusData`, and the JSON instances a description also packs (#85).
   - **The CBOR** (`ledger/.../era/EraCBOR.scala`): the reference's `EncCBOR` and `DecCBOR` of every value
@@ -3573,6 +3574,79 @@ Conway's rules on the classes follow as the rest of stage 2.
     Every comparison agrees, a crafted case at a minor version of 2^32 - 1 among them, where both let `(major, 0)`
     follow as the reference does ([#1514](https://github.com/KD5UJC-XYZ/scarab/issues/1514)). The corpora hold no `PVCannotFollowPPUP`, no
     `PPUpdateWrongEpoch` and no refund. Nothing in the node runs these rules yet.
+- **Alonzo's era tag, output, scripts and parameters** (stage 4, sixth part, the first of Alonzo's;
+  `era/alonzo/AlonzoTypes.scala`, `era/alonzo/AlonzoPParams.scala`; cardano-ledger f649f975
+  `Alonzo/TxOut.hs:144-528`, `Alonzo/Scripts.hs:523-604`, `Alonzo/PParams.hs:132-728`,
+  `Babbage/PParams.hs:167-403`):
+  - `Era[Alonzo]` (versions 5 to 6) and Alonzo's cases of the value (Mary's), output, native script, script,
+    Plutus script, purpose and certificate families. The certificate (`AlonzoTxCert`, `ShelleyTxCert AlonzoEra`)
+    is there because Alonzo's certifying purpose names it; its reader and classes come with Alonzo's body. The
+    transaction, body, witness, auxiliary-data, scripts-needed, `StAnnTx`, governance-state and parameter-update
+    families other than `PParamsHKD` have no Alonzo case yet.
+  - `AlonzoTxOut` over `AlonzoTxOutRep`: the reader of a body's output item by the flat output reader's readers,
+    held to the flat output; the reference's encoder (`EncCBOR (AlonzoTxOut era)`, with Mary's value encoder,
+    its maps' keys ascending bytewise), which writes the address as the output holds it: written again from its
+    fields for an output of lovelace only read from a body (`mkTxOutCompact`, a bootstrap address as the
+    reference encodes a Byron address), else the bytes read, cut and normalised, and Mary's for an output
+    carried in from Mary; the stored form, whose address is the bytes stored, as the store does not keep which
+    of the two the reference's output holds (#85); the translation from Mary; `EraTxOut` and `AlonzoEraTxOut`; and the least coin
+    (`getMinCoinTxOut`, `utxoEntrySize`), a function as Babbage's is. `AlonzoScript` (native or PlutusV1) and
+    `AlonzoEraScript[Alonzo]` with Alonzo's purpose, and their translation from Mary.
+  - `AlonzoPParams[F]`, its instances of `EraPParams` and `AlonzoEraPParams`, and three ranged classes at
+    Alonzo: `AlonzoEraPParamsExactAlonzo` (`hkdCoinsPerUTxOWordL`, `ExactEra AlonzoEra`), `EraPParamsToAlonzo`
+    (`hkdDL`, `hkdExtraEntropyL` and `ppDG` from them, `AtMostEra "Alonzo"`) and `EraPParamsToBabbage`, as
+    decided 2026-11-15; so `KeptUpdate` reads Alonzo's proposals unchanged. A proposal's extra entropy the node
+    stored is read as the flat rule applies it (`DecodeAt.Reading.Stored`): a byte string of any form and a
+    neutral nonce of any number of fields, which an earlier build took; a body's is held to its version. The
+    other fields' stored legacy forms (an indefinite execution-units list) are not yet (#85). The reference's `ToPlutusData` of
+    `Nonce` and of `CoinPerWord` is `error "unsupported"`, which only these two descriptions are given, as kept
+    sites: their one reader asks for `ConwayEraPParams`. Babbage's upgrade from Alonzo (`upgradeBabbagePParams
+    True` and, for a transaction's proposal, `False`) and downgrade to it are Babbage's functions; the class
+    members of the upgrade wait for Mary's record. The cost per word's eighth is made a `Word64` as
+    `fromIntegral` makes it, its low 64 bits; the `False` form's `toCompactPartial` throw is a refusal.
+  - Against the flat path and the reference (`AlonzoTypesSuite`, `AlonzoPParamsSuite`, `EraPParamsStoredSuite`):
+    - the 83 outputs of the 69 Alonzo transaction rows of the recorded blocks and of the refusal, v1-context,
+      context-matrix and Plutus admission corpora, the 71 outputs they spend or the refusal corpora's UTxO sets
+      hold, and the 78 output items of the reference's Alonzo decoder corpora read as the flat decoder reads
+      them, field by field and in the stored form, and 5,730 byte mutants of the distinct ones and two crafted
+      ones with a datum hash are accepted and refused alike. Every recorded output is written back to its bytes,
+      the 46 outputs of the reference's 15 Alonzo UTxO answers are written byte for byte (pointer, bootstrap,
+      multi-asset, datum-hash and detached-value ones among them) and its 4 outputs of a later era's form are
+      refused, and its 9 verdicts on an output's form are the era decoder's. A bootstrap address whose checksum
+      is widened to eight bytes, of an output of lovelace only, is written in its 43-byte form, of an output
+      with assets as read, and of a Mary output carried in as Mary's. The era walk's 192 Alonzo states
+      hold 5 distinct outputs, read from the store and written back to their bytes; the Alonzo snapshots
+      below keep their UTxO sets in their tables, which are not read. `fixtures/preprod` and
+      `fixtures/mainnet` hold no Alonzo block. The 41 recorded witness scripts
+      (all Plutus V1) hash as the flat ones, and a crafted native script's hash and tree are the flat
+      reader's.
+    - The least coin of those 226 outputs and crafted ones is the flat path's, at entry sizes computed by hand
+      from the reference's `utxoEntrySize` and `size` (29 words ada-only, 39 with a datum hash or one asset, 58
+      with two policies and a datum hash). A zero quantity and an empty policy are pruned by the value reader
+      both decoders share below version 9 (`Value.Decoding.Pruning`), so the value is ada-only; no recording
+      of the reference holds such an Alonzo output.
+      `fixtures/reference/pre-conway-utxo`'s protocol-5 rows are collateral and attribute verdicts, not the
+      least coin, and are not this evidence.
+    - The three parameter records of `alonzo-3013` read positionally and write back byte for byte, also over a
+      base differing in every Alonzo field; the 571 records of the era walk's 192 Alonzo states (versions 4 to 7)
+      read into the era and are written by its encoder as the state's codec writes them, and so are the
+      records of `alonzo-3013` and of the native V10 snapshots `alonzo-349`, `alonzo-539` and `preview-4320`
+      (`AlonzoStateStoredSuite`), whose stored proposals (three delegates' in two of them) read into the era
+      with their bytes kept and whose states are written back whole. Generated Alonzo
+      updates, in shortest and wide forms, apply as the flat rule applies them, the cost models replaced whole
+      by both ([#1495](https://github.com/KD5UJC-XYZ/scarab/issues/1495)), and a body's proposal is stored byte for byte
+      as the flat decoder stores it; so are the seven recorded Alonzo proposals (the era walk's and the
+      chain-dependent capture's by three delegates, Preview's by seven, and one of the refusal corpus), and
+      a mutant of a value of each block's proposal is read alike, five as another proposal and one refused by
+      both. The 187 proposal maps of the era walk's Alonzo states (561 delegates' updates) and the snapshots'
+      read from their stored form into the era, the stored form kept, and each delegate's typed update applied
+      to the state's parameters gives the record the flat rule gives. A stored extra entropy of the flat
+      suite's legacy forms (a neutral nonce of two fields, a hash in chunks) is read and applied as the flat
+      rule applies it, and refused in a body; a hash in chunks is refused below version 12 and read from it. A value written in a non-canonical form (a wide word, `2/4`, an indefinite
+      nonce) is kept as written and is the canonical value's typed. Two refusals name the update where the flat
+      decoder names the parameter (a ratio out of its interval, a cost per word not a `Word64`), the known
+      diagnostic gap B1 recorded.
+  - Nothing in the node reads these types yet.
 - **Next, Conway's rules.** The first rule ported is one that needs no parameters, the second one that
   does, each under a differential against the flat rule on the recorded blocks and the refusal corpus.
 - The body is read through the flat decoder for now. What only the projection refuses (an update, genesis

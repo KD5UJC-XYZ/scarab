@@ -20,6 +20,68 @@
   "trait ledger.era.EraTxOut": null
  },
  "entries": {
+  "def ledger.era.AlonzoTxOuts.dataHashSize": {
+   "class": "Mirror",
+   "digest": "3191ae5b40b3d6a5",
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs",
+     "lines": [
+      262,
+      265
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "dataHashSize"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoTxOuts.getMinCoinTxOut": {
+   "class": "Mirror",
+   "digest": "81f40fe05d910c7b",
+   "evidence": [
+    "AlonzoPParamsSuite",
+    "AlonzoTypesSuite"
+   ],
+   "note": "a function, not an EraTxOut member, as Babbage's is; the flat path's least coin on 226 recorded, corpus and crafted outputs and the hand-computed sizes of seven crafted ones (ada-only, a datum hash, assets, a zero quantity and an empty policy pruned)",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      370,
+      372
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "getMinCoinTxOut"
+    }
+   ]
+  },
+  "def ledger.era.AlonzoTxOuts.utxoEntrySize": {
+   "class": "Mirror",
+   "digest": "59d30a92fa5d8450",
+   "evidence": [
+    "AlonzoPParamsSuite",
+    "AlonzoTypesSuite"
+   ],
+   "note": "",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      504,
+      517
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "utxoEntrySize"
+    }
+   ]
+  },
   "def ledger.era.BabbageTxOuts.babbageMinUTxOValue": {
    "class": "Mirror",
    "digest": "a0188335e532a3f2",
@@ -83,6 +145,55 @@
      "repository": "IntersectMBO/cardano-ledger",
      "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
      "symbol": "getDataHashBabbageTxOut"
+    }
+   ]
+  },
+  "given ledger.era.EraTxOut.alonzo": {
+   "class": "Mirror",
+   "digest": "80f7c86b0fd360f4",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "Alonzo's output instances, the one place listing the eras of the output classes; the reference's EraTxOut members this class does not carry (mkBasicTxOut, the compact lenses, getMinCoinTxOut) are not here, the least coin coming with Alonzo's parameters",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      335,
+      372
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "EraTxOut AlonzoEra"
+    },
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      519,
+      528
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraTxOut AlonzoEra"
+    }
+   ]
+  },
+  "object ledger.era.AlonzoTxOuts": {
+   "class": "Mirror",
+   "digest": "b581271e68affced",
+   "note": "Alonzo's functions of outputs",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs",
+     "lines": [
+      504,
+      517
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "utxoEntrySize"
     }
    ]
   }

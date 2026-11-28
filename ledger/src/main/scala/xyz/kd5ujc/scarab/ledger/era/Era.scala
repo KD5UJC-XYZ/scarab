@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 package xyz.kd5ujc.scarab.ledger.era
 
-import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Conway, Dijkstra, EraTag, Mary}
+import xyz.kd5ujc.scarab.ledger.state.{Allegra, Alonzo, Babbage, Conway, Dijkstra, EraTag, Mary}
 
 /** The major protocol versions of era `E` (`class Era era`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs:35-64`): its lowest
@@ -25,6 +25,7 @@ object Era:
 
   given allegra: Era[Allegra] = of(Version.lit(3), Version.lit(3))
   given mary: Era[Mary] = of(Version.lit(4), Version.lit(4))
+  given alonzo: Era[Alonzo] = of(Version.lit(5), Version.lit(6))
   given babbage: Era[Babbage] = of(Version.lit(7), Version.lit(8))
   given conway: Era[Conway] = of(Version.lit(9), Version.lit(11))
   given dijkstra: Era[Dijkstra] = of(Version.lit(12), Version.lit(12))

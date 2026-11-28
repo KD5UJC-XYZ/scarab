@@ -63,6 +63,27 @@
     }
    ]
   },
+  "given ledger.era.Era.alonzo": {
+   "class": "Mirror",
+   "digest": "d40a63633c0c693b",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "Alonzo's versions, 5 and 6, as values; the reference's instance also names the era (EraName) and its previous era (PreviousEra), which are not here",
+   "structure": "differs",
+   "upstream": [
+    {
+     "file": "libs/cardano-ledger-core/internal/Cardano/Ledger/Internal/Definition/Era.hs",
+     "lines": [
+      111,
+      117
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEra"
+    }
+   ]
+  },
   "given ledger.era.Era.babbage": {
    "class": "Mirror",
    "digest": "bd261914d88bd764",

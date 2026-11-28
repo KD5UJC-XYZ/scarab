@@ -549,6 +549,27 @@
     }
    ]
   },
+  "given ledger.era.EraScript.alonzo": {
+   "class": "Mirror",
+   "digest": "5634e9689eba90fc",
+   "evidence": [
+    "AlonzoTypesSuite"
+   ],
+   "note": "Alonzo's script instances, the one place listing the eras of the script classes",
+   "structure": "same",
+   "upstream": [
+    {
+     "file": "eras/alonzo/impl/src/Cardano/Ledger/Alonzo/Scripts.hs",
+     "lines": [
+      523,
+      604
+     ],
+     "repository": "IntersectMBO/cardano-ledger",
+     "revision": "f649f9751074d2ab3de033fc3912f29c9862c1f5",
+     "symbol": "AlonzoEraScript AlonzoEra"
+    }
+   ]
+  },
   "trait ledger.era.DijkstraEraScript": {
    "class": "Gap",
    "digest": "9deb25aac7613ce5",

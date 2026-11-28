@@ -4,7 +4,16 @@ package xyz.kd5ujc.scarab.ledger.era
 import xyz.kd5ujc.scarab.codec.Bytes
 import xyz.kd5ujc.scarab.ledger.Address
 import xyz.kd5ujc.scarab.plutus.PlutusData
-import xyz.kd5ujc.scarab.ledger.state.{Allegra, Babbage, Coin, Conway, Dijkstra, EraTag, Mary}
+import xyz.kd5ujc.scarab.ledger.state.{
+  Allegra,
+  Alonzo,
+  Babbage,
+  Coin,
+  Conway,
+  Dijkstra,
+  EraTag,
+  Mary
+}
 
 /** The fields every era's output has (`EraTxOut`, cardano-ledger f649f975
   * `libs/cardano-ledger-core/src/Cardano/Ledger/Core.hs:297`). An output of the previous era is
@@ -57,6 +66,7 @@ trait BabbageEraTxOut[E <: EraTag] extends AlonzoEraTxOut[E]:
 object EraTxOut:
   given allegra: EraTxOut[Allegra] = xyz.kd5ujc.scarab.ledger.era.allegra.AllegraTxOut.instance
   given mary: EraTxOut[Mary] = xyz.kd5ujc.scarab.ledger.era.mary.MaryTxOut.instance
+  given alonzo: AlonzoEraTxOut[Alonzo] = xyz.kd5ujc.scarab.ledger.era.alonzo.AlonzoTxOut.instance
   given babbage: BabbageEraTxOut[Babbage] =
     xyz.kd5ujc.scarab.ledger.era.babbage.BabbageTxOut.instance
   given conway: BabbageEraTxOut[Conway] = xyz.kd5ujc.scarab.ledger.era.conway.ConwayTxOut.instance
@@ -105,6 +115,39 @@ object StoredTxOut:
       xyz.kd5ujc.scarab.ledger.era.dijkstra.DijkstraTxOut.fromStored(out)
     def storedValue(value: Value[Dijkstra]): xyz.kd5ujc.scarab.ledger.Value = value.stored
 
+/** The functions of Alonzo's outputs (`eras/alonzo/impl/src/Cardano/Ledger/Alonzo/TxOut.hs`,
+  * cardano-ledger f649f975).
+  */
+object AlonzoTxOuts:
+  /** `getMinCoinTxOut` of `instance EraTxOut AlonzoEra` (`Alonzo/TxOut.hs:370-372`, cardano-ledger
+    * f649f975): the cost per UTxO word times the output's entry size. The reference reaches it
+    * through `EraTxOut` (`Core.hs:391-392`), whose instances of the eras before Alonzo have no
+    * parameter record here yet; it is a function, as Babbage's is ([[BabbageTxOuts]]), of the one
+    * era with the cost per UTxO word ([[AlonzoEraPParamsExactAlonzo]]).
+    */
+  def getMinCoinTxOut[E <: EraTag](pp: PParams[E], txOut: TxOut[E])(using
+      AlonzoEraPParamsExactAlonzo[E],
+      AlonzoEraTxOut[E]
+  ): Coin =
+    val cpw = AlonzoEraPParamsExactAlonzo.ppCoinsPerUTxOWordL[E].get(pp).unCoinPerWord.value
+    Coin(utxoEntrySize(txOut) * cpw)
+
+  /** `utxoEntrySize` (`Alonzo/TxOut.hs:504-517`, cardano-ledger f649f975): the words an entry of
+    * the UTxO set takes, 27 beside the value, the value's `size` and the datum hash's.
+    */
+  def utxoEntrySize[E <: EraTag](txOut: TxOut[E])(using o: AlonzoEraTxOut[E]): BigInt =
+    UtxoEntrySizeWithoutVal + o.valueOps.size(o.value(txOut)) + dataHashSize(o.dataHash(txOut))
+
+  /** `utxoEntrySizeWithoutVal = 27 -- 6 + txoutLenNoVal [14] + txinLen [7]`
+    * (`Alonzo/TxOut.hs:515-517`, cardano-ledger f649f975).
+    */
+  private val UtxoEntrySizeWithoutVal = BigInt(27)
+
+  /** `dataHashSize` (`libs/cardano-ledger-core/src/Cardano/Ledger/Plutus/Data.hs:262-265`,
+    * cardano-ledger f649f975): 10 words for a datum hash, none without.
+    */
+  def dataHashSize(dataHash: Option[Bytes]): BigInt = dataHash.fold(BigInt(0))(_ => BigInt(10))
+
 /** The functions of Babbage's outputs (`eras/babbage/impl/src/Cardano/Ledger/Babbage/TxOut.hs`,
   * cardano-ledger f649f975).
   */
@@ -126,8 +169,8 @@ object BabbageTxOuts:
   /** `babbageMinUTxOValue` (`Babbage/TxOut.hs:665-688`, cardano-ledger f649f975): the least
     * lovelace of an output of `sizedSize` bytes, `(160 + size) * coinsPerUTxOByte`. The reference
     * reaches it through `EraTxOut` 's `getMinCoinSizedTxOut` (`Core.hs:391-392`), which every era's
-    * instance has; here it is a function, until the eras before Babbage have parameter records
-    * their instances could read (#85).
+    * instance has; here it is a function, as Alonzo's is ([[AlonzoTxOuts.getMinCoinTxOut]]), until
+    * the eras before Alonzo have parameter records their instances could read (#85).
     */
   def babbageMinUTxOValue[E <: EraTag, A](pp: PParams[E], sizedTxOut: Sized[A])(using
       BabbageEraPParams[E]
